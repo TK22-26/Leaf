@@ -1,0 +1,131 @@
+<UserControl x:Class="Leaf.Views.BranchListView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:converters="clr-namespace:Leaf.Converters"
+             xmlns:models="clr-namespace:Leaf.Models"
+             xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="200">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:NullToVisibilityInverseConverter x:Key="NullToVisibilityInverseConverter"/>
+        <converters:BranchCategoryItemsConverter x:Key="BranchCategoryItemsConverter"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0"
+                   Text="{Binding SelectedRepository.Name, FallbackValue='BRANCHES'}"
+                   FontWeight="SemiBold"
+                   FontSize="11"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   Margin="12,12,12,8"
+                   TextTrimming="CharacterEllipsis"/>
+
+        <!-- No repo selected message -->
+        <TextBlock Grid.Row="1"
+                   Text="Select a repository to view branches"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   Visibility="{Binding SelectedRepository, Converter={StaticResource NullToVisibilityInverseConverter}}"/>
+
+        <!-- Branch tree -->
+        <TreeView Grid.Row="1"
+                  x:Name="BranchTreeView"
+                  ItemsSource="{Binding SelectedRepository.BranchCategories}"
+                  BorderThickness="0"
+                  Padding="4"
+                  Visibility="{Binding SelectedRepository, Converter={StaticResource NullToVisibilityConverter}}">
+            <TreeView.Resources>
+                <!-- Branch category template (LOCAL/REMOTE) -->
+                <HierarchicalDataTemplate DataType="{x:Type models:BranchCategory}"
+                                          ItemsSource="{Binding Converter={StaticResource BranchCategoryItemsConverter}}">
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <ic:SymbolIcon Symbol="BranchFork"
+                                       IconVariant="Regular"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0"/>
+                        <TextBlock Text="{Binding Name}"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding BranchCount, StringFormat=' ({0})'}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </HierarchicalDataTemplate>
+
+                <!-- Remote branch group template (origin, upstream, etc.) -->
+                <HierarchicalDataTemplate DataType="{x:Type models:RemoteBranchGroup}"
+                                          ItemsSource="{Binding Branches}">
+                    <StackPanel Orientation="Horizontal" Margin="0,2">
+                        <ic:SymbolIcon Symbol="Cloud"
+                                       IconVariant="Regular"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0"/>
+                        <TextBlock Text="{Binding Name}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </HierarchicalDataTemplate>
+
+                <!-- Branch template -->
+                <DataTemplate DataType="{x:Type models:BranchInfo}">
+                    <Border Padding="2,3"
+                            Background="Transparent"
+                            Cursor="Hand"
+                            MouseLeftButtonDown="Branch_MouseLeftButtonDown">
+                        <StackPanel Orientation="Horizontal">
+                            <!-- Branch icon -->
+                            <ic:SymbolIcon Symbol="Branch"
+                                           IconVariant="Regular"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,6,0"/>
+
+                            <!-- Branch name -->
+                            <TextBlock Text="{Binding Name}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       VerticalAlignment="Center"/>
+
+                            <!-- Current branch indicator -->
+                            <ic:SymbolIcon Symbol="Checkmark"
+                                           IconVariant="Regular"
+                                           FontSize="10"
+                                           Foreground="#10B981"
+                                           Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVisibilityConverter}}"
+                                           VerticalAlignment="Center"
+                                           Margin="4,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </TreeView.Resources>
+
+            <TreeView.ItemContainerStyle>
+                <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                    <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                    <Setter Property="Padding" Value="2"/>
+                </Style>
+            </TreeView.ItemContainerStyle>
+        </TreeView>
+    </Grid>
+</UserControl>

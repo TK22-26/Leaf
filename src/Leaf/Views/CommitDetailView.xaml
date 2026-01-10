@@ -1,0 +1,366 @@
+<UserControl x:Class="Leaf.Views.CommitDetailView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:converters="clr-namespace:Leaf.Converters"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="400">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:FileStatusToBrushConverter x:Key="FileStatusToBrushConverter"/>
+
+        <!-- File status colors -->
+        <SolidColorBrush x:Key="StatusAddedBrush" Color="#28A745"/>
+        <SolidColorBrush x:Key="StatusModifiedBrush" Color="#F5A623"/>
+        <SolidColorBrush x:Key="StatusDeletedBrush" Color="#E81123"/>
+
+        <!-- Working changes banner - dark green for dark theme -->
+        <SolidColorBrush x:Key="WorkingChangesBannerBrush" Color="#2D5A3D"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- No commit selected message -->
+        <TextBlock Text="Select a commit to view details"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Commit}" Value="{x:Null}">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+
+        <!-- Commit details -->
+        <Grid Visibility="{Binding Commit, Converter={StaticResource NullToVisibilityConverter}}">
+            <Grid.RowDefinitions>
+                <!-- Working Changes Banner -->
+                <RowDefinition Height="Auto"/>
+                <!-- Commit SHA Banner -->
+                <RowDefinition Height="Auto"/>
+                <!-- Commit Message Box -->
+                <RowDefinition Height="Auto"/>
+                <!-- Author/Parent Info -->
+                <RowDefinition Height="Auto"/>
+                <!-- File Summary Bar -->
+                <RowDefinition Height="Auto"/>
+                <!-- File List -->
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Working Changes Banner (when working changes exist) -->
+            <Border Grid.Row="0"
+                    Background="{StaticResource WorkingChangesBannerBrush}"
+                    Height="40"
+                    Padding="12,0"
+                    Visibility="{Binding HasWorkingChanges, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
+                <Grid>
+                    <TextBlock HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Foreground="#A8D5A2"
+                               FontSize="13">
+                        <Run Text="{Binding WorkingChangesCount, FallbackValue=0, Mode=OneWay}"/><Run Text=" file changes in working directory"/>
+                    </TextBlock>
+
+                    <Button HorizontalAlignment="Right"
+                            Content="View"
+                            Click="WorkingChangesBanner_Click"
+                            Padding="12,4"
+                            FontSize="12"
+                            Background="#3D7A4D"
+                            Foreground="White"
+                            BorderThickness="0"
+                            VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+
+            <!-- Commit SHA Banner -->
+            <Border Grid.Row="1"
+                    Background="{DynamicResource ControlFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,0,1"
+                    Height="40"
+                    Padding="12,0"
+                    Cursor="Hand"
+                    MouseLeftButtonDown="CommitSha_Click"
+                    ToolTip="Click to copy full SHA">
+                <TextBlock HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           FontSize="13">
+                    <Run Text="commit: " Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                    <Run Text="{Binding Commit.ShortSha, Mode=OneWay}"
+                         FontFamily="Consolas"
+                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                         TextDecorations="Underline"/>
+                </TextBlock>
+            </Border>
+
+            <!-- Commit Message Box -->
+            <Border Grid.Row="2"
+                    Margin="12"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Height="200">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="16,14">
+                    <StackPanel>
+                        <!-- Commit Subject (first line) -->
+                        <TextBlock Text="{Binding Commit.MessageShort}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+
+                        <!-- Commit Description (body) -->
+                        <TextBlock Text="{Binding Commit.Description}"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,8,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Commit.Description}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Author/Parent Info Section -->
+            <Border Grid.Row="3"
+                    Margin="12,0,12,12"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="16,12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Author Name -->
+                    <TextBlock Grid.Row="0" Grid.Column="0"
+                               Text="{Binding Commit.Author}"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               FontSize="12"
+                               FontWeight="SemiBold"/>
+
+                    <!-- Parent SHA (clickable) -->
+                    <StackPanel Grid.Row="0" Grid.Column="1"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding HasParent, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
+                        <TextBlock Text="parent: "
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ParentShortSha}"
+                                   FontFamily="Consolas"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   VerticalAlignment="Center"
+                                   Cursor="Hand"
+                                   MouseLeftButtonDown="ParentSha_Click"
+                                   ToolTip="Click to navigate to parent commit">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="TextDecorations" Value="Underline"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <!-- Authored Date -->
+                    <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               FontSize="10"
+                               Margin="0,2,0,0">
+                        <Run Text="authored "/>
+                        <Run Text="{Binding Commit.Date, StringFormat='{}{0:MM/dd/yyyy}', Mode=OneWay}"/>
+                        <Run Text=" @ "/>
+                        <Run Text="{Binding Commit.Date, StringFormat='{}{0:h:mm tt}', Mode=OneWay}"/>
+                    </TextBlock>
+                </Grid>
+            </Border>
+
+            <!-- File Summary Bar -->
+            <Border Grid.Row="4"
+                    Margin="12,0,12,0"
+                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                    CornerRadius="6,6,0,0"
+                    Padding="16,10">
+                <StackPanel Orientation="Horizontal">
+                    <!-- Modified count -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,16,0"
+                                Visibility="{Binding ModifiedCount, Converter={StaticResource NullToVisibilityConverter}}">
+                        <TextBlock Text="&#xE70F;"
+                                   FontFamily="Segoe Fluent Icons"
+                                   FontSize="12"
+                                   Foreground="{StaticResource StatusModifiedBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,6,0"/>
+                        <TextBlock Text="{Binding ModifiedCount}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+
+                    <!-- Added count -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,16,0"
+                                Visibility="{Binding AddedCount, Converter={StaticResource NullToVisibilityConverter}}">
+                        <TextBlock Text="+"
+                                   FontFamily="Consolas"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource StatusAddedBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,6,0"/>
+                        <TextBlock Text="{Binding AddedCount}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+
+                    <!-- Deleted count -->
+                    <StackPanel Orientation="Horizontal"
+                                Visibility="{Binding DeletedCount, Converter={StaticResource NullToVisibilityConverter}}">
+                        <TextBlock Text="-"
+                                   FontFamily="Consolas"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource StatusDeletedBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,6,0"/>
+                        <TextBlock Text="{Binding DeletedCount}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- File changes list -->
+            <Border Grid.Row="5"
+                    Margin="12,0,12,12"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1,0,1,1"
+                    CornerRadius="0,0,6,6">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="8">
+                    <ItemsControl ItemsSource="{Binding FileChanges}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="ItemBorder"
+                                        Margin="4,2"
+                                        Padding="8,6"
+                                        CornerRadius="4"
+                                        Background="Transparent"
+                                        ToolTip="{Binding Path}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="24"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Status icon -->
+                                        <TextBlock Grid.Column="0" Grid.RowSpan="2"
+                                                   VerticalAlignment="Center"
+                                                   HorizontalAlignment="Center"
+                                                   FontSize="12">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="&#xE70F;"/>
+                                                    <Setter Property="FontFamily" Value="Segoe Fluent Icons"/>
+                                                    <Setter Property="Foreground" Value="{StaticResource StatusModifiedBrush}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Added">
+                                                            <Setter Property="Text" Value="+"/>
+                                                            <Setter Property="FontFamily" Value="Consolas"/>
+                                                            <Setter Property="FontWeight" Value="Bold"/>
+                                                            <Setter Property="FontSize" Value="16"/>
+                                                            <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Deleted">
+                                                            <Setter Property="Text" Value="-"/>
+                                                            <Setter Property="FontFamily" Value="Consolas"/>
+                                                            <Setter Property="FontWeight" Value="Bold"/>
+                                                            <Setter Property="FontSize" Value="16"/>
+                                                            <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <!-- File name (prominent) -->
+                                        <TextBlock Grid.Column="1" Grid.Row="0"
+                                                   Text="{Binding FileName}"
+                                                   FontSize="13"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"/>
+
+                                        <!-- Directory path (secondary, smaller) -->
+                                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                                   Text="{Binding Directory}"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Directory}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
+                                    </Trigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>
