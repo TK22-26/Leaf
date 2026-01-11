@@ -32,6 +32,9 @@ public partial class WorkingChangesViewModel : ObservableObject
     [ObservableProperty]
     private bool _isLoading;
 
+    [ObservableProperty]
+    private string? _errorMessage;
+
     /// <summary>
     /// Maximum characters for commit message.
     /// </summary>
@@ -92,6 +95,29 @@ public partial class WorkingChangesViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Set the working changes directly (synced from GitGraphViewModel).
+    /// </summary>
+    public void SetWorkingChanges(string repoPath, WorkingChangesInfo? workingChanges)
+    {
+        _repositoryPath = repoPath;
+        WorkingChanges = workingChanges;
+
+        // Debug: show what data we received
+        if (workingChanges == null)
+        {
+            ErrorMessage = "SetWorkingChanges: null data received";
+        }
+        else
+        {
+            ErrorMessage = $"Synced: {workingChanges.UnstagedFiles.Count} unstaged, {workingChanges.StagedFiles.Count} staged";
+        }
+
+        // Force notification for dependent properties
+        OnPropertyChanged(nameof(HasChanges));
+        OnPropertyChanged(nameof(FileChangesSummary));
+    }
+
+    /// <summary>
     /// Refresh working changes from the repository.
     /// </summary>
     [RelayCommand]
@@ -100,17 +126,21 @@ public partial class WorkingChangesViewModel : ObservableObject
         if (string.IsNullOrEmpty(_repositoryPath))
         {
             WorkingChanges = null;
+            ErrorMessage = "No repository path set";
             return;
         }
 
         try
         {
             IsLoading = true;
+            ErrorMessage = null;
             WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            ErrorMessage = $"Loaded: {WorkingChanges?.TotalChanges ?? 0} changes";
         }
-        catch
+        catch (Exception ex)
         {
             WorkingChanges = null;
+            ErrorMessage = $"Error: {ex.Message}";
         }
         finally
         {
@@ -130,11 +160,14 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await _gitService.StageFileAsync(_repositoryPath, file.Path);
-            await RefreshAsync();
+            // Refresh and notify - don't use event to avoid triggering full graph reload
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
         }
-        catch
+        catch (Exception ex)
         {
-            // Show error message
+            ErrorMessage = $"Stage failed: {ex.Message}";
         }
     }
 
@@ -150,11 +183,13 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await _gitService.UnstageFileAsync(_repositoryPath, file.Path);
-            await RefreshAsync();
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
         }
-        catch
+        catch (Exception ex)
         {
-            // Show error message
+            ErrorMessage = $"Unstage failed: {ex.Message}";
         }
     }
 
@@ -170,11 +205,13 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await _gitService.StageAllAsync(_repositoryPath);
-            await RefreshAsync();
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
         }
-        catch
+        catch (Exception ex)
         {
-            // Show error message
+            ErrorMessage = $"Stage all failed: {ex.Message}";
         }
     }
 
@@ -190,11 +227,13 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await _gitService.UnstageAllAsync(_repositoryPath);
-            await RefreshAsync();
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
         }
-        catch
+        catch (Exception ex)
         {
-            // Show error message
+            ErrorMessage = $"Unstage all failed: {ex.Message}";
         }
     }
 
@@ -220,11 +259,13 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await _gitService.DiscardAllChangesAsync(_repositoryPath);
-            await RefreshAsync();
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
         }
-        catch
+        catch (Exception ex)
         {
-            // Show error message
+            ErrorMessage = $"Discard failed: {ex.Message}";
         }
     }
 
@@ -251,15 +292,13 @@ public partial class WorkingChangesViewModel : ObservableObject
             CommitMessage = string.Empty;
             CommitDescription = string.Empty;
 
-            await RefreshAsync();
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                $"Failed to commit: {ex.Message}",
-                "Commit Error",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            ErrorMessage = $"Commit failed: {ex.Message}";
         }
         finally
         {

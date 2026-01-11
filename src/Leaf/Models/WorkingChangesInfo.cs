@@ -62,6 +62,24 @@ public partial class WorkingChangesInfo : ObservableObject
         1 => "1 file change",
         _ => $"{TotalChanges} file changes"
     };
+
+    /// <summary>
+    /// Count of modified files (staged + unstaged).
+    /// </summary>
+    public int ModifiedCount => UnstagedFiles.Count(f => f.Status == FileChangeStatus.Modified)
+                              + StagedFiles.Count(f => f.Status == FileChangeStatus.Modified);
+
+    /// <summary>
+    /// Count of added/new files (staged + unstaged).
+    /// </summary>
+    public int AddedCount => UnstagedFiles.Count(f => f.Status == FileChangeStatus.Added || f.Status == FileChangeStatus.Untracked)
+                           + StagedFiles.Count(f => f.Status == FileChangeStatus.Added || f.Status == FileChangeStatus.Untracked);
+
+    /// <summary>
+    /// Count of deleted files (staged + unstaged).
+    /// </summary>
+    public int DeletedCount => UnstagedFiles.Count(f => f.Status == FileChangeStatus.Deleted)
+                             + StagedFiles.Count(f => f.Status == FileChangeStatus.Deleted);
 }
 
 /// <summary>
@@ -112,7 +130,7 @@ public partial class FileStatusInfo : ObservableObject
         FileChangeStatus.Modified => "\uE70F",   // Edit
         FileChangeStatus.Deleted => "\uE74D",    // Delete
         FileChangeStatus.Renamed => "\uE8AB",    // Rename
-        FileChangeStatus.Untracked => "\uE8FA",  // Unknown/Question
+        FileChangeStatus.Untracked => "\uE710",  // Add/Plus (same as Added)
         FileChangeStatus.Conflicted => "\uE7BA", // Warning
         _ => "\uE8A5"                            // Document
     };
@@ -126,7 +144,7 @@ public partial class FileStatusInfo : ObservableObject
         FileChangeStatus.Modified => "#F5A623",  // Amber
         FileChangeStatus.Deleted => "#E81123",   // Red
         FileChangeStatus.Renamed => "#0078D4",   // Blue
-        FileChangeStatus.Untracked => "#6B7280", // Gray
+        FileChangeStatus.Untracked => "#28A745", // Green (same as Added)
         FileChangeStatus.Conflicted => "#E81123",// Red
         _ => "#6B7280"                           // Gray
     };

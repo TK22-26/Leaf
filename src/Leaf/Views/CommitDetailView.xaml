@@ -169,33 +169,18 @@
                                FontWeight="SemiBold"/>
 
                     <!-- Parent SHA (clickable) -->
-                    <StackPanel Grid.Row="0" Grid.Column="1"
-                                Orientation="Horizontal"
-                                VerticalAlignment="Center"
-                                Visibility="{Binding HasParent, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
-                        <TextBlock Text="parent: "
-                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                   FontSize="10"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding ParentShortSha}"
-                                   FontFamily="Consolas"
-                                   FontSize="10"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   VerticalAlignment="Center"
-                                   Cursor="Hand"
-                                   MouseLeftButtonDown="ParentSha_Click"
-                                   ToolTip="Click to navigate to parent commit">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Style.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="TextDecorations" Value="Underline"/>
-                                        </Trigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </StackPanel>
+                    <TextBlock Grid.Row="0" Grid.Column="1"
+                               VerticalAlignment="Center"
+                               FontSize="10"
+                               Cursor="Hand"
+                               MouseLeftButtonDown="ParentSha_Click"
+                               ToolTip="Click to navigate to parent commit"
+                               Visibility="{Binding HasParent, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
+                        <Run Text="parent: " Foreground="{DynamicResource TextFillColorTertiaryBrush}"/><Run Text="{Binding ParentShortSha, Mode=OneWay}"
+                             FontFamily="Consolas"
+                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                             TextDecorations="Underline"/>
+                    </TextBlock>
 
                     <!-- Authored Date -->
                     <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"

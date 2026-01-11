@@ -99,6 +99,13 @@ public class GitGraphCanvas : FrameworkElement
             typeof(GitGraphCanvas),
             new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public static readonly DependencyProperty CurrentBranchNameProperty =
+        DependencyProperty.Register(
+            nameof(CurrentBranchName),
+            typeof(string),
+            typeof(GitGraphCanvas),
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
     #endregion
 
     #region Properties
@@ -175,16 +182,18 @@ public class GitGraphCanvas : FrameworkElement
         set => SetValue(IsWorkingChangesHoveredProperty, value);
     }
 
+    public string? CurrentBranchName
+    {
+        get => (string?)GetValue(CurrentBranchNameProperty);
+        set => SetValue(CurrentBranchNameProperty, value);
+    }
+
     #endregion
 
     #region Rendering Constants
 
     private static readonly Brush LabelTextBrush = Brushes.White;
     private static readonly Pen LabelBorderPen = new Pen(Brushes.Transparent, 0);
-
-    // Working changes amber color
-    private static readonly Color WorkingChangesColor = Color.FromRgb(0xFF, 0xB9, 0x00); // #FFB900
-    private static readonly Brush WorkingChangesBrush = new SolidColorBrush(WorkingChangesColor);
 
     // Icons from Segoe Fluent Icons
     private const string ComputerIcon = "\uE7F4"; // Computer/Desktop
@@ -208,7 +217,6 @@ public class GitGraphCanvas : FrameworkElement
     static GitGraphCanvas()
     {
         LabelBorderPen.Freeze();
-        WorkingChangesBrush.Freeze();
     }
 
     public GitGraphCanvas()
@@ -305,30 +313,49 @@ public class GitGraphCanvas : FrameworkElement
         // Row offset: 1 if working changes are shown, 0 otherwise
         int rowOffset = HasWorkingChanges ? 1 : 0;
 
+        var nodes = Nodes;
+
         // Draw working changes row first (at row 0) if present
         if (HasWorkingChanges)
         {
-            DrawWorkingChangesRow(dc);
+            // Get the branch color for WIP node
+            var branchName = CurrentBranchName ?? "main";
+            var branchBrush = GraphBuilder.GetBranchColor(branchName) as SolidColorBrush ?? Brushes.Gray;
+            var branchColor = branchBrush.Color;
+
+            // Draw connection from WIP to first commit with circle clipped out
+            if (nodes != null && nodes.Count > 0)
+            {
+                var firstNode = nodes[0];
+                double wipX = GetXForColumn(0);
+                double wipY = GetYForRow(0);
+                double firstNodeX = GetXForColumn(firstNode.ColumnIndex);
+                double firstNodeY = GetYForRow(firstNode.RowIndex + rowOffset);
+                double avatarRadius = NodeRadius * 1.875;
+
+                // Create clip geometry that excludes the WIP circle
+                var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+                var circleClip = new EllipseGeometry(new Point(wipX, wipY), avatarRadius, avatarRadius);
+                var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, circleClip);
+                clipGeometry.Freeze();
+
+                dc.PushClip(clipGeometry);
+                var linePen = new Pen(branchBrush, 2);
+                linePen.Freeze();
+                DrawRailConnection(dc, linePen, wipX, wipY, firstNodeX, firstNodeY, false);
+                dc.Pop();
+            }
+
+            // Draw WIP node on top of connection line
+            DrawWorkingChangesRow(dc, branchColor);
         }
 
-        var nodes = Nodes;
         if (nodes == null || nodes.Count == 0)
             return;
 
-        // Render culling: only draw visible rows
-        var clip = VisualTreeHelper.GetContentBounds(this);
-        if (clip.IsEmpty)
-        {
-            clip = new Rect(0, 0, ActualWidth, ActualHeight);
-        }
-
-        // Calculate visible row range (adjusted for offset)
-        int minVisibleRow = Math.Max(0, (int)(clip.Top / RowHeight) - 1);
-        int maxVisibleRow = (int)(clip.Bottom / RowHeight) + 1;
-
-        // Adjust for node indices (which start at 0, but are rendered at row offset)
-        int minNodeIndex = Math.Max(0, minVisibleRow - rowOffset);
-        int maxNodeIndex = Math.Min(nodes.Count - 1, maxVisibleRow - rowOffset);
+        // Draw all nodes (render culling was causing issues with commits not appearing)
+        int minNodeIndex = 0;
+        int maxNodeIndex = nodes.Count - 1;
 
         // Create a lookup for efficient parent finding
         var nodesBySha = nodes.ToDictionary(n => n.Sha);
@@ -385,102 +412,47 @@ public class GitGraphCanvas : FrameworkElement
         }
     }
 
-    private void DrawWorkingChangesRow(DrawingContext dc)
+    private void DrawWorkingChangesRow(DrawingContext dc, Color branchColor)
     {
         double y = GetYForRow(0);
         double x = GetXForColumn(0); // Always in lane 0
+        double avatarRadius = NodeRadius * 1.875;
 
-        // Determine if this row is highlighted
+        // Determine if this row is highlighted (same as regular commits)
         bool isHighlighted = IsWorkingChangesSelected || IsWorkingChangesHovered;
 
-        // Draw trail (amber colored)
+        // Draw trail using branch color (same style as regular commits)
         double trailHeight = NodeRadius * 3.75 + 4;
         double trailOpacity = isHighlighted ? 0.5 : 0.15;
-        var trailColor = Color.FromArgb((byte)(WorkingChangesColor.A * trailOpacity),
-            WorkingChangesColor.R, WorkingChangesColor.G, WorkingChangesColor.B);
+        var trailColor = Color.FromArgb((byte)(branchColor.A * trailOpacity),
+            branchColor.R, branchColor.G, branchColor.B);
         var trailBrush = new SolidColorBrush(trailColor);
         trailBrush.Freeze();
 
-        var accentBrush = new SolidColorBrush(WorkingChangesColor);
+        var accentBrush = new SolidColorBrush(branchColor);
         accentBrush.Freeze();
 
-        // Draw trail
+        // Create clipped trail geometry (rectangle with circle cut out)
         var trailRect = new Rect(x, y - trailHeight / 2, ActualWidth - x - 2, trailHeight);
-        dc.DrawRectangle(trailBrush, null, trailRect);
+        var trailGeometry = new RectangleGeometry(trailRect);
+        var circleGeometry = new EllipseGeometry(new Point(x, y), avatarRadius, avatarRadius);
+        var clippedTrail = new CombinedGeometry(GeometryCombineMode.Exclude, trailGeometry, circleGeometry);
+        clippedTrail.Freeze();
+
+        // Draw clipped trail
+        dc.DrawGeometry(trailBrush, null, clippedTrail);
 
         // Draw accent at edge
         var accentRect = new Rect(ActualWidth - 2, y - trailHeight / 2, 2, trailHeight);
         dc.DrawRectangle(accentBrush, null, accentRect);
 
-        // Draw dotted circle node
-        double avatarRadius = NodeRadius * 1.875;
-        var dashedPen = new Pen(WorkingChangesBrush, 2.5)
+        // Draw dashed circle outline
+        var dashedPen = new Pen(accentBrush, 2.5)
         {
-            DashStyle = new DashStyle(new double[] { 2, 2 }, 0)
+            DashStyle = new DashStyle(new double[] { 1.4, 1.4 }, 0)
         };
         dashedPen.Freeze();
-        dc.DrawEllipse(Brushes.White, dashedPen, new Point(x, y), avatarRadius, avatarRadius);
-
-        // Draw edit icon inside
-        var iconFormatted = new FormattedText(
-            EditIcon,
-            CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
-            IconTypeface,
-            13,
-            WorkingChangesBrush,
-            VisualTreeHelper.GetDpi(this).PixelsPerDip);
-        dc.DrawText(iconFormatted, new Point(x - iconFormatted.Width / 2, y - iconFormatted.Height / 2));
-
-        // Draw "Working Changes" label tag
-        DrawWorkingChangesTag(dc, y, x);
-    }
-
-    private void DrawWorkingChangesTag(DrawingContext dc, double y, double nodeX)
-    {
-        double labelX = 4;
-        string labelText = "Working Changes";
-
-        bool isHighlighted = IsWorkingChangesSelected || IsWorkingChangesHovered;
-        double opacity = isHighlighted ? 1.0 : GhostTagOpacity;
-
-        var bgColor = Color.FromArgb((byte)(WorkingChangesColor.A * opacity),
-            WorkingChangesColor.R, WorkingChangesColor.G, WorkingChangesColor.B);
-        var bgBrush = new SolidColorBrush(bgColor);
-        bgBrush.Freeze();
-
-        var textColor = Color.FromArgb((byte)(255 * opacity), 255, 255, 255);
-        var textBrush = new SolidColorBrush(textColor);
-        textBrush.Freeze();
-
-        // Measure text
-        var textFormatted = new FormattedText(
-            labelText,
-            CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
-            LabelTypeface,
-            11,
-            textBrush,
-            VisualTreeHelper.GetDpi(this).PixelsPerDip);
-
-        double totalWidth = 6 + textFormatted.Width + 6;
-        double labelHeight = 18;
-
-        // Draw rounded rectangle background
-        var labelRect = new Rect(labelX, y - labelHeight / 2, totalWidth, labelHeight);
-        dc.DrawRoundedRectangle(bgBrush, LabelBorderPen, labelRect, 4, 4);
-
-        // Draw text
-        dc.DrawText(textFormatted, new Point(labelX + 6, y - textFormatted.Height / 2));
-
-        // Draw connecting line from label to node
-        var lineColor = Color.FromArgb((byte)(WorkingChangesColor.A * opacity),
-            WorkingChangesColor.R, WorkingChangesColor.G, WorkingChangesColor.B);
-        var lineBrush = new SolidColorBrush(lineColor);
-        lineBrush.Freeze();
-        var linePen = new Pen(lineBrush, 1.5);
-        linePen.Freeze();
-        dc.DrawLine(linePen, new Point(labelX + totalWidth, y), new Point(nodeX - NodeRadius - 2, y));
+        dc.DrawEllipse(Brushes.Transparent, dashedPen, new Point(x, y), avatarRadius, avatarRadius);
     }
 
     private void DrawTrail(DrawingContext dc, GitTreeNode node, int rowOffset = 0)
@@ -494,7 +466,7 @@ public class GitGraphCanvas : FrameworkElement
 
         // Trail dimensions - match commit bubble height (diameter = 2 * NodeRadius * 1.875) + 4px for border
         double trailHeight = NodeRadius * 3.75 + 4;
-        double trailStartX = x;
+        double trailStartX = x; // Start at center (node drawn on top will clip)
         double trailEndX = ActualWidth;
         double accentWidth = 2;
 

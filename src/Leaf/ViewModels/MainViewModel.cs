@@ -96,14 +96,18 @@ public partial class MainViewModel : ObservableObject
         {
             await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
-                // Refresh working changes in graph and staging view
+                // Refresh working changes in graph view
                 if (_gitGraphViewModel != null)
                 {
                     await _gitGraphViewModel.RefreshWorkingChangesAsync();
-                }
-                if (_workingChangesViewModel != null && SelectedRepository != null)
-                {
-                    await _workingChangesViewModel.RefreshAsync();
+
+                    // Sync to staging view if visible
+                    if (_workingChangesViewModel != null && SelectedRepository != null && IsWorkingChangesSelected)
+                    {
+                        _workingChangesViewModel.SetWorkingChanges(
+                            SelectedRepository.Path,
+                            _gitGraphViewModel.WorkingChanges);
+                    }
                 }
             });
         };
@@ -132,7 +136,13 @@ public partial class MainViewModel : ObservableObject
                 IsWorkingChangesSelected = _gitGraphViewModel.IsWorkingChangesSelected;
                 if (IsWorkingChangesSelected && SelectedRepository != null)
                 {
-                    _ = _workingChangesViewModel.SetRepositoryAsync(SelectedRepository.Path);
+                    // Defer to avoid reentrancy during PropertyChanged
+                    var repoPath = SelectedRepository.Path;
+                    var workingChanges = _gitGraphViewModel.WorkingChanges;
+                    Application.Current.Dispatcher.BeginInvoke(() =>
+                    {
+                        _workingChangesViewModel.SetWorkingChanges(repoPath, workingChanges);
+                    }, DispatcherPriority.Background);
                 }
             }
             else if (e.PropertyName == nameof(GitGraphViewModel.WorkingChanges))
@@ -217,7 +227,7 @@ public partial class MainViewModel : ObservableObject
                 }
             }
 
-            await _gitService.FetchAsync(SelectedRepository.Path, pat);
+            await _gitService.FetchAsync(SelectedRepository.Path, "origin", password: pat);
             LastFetchTime = DateTime.Now;
 
             // Update ahead/behind counts

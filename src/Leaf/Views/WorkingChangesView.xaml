@@ -8,11 +8,8 @@
              d:DesignHeight="600" d:DesignWidth="350">
 
     <UserControl.Resources>
-        <converters:SubtractConverter x:Key="SubtractConverter"/>
-
-        <!-- Working changes amber color -->
-        <SolidColorBrush x:Key="WorkingChangesAmber" Color="#FFB900"/>
-        <SolidColorBrush x:Key="WorkingChangesAmberHover" Color="#FFD54F"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
 
         <!-- File status colors -->
         <SolidColorBrush x:Key="StatusAddedBrush" Color="#28A745"/>
@@ -20,60 +17,87 @@
         <SolidColorBrush x:Key="StatusDeletedBrush" Color="#E81123"/>
         <SolidColorBrush x:Key="StatusUntrackedBrush" Color="#6B7280"/>
 
-        <!-- File item style with hover button -->
-        <Style x:Key="FileItemStyle" TargetType="Border">
-            <Setter Property="Padding" Value="8,4"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
+        <!-- Commit button color -->
+        <SolidColorBrush x:Key="CommitButtonBrush" Color="#28A745"/>
 
-        <!-- Small button style -->
-        <Style x:Key="SmallButtonStyle" TargetType="Button">
-            <Setter Property="Padding" Value="8,2"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Cursor" Value="Hand"/>
+        <!-- TextBox style without clear button -->
+        <Style x:Key="NoClearButtonTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Name="ContentBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding Border.CornerRadius}">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding BorderThickness}"
+                                          Padding="{TemplateBinding Padding}"
+                                          HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                          VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ContentBorder" Property="Background" Value="{DynamicResource TextControlBackgroundPointerOver}"/>
+                                <Setter TargetName="ContentBorder" Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushPointerOver}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ContentBorder" Property="Background" Value="{DynamicResource TextControlBackgroundFocused}"/>
+                                <Setter TargetName="ContentBorder" Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushFocused}"/>
+                                <Setter TargetName="ContentBorder" Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThicknessFocused}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ContentBorder" Property="Background" Value="{DynamicResource TextControlBackgroundDisabled}"/>
+                                <Setter TargetName="ContentBorder" Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushDisabled}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </UserControl.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
-            <!-- Header -->
-            <RowDefinition Height="Auto"/>
+            <!-- Top Banner -->
+            <RowDefinition Height="30"/>
             <!-- Unstaged files -->
-            <RowDefinition Height="Auto"/>
-            <!-- Staged files -->
-            <RowDefinition Height="Auto"/>
-            <!-- Commit section -->
             <RowDefinition Height="*"/>
+            <!-- Staged files -->
+            <RowDefinition Height="*"/>
+            <!-- Commit section -->
+            <RowDefinition Height="200"/>
         </Grid.RowDefinitions>
 
-        <!-- Header Bar -->
+        <!-- Top Banner -->
         <Border Grid.Row="0"
                 Background="{DynamicResource ControlFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="0,0,0,1"
-                Padding="8,4">
+                Padding="12,0">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Discard All Button -->
+                <!-- Discard All Button (trashcan icon) -->
                 <Button Grid.Column="0"
-                        Content="Discard All"
                         Command="{Binding DiscardAllCommand}"
-                        Style="{StaticResource SmallButtonStyle}"
-                        Foreground="#E81123"/>
+                        ToolTip="Discard all changes"
+                        Padding="6,4"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="&#xE74D;"
+                               FontFamily="Segoe Fluent Icons"
+                               FontSize="14"
+                               Foreground="#E81123"/>
+                </Button>
 
                 <!-- File changes summary -->
                 <TextBlock Grid.Column="1"
-                           Text="{Binding FileChangesSummary}"
+                           Text="{Binding FileChangesSummary, Mode=OneWay}"
                            VerticalAlignment="Center"
                            HorizontalAlignment="Right"
                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -82,294 +106,429 @@
         </Border>
 
         <!-- Unstaged Files Section -->
-        <Expander Grid.Row="1" IsExpanded="True" Margin="0,4,0,0">
-            <Expander.Header>
-                <Grid Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Expander}, Converter={StaticResource SubtractConverter}, ConverterParameter=40}">
+        <Grid Grid.Row="1" Margin="12,8,12,4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Unstaged Header Bar -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                    CornerRadius="6,6,0,0"
+                    Padding="12,8">
+                <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0" VerticalAlignment="Center">
-                        <Run Text="Unstaged Files (" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                        <Run Text="{Binding WorkingChanges.UnstagedFiles.Count, FallbackValue=0}" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                        <Run Text=")" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Unstaged"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   FontSize="12"
+                                   Margin="6,0,0,0"
+                                   VerticalAlignment="Center">
+                            <Run Text="("/>
+                            <Run Text="{Binding WorkingChanges.UnstagedFiles.Count, Mode=OneWay, FallbackValue=0}"/>
+                            <Run Text=")"/>
+                        </TextBlock>
+                    </StackPanel>
 
                     <Button Grid.Column="1"
                             Content="Stage All"
                             Command="{Binding StageAllCommand}"
-                            Style="{StaticResource SmallButtonStyle}"
-                            Margin="8,0,0,0"/>
+                            Padding="8,2"
+                            FontSize="11"
+                            VerticalAlignment="Center"/>
                 </Grid>
-            </Expander.Header>
+            </Border>
 
-            <ItemsControl ItemsSource="{Binding WorkingChanges.UnstagedFiles}"
-                          MaxHeight="200">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <VirtualizingStackPanel/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource FileItemStyle}"
-                                MouseLeftButtonDown="UnstagedFile_MouseLeftButtonDown">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
+            <!-- Unstaged File List -->
+            <Border Grid.Row="1"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1,0,1,1"
+                    CornerRadius="0,0,6,6">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="4">
+                    <ItemsControl ItemsSource="{Binding WorkingChanges.UnstagedFiles, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="ItemBorder"
+                                        Margin="2,1"
+                                        Padding="8,6"
+                                        CornerRadius="4"
+                                        Background="Transparent"
+                                        Cursor="Hand"
+                                        ToolTip="{Binding Path}"
+                                        MouseLeftButtonDown="UnstagedFile_MouseLeftButtonDown">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="20"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
 
-                                <!-- Status icon -->
-                                <TextBlock Grid.Column="0"
-                                           Text="{Binding StatusIcon}"
-                                           FontFamily="Segoe Fluent Icons"
-                                           FontSize="12"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,8,0">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Status}" Value="Added">
-                                                    <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="Modified">
+                                        <!-- Status icon -->
+                                        <TextBlock Grid.Column="0" Grid.RowSpan="2"
+                                                   Text="{Binding StatusIcon}"
+                                                   FontFamily="Segoe Fluent Icons"
+                                                   FontSize="12"
+                                                   VerticalAlignment="Center"
+                                                   HorizontalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
                                                     <Setter Property="Foreground" Value="{StaticResource StatusModifiedBrush}"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="Deleted">
-                                                    <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="Untracked">
-                                                    <Setter Property="Foreground" Value="{StaticResource StatusUntrackedBrush}"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Added">
+                                                            <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Modified">
+                                                            <Setter Property="Foreground" Value="{StaticResource StatusModifiedBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Deleted">
+                                                            <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Untracked">
+                                                            <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
 
-                                <!-- File path -->
-                                <TextBlock Grid.Column="1"
-                                           Text="{Binding Path}"
-                                           TextTrimming="CharacterEllipsis"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           FontSize="12"/>
+                                        <!-- File name -->
+                                        <TextBlock Grid.Column="1" Grid.Row="0"
+                                                   Text="{Binding FileName}"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"/>
 
-                                <!-- Stage button (visible on hover) -->
-                                <Button Grid.Column="2"
-                                        Content="Stage"
-                                        Command="{Binding DataContext.StageFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        Style="{StaticResource SmallButtonStyle}"
-                                        Visibility="Hidden"
-                                        x:Name="StageButton"/>
-                            </Grid>
-                        </Border>
-                        <DataTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="StageButton" Property="Visibility" Value="Visible"/>
-                            </Trigger>
-                        </DataTemplate.Triggers>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </Expander>
+                                        <!-- Directory path -->
+                                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                                   Text="{Binding Directory}"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Directory}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <!-- Stage button -->
+                                        <Button Grid.Column="2" Grid.RowSpan="2"
+                                                Content="Stage"
+                                                Command="{Binding DataContext.StageFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Padding="8,2"
+                                                FontSize="10"
+                                                VerticalAlignment="Center"
+                                                Visibility="Hidden"
+                                                x:Name="StageButton"/>
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
+                                        <Setter TargetName="StageButton" Property="Visibility" Value="Visible"/>
+                                    </Trigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+        </Grid>
 
         <!-- Staged Files Section -->
-        <Expander Grid.Row="2" IsExpanded="True" Margin="0,4,0,0">
-            <Expander.Header>
-                <Grid Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Expander}, Converter={StaticResource SubtractConverter}, ConverterParameter=40}">
+        <Grid Grid.Row="2" Margin="12,4,12,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Staged Header Bar -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                    CornerRadius="6,6,0,0"
+                    Padding="12,8">
+                <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0" VerticalAlignment="Center">
-                        <Run Text="Staged Files (" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                        <Run Text="{Binding WorkingChanges.StagedFiles.Count, FallbackValue=0}" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                        <Run Text=")" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Staged"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   FontSize="12"
+                                   Margin="6,0,0,0"
+                                   VerticalAlignment="Center">
+                            <Run Text="("/>
+                            <Run Text="{Binding WorkingChanges.StagedFiles.Count, Mode=OneWay, FallbackValue=0}"/>
+                            <Run Text=")"/>
+                        </TextBlock>
+                    </StackPanel>
 
                     <Button Grid.Column="1"
                             Content="Unstage All"
                             Command="{Binding UnstageAllCommand}"
-                            Style="{StaticResource SmallButtonStyle}"
-                            Margin="8,0,0,0"/>
+                            Padding="8,2"
+                            FontSize="11"
+                            VerticalAlignment="Center"/>
                 </Grid>
-            </Expander.Header>
+            </Border>
 
-            <ItemsControl ItemsSource="{Binding WorkingChanges.StagedFiles}"
-                          MaxHeight="200">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <VirtualizingStackPanel/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource FileItemStyle}"
-                                MouseLeftButtonDown="StagedFile_MouseLeftButtonDown">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
+            <!-- Staged File List -->
+            <Border Grid.Row="1"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1,0,1,1"
+                    CornerRadius="0,0,6,6">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="4">
+                    <ItemsControl ItemsSource="{Binding WorkingChanges.StagedFiles, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="ItemBorder"
+                                        Margin="2,1"
+                                        Padding="8,6"
+                                        CornerRadius="4"
+                                        Background="Transparent"
+                                        Cursor="Hand"
+                                        ToolTip="{Binding Path}"
+                                        MouseLeftButtonDown="StagedFile_MouseLeftButtonDown">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="20"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
 
-                                <!-- Status icon -->
-                                <TextBlock Grid.Column="0"
-                                           Text="{Binding StatusIcon}"
-                                           FontFamily="Segoe Fluent Icons"
-                                           FontSize="12"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,8,0">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Status}" Value="Added">
-                                                    <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="Modified">
+                                        <!-- Status icon -->
+                                        <TextBlock Grid.Column="0" Grid.RowSpan="2"
+                                                   Text="{Binding StatusIcon}"
+                                                   FontFamily="Segoe Fluent Icons"
+                                                   FontSize="12"
+                                                   VerticalAlignment="Center"
+                                                   HorizontalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
                                                     <Setter Property="Foreground" Value="{StaticResource StatusModifiedBrush}"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="Deleted">
-                                                    <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Added">
+                                                            <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Modified">
+                                                            <Setter Property="Foreground" Value="{StaticResource StatusModifiedBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Deleted">
+                                                            <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
 
-                                <!-- File path -->
-                                <TextBlock Grid.Column="1"
-                                           Text="{Binding Path}"
-                                           TextTrimming="CharacterEllipsis"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           FontSize="12"/>
+                                        <!-- File name -->
+                                        <TextBlock Grid.Column="1" Grid.Row="0"
+                                                   Text="{Binding FileName}"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"/>
 
-                                <!-- Unstage button (visible on hover) -->
-                                <Button Grid.Column="2"
-                                        Content="Unstage"
-                                        Command="{Binding DataContext.UnstageFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        Style="{StaticResource SmallButtonStyle}"
-                                        Visibility="Hidden"
-                                        x:Name="UnstageButton"/>
-                            </Grid>
-                        </Border>
-                        <DataTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="UnstageButton" Property="Visibility" Value="Visible"/>
-                            </Trigger>
-                        </DataTemplate.Triggers>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </Expander>
+                                        <!-- Directory path -->
+                                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                                   Text="{Binding Directory}"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Directory}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <!-- Unstage button -->
+                                        <Button Grid.Column="2" Grid.RowSpan="2"
+                                                Content="Unstage"
+                                                Command="{Binding DataContext.UnstageFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Padding="8,2"
+                                                FontSize="10"
+                                                VerticalAlignment="Center"
+                                                Visibility="Hidden"
+                                                x:Name="UnstageButton"/>
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
+                                        <Setter TargetName="UnstageButton" Property="Visibility" Value="Visible"/>
+                                    </Trigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+        </Grid>
 
         <!-- Commit Section -->
-        <Border Grid.Row="3"
-                Margin="0,8,0,0"
-                Padding="8"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,0">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
+        <Grid Grid.Row="3" Margin="12,0,12,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-                <!-- Commit message (single line) -->
-                <Grid Grid.Row="0">
-                    <TextBox x:Name="CommitMessageBox"
-                             Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
-                             MaxLength="72"
-                             FontSize="13"/>
-                    <!-- Placeholder text -->
-                    <TextBlock Text="Commit Message"
-                               IsHitTestVisible="False"
-                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                               VerticalAlignment="Center"
-                               Margin="8,0,0,0"
-                               FontSize="13">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Text, ElementName=CommitMessageBox}" Value="">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                    <!-- Character counter -->
-                    <TextBlock HorizontalAlignment="Right"
-                               VerticalAlignment="Center"
-                               Margin="0,0,8,0"
-                               FontSize="11"
-                               Foreground="{DynamicResource TextFillColorTertiaryBrush}">
-                        <Run Text="("/>
-                        <Run Text="{Binding RemainingChars, Mode=OneWay}"/>
-                        <Run Text=")"/>
-                    </TextBlock>
+            <!-- Combined commit message control with Fluent styling -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource TextControlBackground}"
+                    BorderBrush="{DynamicResource TextControlElevationBorderBrush}"
+                    BorderThickness="{DynamicResource TextControlBorderThemeThickness}"
+                    CornerRadius="{DynamicResource ControlCornerRadius}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Commit message (top) -->
+                    <Grid Grid.Row="0" MinHeight="32">
+                        <TextBox x:Name="CommitMessageBox"
+                                 Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
+                                 MaxLength="72"
+                                 FontSize="12"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 VerticalContentAlignment="Center"
+                                 Padding="10,6"
+                                 Style="{StaticResource NoClearButtonTextBox}"/>
+                        <!-- Placeholder -->
+                        <TextBlock Text="Commit message"
+                                   IsHitTestVisible="False"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="12,0,0,0"
+                                   FontSize="12">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=CommitMessageBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <!-- Character counter -->
+                        <TextBlock HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,10,0"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            <Run Text="{Binding RemainingChars, Mode=OneWay}"/>
+                        </TextBlock>
+                    </Grid>
+
+                    <!-- Separator line -->
+                    <Border Grid.Row="1"
+                            Height="1"
+                            Background="{DynamicResource ControlStrokeColorDefaultBrush}"
+                            Margin="10,0"/>
+
+                    <!-- Description (bottom) -->
+                    <Grid Grid.Row="2" MinHeight="60">
+                        <TextBox x:Name="CommitDescriptionBox"
+                                 Text="{Binding CommitDescription, UpdateSourceTrigger=PropertyChanged}"
+                                 FontSize="12"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 VerticalContentAlignment="Top"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Padding="10,6"
+                                 Style="{StaticResource NoClearButtonTextBox}"/>
+                        <!-- Placeholder -->
+                        <TextBlock Text="Description"
+                                   IsHitTestVisible="False"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   VerticalAlignment="Top"
+                                   Margin="12,6,0,0"
+                                   FontSize="12">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=CommitDescriptionBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
                 </Grid>
+            </Border>
 
-                <!-- Description (multi-line) -->
-                <Grid Grid.Row="1" Margin="0,8,0,0">
-                    <TextBox x:Name="DescriptionBox"
-                             Text="{Binding CommitDescription, UpdateSourceTrigger=PropertyChanged}"
-                             TextWrapping="Wrap"
-                             AcceptsReturn="True"
-                             VerticalScrollBarVisibility="Auto"
-                             MinHeight="60"
-                             VerticalContentAlignment="Top"
-                             FontSize="12"/>
-                    <!-- Placeholder text -->
-                    <TextBlock Text="Description (optional)"
-                               IsHitTestVisible="False"
-                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                               VerticalAlignment="Top"
-                               Margin="8,6,0,0"
-                               FontSize="12">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Text, ElementName=DescriptionBox}" Value="">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                </Grid>
-
-                <!-- Commit button -->
-                <Button Grid.Row="2"
-                        Content="Commit Changes"
-                        Command="{Binding CommitCommand}"
-                        Margin="0,8,0,0"
-                        Padding="12,8"
-                        HorizontalAlignment="Stretch"
-                        FontWeight="SemiBold"
-                        Background="{StaticResource WorkingChangesAmber}"
-                        Foreground="White">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                            <Style.Triggers>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="Opacity" Value="0.5"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
-            </Grid>
-        </Border>
+            <!-- Commit button -->
+            <Button Grid.Row="1"
+                    Content="Commit"
+                    Command="{Binding CommitCommand}"
+                    Margin="0,8,0,0"
+                    Padding="12,6"
+                    HorizontalAlignment="Stretch"
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    Background="{StaticResource CommitButtonBrush}"
+                    Foreground="White">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                        <Style.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </Grid>
     </Grid>
 </UserControl>

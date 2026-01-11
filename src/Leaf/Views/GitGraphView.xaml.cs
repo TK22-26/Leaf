@@ -51,10 +51,10 @@ public partial class GitGraphView : UserControl
 
     private void UpdateWorkingChangesHighlight()
     {
-        if (DataContext is GitGraphViewModel viewModel)
+        if (DataContext is GitGraphViewModel viewModel && WorkingChangesHighlight != null)
         {
             WorkingChangesHighlight.Background = viewModel.IsWorkingChangesSelected
-                ? (System.Windows.Media.Brush)FindResource("WorkingChangesSelectedBrush")
+                ? (System.Windows.Media.Brush)FindResource("LeafAccentSelectedBrush")
                 : System.Windows.Media.Brushes.Transparent;
         }
     }
@@ -145,36 +145,34 @@ public partial class GitGraphView : UserControl
 
     private void WorkingChangesRow_MouseEnter(object sender, MouseEventArgs e)
     {
-        // Update visual state for hover
-        if (sender is FrameworkElement element)
+        // Update visual state for hover (using same green accent as regular commits)
+        if (WorkingChangesHighlight != null)
         {
-            var highlight = element.FindName("WorkingChangesHighlight") as System.Windows.Controls.Border;
-            if (highlight != null)
-            {
-                highlight.Background = (System.Windows.Media.Brush)FindResource("WorkingChangesHoverBrush");
-            }
+            WorkingChangesHighlight.Background = (System.Windows.Media.Brush)FindResource("LeafAccentHoverBrush");
         }
 
         // Update canvas hover state
-        GraphCanvas.IsWorkingChangesHovered = true;
+        if (GraphCanvas != null)
+        {
+            GraphCanvas.IsWorkingChangesHovered = true;
+        }
     }
 
     private void WorkingChangesRow_MouseLeave(object sender, MouseEventArgs e)
     {
-        // Reset visual state
-        if (sender is FrameworkElement element)
+        // Reset visual state (using same green accent as regular commits)
+        if (WorkingChangesHighlight != null && DataContext is GitGraphViewModel viewModel)
         {
-            var highlight = element.FindName("WorkingChangesHighlight") as System.Windows.Controls.Border;
-            if (highlight != null && DataContext is GitGraphViewModel viewModel)
-            {
-                highlight.Background = viewModel.IsWorkingChangesSelected
-                    ? (System.Windows.Media.Brush)FindResource("WorkingChangesSelectedBrush")
-                    : System.Windows.Media.Brushes.Transparent;
-            }
+            WorkingChangesHighlight.Background = viewModel.IsWorkingChangesSelected
+                ? (System.Windows.Media.Brush)FindResource("LeafAccentSelectedBrush")
+                : System.Windows.Media.Brushes.Transparent;
         }
 
         // Update canvas hover state
-        GraphCanvas.IsWorkingChangesHovered = false;
+        if (GraphCanvas != null)
+        {
+            GraphCanvas.IsWorkingChangesHovered = false;
+        }
     }
 
     private void GraphCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

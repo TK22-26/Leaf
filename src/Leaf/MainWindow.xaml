@@ -8,6 +8,7 @@
         xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
         mc:Ignorable="d"
         Title="Leaf - Git Repository Manager"
+        Icon="Assets/Leaf.png"
         Height="700"
         Width="1200"
         MinWidth="900"

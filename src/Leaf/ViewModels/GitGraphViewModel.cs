@@ -132,10 +132,12 @@ public partial class GitGraphViewModel : ObservableObject
             }
             TotalHeight = rowCount * RowHeight;
 
-            // Clear selection after data is loaded (not before, to avoid flash)
+            // Preserve working changes selection if it was selected, otherwise clear
+            // This prevents losing selection when file watcher triggers reload during staging
+            bool wasWorkingChangesSelected = IsWorkingChangesSelected;
             SelectedCommit = null;
-            SelectedSha = null;
-            IsWorkingChangesSelected = false;
+            SelectedSha = wasWorkingChangesSelected ? WorkingChangesSha : null;
+            IsWorkingChangesSelected = wasWorkingChangesSelected && HasWorkingChanges;
         }
         catch (Exception ex)
         {

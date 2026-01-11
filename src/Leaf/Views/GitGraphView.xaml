@@ -17,9 +17,6 @@
         <!-- Leaf green accent colors -->
         <SolidColorBrush x:Key="LeafAccentHoverBrush" Color="#3328A745"/>
         <SolidColorBrush x:Key="LeafAccentSelectedBrush" Color="#5528A745"/>
-        <!-- Working changes amber accent colors -->
-        <SolidColorBrush x:Key="WorkingChangesHoverBrush" Color="#33FFB900"/>
-        <SolidColorBrush x:Key="WorkingChangesSelectedBrush" Color="#55FFB900"/>
     </UserControl.Resources>
 
     <Grid>
@@ -47,7 +44,7 @@
         <ScrollViewer HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
                       x:Name="MainScrollViewer">
-            <Grid Margin="0,0,0,28">
+            <Grid Margin="0,0,0,28" VerticalAlignment="Top">
                 <Grid.ColumnDefinitions>
                     <!-- Graph canvas column (auto width based on lanes) -->
                     <ColumnDefinition Width="Auto"/>
@@ -65,6 +62,7 @@
                                           IsSearchActive="{Binding IsSearchActive}"
                                           HasWorkingChanges="{Binding HasWorkingChanges}"
                                           IsWorkingChangesSelected="{Binding IsWorkingChangesSelected}"
+                                          CurrentBranchName="{Binding WorkingChanges.BranchName}"
                                           RowHeight="{StaticResource RowHeight}"
                                           Height="{Binding TotalHeight}"
                                           MinWidth="80"
@@ -83,17 +81,72 @@
                             MouseEnter="WorkingChangesRow_MouseEnter"
                             MouseLeave="WorkingChangesRow_MouseLeave">
                         <Grid>
-                            <!-- Highlight background -->
+                            <!-- Highlight background (uses same green accent as regular commits) -->
                             <Border x:Name="WorkingChangesHighlight"
                                     Height="{StaticResource TrailHeight}"
                                     VerticalAlignment="Center"
                                     Background="Transparent"/>
                             <!-- Content -->
                             <StackPanel Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding WorkingChanges.Summary}"
-                                           TextTrimming="CharacterEllipsis"
+                                <TextBlock TextTrimming="CharacterEllipsis"
                                            VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                    <Run Text="WIP on "/><Run Text="{Binding WorkingChanges.BranchName, Mode=OneWay}"/>
+                                </TextBlock>
+                                <!-- File change counts -->
+                                <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                                    <!-- Modified (hidden when 0) -->
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding WorkingChanges.ModifiedCount}" Value="0">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="&#xE70F;" FontFamily="Segoe Fluent Icons" FontSize="11"
+                                                   Foreground="#F5A623" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="{Binding WorkingChanges.ModifiedCount}" FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <!-- Added (hidden when 0) -->
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding WorkingChanges.AddedCount}" Value="0">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" FontSize="11"
+                                                   Foreground="#28A745" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="{Binding WorkingChanges.AddedCount}" FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <!-- Deleted (hidden when 0) -->
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding WorkingChanges.DeletedCount}" Value="0">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="11"
+                                                   Foreground="#E81123" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="{Binding WorkingChanges.DeletedCount}" FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </StackPanel>
                             </StackPanel>
                         </Grid>
                     </Border>
