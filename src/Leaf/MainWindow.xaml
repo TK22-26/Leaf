@@ -349,8 +349,108 @@
                           Background="Transparent"/>
 
             <!-- Center panel: Git graph + commit list -->
-            <views:GitGraphView Grid.Column="4"
-                                DataContext="{Binding GitGraphViewModel}"/>
+            <Grid Grid.Column="4">
+                <views:GitGraphView DataContext="{Binding GitGraphViewModel}"
+                                    Margin="0,0,-5,0"/>
+
+                <!-- Click-outside overlay to cancel branch input -->
+                <Border Background="Transparent"
+                        Visibility="{Binding IsBranchInputVisible, Converter={StaticResource BoolToVisibilityConverter}}"
+                        MouseLeftButtonDown="BranchInputOverlay_MouseLeftButtonDown"/>
+
+                <!-- Floating Branch Input Overlay -->
+                <Border HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="0,8,15,0"
+                        Visibility="{Binding IsBranchInputVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Border Background="#1D4A28"
+                            BorderBrush="#2D6A3E"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="3">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="9" Opacity="0.4" ShadowDepth="2" Color="Black"/>
+                        </Border.Effect>
+                        <StackPanel Orientation="Horizontal">
+                            <!-- Branch icon -->
+                            <ic:SymbolIcon Symbol="BranchFork"
+                                           FontSize="15"
+                                           Margin="6,0,5,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="#8BC99A"/>
+
+                            <!-- Branch name input -->
+                            <Border Width="165" Height="27" Background="#2A2A2A" CornerRadius="2" Padding="4,0,0,0">
+                                <Grid>
+                                    <TextBlock Text="Branch name..."
+                                               IsHitTestVisible="False"
+                                               Foreground="#666666"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Left"
+                                               Margin="0"
+                                               FontSize="13">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=BranchNameInput}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBox x:Name="BranchNameInput"
+                                             Text="{Binding NewBranchName, UpdateSourceTrigger=PropertyChanged}"
+                                             FontSize="13"
+                                             Foreground="#E0E0E0"
+                                             CaretBrush="#E0E0E0"
+                                             BorderThickness="0"
+                                             VerticalAlignment="Center"
+                                             HorizontalAlignment="Stretch"
+                                             KeyDown="BranchNameInput_KeyDown"
+                                             PreviewTextInput="BranchNameInput_PreviewTextInput">
+                                        <TextBox.Template>
+                                            <ControlTemplate TargetType="TextBox">
+                                                <ScrollViewer x:Name="PART_ContentHost"
+                                                              Margin="-12,0,4,0"
+                                                              VerticalAlignment="Center"
+                                                              HorizontalAlignment="Stretch"
+                                                              Padding="0"/>
+                                            </ControlTemplate>
+                                        </TextBox.Template>
+                                    </TextBox>
+                                </Grid>
+                            </Border>
+
+                            <!-- Create button -->
+                            <Button Content="Create"
+                                    Command="{Binding ConfirmCreateBranchCommand}"
+                                    Padding="8,2"
+                                    Margin="3,0,2,0"
+                                    FontSize="13"
+                                    Background="#2D6A3E"
+                                    Foreground="#C0E8CC"
+                                    BorderBrush="#3D8A4E"
+                                    BorderThickness="1">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding NewBranchName}" Value="">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#3D8A4E"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </Border>
+            </Grid>
 
             <GridSplitter Grid.Column="5"
                           Width="4"

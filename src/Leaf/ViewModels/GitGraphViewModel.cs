@@ -77,6 +77,24 @@ public partial class GitGraphViewModel : ObservableObject
     /// </summary>
     public bool HasWorkingChanges => WorkingChanges?.HasChanges ?? false;
 
+    /// <summary>
+    /// Stashes in the repository.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStashes))]
+    private ObservableCollection<StashInfo> _stashes = [];
+
+    /// <summary>
+    /// Currently selected stash (if any).
+    /// </summary>
+    [ObservableProperty]
+    private StashInfo? _selectedStash;
+
+    /// <summary>
+    /// True if there are any stashes.
+    /// </summary>
+    public bool HasStashes => Stashes.Count > 0;
+
     public GitGraphViewModel(IGitService gitService)
     {
         _gitService = gitService;
@@ -104,14 +122,16 @@ public partial class GitGraphViewModel : ObservableObject
             ErrorMessage = null;
             RepositoryPath = path;
 
-            // Load working changes and commits in parallel
+            // Load working changes, commits, and stashes in parallel
             var workingChangesTask = _gitService.GetWorkingChangesAsync(path);
             var commitsTask = _gitService.GetCommitHistoryAsync(path, 500);
+            var stashesTask = _gitService.GetStashesAsync(path);
 
-            await Task.WhenAll(workingChangesTask, commitsTask);
+            await Task.WhenAll(workingChangesTask, commitsTask, stashesTask);
 
             var workingChanges = await workingChangesTask;
             var commits = await commitsTask;
+            var stashes = await stashesTask;
 
             // Build graph
             var nodes = _graphBuilder.BuildGraph(commits);
@@ -121,21 +141,28 @@ public partial class GitGraphViewModel : ObservableObject
             Nodes = new ObservableCollection<GitTreeNode>(nodes);
             Commits = new ObservableCollection<CommitInfo>(commits);
             WorkingChanges = workingChanges;
+            Stashes = new ObservableCollection<StashInfo>(stashes);
 
             MaxLane = _graphBuilder.MaxLane;
 
-            // Calculate total height including working changes row if present
+            // Calculate total height including working changes and stash rows
             int rowCount = commits.Count;
             if (HasWorkingChanges)
             {
                 rowCount += 1; // Add one row for working changes
             }
+            rowCount += stashes.Count; // Add row for each stash
             TotalHeight = rowCount * RowHeight;
 
-            // Preserve working changes selection if it was selected, otherwise clear
+            // Preserve selection if it was selected, otherwise clear
             // This prevents losing selection when file watcher triggers reload during staging
             bool wasWorkingChangesSelected = IsWorkingChangesSelected;
+            var wasSelectedStashIndex = SelectedStash?.Index;
+
             SelectedCommit = null;
+            SelectedStash = wasSelectedStashIndex.HasValue && wasSelectedStashIndex.Value < stashes.Count
+                ? stashes[wasSelectedStashIndex.Value]
+                : null;
             SelectedSha = wasWorkingChangesSelected ? WorkingChangesSha : null;
             IsWorkingChangesSelected = wasWorkingChangesSelected && HasWorkingChanges;
         }
@@ -167,6 +194,7 @@ public partial class GitGraphViewModel : ObservableObject
             {
                 rowCount += 1;
             }
+            rowCount += Stashes.Count; // Include stash rows
             TotalHeight = rowCount * RowHeight;
         }
         catch
@@ -181,15 +209,34 @@ public partial class GitGraphViewModel : ObservableObject
     [RelayCommand]
     public void SelectWorkingChanges()
     {
-        // Deselect any selected commit
+        // Deselect any selected commit or stash
         if (SelectedCommit != null)
         {
             SelectedCommit.IsSelected = false;
             SelectedCommit = null;
         }
+        SelectedStash = null;
 
         IsWorkingChangesSelected = true;
         SelectedSha = WorkingChangesSha;
+    }
+
+    /// <summary>
+    /// Select a stash.
+    /// </summary>
+    [RelayCommand]
+    public void SelectStash(StashInfo? stash)
+    {
+        // Deselect any selected commit or working changes
+        if (SelectedCommit != null)
+        {
+            SelectedCommit.IsSelected = false;
+            SelectedCommit = null;
+        }
+        IsWorkingChangesSelected = false;
+
+        SelectedStash = stash;
+        SelectedSha = stash?.Sha;
     }
 
     /// <summary>
@@ -207,8 +254,9 @@ public partial class GitGraphViewModel : ObservableObject
     [RelayCommand]
     public void SelectCommit(CommitInfo? commit)
     {
-        // Clear working changes selection when selecting a commit
+        // Clear working changes and stash selection when selecting a commit
         IsWorkingChangesSelected = false;
+        SelectedStash = null;
 
         SelectedCommit = commit;
         SelectedSha = commit?.Sha;

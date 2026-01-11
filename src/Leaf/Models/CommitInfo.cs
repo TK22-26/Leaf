@@ -17,7 +17,7 @@ public partial class CommitInfo : ObservableObject
     public string MessageShort { get; set; } = string.Empty;
 
     /// <summary>
-    /// The commit description (body after the first line, if any).
+    /// The commit description (full body after the first line, if any).
     /// </summary>
     public string Description
     {
@@ -31,15 +31,8 @@ public partial class CommitInfo : ObservableObject
             if (firstNewline < 0)
                 return string.Empty;
 
-            // Skip the first line and any blank lines after it
-            var body = Message[(firstNewline + 1)..].TrimStart('\r', '\n');
-
-            // Return first line of body (or empty if no body)
-            var bodyFirstNewline = body.IndexOf('\n');
-            if (bodyFirstNewline > 0)
-                return body[..bodyFirstNewline].Trim();
-
-            return body.Trim();
+            // Skip the first line and any blank lines after it, return full body
+            return Message[(firstNewline + 1)..].TrimStart('\r', '\n').Trim();
         }
     }
 

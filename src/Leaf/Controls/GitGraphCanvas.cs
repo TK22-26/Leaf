@@ -106,6 +106,27 @@ public class GitGraphCanvas : FrameworkElement
             typeof(GitGraphCanvas),
             new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public static readonly DependencyProperty StashCountProperty =
+        DependencyProperty.Register(
+            nameof(StashCount),
+            typeof(int),
+            typeof(GitGraphCanvas),
+            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender | FrameworkPropertyMetadataOptions.AffectsMeasure));
+
+    public static readonly DependencyProperty HoveredStashIndexProperty =
+        DependencyProperty.Register(
+            nameof(HoveredStashIndex),
+            typeof(int),
+            typeof(GitGraphCanvas),
+            new FrameworkPropertyMetadata(-1, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty SelectedStashIndexProperty =
+        DependencyProperty.Register(
+            nameof(SelectedStashIndex),
+            typeof(int),
+            typeof(GitGraphCanvas),
+            new FrameworkPropertyMetadata(-1, FrameworkPropertyMetadataOptions.AffectsRender));
+
     #endregion
 
     #region Properties
@@ -188,6 +209,24 @@ public class GitGraphCanvas : FrameworkElement
         set => SetValue(CurrentBranchNameProperty, value);
     }
 
+    public int StashCount
+    {
+        get => (int)GetValue(StashCountProperty);
+        set => SetValue(StashCountProperty, value);
+    }
+
+    public int HoveredStashIndex
+    {
+        get => (int)GetValue(HoveredStashIndexProperty);
+        set => SetValue(HoveredStashIndexProperty, value);
+    }
+
+    public int SelectedStashIndex
+    {
+        get => (int)GetValue(SelectedStashIndexProperty);
+        set => SetValue(SelectedStashIndexProperty, value);
+    }
+
     #endregion
 
     #region Rendering Constants
@@ -199,6 +238,10 @@ public class GitGraphCanvas : FrameworkElement
     private const string ComputerIcon = "\uE7F4"; // Computer/Desktop
     private const string CloudIcon = "\uE753"; // Cloud
     private const string EditIcon = "\uE70F"; // Edit/Pencil for working changes
+    private const string StashIcon = "\uE7B8"; // Box/Package icon for stashes
+
+    // Stash color (purple/violet for distinctiveness)
+    private static readonly Color StashColor = Color.FromRgb(136, 82, 179); // Purple
 
     private static readonly Typeface LabelTypeface = new Typeface(
         new FontFamily("Segoe UI"),
@@ -232,27 +275,44 @@ public class GitGraphCanvas : FrameworkElement
 
         // Calculate which row the mouse is over
         int row = (int)(pos.Y / RowHeight);
+        int currentRow = 0;
 
         // Handle working changes row (row 0 when HasWorkingChanges)
         if (HasWorkingChanges)
         {
-            if (row == 0)
+            if (row == currentRow)
             {
                 // Hovering over working changes row
                 IsWorkingChangesHovered = true;
                 HoveredSha = null;
+                HoveredStashIndex = -1;
                 return;
             }
-            else
-            {
-                IsWorkingChangesHovered = false;
-                // Adjust for offset
-                row -= 1;
-            }
+            currentRow++;
+            IsWorkingChangesHovered = false;
         }
         else
         {
             IsWorkingChangesHovered = false;
+        }
+
+        // Handle stash rows
+        if (StashCount > 0)
+        {
+            int stashIndex = row - currentRow;
+            if (stashIndex >= 0 && stashIndex < StashCount)
+            {
+                // Hovering over a stash row
+                HoveredStashIndex = stashIndex;
+                HoveredSha = null;
+                return;
+            }
+            HoveredStashIndex = -1;
+            currentRow += StashCount;
+        }
+        else
+        {
+            HoveredStashIndex = -1;
         }
 
         if (nodes == null || nodes.Count == 0)
@@ -261,9 +321,10 @@ public class GitGraphCanvas : FrameworkElement
             return;
         }
 
-        if (row >= 0 && row < nodes.Count)
+        int nodeIndex = row - currentRow;
+        if (nodeIndex >= 0 && nodeIndex < nodes.Count)
         {
-            HoveredSha = nodes[row].Sha;
+            HoveredSha = nodes[nodeIndex].Sha;
         }
         else
         {
@@ -275,6 +336,7 @@ public class GitGraphCanvas : FrameworkElement
     {
         HoveredSha = null;
         IsWorkingChangesHovered = false;
+        HoveredStashIndex = -1;
     }
 
     #endregion
@@ -284,23 +346,25 @@ public class GitGraphCanvas : FrameworkElement
         var nodes = Nodes;
         if (nodes == null || nodes.Count == 0)
         {
-            // Even with no nodes, if we have working changes, show that row
-            if (HasWorkingChanges)
+            // Even with no nodes, if we have working changes or stashes, show those rows
+            int emptyRowCount = (HasWorkingChanges ? 1 : 0) + StashCount;
+            if (emptyRowCount > 0)
             {
                 double emptyWidth = LabelAreaWidth + 2 * LaneWidth;
-                return new Size(emptyWidth, RowHeight);
+                return new Size(emptyWidth, emptyRowCount * RowHeight);
             }
             return new Size(0, 0);
         }
 
         // Width: label area + (MaxLane + 2) lanes * LaneWidth
-        // Height: node count * RowHeight (+ 1 for working changes if present)
+        // Height: node count * RowHeight (+ 1 for working changes if present, + stash count)
         double width = LabelAreaWidth + (MaxLane + 2) * LaneWidth;
         int rowCount = nodes.Count;
         if (HasWorkingChanges)
         {
             rowCount += 1;
         }
+        rowCount += StashCount;
         double height = rowCount * RowHeight;
 
         return new Size(width, height);
@@ -310,8 +374,9 @@ public class GitGraphCanvas : FrameworkElement
     {
         base.OnRender(dc);
 
-        // Row offset: 1 if working changes are shown, 0 otherwise
-        int rowOffset = HasWorkingChanges ? 1 : 0;
+        // Row offset: working changes (0 or 1) + stash count
+        int workingChangesOffset = HasWorkingChanges ? 1 : 0;
+        int rowOffset = workingChangesOffset + StashCount;
 
         var nodes = Nodes;
 
@@ -323,16 +388,33 @@ public class GitGraphCanvas : FrameworkElement
             var branchBrush = GraphBuilder.GetBranchColor(branchName) as SolidColorBrush ?? Brushes.Gray;
             var branchColor = branchBrush.Color;
 
-            // Draw connection from WIP to first commit with circle clipped out
-            if (nodes != null && nodes.Count > 0)
+            // Draw connection from WIP to first stash or first commit with circle clipped out
+            double wipX = GetXForColumn(0);
+            double wipY = GetYForRow(0);
+            double avatarRadius = NodeRadius * 1.875;
+
+            // Determine what we connect to: stash (if any) or first commit
+            double targetX, targetY;
+            if (StashCount > 0)
+            {
+                // Connect to first stash
+                targetX = GetXForColumn(0);
+                targetY = GetYForRow(1);
+            }
+            else if (nodes != null && nodes.Count > 0)
             {
                 var firstNode = nodes[0];
-                double wipX = GetXForColumn(0);
-                double wipY = GetYForRow(0);
-                double firstNodeX = GetXForColumn(firstNode.ColumnIndex);
-                double firstNodeY = GetYForRow(firstNode.RowIndex + rowOffset);
-                double avatarRadius = NodeRadius * 1.875;
+                targetX = GetXForColumn(firstNode.ColumnIndex);
+                targetY = GetYForRow(firstNode.RowIndex + rowOffset);
+            }
+            else
+            {
+                targetX = wipX;
+                targetY = wipY;
+            }
 
+            if (targetY > wipY)
+            {
                 // Create clip geometry that excludes the WIP circle
                 var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
                 var circleClip = new EllipseGeometry(new Point(wipX, wipY), avatarRadius, avatarRadius);
@@ -342,12 +424,21 @@ public class GitGraphCanvas : FrameworkElement
                 dc.PushClip(clipGeometry);
                 var linePen = new Pen(branchBrush, 2);
                 linePen.Freeze();
-                DrawRailConnection(dc, linePen, wipX, wipY, firstNodeX, firstNodeY, false);
+                DrawRailConnection(dc, linePen, wipX, wipY, targetX, targetY, false);
                 dc.Pop();
             }
 
             // Draw WIP node on top of connection line
             DrawWorkingChangesRow(dc, branchColor);
+        }
+
+        // Draw stash rows
+        for (int i = 0; i < StashCount; i++)
+        {
+            int stashRow = workingChangesOffset + i;
+            bool isHovered = HoveredStashIndex == i;
+            bool isSelected = SelectedStashIndex == i;
+            DrawStashRow(dc, stashRow, i, isHovered, isSelected, nodes, rowOffset);
         }
 
         if (nodes == null || nodes.Count == 0)
@@ -453,6 +544,90 @@ public class GitGraphCanvas : FrameworkElement
         };
         dashedPen.Freeze();
         dc.DrawEllipse(Brushes.Transparent, dashedPen, new Point(x, y), avatarRadius, avatarRadius);
+    }
+
+    private void DrawStashRow(DrawingContext dc, int row, int stashIndex, bool isHovered, bool isSelected, IReadOnlyList<GitTreeNode>? nodes, int rowOffset)
+    {
+        double y = GetYForRow(row);
+        double x = GetXForColumn(0); // Stashes always in lane 0
+
+        // Use purple color for stashes
+        var stashBrush = new SolidColorBrush(StashColor);
+        stashBrush.Freeze();
+
+        // Determine if this row is highlighted
+        bool isHighlighted = isSelected || isHovered;
+
+        // Draw trail using stash color
+        double trailHeight = NodeRadius * 3.75 + 4;
+        double trailOpacity = isHighlighted ? 0.5 : 0.15;
+        var trailColor = Color.FromArgb((byte)(StashColor.A * trailOpacity),
+            StashColor.R, StashColor.G, StashColor.B);
+        var trailBrush = new SolidColorBrush(trailColor);
+        trailBrush.Freeze();
+
+        // Draw the main trail rectangle
+        double boxSize = NodeRadius * 1.875;
+        var trailRect = new Rect(x, y - trailHeight / 2, ActualWidth - x - 2, trailHeight);
+        dc.DrawRectangle(trailBrush, null, trailRect);
+
+        // Draw accent at edge
+        var accentRect = new Rect(ActualWidth - 2, y - trailHeight / 2, 2, trailHeight);
+        dc.DrawRectangle(stashBrush, null, accentRect);
+
+        // Draw connection to next stash or first commit
+        double nextY;
+        double nextX;
+        if (stashIndex < StashCount - 1)
+        {
+            // Connect to next stash
+            nextX = x;
+            nextY = GetYForRow(row + 1);
+        }
+        else if (nodes != null && nodes.Count > 0)
+        {
+            // Connect to first commit
+            var firstNode = nodes[0];
+            nextX = GetXForColumn(firstNode.ColumnIndex);
+            nextY = GetYForRow(firstNode.RowIndex + rowOffset);
+        }
+        else
+        {
+            nextX = x;
+            nextY = y;
+        }
+
+        if (nextY > y)
+        {
+            // Create clip geometry that excludes the stash box
+            var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+            var boxClip = new RectangleGeometry(new Rect(x - boxSize, y - boxSize, boxSize * 2, boxSize * 2), 3, 3);
+            var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, boxClip);
+            clipGeometry.Freeze();
+
+            dc.PushClip(clipGeometry);
+            var linePen = new Pen(stashBrush, 2);
+            linePen.Freeze();
+            DrawRailConnection(dc, linePen, x, y, nextX, nextY, false);
+            dc.Pop();
+        }
+
+        // Draw stash box (rounded rectangle instead of circle)
+        var boxPen = new Pen(stashBrush, 2.5);
+        boxPen.Freeze();
+        var boxRect = new Rect(x - boxSize, y - boxSize, boxSize * 2, boxSize * 2);
+        dc.DrawRoundedRectangle(Brushes.White, boxPen, boxRect, 3, 3);
+
+        // Draw stash icon inside the box
+        var iconFormatted = new FormattedText(
+            StashIcon,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            IconTypeface,
+            13,
+            stashBrush,
+            VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        dc.DrawText(iconFormatted, new Point(x - iconFormatted.Width / 2, y - iconFormatted.Height / 2));
     }
 
     private void DrawTrail(DrawingContext dc, GitTreeNode node, int rowOffset = 0)
@@ -734,8 +909,8 @@ public class GitGraphCanvas : FrameworkElement
             var linePen = new Pen(lastLabelBrush, lineThickness);
             linePen.Freeze();
 
-            // Draw horizontal line from label to node
-            dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(nodeX - NodeRadius - 2, y));
+            // Draw horizontal line from label to node (stop 4px before node edge)
+            dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(nodeX - NodeRadius - 4, y));
         }
     }
 
@@ -775,10 +950,10 @@ public class GitGraphCanvas : FrameworkElement
         }
         else if (node.PrimaryBranch != null)
         {
-            // Infer: most branches are local (don't have remote prefix like "origin/")
-            // and also exist on remote if they're known branches like main/develop
+            // Infer from branch name format
+            // Local branches don't have "/" prefix, remote branches have "origin/" etc.
             isLocal = !labelText.Contains('/');
-            isRemote = isLocal; // Assume tracked branches exist on both
+            isRemote = labelText.Contains('/'); // Only show cloud if it's actually a remote ref
         }
 
         // Build icon text
@@ -831,10 +1006,10 @@ public class GitGraphCanvas : FrameworkElement
             dc.DrawText(iconFormatted, new Point(labelX + 6 + nameWidth + 4, y - iconFormatted.Height / 2));
         }
 
-        // Draw connecting line from label to the commit node
+        // Draw connecting line from label to the commit node (stop 4px before node edge)
         var linePen = new Pen(ghostBrush, 1.5);
         linePen.Freeze();
-        dc.DrawLine(linePen, new Point(labelX + totalWidth, y), new Point(nodeX - NodeRadius - 2, y));
+        dc.DrawLine(linePen, new Point(labelX + totalWidth, y), new Point(nodeX - NodeRadius - 4, y));
     }
 
     private double GetXForColumn(int column)

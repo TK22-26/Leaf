@@ -79,6 +79,12 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _canRedo;
 
+    [ObservableProperty]
+    private bool _isBranchInputVisible;
+
+    [ObservableProperty]
+    private string _newBranchName = string.Empty;
+
     public MainViewModel(IGitService gitService, CredentialService credentialService, SettingsService settingsService, Window ownerWindow)
     {
         _gitService = gitService;
@@ -152,6 +158,11 @@ public partial class MainViewModel : ObservableObject
                 {
                     _commitDetailViewModel.UpdateWorkingChangesCount(_gitGraphViewModel.WorkingChanges.TotalChanges);
                 }
+            }
+            else if (e.PropertyName == nameof(GitGraphViewModel.SelectedStash))
+            {
+                // Notify that Pop command availability changed
+                PopStashCommand.NotifyCanExecuteChanged();
             }
         };
 
@@ -617,17 +628,24 @@ public partial class MainViewModel : ObservableObject
     /// Create a new branch.
     /// </summary>
     [RelayCommand]
-    public async Task CreateBranchAsync()
+    public void CreateBranch()
     {
         if (SelectedRepository == null) return;
 
-        // Simple input dialog - in a real app you'd use a proper dialog
-        var branchName = Microsoft.VisualBasic.Interaction.InputBox(
-            "Enter branch name:",
-            "Create Branch",
-            "");
+        // Show floating branch input
+        NewBranchName = string.Empty;
+        IsBranchInputVisible = true;
+    }
 
-        if (string.IsNullOrWhiteSpace(branchName)) return;
+    [RelayCommand]
+    public async Task ConfirmCreateBranchAsync()
+    {
+        if (SelectedRepository == null || string.IsNullOrWhiteSpace(NewBranchName))
+            return;
+
+        var branchName = NewBranchName.Trim();
+        IsBranchInputVisible = false;
+        NewBranchName = string.Empty;
 
         try
         {
@@ -647,6 +665,13 @@ public partial class MainViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    [RelayCommand]
+    public void CancelBranchInput()
+    {
+        IsBranchInputVisible = false;
+        NewBranchName = string.Empty;
     }
 
     /// <summary>
@@ -678,19 +703,26 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Pop stashed changes.
+    /// Check if pop stash can be executed.
     /// </summary>
-    [RelayCommand]
+    private bool CanPopStash() => SelectedRepository != null && GitGraphViewModel?.SelectedStash != null;
+
+    /// <summary>
+    /// Pop the selected stashed changes.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanPopStash))]
     public async Task PopStashAsync()
     {
         if (SelectedRepository == null) return;
+        var selectedStash = GitGraphViewModel?.SelectedStash;
+        if (selectedStash == null) return;
 
         try
         {
             IsBusy = true;
             StatusMessage = "Popping stash...";
 
-            await _gitService.PopStashAsync(SelectedRepository.Path);
+            await _gitService.PopStashAsync(SelectedRepository.Path, selectedStash.Index);
 
             StatusMessage = "Stash popped";
             await RefreshAsync();

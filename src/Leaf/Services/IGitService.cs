@@ -92,6 +92,16 @@ public interface IGitService
     Task PopStashAsync(string repoPath);
 
     /// <summary>
+    /// Pop a specific stash by index.
+    /// </summary>
+    Task PopStashAsync(string repoPath, int stashIndex);
+
+    /// <summary>
+    /// Get all stashes in the repository.
+    /// </summary>
+    Task<List<StashInfo>> GetStashesAsync(string repoPath);
+
+    /// <summary>
     /// Undo last commit (soft reset HEAD~1). Only works if not pushed.
     /// </summary>
     Task<bool> UndoCommitAsync(string repoPath);

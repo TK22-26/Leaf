@@ -78,8 +78,9 @@ public partial class GitGraphView : UserControl
         if (index < 0)
             return;
 
-        // Account for working changes row offset
+        // Account for working changes and stash rows offset
         int rowOffset = viewModel.HasWorkingChanges ? 1 : 0;
+        rowOffset += viewModel.Stashes.Count;
 
         // Calculate the Y position of this commit
         double targetY = (index + rowOffset) * RowHeight;
@@ -175,6 +176,48 @@ public partial class GitGraphView : UserControl
         }
     }
 
+    private void StashItem_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement element && element.DataContext is StashInfo stash)
+        {
+            if (DataContext is GitGraphViewModel viewModel)
+            {
+                viewModel.SelectStash(stash);
+            }
+        }
+    }
+
+    private void StashItem_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (sender is FrameworkElement element && element.DataContext is StashInfo stash)
+        {
+            if (DataContext is GitGraphViewModel viewModel)
+            {
+                viewModel.HoveredSha = stash.Sha;
+            }
+
+            // Update canvas hover state
+            if (GraphCanvas != null)
+            {
+                GraphCanvas.HoveredStashIndex = stash.Index;
+            }
+        }
+    }
+
+    private void StashItem_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (DataContext is GitGraphViewModel viewModel)
+        {
+            viewModel.HoveredSha = null;
+        }
+
+        // Update canvas hover state
+        if (GraphCanvas != null)
+        {
+            GraphCanvas.HoveredStashIndex = -1;
+        }
+    }
+
     private void GraphCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is not GitGraphViewModel viewModel)
@@ -182,24 +225,36 @@ public partial class GitGraphView : UserControl
 
         var pos = e.GetPosition(GraphCanvas);
         int row = (int)(pos.Y / RowHeight);
+        int currentRow = 0;
 
         // Handle working changes row click
-        if (viewModel.HasWorkingChanges && row == 0)
-        {
-            viewModel.SelectWorkingChanges();
-            return;
-        }
-
-        // Adjust for working changes offset
         if (viewModel.HasWorkingChanges)
         {
-            row -= 1;
+            if (row == currentRow)
+            {
+                viewModel.SelectWorkingChanges();
+                return;
+            }
+            currentRow++;
+        }
+
+        // Handle stash row clicks
+        if (viewModel.HasStashes)
+        {
+            int stashIndex = row - currentRow;
+            if (stashIndex >= 0 && stashIndex < viewModel.Stashes.Count)
+            {
+                viewModel.SelectStash(viewModel.Stashes[stashIndex]);
+                return;
+            }
+            currentRow += viewModel.Stashes.Count;
         }
 
         // Select the commit at this row
-        if (row >= 0 && row < viewModel.Commits.Count)
+        int commitIndex = row - currentRow;
+        if (commitIndex >= 0 && commitIndex < viewModel.Commits.Count)
         {
-            viewModel.SelectCommit(viewModel.Commits[row]);
+            viewModel.SelectCommit(viewModel.Commits[commitIndex]);
         }
     }
 }

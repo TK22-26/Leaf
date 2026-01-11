@@ -63,6 +63,8 @@
                                           HasWorkingChanges="{Binding HasWorkingChanges}"
                                           IsWorkingChangesSelected="{Binding IsWorkingChangesSelected}"
                                           CurrentBranchName="{Binding WorkingChanges.BranchName}"
+                                          StashCount="{Binding Stashes.Count, Mode=OneWay}"
+                                          SelectedStashIndex="{Binding SelectedStash.Index, Mode=OneWay, FallbackValue=-1}"
                                           RowHeight="{StaticResource RowHeight}"
                                           Height="{Binding TotalHeight}"
                                           MinWidth="80"
@@ -150,6 +152,56 @@
                             </StackPanel>
                         </Grid>
                     </Border>
+
+                    <!-- Stash List (shown when there are stashes) -->
+                    <ItemsControl ItemsSource="{Binding Stashes}"
+                                  x:Name="StashList">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="StashRowContainer"
+                                        Height="{StaticResource RowHeight}"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Cursor="Hand"
+                                        MouseLeftButtonDown="StashItem_MouseLeftButtonDown"
+                                        MouseEnter="StashItem_MouseEnter"
+                                        MouseLeave="StashItem_MouseLeave">
+                                    <Grid>
+                                        <!-- Highlight background -->
+                                        <Border x:Name="StashHighlightBorder"
+                                                Height="{StaticResource TrailHeight}"
+                                                VerticalAlignment="Center"
+                                                Background="Transparent"/>
+                                        <!-- Content -->
+                                        <StackPanel Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                                <Run Text="{Binding MessageShort, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <!-- Date display -->
+                                            <TextBlock Text="{Binding DateDisplay, Mode=OneWay}"
+                                                       Margin="12,0,0,0"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <!-- Hover: subtle green highlight -->
+                                    <Trigger SourceName="StashRowContainer" Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="StashHighlightBorder" Property="Background" Value="{StaticResource LeafAccentHoverBrush}"/>
+                                    </Trigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
                     <!-- Commit List (ItemsControl for fixed height rows, no internal scrolling) -->
                     <ItemsControl ItemsSource="{Binding Commits}"

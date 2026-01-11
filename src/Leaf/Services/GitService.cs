@@ -539,6 +539,82 @@ public class GitService : IGitService
         });
     }
 
+    public async Task PopStashAsync(string repoPath, int stashIndex)
+    {
+        await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+            if (repo.Stashes.Count() > stashIndex)
+            {
+                repo.Stashes.Pop(stashIndex);
+            }
+        });
+    }
+
+    public async Task<List<StashInfo>> GetStashesAsync(string repoPath)
+    {
+        return await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+            var stashes = new List<StashInfo>();
+
+            int index = 0;
+            foreach (var stash in repo.Stashes)
+            {
+                // Stash.WorkTree contains the commit with the stashed changes
+                var workTreeCommit = stash.WorkTree;
+                stashes.Add(new StashInfo
+                {
+                    Sha = workTreeCommit.Sha,
+                    Index = index,
+                    Message = stash.Message,
+                    Author = workTreeCommit.Author.Name,
+                    Date = workTreeCommit.Author.When,
+                    BranchName = ExtractBranchFromStashMessage(stash.Message)
+                });
+                index++;
+            }
+
+            return stashes;
+        });
+    }
+
+    /// <summary>
+    /// Extract branch name from stash message (format: "WIP on branch: ..." or "On branch: ...").
+    /// </summary>
+    private static string ExtractBranchFromStashMessage(string message)
+    {
+        // Stash messages typically have format: "WIP on branch: commit message" or "On branch: message"
+        if (string.IsNullOrEmpty(message))
+            return string.Empty;
+
+        // Try "WIP on branch:" format
+        const string wipPrefix = "WIP on ";
+        const string onPrefix = "On ";
+
+        string? branch = null;
+        if (message.StartsWith(wipPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var afterPrefix = message[wipPrefix.Length..];
+            var colonIndex = afterPrefix.IndexOf(':');
+            if (colonIndex > 0)
+            {
+                branch = afterPrefix[..colonIndex];
+            }
+        }
+        else if (message.StartsWith(onPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var afterPrefix = message[onPrefix.Length..];
+            var colonIndex = afterPrefix.IndexOf(':');
+            if (colonIndex > 0)
+            {
+                branch = afterPrefix[..colonIndex];
+            }
+        }
+
+        return branch ?? string.Empty;
+    }
+
     public async Task<bool> UndoCommitAsync(string repoPath)
     {
         return await Task.Run(() =>
