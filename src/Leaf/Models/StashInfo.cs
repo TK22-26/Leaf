@@ -1,14 +1,22 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+
 namespace Leaf.Models;
 
 /// <summary>
 /// Represents a Git stash entry.
 /// </summary>
-public class StashInfo
+public partial class StashInfo : ObservableObject
 {
     /// <summary>
     /// The commit SHA of the stash.
     /// </summary>
     public string Sha { get; set; } = string.Empty;
+
+    /// <summary>
+    /// True if this stash is currently selected.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSelected;
 
     /// <summary>
     /// Short SHA (first 7 characters).

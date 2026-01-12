@@ -19,6 +19,7 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <converters:IntGreaterThanZeroConverter x:Key="IntGreaterThanZeroConverter"/>
     </Window.Resources>
 
     <Grid>
@@ -216,11 +217,21 @@
                     </Button>
                     <!-- Pop -->
                     <Button Command="{Binding PopStashCommand}"
-                            ToolTip="Pop stashed changes"
+                            ToolTip="Pop stashed changes (select a stash first)"
                             Padding="10,8"
                             Margin="2,0"
                             Background="Transparent"
                             BorderThickness="0">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                <Setter Property="Opacity" Value="1"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Opacity" Value="0.4"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE7B7;"
                                        FontFamily="Segoe Fluent Icons"
@@ -459,29 +470,74 @@
                           Background="Transparent"
                           Visibility="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
-            <!-- Right panel: Commit details or Working changes -->
+            <!-- Right panel: Commit details / Working changes / Merge Status -->
             <Border Grid.Column="6"
                     BorderThickness="1,0,0,0"
                     BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                     Visibility="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Grid>
-                    <!-- Commit Detail View (shown when a commit is selected) -->
+                    <!-- Priority 1: Merge Status View -->
+                    <views:MergeStatusView DataContext="{Binding}">
+                        <views:MergeStatusView.Style>
+                            <Style TargetType="views:MergeStatusView">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding SelectedRepository.IsMergeInProgress}" Value="True"/>
+                                            <Condition Binding="{Binding SelectedRepository.ConflictCount, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </MultiDataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding SelectedRepository.IsMergeInProgress}" Value="True"/>
+                                            <Condition Binding="{Binding MergeConflictResolutionViewModel.TotalCount, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </views:MergeStatusView.Style>
+                    </views:MergeStatusView>
+
+                    <!-- Priority 2: Working Changes View -->
+                    <views:WorkingChangesView DataContext="{Binding WorkingChangesViewModel}">
+                        <views:WorkingChangesView.Style>
+                            <Style TargetType="views:WorkingChangesView">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <!-- Show if WorkingChangesSelected AND NOT MergeInProgress -->
+                                            <Condition Binding="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"/>
+                                            <Condition Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="False"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </views:WorkingChangesView.Style>
+                    </views:WorkingChangesView>
+
+                    <!-- Priority 3: Commit Detail View (Default) -->
                     <views:CommitDetailView DataContext="{Binding CommitDetailViewModel}">
                         <views:CommitDetailView.Style>
                             <Style TargetType="views:CommitDetailView">
                                 <Setter Property="Visibility" Value="Visible"/>
                                 <Style.Triggers>
+                                    <!-- Hide if WorkingChangesSelected -->
                                     <DataTrigger Binding="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <!-- Hide if MergeInProgress -->
+                                    <DataTrigger Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
                                         <Setter Property="Visibility" Value="Collapsed"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </views:CommitDetailView.Style>
                     </views:CommitDetailView>
-
-                    <!-- Working Changes View (shown when working changes are selected) -->
-                    <views:WorkingChangesView DataContext="{Binding WorkingChangesViewModel}"
-                                               Visibility="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </Grid>
             </Border>
         </Grid>

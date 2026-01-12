@@ -232,6 +232,9 @@ public class FileWatcherService : IDisposable
         // Only trigger on changes to files that indicate real git state changes
         var relativePath = path.ToLowerInvariant();
 
+        if (relativePath.EndsWith("\\leaf-merge-conflicts.txt") || relativePath.EndsWith("/leaf-merge-conflicts.txt"))
+            return false;
+
         // HEAD changes (checkout, commit)
         if (relativePath.EndsWith("\\head") || relativePath.EndsWith("/head"))
             return true;
@@ -254,6 +257,12 @@ public class FileWatcherService : IDisposable
 
         // FETCH_HEAD, ORIG_HEAD, etc.
         if (relativePath.EndsWith("_head"))
+            return true;
+
+        // Merge state
+        if (relativePath.EndsWith("\\merge_head") || relativePath.EndsWith("/merge_head"))
+            return true;
+        if (relativePath.EndsWith("\\merge_msg") || relativePath.EndsWith("/merge_msg"))
             return true;
 
         return false;

@@ -54,4 +54,9 @@ public class BranchInfo
     /// True if this is the main/master/develop branch (highway branch).
     /// </summary>
     public bool IsMainBranch => Name is "main" or "master" or "develop";
+
+    /// <summary>
+    /// Expand state for tree views.
+    /// </summary>
+    public bool IsExpanded { get; set; }
 }

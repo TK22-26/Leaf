@@ -106,4 +106,25 @@ public partial class RepositoryInfo : ObservableObject
     [JsonIgnore]
     [ObservableProperty]
     private ObservableCollection<BranchCategory> _branchCategories = [];
+
+    /// <summary>
+    /// True if a merge is currently in progress.
+    /// </summary>
+    [JsonIgnore]
+    [ObservableProperty]
+    private bool _isMergeInProgress;
+
+    /// <summary>
+    /// The branch being merged (from MERGE_HEAD).
+    /// </summary>
+    [JsonIgnore]
+    [ObservableProperty]
+    private string _mergingBranch = string.Empty;
+
+    /// <summary>
+    /// Number of files with merge conflicts.
+    /// </summary>
+    [JsonIgnore]
+    [ObservableProperty]
+    private int _conflictCount;
 }

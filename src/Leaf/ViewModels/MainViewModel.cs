@@ -47,6 +47,9 @@ public partial class MainViewModel : ObservableObject
     private WorkingChangesViewModel? _workingChangesViewModel;
 
     [ObservableProperty]
+    private ConflictResolutionViewModel? _mergeConflictResolutionViewModel;
+
+    [ObservableProperty]
     private bool _isCommitDetailVisible = true;
 
     [ObservableProperty]
@@ -63,6 +66,8 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private string _commitSearchText = string.Empty;
+
+    private string? _mergeConflictRepoPath;
 
     partial void OnCommitSearchTextChanged(string value)
     {
@@ -127,6 +132,16 @@ public partial class MainViewModel : ObservableObject
                 {
                     await _gitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
                 }
+
+                if (SelectedRepository != null)
+                {
+                    var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+                    SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
+                    SelectedRepository.MergingBranch = info.MergingBranch;
+                    SelectedRepository.ConflictCount = info.ConflictCount;
+
+                    await RefreshMergeConflictResolutionAsync();
+                }
             });
         };
 
@@ -163,6 +178,13 @@ public partial class MainViewModel : ObservableObject
             {
                 // Notify that Pop command availability changed
                 PopStashCommand.NotifyCanExecuteChanged();
+
+                // Load stash details when a stash is selected
+                var selectedStash = _gitGraphViewModel.SelectedStash;
+                if (selectedStash != null && SelectedRepository != null)
+                {
+                    _ = _commitDetailViewModel.LoadStashAsync(SelectedRepository.Path, selectedStash);
+                }
             }
         };
 
@@ -403,9 +425,14 @@ public partial class MainViewModel : ObservableObject
             repository.IsDirty = info.IsDirty;
             repository.AheadBy = info.AheadBy;
             repository.BehindBy = info.BehindBy;
+            repository.IsMergeInProgress = info.IsMergeInProgress;
+            repository.MergingBranch = info.MergingBranch;
+            repository.ConflictCount = info.ConflictCount;
 
             // Load branches for the branch panel
             await LoadBranchesForRepoAsync(repository);
+
+            await RefreshMergeConflictResolutionAsync();
 
             StatusMessage = $"{repository.Name} | {repository.CurrentBranch}" +
                            (repository.IsDirty ? " | Modified" : "") +
@@ -675,6 +702,23 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Delete a branch.
+    /// </summary>
+    [RelayCommand]
+    public async Task DeleteBranchAsync(BranchInfo branch)
+    {
+        if (SelectedRepository == null) return;
+
+        // TODO: Implement actual deletion logic with safety checks (merged/unmerged)
+        // For now, just show the placeholder message that was previously in the View
+        await Application.Current.Dispatcher.InvokeAsync(() => 
+        {
+             MessageBox.Show($"Delete branch '{branch.Name}' - not yet implemented in Service",
+                    "Delete Branch", MessageBoxButton.OK, MessageBoxImage.Information);
+        });
+    }
+
+    /// <summary>
     /// Stash changes.
     /// </summary>
     [RelayCommand]
@@ -717,19 +761,123 @@ public partial class MainViewModel : ObservableObject
         var selectedStash = GitGraphViewModel?.SelectedStash;
         if (selectedStash == null) return;
 
+        System.Diagnostics.Debug.WriteLine($"[MainVM.PopStash] Starting pop for stash index {selectedStash.Index}");
+
         try
         {
             IsBusy = true;
             StatusMessage = "Popping stash...";
 
-            await _gitService.PopStashAsync(SelectedRepository.Path, selectedStash.Index);
+            var result = await _gitService.PopStashAsync(SelectedRepository.Path, selectedStash.Index);
 
-            StatusMessage = "Stash popped";
-            await RefreshAsync();
+            System.Diagnostics.Debug.WriteLine($"[MainVM.PopStash] Service returned: Success={result.Success}, HasConflicts={result.HasConflicts}, Error={result.ErrorMessage}");
+
+            // Clear stash selection before refresh so preservation logic doesn't re-select
+            GitGraphViewModel?.SelectStash(null);
+
+            if (result.Success)
+            {
+                System.Diagnostics.Debug.WriteLine("[MainVM.PopStash] SUCCESS branch - refreshing");
+                StatusMessage = "Stash popped";
+                await RefreshAsync();
+            }
+            else if (result.HasConflicts)
+            {
+                System.Diagnostics.Debug.WriteLine("[MainVM.PopStash] CONFLICTS branch - checking for actual conflicts");
+                // Load conflicts first to check if there are actually any
+                var conflicts = await _gitService.GetConflictsAsync(SelectedRepository.Path);
+                System.Diagnostics.Debug.WriteLine($"[MainVM.PopStash] Actual conflicts found: {conflicts.Count}");
+
+                if (conflicts.Count == 0)
+                {
+                    // No actual conflicts found - stash may have failed for another reason
+                    StatusMessage = result.ErrorMessage ?? "Stash pop completed with warnings";
+                    await RefreshAsync();
+                }
+                else
+                {
+                    StatusMessage = "Stash applied with conflicts - resolve to complete";
+                    await RefreshAsync();
+
+                    // Show conflict resolution UI with friendly stash name
+                    var stashName = !string.IsNullOrEmpty(selectedStash.MessageShort)
+                        ? $"Stash: {selectedStash.MessageShort}"
+                        : "Stashed changes";
+                    var conflictViewModel = new ConflictResolutionViewModel(_gitService, SelectedRepository.Path)
+                    {
+                        SourceBranch = stashName,
+                        TargetBranch = SelectedRepository.CurrentBranch ?? "HEAD"
+                    };
+                    await conflictViewModel.LoadConflictsAsync();
+
+                    var conflictView = new Views.ConflictResolutionView
+                    {
+                        DataContext = conflictViewModel,
+                        Owner = _ownerWindow
+                    };
+
+                    conflictViewModel.MergeCompleted += async (s, success) =>
+                    {
+                        conflictView.Close();
+                        if (success)
+                        {
+                            // Clean up any leftover temp stash from smart pop
+                            await _gitService.CleanupTempStashAsync(SelectedRepository.Path);
+                            StatusMessage = "Stash applied successfully";
+                        }
+                        else
+                        {
+                            StatusMessage = "Stash pop aborted";
+                        }
+                        await RefreshAsync();
+                    };
+
+                    conflictView.ShowDialog();
+                }
+            }
+            else
+            {
+                StatusMessage = $"Pop stash failed: {result.ErrorMessage}";
+            }
         }
         catch (Exception ex)
         {
             StatusMessage = $"Pop stash failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private bool CanDeleteStash() => SelectedRepository != null && GitGraphViewModel?.SelectedStash != null;
+
+    /// <summary>
+    /// Delete the selected stash without applying it.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteStash))]
+    public async Task DeleteStashAsync()
+    {
+        if (SelectedRepository == null) return;
+        var selectedStash = GitGraphViewModel?.SelectedStash;
+        if (selectedStash == null) return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "Deleting stash...";
+
+            await _gitService.DeleteStashAsync(SelectedRepository.Path, selectedStash.Index);
+
+            // Clear stash selection before refresh
+            GitGraphViewModel?.SelectStash(null);
+
+            StatusMessage = "Stash deleted";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Delete stash failed: {ex.Message}";
         }
         finally
         {
@@ -871,6 +1019,7 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// Checkout a branch.
     /// </summary>
+    [RelayCommand]
     public async Task CheckoutBranchAsync(BranchInfo branch)
     {
         if (SelectedRepository == null) return;
@@ -911,5 +1060,282 @@ public partial class MainViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Merge a branch into the current branch.
+    /// </summary>
+    [RelayCommand]
+    public async Task MergeBranchAsync(BranchInfo branch)
+    {
+        System.Diagnostics.Debug.WriteLine($"[MainVM] MergeBranchAsync called for {branch.Name}");
+        if (SelectedRepository == null)
+        {
+            System.Diagnostics.Debug.WriteLine("[MainVM] SelectedRepository is null");
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"Merging {branch.Name} into {SelectedRepository.CurrentBranch}...";
+            System.Diagnostics.Debug.WriteLine($"[MainVM] Starting merge: {branch.Name} -> {SelectedRepository.CurrentBranch}");
+
+            var result = await _gitService.MergeBranchAsync(SelectedRepository.Path, branch.Name);
+            System.Diagnostics.Debug.WriteLine($"[MainVM] Merge result: Success={result.Success}, Conflicts={result.HasConflicts}");
+
+            if (result.Success)
+            {
+                StatusMessage = $"Successfully merged {branch.Name}";
+
+                // Refresh git graph
+                if (GitGraphViewModel != null)
+                {
+                    await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
+                }
+            }
+            else if (result.HasConflicts)
+            {
+                StatusMessage = "Merge has conflicts - resolve to complete";
+                
+                // Refresh repo info to update merge banner and conflicts immediately
+                var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+                SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
+                SelectedRepository.MergingBranch = info.MergingBranch;
+                SelectedRepository.ConflictCount = info.ConflictCount;
+
+                await RefreshMergeConflictResolutionAsync();
+                await RefreshAsync();
+            }
+            else
+            {
+                StatusMessage = $"Merge failed: {result.ErrorMessage}";
+                System.Diagnostics.Debug.WriteLine($"[MainVM] Merge failure error: {result.ErrorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Merge failed: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[MainVM] Merge exception: {ex}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Continue an in-progress merge (open conflict resolution UI).
+    /// </summary>
+    [RelayCommand]
+    public async Task ContinueMergeAsync()
+    {
+        if (SelectedRepository == null) return;
+
+        await RefreshMergeConflictResolutionAsync();
+
+        if (MergeConflictResolutionViewModel == null) return;
+
+        var conflictWindow = new Views.ConflictResolutionView
+        {
+            DataContext = MergeConflictResolutionViewModel,
+            Owner = System.Windows.Application.Current.MainWindow
+        };
+
+        conflictWindow.ShowDialog();
+    }
+
+    /// <summary>
+    /// Open the first unresolved conflict in VS Code.
+    /// </summary>
+    [RelayCommand]
+    public async Task OpenInVsCodeAsync()
+    {
+        if (SelectedRepository == null) return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "Opening VS Code for merge...";
+
+            var conflicts = await _gitService.GetConflictsAsync(SelectedRepository.Path);
+            var firstConflict = conflicts.FirstOrDefault();
+
+            if (firstConflict != null)
+            {
+                await _gitService.OpenConflictInVsCodeAsync(SelectedRepository.Path, firstConflict.FilePath);
+                
+                // Refresh to check if resolved
+                await RefreshAsync();
+                
+                // If there are more conflicts, we could prompt to open the next one, 
+                // but let's just refresh for now.
+                var remaining = await _gitService.GetConflictsAsync(SelectedRepository.Path);
+                if (remaining.Count == 0)
+                {
+                    StatusMessage = "All conflicts resolved in VS Code.";
+                }
+                else
+                {
+                    StatusMessage = $"Conflict resolved. {remaining.Count} remaining.";
+                }
+            }
+            else
+            {
+                StatusMessage = "No conflicts found to open.";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to open VS Code: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Abort the current in-progress merge.
+    /// </summary>
+    [RelayCommand]
+    public async Task AbortMergeAsync()
+    {
+        if (SelectedRepository == null) return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "Aborting merge...";
+
+            await _gitService.AbortMergeAsync(SelectedRepository.Path);
+
+            StatusMessage = "Merge aborted";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Abort merge failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task OpenConflictInVsCodeAsync(ConflictInfo? conflict)
+    {
+        if (SelectedRepository == null || conflict == null) return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "Opening VS Code for merge...";
+
+            await _gitService.OpenConflictInVsCodeAsync(SelectedRepository.Path, conflict.FilePath);
+
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to open VS Code: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task OpenConflictInLeafAsync(ConflictInfo? conflict)
+    {
+        if (SelectedRepository == null || conflict == null) return;
+
+        await RefreshMergeConflictResolutionAsync();
+        if (MergeConflictResolutionViewModel == null) return;
+
+        MergeConflictResolutionViewModel.SelectedConflict = conflict;
+
+        var conflictWindow = new Views.ConflictResolutionView
+        {
+            DataContext = MergeConflictResolutionViewModel,
+            Owner = System.Windows.Application.Current.MainWindow
+        };
+
+        conflictWindow.ShowDialog();
+    }
+
+    [RelayCommand]
+    public async Task UnresolveMergeConflictAsync(ConflictInfo? conflict)
+    {
+        if (MergeConflictResolutionViewModel == null || conflict == null)
+            return;
+
+        await MergeConflictResolutionViewModel.UnresolveConflictCommand.ExecuteAsync(conflict);
+        await RefreshMergeConflictResolutionAsync();
+    }
+
+    private async Task RefreshMergeConflictResolutionAsync(bool showInline = false)
+    {
+        if (SelectedRepository == null)
+        {
+            return;
+        }
+
+        var hasMergeConflicts = SelectedRepository.IsMergeInProgress || SelectedRepository.ConflictCount > 0;
+        System.Diagnostics.Debug.WriteLine($"[MainVM] RefreshMergeConflictResolutionAsync merge={SelectedRepository.IsMergeInProgress} conflictCount={SelectedRepository.ConflictCount}");
+        if (!hasMergeConflicts)
+        {
+            if (MergeConflictResolutionViewModel != null)
+            {
+                MergeConflictResolutionViewModel.MergeCompleted -= OnMergeConflictResolutionCompleted;
+            }
+
+            MergeConflictResolutionViewModel = null;
+            _mergeConflictRepoPath = null;
+            await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(SelectedRepository.MergingBranch))
+        {
+            var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            SelectedRepository.MergingBranch = info.MergingBranch;
+        }
+
+        var isNewViewModel = MergeConflictResolutionViewModel == null ||
+            !string.Equals(_mergeConflictRepoPath, SelectedRepository.Path, StringComparison.OrdinalIgnoreCase);
+
+        if (isNewViewModel)
+        {
+            if (MergeConflictResolutionViewModel != null)
+            {
+                MergeConflictResolutionViewModel.MergeCompleted -= OnMergeConflictResolutionCompleted;
+            }
+
+            var conflictViewModel = new ConflictResolutionViewModel(_gitService, SelectedRepository.Path);
+            conflictViewModel.MergeCompleted += OnMergeConflictResolutionCompleted;
+            MergeConflictResolutionViewModel = conflictViewModel;
+            _mergeConflictRepoPath = SelectedRepository.Path;
+        }
+
+        if (MergeConflictResolutionViewModel == null)
+        {
+            return;
+        }
+
+        MergeConflictResolutionViewModel.SourceBranch = !string.IsNullOrEmpty(SelectedRepository.MergingBranch)
+            ? SelectedRepository.MergingBranch
+            : "Incoming";
+        MergeConflictResolutionViewModel.TargetBranch = SelectedRepository.CurrentBranch ?? "HEAD";
+
+        await MergeConflictResolutionViewModel.LoadConflictsAsync(showLoading: isNewViewModel);
+    }
+
+    private async void OnMergeConflictResolutionCompleted(object? sender, bool success)
+    {
+        StatusMessage = success ? "Merge completed successfully" : "Merge aborted";
+        await RefreshAsync();
     }
 }

@@ -89,17 +89,28 @@ public interface IGitService
     /// <summary>
     /// Pop stashed changes.
     /// </summary>
-    Task PopStashAsync(string repoPath);
+    Task<Models.MergeResult> PopStashAsync(string repoPath);
 
     /// <summary>
     /// Pop a specific stash by index.
     /// </summary>
-    Task PopStashAsync(string repoPath, int stashIndex);
+    Task<Models.MergeResult> PopStashAsync(string repoPath, int stashIndex);
 
     /// <summary>
     /// Get all stashes in the repository.
     /// </summary>
     Task<List<StashInfo>> GetStashesAsync(string repoPath);
+
+    /// <summary>
+    /// Delete a specific stash by index.
+    /// </summary>
+    Task DeleteStashAsync(string repoPath, int stashIndex);
+
+    /// <summary>
+    /// Clean up any temporary stash created during smart pop operation.
+    /// Call this after conflict resolution completes.
+    /// </summary>
+    Task CleanupTempStashAsync(string repoPath);
 
     /// <summary>
     /// Undo last commit (soft reset HEAD~1). Only works if not pushed.
@@ -158,4 +169,57 @@ public interface IGitService
     /// <param name="message">Commit message (required, max 72 chars recommended)</param>
     /// <param name="description">Optional extended description</param>
     Task CommitAsync(string repoPath, string message, string? description = null);
+
+    /// <summary>
+    /// Get list of conflicting files during a merge.
+    /// </summary>
+    Task<List<ConflictInfo>> GetConflictsAsync(string repoPath);
+
+    /// <summary>
+    /// Resolve a conflict by using the current branch version (ours).
+    /// </summary>
+    Task ResolveConflictWithOursAsync(string repoPath, string filePath);
+
+    /// <summary>
+    /// Resolve a conflict by using the incoming branch version (theirs).
+    /// </summary>
+    Task ResolveConflictWithTheirsAsync(string repoPath, string filePath);
+
+    /// <summary>
+    /// Mark a conflict as resolved (after manual edit).
+    /// </summary>
+    Task MarkConflictResolvedAsync(string repoPath, string filePath);
+
+    Task ReopenConflictAsync(string repoPath, string filePath, string baseContent, string oursContent, string theirsContent);
+
+    Task<List<ConflictInfo>> GetResolvedMergeFilesAsync(string repoPath);
+
+    Task<List<string>> GetStoredMergeConflictFilesAsync(string repoPath);
+
+    Task SaveStoredMergeConflictFilesAsync(string repoPath, IEnumerable<string> files);
+
+    Task ClearStoredMergeConflictFilesAsync(string repoPath);
+
+    /// <summary>
+    /// Complete a merge by creating the merge commit.
+    /// </summary>
+    Task CompleteMergeAsync(string repoPath, string commitMessage);
+
+    /// <summary>
+    /// Abort an in-progress merge and return to pre-merge state.
+    /// </summary>
+    Task AbortMergeAsync(string repoPath);
+
+    /// <summary>
+    /// Merge a branch into the current branch.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="branchName">Name of the branch to merge</param>
+    /// <returns>MergeResult indicating success, conflicts, or failure</returns>
+    Task<Models.MergeResult> MergeBranchAsync(string repoPath, string branchName);
+
+    /// <summary>
+    /// Open a conflict in VS Code for resolution.
+    /// </summary>
+    Task OpenConflictInVsCodeAsync(string repoPath, string filePath);
 }

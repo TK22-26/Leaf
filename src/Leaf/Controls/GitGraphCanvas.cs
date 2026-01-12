@@ -127,6 +127,13 @@ public class GitGraphCanvas : FrameworkElement
             typeof(GitGraphCanvas),
             new FrameworkPropertyMetadata(-1, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public static readonly DependencyProperty StashesProperty =
+        DependencyProperty.Register(
+            nameof(Stashes),
+            typeof(IReadOnlyList<StashInfo>),
+            typeof(GitGraphCanvas),
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
     #endregion
 
     #region Properties
@@ -225,6 +232,12 @@ public class GitGraphCanvas : FrameworkElement
     {
         get => (int)GetValue(SelectedStashIndexProperty);
         set => SetValue(SelectedStashIndexProperty, value);
+    }
+
+    public IReadOnlyList<StashInfo>? Stashes
+    {
+        get => (IReadOnlyList<StashInfo>?)GetValue(StashesProperty);
+        set => SetValue(StashesProperty, value);
     }
 
     #endregion
@@ -350,15 +363,18 @@ public class GitGraphCanvas : FrameworkElement
             int emptyRowCount = (HasWorkingChanges ? 1 : 0) + StashCount;
             if (emptyRowCount > 0)
             {
-                double emptyWidth = LabelAreaWidth + 2 * LaneWidth;
+                // Extra lane for stashes if present
+                int stashLaneCount = StashCount > 0 ? 1 : 0;
+                double emptyWidth = LabelAreaWidth + (2 + stashLaneCount) * LaneWidth;
                 return new Size(emptyWidth, emptyRowCount * RowHeight);
             }
             return new Size(0, 0);
         }
 
-        // Width: label area + (MaxLane + 2) lanes * LaneWidth
+        // Width: label area + (MaxLane + 2) lanes * LaneWidth + stash lane if present
         // Height: node count * RowHeight (+ 1 for working changes if present, + stash count)
-        double width = LabelAreaWidth + (MaxLane + 2) * LaneWidth;
+        int stashLane = StashCount > 0 ? 1 : 0;
+        double width = LabelAreaWidth + (MaxLane + 2 + stashLane) * LaneWidth;
         int rowCount = nodes.Count;
         if (HasWorkingChanges)
         {
@@ -388,20 +404,14 @@ public class GitGraphCanvas : FrameworkElement
             var branchBrush = GraphBuilder.GetBranchColor(branchName) as SolidColorBrush ?? Brushes.Gray;
             var branchColor = branchBrush.Color;
 
-            // Draw connection from WIP to first stash or first commit with circle clipped out
+            // Draw connection from WIP directly to first commit (skip stashes - they're in a separate lane)
             double wipX = GetXForColumn(0);
             double wipY = GetYForRow(0);
             double avatarRadius = NodeRadius * 1.875;
 
-            // Determine what we connect to: stash (if any) or first commit
+            // Always connect to first commit (stashes are now isolated in their own lane)
             double targetX, targetY;
-            if (StashCount > 0)
-            {
-                // Connect to first stash
-                targetX = GetXForColumn(0);
-                targetY = GetYForRow(1);
-            }
-            else if (nodes != null && nodes.Count > 0)
+            if (nodes != null && nodes.Count > 0)
             {
                 var firstNode = nodes[0];
                 targetX = GetXForColumn(firstNode.ColumnIndex);
@@ -549,10 +559,16 @@ public class GitGraphCanvas : FrameworkElement
     private void DrawStashRow(DrawingContext dc, int row, int stashIndex, bool isHovered, bool isSelected, IReadOnlyList<GitTreeNode>? nodes, int rowOffset)
     {
         double y = GetYForRow(row);
-        double x = GetXForColumn(0); // Stashes always in lane 0
+        // Stashes in separate rightmost lane (MaxLane + 1)
+        int stashLane = MaxLane + 1;
+        double x = GetXForColumn(stashLane);
 
-        // Use purple color for stashes
-        var stashBrush = new SolidColorBrush(StashColor);
+        // Get stash info and use branch color instead of hardcoded purple
+        var stashInfo = Stashes != null && stashIndex < Stashes.Count ? Stashes[stashIndex] : null;
+        var branchName = stashInfo?.BranchName ?? CurrentBranchName ?? "main";
+        var branchBrush = GraphBuilder.GetBranchColor(branchName) as SolidColorBrush ?? Brushes.Gray;
+        var stashColor = branchBrush.Color;
+        var stashBrush = new SolidColorBrush(stashColor);
         stashBrush.Freeze();
 
         // Determine if this row is highlighted
@@ -561,8 +577,8 @@ public class GitGraphCanvas : FrameworkElement
         // Draw trail using stash color
         double trailHeight = NodeRadius * 3.75 + 4;
         double trailOpacity = isHighlighted ? 0.5 : 0.15;
-        var trailColor = Color.FromArgb((byte)(StashColor.A * trailOpacity),
-            StashColor.R, StashColor.G, StashColor.B);
+        var trailColor = Color.FromArgb((byte)(stashColor.A * trailOpacity),
+            stashColor.R, stashColor.G, stashColor.B);
         var trailBrush = new SolidColorBrush(trailColor);
         trailBrush.Freeze();
 
@@ -575,42 +591,7 @@ public class GitGraphCanvas : FrameworkElement
         var accentRect = new Rect(ActualWidth - 2, y - trailHeight / 2, 2, trailHeight);
         dc.DrawRectangle(stashBrush, null, accentRect);
 
-        // Draw connection to next stash or first commit
-        double nextY;
-        double nextX;
-        if (stashIndex < StashCount - 1)
-        {
-            // Connect to next stash
-            nextX = x;
-            nextY = GetYForRow(row + 1);
-        }
-        else if (nodes != null && nodes.Count > 0)
-        {
-            // Connect to first commit
-            var firstNode = nodes[0];
-            nextX = GetXForColumn(firstNode.ColumnIndex);
-            nextY = GetYForRow(firstNode.RowIndex + rowOffset);
-        }
-        else
-        {
-            nextX = x;
-            nextY = y;
-        }
-
-        if (nextY > y)
-        {
-            // Create clip geometry that excludes the stash box
-            var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
-            var boxClip = new RectangleGeometry(new Rect(x - boxSize, y - boxSize, boxSize * 2, boxSize * 2), 3, 3);
-            var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, boxClip);
-            clipGeometry.Freeze();
-
-            dc.PushClip(clipGeometry);
-            var linePen = new Pen(stashBrush, 2);
-            linePen.Freeze();
-            DrawRailConnection(dc, linePen, x, y, nextX, nextY, false);
-            dc.Pop();
-        }
+        // Stashes are isolated - no connections to commits or other stashes
 
         // Draw stash box (rounded rectangle instead of circle)
         var boxPen = new Pen(stashBrush, 2.5);

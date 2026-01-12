@@ -6,7 +6,8 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
-             d:DesignHeight="450" d:DesignWidth="800">
+             d:DesignHeight="450" d:DesignWidth="800"
+             x:Name="GitGraphViewRoot">
 
     <UserControl.Resources>
         <!-- Fixed row height for perfect alignment -->
@@ -64,6 +65,7 @@
                                           IsWorkingChangesSelected="{Binding IsWorkingChangesSelected}"
                                           CurrentBranchName="{Binding WorkingChanges.BranchName}"
                                           StashCount="{Binding Stashes.Count, Mode=OneWay}"
+                                          Stashes="{Binding Stashes, Mode=OneWay}"
                                           SelectedStashIndex="{Binding SelectedStash.Index, Mode=OneWay, FallbackValue=-1}"
                                           RowHeight="{StaticResource RowHeight}"
                                           Height="{Binding TotalHeight}"
@@ -171,6 +173,25 @@
                                         MouseLeftButtonDown="StashItem_MouseLeftButtonDown"
                                         MouseEnter="StashItem_MouseEnter"
                                         MouseLeave="StashItem_MouseLeave">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Pop Stash"
+                                                      Click="PopStashMenuItem_Click"
+                                                      InputGestureText="Apply and remove">
+                                                <MenuItem.Icon>
+                                                    <TextBlock Text="&#xE74C;" FontFamily="Segoe Fluent Icons" FontSize="14"/>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <Separator/>
+                                            <MenuItem Header="Delete Stash"
+                                                      Click="DeleteStashMenuItem_Click"
+                                                      InputGestureText="Discard">
+                                                <MenuItem.Icon>
+                                                    <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#E81123"/>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
                                     <Grid>
                                         <!-- Highlight background -->
                                         <Border x:Name="StashHighlightBorder"
@@ -198,6 +219,10 @@
                                     <Trigger SourceName="StashRowContainer" Property="IsMouseOver" Value="True">
                                         <Setter TargetName="StashHighlightBorder" Property="Background" Value="{StaticResource LeafAccentHoverBrush}"/>
                                     </Trigger>
+                                    <!-- Selected: stronger highlight -->
+                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                        <Setter TargetName="StashHighlightBorder" Property="Background" Value="{StaticResource LeafAccentSelectedBrush}"/>
+                                    </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

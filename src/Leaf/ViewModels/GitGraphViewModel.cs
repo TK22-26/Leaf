@@ -215,7 +215,11 @@ public partial class GitGraphViewModel : ObservableObject
             SelectedCommit.IsSelected = false;
             SelectedCommit = null;
         }
-        SelectedStash = null;
+        if (SelectedStash != null)
+        {
+            SelectedStash.IsSelected = false;
+            SelectedStash = null;
+        }
 
         IsWorkingChangesSelected = true;
         SelectedSha = WorkingChangesSha;
@@ -235,8 +239,20 @@ public partial class GitGraphViewModel : ObservableObject
         }
         IsWorkingChangesSelected = false;
 
+        // Deselect previously selected stash
+        if (SelectedStash != null)
+        {
+            SelectedStash.IsSelected = false;
+        }
+
         SelectedStash = stash;
         SelectedSha = stash?.Sha;
+
+        // Mark the new stash as selected
+        if (stash != null)
+        {
+            stash.IsSelected = true;
+        }
     }
 
     /// <summary>
@@ -256,7 +272,11 @@ public partial class GitGraphViewModel : ObservableObject
     {
         // Clear working changes and stash selection when selecting a commit
         IsWorkingChangesSelected = false;
-        SelectedStash = null;
+        if (SelectedStash != null)
+        {
+            SelectedStash.IsSelected = false;
+            SelectedStash = null;
+        }
 
         SelectedCommit = commit;
         SelectedSha = commit?.Sha;

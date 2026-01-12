@@ -158,6 +158,58 @@ public partial class CommitDetailViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Load stash details (treats stash as a commit for display).
+    /// </summary>
+    public async Task LoadStashAsync(string repoPath, StashInfo stash)
+    {
+        try
+        {
+            IsLoading = true;
+            RepositoryPath = repoPath;
+
+            // Clear existing data
+            FileChanges.Clear();
+            OldContent = string.Empty;
+            NewContent = string.Empty;
+            SelectedFile = null;
+
+            // Create a synthetic commit info for the stash
+            Commit = new CommitInfo
+            {
+                Sha = stash.Sha,
+                Message = stash.Message,
+                MessageShort = stash.MessageShort,
+                Author = stash.Author,
+                AuthorEmail = string.Empty,
+                Date = stash.Date,
+                ParentShas = []
+            };
+
+            // Load file changes from the stash commit
+            var changes = await _gitService.GetCommitChangesAsync(repoPath, stash.Sha);
+            foreach (var change in changes)
+            {
+                FileChanges.Add(change);
+            }
+
+            // Notify counts changed
+            OnPropertyChanged(nameof(ModifiedCount));
+            OnPropertyChanged(nameof(AddedCount));
+            OnPropertyChanged(nameof(DeletedCount));
+
+            // Auto-select first file
+            if (FileChanges.Count > 0)
+            {
+                SelectedFile = FileChanges[0];
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    /// <summary>
     /// Update working changes count for banner display.
     /// </summary>
     public void UpdateWorkingChangesCount(int count)

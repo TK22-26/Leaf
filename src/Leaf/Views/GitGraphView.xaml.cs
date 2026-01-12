@@ -218,6 +218,30 @@ public partial class GitGraphView : UserControl
         }
     }
 
+    private void PopStashMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        // Get the MainViewModel from the Window's DataContext
+        if (Window.GetWindow(this)?.DataContext is ViewModels.MainViewModel mainViewModel)
+        {
+            if (mainViewModel.PopStashCommand.CanExecute(null))
+            {
+                mainViewModel.PopStashCommand.Execute(null);
+            }
+        }
+    }
+
+    private void DeleteStashMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        // Get the MainViewModel from the Window's DataContext
+        if (Window.GetWindow(this)?.DataContext is ViewModels.MainViewModel mainViewModel)
+        {
+            if (mainViewModel.DeleteStashCommand.CanExecute(null))
+            {
+                mainViewModel.DeleteStashCommand.Execute(null);
+            }
+        }
+    }
+
     private void GraphCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is not GitGraphViewModel viewModel)

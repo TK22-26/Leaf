@@ -1,0 +1,280 @@
+<UserControl x:Class="Leaf.Controls.MergeRegionControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:models="clr-namespace:Leaf.Models"
+             xmlns:converters="clr-namespace:Leaf.Converters"
+             xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+             d:DataContext="{d:DesignInstance Type=models:MergeRegion}"
+             mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <!-- Converters -->
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+
+        <!-- Background colors for different region types -->
+        <SolidColorBrush x:Key="UnchangedBgBrush" Color="Transparent"/>
+        <SolidColorBrush x:Key="OursOnlyBgBrush" Color="#1E3A5F"/>
+        <SolidColorBrush x:Key="TheirsOnlyBgBrush" Color="#14532D"/>
+        <SolidColorBrush x:Key="ConflictHeaderBgBrush" Color="#78350F"/>
+        <SolidColorBrush x:Key="ConflictBorderBrush" Color="#F59E0B"/>
+        <SolidColorBrush x:Key="OursHeaderBgBrush" Color="#1E3A5F"/>
+        <SolidColorBrush x:Key="TheirsHeaderBgBrush" Color="#14532D"/>
+        <SolidColorBrush x:Key="SelectedLineBgBrush" Color="#581C87"/>
+
+        <!-- Checkbox style for line selection -->
+        <Style x:Key="LineCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Non-conflict regions (Unchanged, OursOnly, TheirsOnly) -->
+        <Border x:Name="NonConflictRegion"
+                Visibility="{Binding IsConflict, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                Padding="4,2">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Background" Value="{StaticResource UnchangedBgBrush}"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Type}" Value="{x:Static models:MergeRegionType.OursOnly}">
+                            <Setter Property="Background" Value="{StaticResource OursOnlyBgBrush}"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Type}" Value="{x:Static models:MergeRegionType.TheirsOnly}">
+                            <Setter Property="Background" Value="{StaticResource TheirsOnlyBgBrush}"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+
+            <TextBlock Text="{Binding Content}"
+                       FontFamily="Consolas"
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       TextWrapping="NoWrap"/>
+        </Border>
+
+        <!-- Conflict region -->
+        <Border x:Name="ConflictRegion"
+                Visibility="{Binding IsConflict, Converter={StaticResource BoolToVisibilityConverter}}"
+                BorderBrush="{StaticResource ConflictBorderBrush}"
+                BorderThickness="2"
+                CornerRadius="4"
+                Margin="0,4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Conflict header -->
+                <Border Grid.Row="0"
+                        Background="{StaticResource ConflictHeaderBgBrush}"
+                        Padding="8,6"
+                        CornerRadius="2,2,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Conflict icon and label -->
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="Warning" FontSize="14" Foreground="#F59E0B" Margin="0,0,6,0"/>
+                            <TextBlock Text="CONFLICT" FontWeight="SemiBold" Foreground="#FCD34D"/>
+                            <TextBlock Text="{Binding Index, StringFormat=' #{0}'}" Foreground="#FDE68A" Opacity="0.7"/>
+                        </StackPanel>
+
+                        <!-- Resolution buttons -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Button x:Name="AcceptOursBtn"
+                                    Click="AcceptOurs_Click"
+                                    Padding="8,4"
+                                    Margin="0,0,4,0"
+                                    Background="#1E3A5F"
+                                    ToolTip="Accept all from current branch">
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="Checkmark" FontSize="12" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Ours" FontSize="11"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="AcceptTheirsBtn"
+                                    Click="AcceptTheirs_Click"
+                                    Padding="8,4"
+                                    Margin="0,0,4,0"
+                                    Background="#14532D"
+                                    ToolTip="Accept all from incoming branch">
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="Checkmark" FontSize="12" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Theirs" FontSize="11"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="ManualEditBtn"
+                                    Click="ManualEdit_Click"
+                                    Padding="8,4"
+                                    Background="#581C87"
+                                    ToolTip="Manually edit this section">
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="Edit" FontSize="12" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Edit" FontSize="11"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Conflict content (selection mode or manual edit mode) -->
+                <Grid Grid.Row="1">
+                    <!-- Selection mode: show ours and theirs with checkboxes -->
+                    <Grid x:Name="SelectionModePanel"
+                          Visibility="{Binding IsManualEditMode, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Ours section -->
+                        <Border Grid.Row="0" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Border Grid.Row="0" Background="{StaticResource OursHeaderBgBrush}" Padding="8,4">
+                                    <TextBlock Text="OURS (current branch)" FontSize="11" Foreground="#93C5FD"/>
+                                </Border>
+
+                                <ItemsControl Grid.Row="1"
+                                              ItemsSource="{Binding OursSelectableLines}"
+                                              Background="Transparent"
+                                              Padding="4">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type models:SelectableLine}">
+                                            <Border Padding="2,1">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                <Setter Property="Background" Value="{StaticResource SelectedLineBgBrush}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <CheckBox Grid.Column="0"
+                                                              IsChecked="{Binding IsSelected}"
+                                                              Style="{StaticResource LineCheckBoxStyle}"/>
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Content}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="12"
+                                                               VerticalAlignment="Center"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </Border>
+
+                        <!-- Theirs section -->
+                        <Border Grid.Row="1">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Border Grid.Row="0" Background="{StaticResource TheirsHeaderBgBrush}" Padding="8,4">
+                                    <TextBlock Text="THEIRS (incoming)" FontSize="11" Foreground="#86EFAC"/>
+                                </Border>
+
+                                <ItemsControl Grid.Row="1"
+                                              ItemsSource="{Binding TheirsSelectableLines}"
+                                              Background="Transparent"
+                                              Padding="4">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type models:SelectableLine}">
+                                            <Border Padding="2,1">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                <Setter Property="Background" Value="{StaticResource SelectedLineBgBrush}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <CheckBox Grid.Column="0"
+                                                              IsChecked="{Binding IsSelected}"
+                                                              Style="{StaticResource LineCheckBoxStyle}"/>
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Content}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="12"
+                                                               VerticalAlignment="Center"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!-- Manual edit mode -->
+                    <Grid x:Name="ManualEditPanel"
+                          Visibility="{Binding IsManualEditMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Background="#581C87" Padding="8,4">
+                            <TextBlock Text="MANUAL EDIT" FontSize="11" Foreground="#E9D5FF"/>
+                        </Border>
+
+                        <TextBox Grid.Row="1"
+                                 x:Name="ManualEditTextBox"
+                                 Text="{Binding ManualEditContent, UpdateSourceTrigger=PropertyChanged}"
+                                 FontFamily="Consolas"
+                                 FontSize="12"
+                                 AcceptsReturn="True"
+                                 AcceptsTab="True"
+                                 TextWrapping="NoWrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 MinHeight="100"/>
+
+                        <Border Grid.Row="2" Padding="4" Background="{DynamicResource ControlFillColorDefaultBrush}">
+                            <Button x:Name="DoneEditingBtn"
+                                    Click="DoneEditing_Click"
+                                    HorizontalAlignment="Right"
+                                    Padding="12,4">
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="Checkmark" FontSize="12" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Done Editing"/>
+                                </StackPanel>
+                            </Button>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

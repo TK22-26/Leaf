@@ -316,6 +316,48 @@ public class GitService : IGitService
             var currentBranch = repo.Head?.FriendlyName ?? "HEAD";
             var tracking = repo.Head?.TrackingDetails;
 
+            // Check for merge in progress
+            bool isMergeInProgress = false;
+            string mergingBranch = string.Empty;
+            int conflictCount = 0;
+
+            var mergeHeadPath = System.IO.Path.Combine(repoPath, ".git", "MERGE_HEAD");
+            if (System.IO.File.Exists(mergeHeadPath))
+            {
+                isMergeInProgress = true;
+                
+                // Try to read the merging branch sha/name
+                // This is a simplification; MERGE_HEAD contains the SHA
+                // We might want to look it up, but for now knowing a merge is in progress is key
+                // Often we can get the name from .git/MERGE_MSG if needed, but let's keep it simple
+                mergingBranch = "Incoming"; // Default
+                
+                var mergeMsgPath = System.IO.Path.Combine(repoPath, ".git", "MERGE_MSG");
+                if (System.IO.File.Exists(mergeMsgPath))
+                {
+                    try 
+                    {
+                        var msg = System.IO.File.ReadAllText(mergeMsgPath).Trim();
+                        // Common format: "Merge branch 'feature' into master"
+                        if (msg.StartsWith("Merge branch '") && msg.Contains("'"))
+                        {
+                             var parts = msg.Split('\'');
+                             if (parts.Length >= 2)
+                             {
+                                 mergingBranch = parts[1];
+                             }
+                        }
+                    }
+                    catch { /* ignore */ }
+                }
+            }
+
+            // Count conflicts
+            if (repo.Index.Conflicts.Any())
+            {
+                 conflictCount = repo.Index.Conflicts.Select(c => c.Ancestor?.Path ?? c.Ours?.Path ?? c.Theirs?.Path).Distinct().Count();
+            }
+
             return new RepositoryInfo
             {
                 Path = repoPath,
@@ -324,7 +366,10 @@ public class GitService : IGitService
                 IsDirty = isDirty,
                 AheadBy = tracking?.AheadBy ?? 0,
                 BehindBy = tracking?.BehindBy ?? 0,
-                LastAccessed = DateTimeOffset.Now
+                LastAccessed = DateTimeOffset.Now,
+                IsMergeInProgress = isMergeInProgress,
+                MergingBranch = mergingBranch,
+                ConflictCount = conflictCount
             };
         });
     }
@@ -460,6 +505,23 @@ public class GitService : IGitService
         {
             using var repo = new Repository(repoPath);
 
+            // Check if there's a merge in progress with conflicts
+            if (repo.Index.Conflicts.Any())
+            {
+                throw new InvalidOperationException(
+                    "Cannot switch branches: there are unresolved merge conflicts. " +
+                    "Please resolve the conflicts or abort the merge first.");
+            }
+
+            // Check if repo is in a merge state
+            var mergeHeadPath = System.IO.Path.Combine(repoPath, ".git", "MERGE_HEAD");
+            if (System.IO.File.Exists(mergeHeadPath))
+            {
+                throw new InvalidOperationException(
+                    "Cannot switch branches: a merge is in progress. " +
+                    "Please complete or abort the merge first.");
+            }
+
             // Find the branch
             var branch = repo.Branches[branchName];
             if (branch == null)
@@ -527,28 +589,141 @@ public class GitService : IGitService
         });
     }
 
-    public async Task PopStashAsync(string repoPath)
+    public async Task<Models.MergeResult> PopStashAsync(string repoPath)
     {
-        await Task.Run(() =>
+        return await PopStashAsync(repoPath, 0);
+    }
+
+    public async Task<Models.MergeResult> PopStashAsync(string repoPath, int stashIndex)
+    {
+        return await Task.Run(() =>
         {
-            using var repo = new Repository(repoPath);
-            if (repo.Stashes.Any())
+            var result = new Models.MergeResult();
+
+            System.Diagnostics.Debug.WriteLine($"[PopStash] Starting smart pop for stash index {stashIndex} in {repoPath}");
+
+            // Step 1: Check if there are uncommitted changes
+            bool hasChanges = HasUncommittedChanges(repoPath);
+            System.Diagnostics.Debug.WriteLine($"[PopStash] Has uncommitted changes: {hasChanges}");
+
+            if (!hasChanges)
             {
-                repo.Stashes.Pop(0);
+                // Simple case - no local changes, pop directly
+                System.Diagnostics.Debug.WriteLine("[PopStash] No local changes - using simple pop");
+                return SimplePopStash(repoPath, stashIndex);
             }
+
+            // Smart pop: Patch-based approach
+            // Get stash as patch and apply with 3-way merge
+            System.Diagnostics.Debug.WriteLine("[PopStash] Local changes detected - using patch-based approach");
+
+            // Step 2: Get the stash diff as a patch
+            var stashRef = $"stash@{{{stashIndex}}}";
+            var patchResult = RunGit(repoPath, $"stash show -p {stashRef}");
+            System.Diagnostics.Debug.WriteLine($"[PopStash] Patch result: exit={patchResult.ExitCode}, length={patchResult.Output.Length}");
+
+            if (patchResult.ExitCode != 0 || string.IsNullOrWhiteSpace(patchResult.Output))
+            {
+                result.ErrorMessage = $"Failed to get stash patch: {patchResult.Error}";
+                System.Diagnostics.Debug.WriteLine($"[PopStash] ERROR: {result.ErrorMessage}");
+                return result;
+            }
+
+            // Step 3: Apply the patch using 'patch' with fuzz for fuzzy matching
+            // This allows merging when local changes exist on different lines
+            var applyResult = RunPatchWithInput(repoPath, patchResult.Output);
+            System.Diagnostics.Debug.WriteLine($"[PopStash] Patch apply result: exit={applyResult.ExitCode}, output={applyResult.Output}, error={applyResult.Error}");
+
+            // Check if patch.exe wasn't found (Git for Windows not installed)
+            if (applyResult.ExitCode == -1 && applyResult.Error.Contains("patch.exe"))
+            {
+                System.Diagnostics.Debug.WriteLine("[PopStash] patch.exe not found - Git for Windows required");
+                result.ErrorMessage = applyResult.Error;
+                return result;
+            }
+
+            // Check if patch created .rej files (rejected hunks = conflicts)
+            bool hasRejections = applyResult.Output.Contains("FAILED") || applyResult.Output.Contains("saving rejects");
+
+            if (applyResult.ExitCode == 0 && !hasRejections)
+            {
+                // Success! Patch applied cleanly - now drop the stash
+                System.Diagnostics.Debug.WriteLine("[PopStash] Patch applied cleanly - dropping stash");
+                var dropResult = RunGit(repoPath, $"stash drop {stashIndex}");
+                System.Diagnostics.Debug.WriteLine($"[PopStash] Drop result: exit={dropResult.ExitCode}");
+
+                result.Success = true;
+                return result;
+            }
+
+            // Patch failed with rejections - try commit-based merge to get proper conflict markers
+            if (hasRejections)
+            {
+                System.Diagnostics.Debug.WriteLine("[PopStash] Patch has rejections - attempting commit-based merge for conflict resolution");
+
+                // Clean up any .rej files created by patch
+                CleanupRejectFiles(repoPath);
+
+                // Try commit-based approach to get proper git conflicts
+                var mergeResult = TryCommitBasedMerge(repoPath, stashIndex);
+                if (mergeResult != null)
+                {
+                    return mergeResult;
+                }
+
+                // Fallback if commit-based merge also fails
+                result.ErrorMessage = "Stash conflicts with your local changes. Commit or stash your changes first, then try again.";
+                return result;
+            }
+
+            // Patch failed - check for actual git conflicts (shouldn't happen with patch, but check anyway)
+            var conflicts = GetConflictFiles(repoPath);
+            if (conflicts.Count > 0)
+            {
+                System.Diagnostics.Debug.WriteLine("[PopStash] CONFLICTS: Merge conflicts detected - dropping stash");
+                RunGit(repoPath, $"stash drop {stashIndex}");
+
+                result.HasConflicts = true;
+                result.ConflictingFiles = conflicts;
+                result.ErrorMessage = "Merge conflicts detected - resolve to complete";
+                return result;
+            }
+
+            // Patch failed for unknown reason - fall back to simple pop for error message
+            System.Diagnostics.Debug.WriteLine("[PopStash] Patch apply failed - falling back to simple pop for error message");
+            return SimplePopStash(repoPath, stashIndex);
         });
     }
 
-    public async Task PopStashAsync(string repoPath, int stashIndex)
+    private static Models.MergeResult SimplePopStash(string repoPath, int stashIndex)
     {
-        await Task.Run(() =>
+        var result = new Models.MergeResult();
+
+        var popResult = RunGit(repoPath, $"stash pop {stashIndex}");
+        System.Diagnostics.Debug.WriteLine($"[SimplePopStash] Result: exit={popResult.ExitCode}, output={popResult.Output}, error={popResult.Error}");
+
+        var conflicts = GetConflictFiles(repoPath);
+
+        if (popResult.ExitCode == 0 && conflicts.Count == 0)
         {
-            using var repo = new Repository(repoPath);
-            if (repo.Stashes.Count() > stashIndex)
+            result.Success = true;
+        }
+        else if (conflicts.Count > 0)
+        {
+            result.HasConflicts = true;
+            result.ConflictingFiles = conflicts;
+            result.ErrorMessage = "Stash pop resulted in merge conflicts";
+        }
+        else
+        {
+            result.ErrorMessage = !string.IsNullOrEmpty(popResult.Error) ? popResult.Error.Trim() : popResult.Output.Trim();
+            if (string.IsNullOrEmpty(result.ErrorMessage))
             {
-                repo.Stashes.Pop(stashIndex);
+                result.ErrorMessage = $"git stash pop failed with exit code {popResult.ExitCode}";
             }
-        });
+        }
+
+        return result;
     }
 
     public async Task<List<StashInfo>> GetStashesAsync(string repoPath)
@@ -613,6 +788,37 @@ public class GitService : IGitService
         }
 
         return branch ?? string.Empty;
+    }
+
+    public async Task DeleteStashAsync(string repoPath, int stashIndex)
+    {
+        await Task.Run(() =>
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = $"stash drop {stashIndex}",
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            if (process == null)
+            {
+                throw new InvalidOperationException("Failed to start git process");
+            }
+
+            string error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"Failed to delete stash: {error.Trim()}");
+            }
+        });
     }
 
     public async Task<bool> UndoCommitAsync(string repoPath)
@@ -881,5 +1087,848 @@ public class GitService : IGitService
             // Create the commit
             repo.Commit(fullMessage, signature, signature);
         });
+    }
+
+    public async Task<List<ConflictInfo>> GetConflictsAsync(string repoPath)
+    {
+        return await Task.Run(() =>
+        {
+            System.Diagnostics.Debug.WriteLine($"[GitService] GetConflictsAsync repo={repoPath}");
+            var conflicts = new List<ConflictInfo>();
+            var conflictPaths = new List<string>();
+
+            // Use git diff to find unmerged files (more reliable than LibGit2Sharp for stash conflicts)
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "diff --name-only --diff-filter=U",
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            if (process == null) return conflicts;
+
+            string output = process.StandardOutput.ReadToEnd();
+            _ = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode == 0)
+            {
+                conflictPaths.AddRange(output.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+            }
+            System.Diagnostics.Debug.WriteLine($"[GitService] diff --name-only --diff-filter=U => {conflictPaths.Count}");
+
+            if (conflictPaths.Count == 0)
+            {
+                var statusResult = RunGit(repoPath, "status --porcelain");
+                if (statusResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(statusResult.Output))
+                {
+                    foreach (var line in statusResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        if (line.Length < 3)
+                            continue;
+
+                        var status = line[..2];
+                        if (!status.Contains('U', StringComparison.Ordinal))
+                            continue;
+
+                        var path = line[3..].Trim();
+                        if (!string.IsNullOrEmpty(path))
+                        {
+                            conflictPaths.Add(path);
+                        }
+                    }
+                }
+            }
+            System.Diagnostics.Debug.WriteLine($"[GitService] status --porcelain U => {conflictPaths.Count}");
+
+            using var repo = new Repository(repoPath);
+
+            if (conflictPaths.Count == 0)
+            {
+                conflictPaths.AddRange(repo.Index.Conflicts
+                    .Select(c => c.Ancestor?.Path ?? c.Ours?.Path ?? c.Theirs?.Path)
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Select(p => p!));
+            }
+            System.Diagnostics.Debug.WriteLine($"[GitService] index conflicts => {conflictPaths.Count}");
+
+            foreach (var filePath in conflictPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var trimmedPath = filePath.Trim();
+                if (string.IsNullOrEmpty(trimmedPath)) continue;
+
+                var conflictInfo = new ConflictInfo
+                {
+                    FilePath = trimmedPath,
+                    IsResolved = false
+                };
+
+                conflictInfo.BaseContent = ReadConflictStage(repoPath, trimmedPath, 1);
+                conflictInfo.OursContent = ReadConflictStage(repoPath, trimmedPath, 2);
+                conflictInfo.TheirsContent = ReadConflictStage(repoPath, trimmedPath, 3);
+
+                // Try to get content from LibGit2Sharp index conflicts
+                var indexConflict = repo.Index.Conflicts[trimmedPath];
+                if (indexConflict != null)
+                {
+                    if (indexConflict.Ours != null)
+                    {
+                        var blob = repo.Lookup<Blob>(indexConflict.Ours.Id);
+                        conflictInfo.OursContent = blob?.GetContentText() ?? "";
+                    }
+
+                    if (indexConflict.Theirs != null)
+                    {
+                        var blob = repo.Lookup<Blob>(indexConflict.Theirs.Id);
+                        conflictInfo.TheirsContent = blob?.GetContentText() ?? "";
+                    }
+
+                    if (indexConflict.Ancestor != null)
+                    {
+                        var blob = repo.Lookup<Blob>(indexConflict.Ancestor.Id);
+                        conflictInfo.BaseContent = blob?.GetContentText() ?? "";
+                    }
+                }
+                else
+                {
+                    // Fallback: read the file with conflict markers and try to get HEAD version
+                    var fullPath = System.IO.Path.Combine(repoPath, trimmedPath);
+                    if (System.IO.File.Exists(fullPath))
+                    {
+                        conflictInfo.MergedContent = System.IO.File.ReadAllText(fullPath);
+                    }
+
+                    // Try to get HEAD version as "ours"
+                    try
+                    {
+                        var headCommit = repo.Head.Tip;
+                        var treeEntry = headCommit?[trimmedPath];
+                        if (treeEntry?.Target is Blob headBlob)
+                        {
+                            conflictInfo.OursContent = headBlob.GetContentText();
+                        }
+                    }
+                    catch { /* Ignore - file might be new */ }
+                }
+
+                conflicts.Add(conflictInfo);
+            }
+
+            return conflicts;
+        });
+    }
+
+    private static string ReadConflictStage(string repoPath, string filePath, int stage)
+    {
+        var result = RunGit(repoPath, $"show :{stage}:\"{filePath}\"");
+        return result.ExitCode == 0 ? result.Output : string.Empty;
+    }
+
+    public async Task ResolveConflictWithOursAsync(string repoPath, string filePath)
+    {
+        await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+
+            // Use git checkout --ours to resolve with our version
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = $"checkout --ours \"{filePath}\"",
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            process?.WaitForExit();
+
+            // Stage the resolved file
+            Commands.Stage(repo, filePath);
+        });
+    }
+
+    public async Task ResolveConflictWithTheirsAsync(string repoPath, string filePath)
+    {
+        await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+
+            // Use git checkout --theirs to resolve with their version
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = $"checkout --theirs \"{filePath}\"",
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            process?.WaitForExit();
+
+            // Stage the resolved file
+            Commands.Stage(repo, filePath);
+        });
+    }
+
+    public async Task MarkConflictResolvedAsync(string repoPath, string filePath)
+    {
+        await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+            // Stage the file to mark it as resolved
+            Commands.Stage(repo, filePath);
+        });
+    }
+
+    public async Task ReopenConflictAsync(string repoPath, string filePath, string baseContent, string oursContent, string theirsContent)
+    {
+        await Task.Run(() =>
+        {
+            var baseResult = RunGitWithInput(repoPath, "hash-object -w --stdin", baseContent ?? string.Empty);
+            var oursResult = RunGitWithInput(repoPath, "hash-object -w --stdin", oursContent ?? string.Empty);
+            var theirsResult = RunGitWithInput(repoPath, "hash-object -w --stdin", theirsContent ?? string.Empty);
+
+            if (baseResult.ExitCode != 0 || oursResult.ExitCode != 0 || theirsResult.ExitCode != 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GitService] Failed to create conflict blobs: {baseResult.Error} {oursResult.Error} {theirsResult.Error}");
+                return;
+            }
+
+            var baseSha = baseResult.Output.Trim();
+            var oursSha = oursResult.Output.Trim();
+            var theirsSha = theirsResult.Output.Trim();
+
+            var indexInfo = $"100644 {baseSha} 1\t{filePath}\n" +
+                            $"100644 {oursSha} 2\t{filePath}\n" +
+                            $"100644 {theirsSha} 3\t{filePath}\n";
+
+            var indexResult = RunGitWithInput(repoPath, "update-index --index-info", indexInfo);
+            if (indexResult.ExitCode != 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GitService] Failed to restore conflict index: {indexResult.Error}");
+                return;
+            }
+
+            RunGit(repoPath, $"checkout --conflict=merge \"{filePath}\"");
+        });
+    }
+
+    public async Task<List<ConflictInfo>> GetResolvedMergeFilesAsync(string repoPath)
+    {
+        return await Task.Run(() =>
+        {
+            var unresolvedResult = RunGit(repoPath, "diff --name-only --diff-filter=U");
+            var unresolved = unresolvedResult.Output
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(f => f.Trim())
+                .Where(f => !string.IsNullOrEmpty(f))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var stagedResult = RunGit(repoPath, "diff --name-only --cached");
+            var stagedFiles = stagedResult.Output
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(f => f.Trim())
+                .Where(f => !string.IsNullOrEmpty(f))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+
+            var conflictFilesFromMergeMsg = GetMergeConflictFilesFromMessage(repoPath);
+            var storedFiles = GetStoredMergeConflictFiles(repoPath);
+            var candidates = conflictFilesFromMergeMsg
+                .Concat(storedFiles)
+                .Concat(stagedFiles)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(file => !unresolved.Contains(file));
+
+            var resolvedFiles = new List<ConflictInfo>();
+            foreach (var file in candidates)
+            {
+                var (baseContent, oursContent, theirsContent) = GetMergeSideContents(repoPath, file);
+                resolvedFiles.Add(new ConflictInfo
+                {
+                    FilePath = file,
+                    BaseContent = baseContent,
+                    OursContent = oursContent,
+                    TheirsContent = theirsContent,
+                    IsResolved = true
+                });
+            }
+
+            return resolvedFiles;
+        });
+    }
+
+    public async Task<List<string>> GetStoredMergeConflictFilesAsync(string repoPath)
+    {
+        return await Task.Run(() => GetStoredMergeConflictFiles(repoPath));
+    }
+
+    public async Task SaveStoredMergeConflictFilesAsync(string repoPath, IEnumerable<string> files)
+    {
+        await Task.Run(() => SaveStoredMergeConflictFiles(repoPath, files));
+    }
+
+    public async Task ClearStoredMergeConflictFilesAsync(string repoPath)
+    {
+        await Task.Run(() =>
+        {
+            var path = GetStoredMergeConflictPath(repoPath);
+            if (System.IO.File.Exists(path))
+            {
+                System.IO.File.Delete(path);
+            }
+        });
+    }
+
+    public async Task CompleteMergeAsync(string repoPath, string commitMessage)
+    {
+        await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+
+            // Get signature from config
+            var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
+
+            // Create the merge commit
+            repo.Commit(commitMessage, signature, signature);
+        });
+    }
+
+    public async Task AbortMergeAsync(string repoPath)
+    {
+        await Task.Run(() =>
+        {
+            // Use git merge --abort
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "merge --abort",
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            process?.WaitForExit();
+        });
+    }
+
+    public async Task OpenConflictInVsCodeAsync(string repoPath, string filePath)
+    {
+        await Task.Run(async () =>
+        {
+            var conflicts = await GetConflictsAsync(repoPath);
+            var conflict = conflicts.FirstOrDefault(c => c.FilePath == filePath);
+            
+            if (conflict == null)
+            {
+                throw new InvalidOperationException($"Conflict for file '{filePath}' not found.");
+            }
+
+            var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "LeafMerge", Guid.NewGuid().ToString());
+            System.IO.Directory.CreateDirectory(tempDir);
+
+            var fileName = System.IO.Path.GetFileName(filePath);
+            var extension = System.IO.Path.GetExtension(filePath);
+            
+            var basePath = System.IO.Path.Combine(tempDir, $"{fileName}.base{extension}");
+            var localPath = System.IO.Path.Combine(tempDir, $"{fileName}.local{extension}");
+            var remotePath = System.IO.Path.Combine(tempDir, $"{fileName}.remote{extension}");
+            var mergedPath = System.IO.Path.Combine(tempDir, $"{fileName}{extension}"); // Result file
+
+            // Write contents
+            await System.IO.File.WriteAllTextAsync(basePath, conflict.BaseContent);
+            await System.IO.File.WriteAllTextAsync(localPath, conflict.OursContent);
+            await System.IO.File.WriteAllTextAsync(remotePath, conflict.TheirsContent);
+            
+            // For the merge result, start with the file content (which has markers) or ours
+            // VS Code usually wants the file to write to.
+            // Copying the current file (with markers) gives context, but base is cleaner.
+            // Let's copy the file from the repo which has markers.
+            var repoFilePath = System.IO.Path.Combine(repoPath, filePath);
+            if (System.IO.File.Exists(repoFilePath))
+            {
+                System.IO.File.Copy(repoFilePath, mergedPath, true);
+            }
+            else
+            {
+                await System.IO.File.WriteAllTextAsync(mergedPath, conflict.OursContent);
+            }
+
+            try
+            {
+                var startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "code",
+                    Arguments = $"-n --wait --merge \"{basePath}\" \"{localPath}\" \"{remotePath}\" \"{mergedPath}\"",
+                    UseShellExecute = true, // Use shell execute to find 'code' in PATH
+                    CreateNoWindow = true
+                };
+
+                using var process = System.Diagnostics.Process.Start(startInfo);
+                if (process == null)
+                {
+                    throw new InvalidOperationException("Failed to launch VS Code.");
+                }
+
+                await process.WaitForExitAsync();
+
+                // If process exited successfully, copy result back
+                if (process.ExitCode == 0)
+                {
+                    if (System.IO.File.Exists(mergedPath))
+                    {
+                        var mergedContent = await System.IO.File.ReadAllTextAsync(mergedPath);
+                        await System.IO.File.WriteAllTextAsync(repoFilePath, mergedContent);
+                        
+                        // Stage the resolved file
+                        using var repo = new Repository(repoPath);
+                        Commands.Stage(repo, filePath);
+                    }
+                }
+            }
+            finally
+            {
+                // Cleanup
+                try 
+                { 
+                    System.IO.Directory.Delete(tempDir, true); 
+                } 
+                catch { /* Ignore cleanup errors */ }
+            }
+        });
+    }
+
+    public async Task<Models.MergeResult> MergeBranchAsync(string repoPath, string branchName)
+    {
+        return await Task.Run(() =>
+        {
+            System.Diagnostics.Debug.WriteLine($"[GitService] Merging {branchName} in {repoPath}");
+            var result = RunGit(repoPath, $"merge \"{branchName}\"");
+            System.Diagnostics.Debug.WriteLine($"[GitService] Merge output: {result.Output}");
+            System.Diagnostics.Debug.WriteLine($"[GitService] Merge error: {result.Error}");
+            System.Diagnostics.Debug.WriteLine($"[GitService] Merge exit code: {result.ExitCode}");
+
+            if (result.ExitCode == 0)
+            {
+                return new Models.MergeResult { Success = true };
+            }
+
+            // Check if there are conflicts
+            if (result.Output.Contains("CONFLICT") || result.Error.Contains("CONFLICT"))
+            {
+                return new Models.MergeResult
+                {
+                    Success = false,
+                    HasConflicts = true,
+                    ErrorMessage = "Merge resulted in conflicts that need to be resolved."
+                };
+            }
+
+            // Some other failure
+            return new Models.MergeResult
+            {
+                Success = false,
+                HasConflicts = false,
+                ErrorMessage = result.Error
+            };
+        });
+    }
+
+    public async Task CleanupTempStashAsync(string repoPath)
+    {
+        await Task.Run(() =>
+        {
+            // Find and drop any TEMP_LEAF_AUTOPOP stash left over from smart pop
+            var listResult = RunGit(repoPath, "stash list");
+            var lines = listResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].Contains(TempStashMessage))
+                {
+                    RunGit(repoPath, $"stash drop {i}");
+                    break;
+                }
+            }
+        });
+    }
+
+    #region Git CLI Helpers
+
+    private const string TempStashMessage = "TEMP_LEAF_AUTOPOP";
+
+    private record GitResult(int ExitCode, string Output, string Error);
+
+    private static GitResult RunGit(string workingDirectory, string arguments)
+    {
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "git",
+            Arguments = arguments,
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = System.Diagnostics.Process.Start(startInfo);
+        if (process == null)
+        {
+            return new GitResult(-1, "", "Failed to start git process");
+        }
+
+        string output = process.StandardOutput.ReadToEnd();
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        return new GitResult(process.ExitCode, output, error);
+    }
+
+    private static GitResult RunGitWithInput(string workingDirectory, string arguments, string input)
+    {
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "git",
+            Arguments = arguments,
+            WorkingDirectory = workingDirectory,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = System.Diagnostics.Process.Start(startInfo);
+        if (process == null)
+        {
+            return new GitResult(-1, "", "Failed to start git process");
+        }
+
+        // Write the input to stdin
+        process.StandardInput.Write(input);
+        process.StandardInput.Close();
+
+        string output = process.StandardOutput.ReadToEnd();
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        return new GitResult(process.ExitCode, output, error);
+    }
+
+    private static GitResult RunPatchWithInput(string workingDirectory, string patchContent)
+    {
+        // Find patch.exe from Git installation (it's in usr/bin relative to git)
+        string? patchPath = FindPatchExecutable();
+        if (patchPath == null)
+        {
+            return new GitResult(-1, "",
+                "Could not find patch.exe. Smart stash pop requires Git for Windows to be installed. " +
+                "Download from https://git-scm.com/download/win");
+        }
+
+        // Use 'patch' command with fuzz factor for fuzzy matching
+        // This allows applying patches even when local changes exist on nearby lines
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = patchPath,
+            Arguments = "-p1 --fuzz=3 --no-backup",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = System.Diagnostics.Process.Start(startInfo);
+        if (process == null)
+        {
+            return new GitResult(-1, "", "Failed to start patch process");
+        }
+
+        // Write the patch to stdin
+        process.StandardInput.Write(patchContent);
+        process.StandardInput.Close();
+
+        string output = process.StandardOutput.ReadToEnd();
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        return new GitResult(process.ExitCode, output, error);
+    }
+
+    private static string? FindPatchExecutable()
+    {
+        // Try common Git for Windows installation paths
+        string[] possiblePaths =
+        [
+            @"C:\Program Files\Git\usr\bin\patch.exe",
+            @"C:\Program Files (x86)\Git\usr\bin\patch.exe",
+        ];
+
+        foreach (var path in possiblePaths)
+        {
+            if (System.IO.File.Exists(path))
+                return path;
+        }
+
+        // Try to find git.exe and derive patch.exe location from it
+        var gitResult = RunGit(".", "--exec-path");
+        if (gitResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(gitResult.Output))
+        {
+            // git --exec-path returns something like "C:/Program Files/Git/mingw64/libexec/git-core"
+            // patch.exe is in "C:/Program Files/Git/usr/bin/patch.exe"
+            var execPath = gitResult.Output.Trim().Replace('/', '\\');
+            var gitRoot = System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(execPath)));
+            if (gitRoot != null)
+            {
+                var patchPath = System.IO.Path.Combine(gitRoot, "usr", "bin", "patch.exe");
+                if (System.IO.File.Exists(patchPath))
+                    return patchPath;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool HasUncommittedChanges(string repoPath)
+    {
+        var result = RunGit(repoPath, "status --porcelain");
+        return !string.IsNullOrWhiteSpace(result.Output);
+    }
+
+    private static void CleanupRejectFiles(string repoPath)
+    {
+        // Find and delete any .rej files created by patch
+        try
+        {
+            foreach (var rejFile in System.IO.Directory.GetFiles(repoPath, "*.rej", System.IO.SearchOption.AllDirectories))
+            {
+                System.IO.File.Delete(rejFile);
+                System.Diagnostics.Debug.WriteLine($"[CleanupRejectFiles] Deleted {rejFile}");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[CleanupRejectFiles] Error cleaning up .rej files: {ex.Message}");
+        }
+    }
+
+    private static Models.MergeResult? TryCommitBasedMerge(string repoPath, int stashIndex)
+    {
+        // Approach: stash local -> apply target -> stage -> apply local stash -> get conflicts
+        System.Diagnostics.Debug.WriteLine("[TryCommitBasedMerge] Starting commit-based merge approach");
+
+        // Step 1: Stash local changes temporarily
+        var tempStashResult = RunGit(repoPath, $"stash push -m \"{TempStashMessage}\"");
+        if (tempStashResult.ExitCode != 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TryCommitBasedMerge] Failed to create temp stash: {tempStashResult.Error}");
+            return null;
+        }
+        System.Diagnostics.Debug.WriteLine("[TryCommitBasedMerge] Created temp stash for local changes");
+
+        // Target stash index shifted by +1 since we added TEMP at index 0
+        int adjustedIndex = stashIndex + 1;
+
+        // Step 2: Apply target stash (working dir is now clean)
+        var applyTargetResult = RunGit(repoPath, $"stash apply {adjustedIndex}");
+        if (applyTargetResult.ExitCode != 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TryCommitBasedMerge] Failed to apply target stash: {applyTargetResult.Error}");
+            // Restore local changes
+            RunGit(repoPath, "stash pop 0");
+            return null;
+        }
+        System.Diagnostics.Debug.WriteLine("[TryCommitBasedMerge] Applied target stash");
+
+        // Step 3: Stage all changes from target stash
+        RunGit(repoPath, "add -A");
+        System.Diagnostics.Debug.WriteLine("[TryCommitBasedMerge] Staged target stash changes");
+
+        // Step 4: Apply temp stash (local changes) - this should attempt merge
+        var applyTempResult = RunGit(repoPath, "stash apply 0");
+        System.Diagnostics.Debug.WriteLine($"[TryCommitBasedMerge] Apply temp result: exit={applyTempResult.ExitCode}, error={applyTempResult.Error}");
+
+        // Check for conflicts
+        var conflicts = GetConflictFiles(repoPath);
+        System.Diagnostics.Debug.WriteLine($"[TryCommitBasedMerge] Conflicts found: {conflicts.Count}");
+
+        if (conflicts.Count > 0)
+        {
+            // Success! We have proper git conflicts that can be resolved
+            // Drop the target stash since its changes are now in the working dir
+            RunGit(repoPath, $"stash drop {adjustedIndex}");
+            // Keep TEMP stash - will be cleaned up after conflict resolution
+            System.Diagnostics.Debug.WriteLine("[TryCommitBasedMerge] Conflicts created successfully");
+
+            return new Models.MergeResult
+            {
+                HasConflicts = true,
+                ConflictingFiles = conflicts,
+                ErrorMessage = "Merge conflicts detected - resolve to complete"
+            };
+        }
+
+        if (applyTempResult.ExitCode == 0)
+        {
+            // No conflicts - both applied cleanly
+            // Drop both stashes
+            RunGit(repoPath, $"stash drop {adjustedIndex}"); // Drop target
+            RunGit(repoPath, "stash drop 0"); // Drop temp
+            System.Diagnostics.Debug.WriteLine("[TryCommitBasedMerge] Both stashes applied cleanly");
+
+            return new Models.MergeResult { Success = true };
+        }
+
+        // Apply failed but no conflicts - something else went wrong
+        // Try to restore original state
+        System.Diagnostics.Debug.WriteLine("[TryCommitBasedMerge] Apply failed without conflicts - restoring state");
+        RunGit(repoPath, "reset --hard HEAD");
+        RunGit(repoPath, "stash pop 0"); // Restore local changes
+        return null;
+    }
+
+    private static List<string> GetConflictFiles(string repoPath)
+    {
+        var result = RunGit(repoPath, "diff --name-only --diff-filter=U");
+        return result.Output
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(f => f.Trim())
+            .Where(f => !string.IsNullOrEmpty(f))
+            .ToList();
+    }
+
+    #endregion
+
+    private static (string baseContent, string oursContent, string theirsContent) GetMergeSideContents(string repoPath, string filePath)
+    {
+        var oursContent = GetRefFileContent(repoPath, "HEAD", filePath);
+        var theirsContent = GetRefFileContent(repoPath, "MERGE_HEAD", filePath);
+
+        var baseShaResult = RunGit(repoPath, "merge-base HEAD MERGE_HEAD");
+        var baseSha = baseShaResult.ExitCode == 0 ? baseShaResult.Output.Trim() : string.Empty;
+        var baseContent = string.IsNullOrEmpty(baseSha)
+            ? string.Empty
+            : GetRefFileContent(repoPath, baseSha, filePath);
+
+        return (baseContent, oursContent, theirsContent);
+    }
+
+    private static string GetRefFileContent(string repoPath, string refName, string filePath)
+    {
+        var result = RunGit(repoPath, $"show {refName}:\"{filePath}\"");
+        return result.ExitCode == 0 ? result.Output : string.Empty;
+    }
+
+    private static List<string> GetMergeConflictFilesFromMessage(string repoPath)
+    {
+        try
+        {
+            using var repo = new Repository(repoPath);
+            var mergeMessagePath = System.IO.Path.Combine(repo.Info.Path, "MERGE_MSG");
+            if (!System.IO.File.Exists(mergeMessagePath))
+            {
+                return [];
+            }
+
+            var lines = System.IO.File.ReadAllLines(mergeMessagePath);
+            var results = new List<string>();
+            var inConflicts = false;
+
+            foreach (var line in lines)
+            {
+                if (!inConflicts)
+                {
+                    if (line.StartsWith("Conflicts:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        inConflicts = true;
+                    }
+
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    break;
+                }
+
+                var trimmed = line.Trim();
+                if (string.IsNullOrEmpty(trimmed))
+                {
+                    continue;
+                }
+
+                results.Add(trimmed);
+            }
+
+            return results;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[GitService] Failed to read MERGE_MSG: {ex.Message}");
+            return [];
+        }
+    }
+
+    private static string GetStoredMergeConflictPath(string repoPath)
+    {
+        using var repo = new Repository(repoPath);
+        return System.IO.Path.Combine(repo.Info.Path, "leaf-merge-conflicts.txt");
+    }
+
+    private static List<string> GetStoredMergeConflictFiles(string repoPath)
+    {
+        try
+        {
+            var path = GetStoredMergeConflictPath(repoPath);
+            if (!System.IO.File.Exists(path))
+            {
+                return [];
+            }
+
+            return System.IO.File.ReadAllLines(path)
+                .Select(line => line.Trim())
+                .Where(line => !string.IsNullOrEmpty(line))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[GitService] Failed to read stored merge conflicts: {ex.Message}");
+            return [];
+        }
+    }
+
+    private static void SaveStoredMergeConflictFiles(string repoPath, IEnumerable<string> files)
+    {
+        try
+        {
+            var path = GetStoredMergeConflictPath(repoPath);
+            var lines = files
+                .Where(file => !string.IsNullOrWhiteSpace(file))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            System.IO.File.WriteAllLines(path, lines);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[GitService] Failed to store merge conflicts: {ex.Message}");
+        }
     }
 }

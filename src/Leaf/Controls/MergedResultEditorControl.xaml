@@ -1,0 +1,26 @@
+<UserControl x:Class="Leaf.Controls.MergedResultEditorControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
+             xmlns:controls="clr-namespace:Leaf.Controls"
+             mc:Ignorable="d">
+    <Grid>
+        <controls:MergedResultBackground x:Name="BackgroundLayer"
+                                         Panel.ZIndex="0"
+                                         IsHitTestVisible="False"/>
+        <avalonedit:TextEditor x:Name="Editor"
+                               Panel.ZIndex="1"
+                               Margin="10"
+                               FontFamily="Consolas"
+                               FontSize="12.5"
+                               ShowLineNumbers="True"
+                               LineNumbersForeground="{DynamicResource TextFillColorTertiaryBrush}"
+                               HorizontalScrollBarVisibility="Auto"
+                               VerticalScrollBarVisibility="Auto"
+                               Background="Transparent"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               Padding="0,2,0,2"/>
+    </Grid>
+</UserControl>
