@@ -1,0 +1,293 @@
+<UserControl x:Class="Leaf.Views.GitGraphView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:Leaf.Controls"
+             xmlns:converters="clr-namespace:Leaf.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="800"
+             x:Name="GitGraphViewRoot">
+
+    <UserControl.Resources>
+        <!-- Fixed row height for perfect alignment -->
+        <sys:Double x:Key="RowHeight" xmlns:sys="clr-namespace:System;assembly=mscorlib">28</sys:Double>
+        <!-- Trail/highlight height: NodeRadius(5) * 3.75 + 4 = 22.75, rounded to 23 -->
+        <sys:Double x:Key="TrailHeight" xmlns:sys="clr-namespace:System;assembly=mscorlib">23</sys:Double>
+        <converters:BoolToOpacityConverter x:Key="BoolToOpacityConverter"/>
+        <converters:IdenticonConverter x:Key="IdenticonConverter"/>
+        <!-- Leaf green accent colors -->
+        <SolidColorBrush x:Key="LeafAccentHoverBrush" Color="#3328A745"/>
+        <SolidColorBrush x:Key="LeafAccentSelectedBrush" Color="#5528A745"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Loading overlay -->
+        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}"
+                Panel.ZIndex="100">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <ProgressBar IsIndeterminate="True" Width="200" Height="4"/>
+                <TextBlock Text="Loading commits..."
+                           Margin="0,8,0,0"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Error message -->
+        <Border Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibilityConverter}, FallbackValue=Collapsed}"
+                Padding="16">
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="#E81123"/>
+        </Border>
+
+        <!-- Main content: Single ScrollViewer containing graph + commit list -->
+        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      x:Name="MainScrollViewer">
+            <Grid Margin="0,0,0,28" VerticalAlignment="Top">
+                <Grid.ColumnDefinitions>
+                    <!-- Graph canvas column (auto width based on lanes) -->
+                    <ColumnDefinition Width="Auto"/>
+                    <!-- Commit list column (fills remaining space) -->
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Git Graph Canvas -->
+                <controls:GitGraphCanvas Grid.Column="0"
+                                          x:Name="GraphCanvas"
+                                          Nodes="{Binding Nodes}"
+                                          MaxLane="{Binding MaxLane}"
+                                          SelectedSha="{Binding SelectedSha}"
+                                          HoveredSha="{Binding HoveredSha, Mode=TwoWay}"
+                                          IsSearchActive="{Binding IsSearchActive}"
+                                          HasWorkingChanges="{Binding HasWorkingChanges}"
+                                          IsWorkingChangesSelected="{Binding IsWorkingChangesSelected}"
+                                          CurrentBranchName="{Binding WorkingChanges.BranchName}"
+                                          StashCount="{Binding Stashes.Count, Mode=OneWay}"
+                                          Stashes="{Binding Stashes, Mode=OneWay}"
+                                          SelectedStashIndex="{Binding SelectedStash.Index, Mode=OneWay, FallbackValue=-1}"
+                                          RowHeight="{StaticResource RowHeight}"
+                                          Height="{Binding TotalHeight}"
+                                          MinWidth="80"
+                                          MouseLeftButtonDown="GraphCanvas_MouseLeftButtonDown"
+                                          MouseRightButtonDown="GraphCanvas_MouseRightButtonDown"/>
+
+                <!-- Commit List with Working Changes row -->
+                <StackPanel Grid.Column="1" Height="{Binding TotalHeight}">
+                    <!-- Working Changes Row (shown when HasWorkingChanges is true) -->
+                    <Border x:Name="WorkingChangesRow"
+                            Height="{StaticResource RowHeight}"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Visibility="{Binding HasWorkingChanges, Converter={StaticResource BoolToVisibilityConverter}}"
+                            MouseLeftButtonDown="WorkingChangesRow_MouseLeftButtonDown"
+                            MouseEnter="WorkingChangesRow_MouseEnter"
+                            MouseLeave="WorkingChangesRow_MouseLeave">
+                        <Grid>
+                            <!-- Highlight background (uses same green accent as regular commits) -->
+                            <Border x:Name="WorkingChangesHighlight"
+                                    Height="{StaticResource TrailHeight}"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"/>
+                            <!-- Content -->
+                            <StackPanel Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                                <TextBlock TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                    <Run Text="WIP on "/><Run Text="{Binding WorkingChanges.BranchName, Mode=OneWay}"/>
+                                </TextBlock>
+                                <!-- File change counts -->
+                                <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                                    <!-- Modified (hidden when 0) -->
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding WorkingChanges.ModifiedCount}" Value="0">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="&#xE70F;" FontFamily="Segoe Fluent Icons" FontSize="11"
+                                                   Foreground="#F5A623" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="{Binding WorkingChanges.ModifiedCount}" FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <!-- Added (hidden when 0) -->
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding WorkingChanges.AddedCount}" Value="0">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" FontSize="11"
+                                                   Foreground="#28A745" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="{Binding WorkingChanges.AddedCount}" FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <!-- Deleted (hidden when 0) -->
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding WorkingChanges.DeletedCount}" Value="0">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="11"
+                                                   Foreground="#E81123" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="{Binding WorkingChanges.DeletedCount}" FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Stash List (shown when there are stashes) -->
+                    <ItemsControl ItemsSource="{Binding Stashes}"
+                                  x:Name="StashList">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="StashRowContainer"
+                                        Height="{StaticResource RowHeight}"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Cursor="Hand"
+                                        MouseLeftButtonDown="StashItem_MouseLeftButtonDown"
+                                        MouseEnter="StashItem_MouseEnter"
+                                        MouseLeave="StashItem_MouseLeave">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Pop Stash"
+                                                      Click="PopStashMenuItem_Click"
+                                                      InputGestureText="Apply and remove">
+                                                <MenuItem.Icon>
+                                                    <TextBlock Text="&#xE74C;" FontFamily="Segoe Fluent Icons" FontSize="14"/>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <Separator/>
+                                            <MenuItem Header="Delete Stash"
+                                                      Click="DeleteStashMenuItem_Click"
+                                                      InputGestureText="Discard">
+                                                <MenuItem.Icon>
+                                                    <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#E81123"/>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                    <Grid>
+                                        <!-- Highlight background -->
+                                        <Border x:Name="StashHighlightBorder"
+                                                Height="{StaticResource TrailHeight}"
+                                                VerticalAlignment="Center"
+                                                Background="Transparent"/>
+                                        <!-- Content -->
+                                        <StackPanel Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                                <Run Text="{Binding MessageShort, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <!-- Date display -->
+                                            <TextBlock Text="{Binding DateDisplay, Mode=OneWay}"
+                                                       Margin="12,0,0,0"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <!-- Hover: subtle green highlight -->
+                                    <Trigger SourceName="StashRowContainer" Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="StashHighlightBorder" Property="Background" Value="{StaticResource LeafAccentHoverBrush}"/>
+                                    </Trigger>
+                                    <!-- Selected: stronger highlight -->
+                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                        <Setter TargetName="StashHighlightBorder" Property="Background" Value="{StaticResource LeafAccentSelectedBrush}"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Commit List (ItemsControl for fixed height rows, no internal scrolling) -->
+                    <ItemsControl ItemsSource="{Binding Commits}"
+                                  x:Name="CommitList">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border x:Name="RowContainer"
+                                    Height="{StaticResource RowHeight}"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    MouseLeftButtonDown="CommitItem_MouseLeftButtonDown"
+                                    MouseEnter="CommitItem_MouseEnter"
+                                    MouseLeave="CommitItem_MouseLeave"
+                                    ContextMenuOpening="CommitItem_ContextMenuOpening">
+                                <Grid>
+                                    <!-- Highlight background (matches trail height, extends to edge) -->
+                                    <Border x:Name="HighlightBorder"
+                                            Height="{StaticResource TrailHeight}"
+                                            VerticalAlignment="Center"
+                                            Background="Transparent"/>
+                                    <!-- Content -->
+                                      <StackPanel Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                  Opacity="{Binding IsDimmed, Converter={StaticResource BoolToOpacityConverter}}">
+                                          <!-- Commit message (secondary color) -->
+                                          <TextBlock Text="{Binding MessageShort}"
+                                                     TextTrimming="CharacterEllipsis"
+                                                     VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   Margin="0,0,16,0"/>
+
+                                        <!-- Commit description (tertiary color) -->
+                                        <TextBlock Text="{Binding Description}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <DataTemplate.Triggers>
+                                <!-- Hover: subtle green highlight -->
+                                <Trigger SourceName="RowContainer" Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="HighlightBorder" Property="Background" Value="{StaticResource LeafAccentHoverBrush}"/>
+                                </Trigger>
+                                <!-- Selected or search match: stronger green highlight -->
+                                <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
+                                    <Setter TargetName="HighlightBorder" Property="Background" Value="{StaticResource LeafAccentSelectedBrush}"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

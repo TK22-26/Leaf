@@ -1,0 +1,434 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Leaf.Graph;
+using Leaf.Models;
+using Leaf.Services;
+
+namespace Leaf.ViewModels;
+
+/// <summary>
+/// ViewModel for the Git graph and commit list view.
+/// </summary>
+public partial class GitGraphViewModel : ObservableObject
+{
+    /// <summary>
+    /// Special SHA value indicating working changes are selected.
+    /// </summary>
+    public const string WorkingChangesSha = "WORKING_CHANGES";
+
+    private readonly IGitService _gitService;
+    private readonly GraphBuilder _graphBuilder = new();
+
+    [ObservableProperty]
+    private string? _repositoryPath;
+
+    [ObservableProperty]
+    private ObservableCollection<CommitInfo> _commits = [];
+
+    [ObservableProperty]
+    private ObservableCollection<GitTreeNode> _nodes = [];
+
+    [ObservableProperty]
+    private CommitInfo? _selectedCommit;
+
+    [ObservableProperty]
+    private string? _selectedSha;
+
+    [ObservableProperty]
+    private string? _hoveredSha;
+
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isSearchActive;
+
+    [ObservableProperty]
+    private bool _isLoading;
+
+    [ObservableProperty]
+    private string? _errorMessage;
+
+    [ObservableProperty]
+    private int _maxLane;
+
+    [ObservableProperty]
+    private double _rowHeight = 28.0;
+
+    [ObservableProperty]
+    private double _totalHeight;
+
+    /// <summary>
+    /// Working directory changes (staged and unstaged files).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWorkingChanges))]
+    private WorkingChangesInfo? _workingChanges;
+
+    /// <summary>
+    /// True if working changes node is currently selected.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isWorkingChangesSelected;
+
+    /// <summary>
+    /// True if there are any working directory changes.
+    /// </summary>
+    public bool HasWorkingChanges => WorkingChanges?.HasChanges ?? false;
+
+    /// <summary>
+    /// Stashes in the repository.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStashes))]
+    private ObservableCollection<StashInfo> _stashes = [];
+
+    /// <summary>
+    /// Currently selected stash (if any).
+    /// </summary>
+    [ObservableProperty]
+    private StashInfo? _selectedStash;
+
+    /// <summary>
+    /// True if there are any stashes.
+    /// </summary>
+    public bool HasStashes => Stashes.Count > 0;
+
+    public GitGraphViewModel(IGitService gitService)
+    {
+        _gitService = gitService;
+    }
+
+    /// <summary>
+    /// Load commits for a repository.
+    /// </summary>
+    [RelayCommand]
+    public async Task LoadRepositoryAsync(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return;
+
+        try
+        {
+            // Only show loading overlay on initial load (no existing data)
+            // This prevents flashing when refreshing
+            bool isInitialLoad = Commits.Count == 0;
+            if (isInitialLoad)
+            {
+                IsLoading = true;
+            }
+
+            ErrorMessage = null;
+            RepositoryPath = path;
+
+            // Load working changes, commits, and stashes in parallel
+            var workingChangesTask = _gitService.GetWorkingChangesAsync(path);
+            var commitsTask = _gitService.GetCommitHistoryAsync(path, 500);
+            var stashesTask = _gitService.GetStashesAsync(path);
+
+            await Task.WhenAll(workingChangesTask, commitsTask, stashesTask);
+
+            var workingChanges = await workingChangesTask;
+            var commits = await commitsTask;
+            var stashes = await stashesTask;
+
+            var currentBranchName = workingChanges?.BranchName;
+            if (string.IsNullOrWhiteSpace(currentBranchName))
+            {
+                currentBranchName = commits
+                    .SelectMany(c => c.BranchLabels)
+                    .FirstOrDefault(l => l.IsCurrent)?.Name;
+            }
+
+            // Build graph
+            var nodes = _graphBuilder.BuildGraph(commits, currentBranchName);
+
+            // Atomically replace collections to avoid flashing
+            // (replacing triggers single property change vs many Add/Clear operations)
+            Nodes = new ObservableCollection<GitTreeNode>(nodes);
+            Commits = new ObservableCollection<CommitInfo>(commits);
+            WorkingChanges = workingChanges;
+            Stashes = new ObservableCollection<StashInfo>(stashes);
+
+            MaxLane = _graphBuilder.MaxLane;
+
+            // Calculate total height including working changes and stash rows
+            int rowCount = commits.Count;
+            if (HasWorkingChanges)
+            {
+                rowCount += 1; // Add one row for working changes
+            }
+            rowCount += stashes.Count; // Add row for each stash
+            TotalHeight = rowCount * RowHeight;
+
+            // Preserve selection if it was selected, otherwise clear
+            // This prevents losing selection when file watcher triggers reload during staging
+            bool wasWorkingChangesSelected = IsWorkingChangesSelected;
+            var wasSelectedStashIndex = SelectedStash?.Index;
+
+            SelectedCommit = null;
+            SelectedStash = wasSelectedStashIndex.HasValue && wasSelectedStashIndex.Value < stashes.Count
+                ? stashes[wasSelectedStashIndex.Value]
+                : null;
+            SelectedSha = wasWorkingChangesSelected ? WorkingChangesSha : null;
+            IsWorkingChangesSelected = wasWorkingChangesSelected && HasWorkingChanges;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to load repository: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Refresh working changes only (faster than full reload).
+    /// </summary>
+    public async Task RefreshWorkingChangesAsync()
+    {
+        if (string.IsNullOrEmpty(RepositoryPath))
+            return;
+
+        try
+        {
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(RepositoryPath);
+
+            // Recalculate total height
+            int rowCount = Commits.Count;
+            if (HasWorkingChanges)
+            {
+                rowCount += 1;
+            }
+            rowCount += Stashes.Count; // Include stash rows
+            TotalHeight = rowCount * RowHeight;
+        }
+        catch
+        {
+            // Silently fail - don't disrupt the UI
+        }
+    }
+
+    /// <summary>
+    /// Select the working changes node.
+    /// </summary>
+    [RelayCommand]
+    public void SelectWorkingChanges()
+    {
+        // Deselect any selected commit or stash
+        if (SelectedCommit != null)
+        {
+            SelectedCommit.IsSelected = false;
+            SelectedCommit = null;
+        }
+        if (SelectedStash != null)
+        {
+            SelectedStash.IsSelected = false;
+            SelectedStash = null;
+        }
+
+        IsWorkingChangesSelected = true;
+        SelectedSha = WorkingChangesSha;
+    }
+
+    /// <summary>
+    /// Select a stash.
+    /// </summary>
+    [RelayCommand]
+    public void SelectStash(StashInfo? stash)
+    {
+        // Deselect any selected commit or working changes
+        if (SelectedCommit != null)
+        {
+            SelectedCommit.IsSelected = false;
+            SelectedCommit = null;
+        }
+        IsWorkingChangesSelected = false;
+
+        // Deselect previously selected stash
+        if (SelectedStash != null)
+        {
+            SelectedStash.IsSelected = false;
+        }
+
+        SelectedStash = stash;
+        SelectedSha = stash?.Sha;
+
+        // Mark the new stash as selected
+        if (stash != null)
+        {
+            stash.IsSelected = true;
+        }
+    }
+
+    /// <summary>
+    /// Refresh the current repository.
+    /// </summary>
+    [RelayCommand]
+    public async Task RefreshAsync()
+    {
+        await LoadRepositoryAsync(RepositoryPath);
+    }
+
+    /// <summary>
+    /// Select a commit by SHA.
+    /// </summary>
+    [RelayCommand]
+    public void SelectCommit(CommitInfo? commit)
+    {
+        // Clear working changes and stash selection when selecting a commit
+        IsWorkingChangesSelected = false;
+        if (SelectedStash != null)
+        {
+            SelectedStash.IsSelected = false;
+            SelectedStash = null;
+        }
+
+        SelectedCommit = commit;
+        SelectedSha = commit?.Sha;
+    }
+
+    /// <summary>
+    /// Select a commit by index (for list selection).
+    /// </summary>
+    public void SelectCommitByIndex(int index)
+    {
+        if (index >= 0 && index < Commits.Count)
+        {
+            SelectCommit(Commits[index]);
+        }
+    }
+
+    partial void OnSelectedCommitChanged(CommitInfo? oldValue, CommitInfo? newValue)
+    {
+        // Update IsSelected on old and new commits
+        if (oldValue != null)
+            oldValue.IsSelected = false;
+        if (newValue != null)
+            newValue.IsSelected = true;
+
+        SelectedSha = newValue?.Sha;
+
+        // Update canvas to redraw trails with correct opacity
+        UpdateNodeSearchState();
+    }
+
+    partial void OnSearchTextChanged(string value)
+    {
+        ApplySearchFilter(value);
+    }
+
+    /// <summary>
+    /// Apply search filter to commits and nodes.
+    /// </summary>
+    public void ApplySearchFilter(string searchText)
+    {
+        var trimmed = searchText?.Trim() ?? string.Empty;
+        bool hasSearch = !string.IsNullOrEmpty(trimmed);
+        CommitInfo? shaMatch = null;
+
+        foreach (var commit in Commits)
+        {
+            if (hasSearch)
+            {
+                // Check if commit matches search (message or SHA)
+                bool matches = commit.MessageShort.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
+                               commit.Message.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
+                               commit.Sha.StartsWith(trimmed, StringComparison.OrdinalIgnoreCase) ||
+                               commit.Author.Contains(trimmed, StringComparison.OrdinalIgnoreCase);
+
+                commit.IsSearchHighlighted = matches;
+                commit.IsDimmed = !matches;
+
+                // Track first SHA match for auto-scroll
+                if (shaMatch == null && commit.Sha.StartsWith(trimmed, StringComparison.OrdinalIgnoreCase))
+                {
+                    shaMatch = commit;
+                }
+            }
+            else
+            {
+                // No search active - clear all flags
+                commit.IsSearchHighlighted = false;
+                commit.IsDimmed = false;
+            }
+        }
+
+        // Update nodes for canvas trail rendering
+        UpdateNodeSearchState();
+
+        // Set IsSearchActive AFTER updating data, so canvas renders with correct state
+        IsSearchActive = hasSearch;
+
+        // Auto-select SHA matches to trigger scroll
+        if (shaMatch != null && IsLikelyShaSearch(trimmed))
+        {
+            SelectCommit(shaMatch);
+        }
+    }
+
+    /// <summary>
+    /// Check if search text looks like a SHA (hex-only, 4+ chars).
+    /// </summary>
+    private static bool IsLikelyShaSearch(string text)
+    {
+        // SHA searches are hex-only and typically 4-40 chars
+        return text.Length >= 4 &&
+               text.Length <= 40 &&
+               text.All(c => char.IsAsciiHexDigit(c));
+    }
+
+    /// <summary>
+    /// Update node search state for canvas rendering.
+    /// </summary>
+    private void UpdateNodeSearchState()
+    {
+        foreach (var node in Nodes)
+        {
+            // Find matching commit
+            var commit = Commits.FirstOrDefault(c => c.Sha == node.Sha);
+            if (commit != null)
+            {
+                // Node is highlighted if selected or search-highlighted
+                node.IsSearchMatch = commit.IsSelected || commit.IsSearchHighlighted;
+            }
+            else
+            {
+                node.IsSearchMatch = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Find and select the first matching commit.
+    /// </summary>
+    public CommitInfo? FindFirstMatch(string searchText)
+    {
+        var trimmed = searchText?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(trimmed))
+            return null;
+
+        return Commits.FirstOrDefault(c =>
+            c.MessageShort.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
+            c.Message.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
+            c.Sha.StartsWith(trimmed, StringComparison.OrdinalIgnoreCase) ||
+            c.Author.Contains(trimmed, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Select a commit by its SHA hash.
+    /// </summary>
+    public void SelectCommitBySha(string sha)
+    {
+        if (string.IsNullOrEmpty(sha))
+            return;
+
+        var commit = Commits.FirstOrDefault(c => c.Sha == sha || c.Sha.StartsWith(sha));
+        if (commit != null)
+        {
+            SelectCommit(commit);
+        }
+    }
+}
