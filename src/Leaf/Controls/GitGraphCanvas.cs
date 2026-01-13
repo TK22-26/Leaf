@@ -935,7 +935,8 @@ public class GitGraphCanvas : FrameworkElement
                 linePen.Freeze();
 
                 // Draw horizontal line from label to node (stop before node edge)
-                dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(nodeX - NodeRadius - 4, y));
+                double lineEndX = node.IsMerge ? nodeX : nodeX - NodeRadius - 4;
+                dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(lineEndX, y));
             }
     }
 
@@ -1034,7 +1035,8 @@ public class GitGraphCanvas : FrameworkElement
         // Draw connecting line from label to the commit node (stop before node edge)
         var linePen = new Pen(ghostBrush, 1.5);
         linePen.Freeze();
-        dc.DrawLine(linePen, new Point(labelX + totalWidth, y), new Point(nodeX - NodeRadius - 4, y));
+        double lineEndX = node.IsMerge ? nodeX : nodeX - NodeRadius - 4;
+        dc.DrawLine(linePen, new Point(labelX + totalWidth, y), new Point(lineEndX, y));
     }
 
     private double GetXForColumn(int column)
