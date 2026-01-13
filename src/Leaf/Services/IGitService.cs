@@ -133,6 +133,16 @@ public interface IGitService
     Task<WorkingChangesInfo> GetWorkingChangesAsync(string repoPath);
 
     /// <summary>
+    /// Get the combined diff of staged and unstaged changes.
+    /// </summary>
+    Task<string> GetWorkingChangesPatchAsync(string repoPath);
+
+    /// <summary>
+    /// Get a compact summary of staged changes.
+    /// </summary>
+    Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100);
+
+    /// <summary>
     /// Stage a single file for commit.
     /// </summary>
     Task StageFileAsync(string repoPath, string filePath);

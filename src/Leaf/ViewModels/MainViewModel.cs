@@ -112,7 +112,7 @@ public partial class MainViewModel : ObservableObject
 
         _gitGraphViewModel = new GitGraphViewModel(gitService);
         _commitDetailViewModel = new CommitDetailViewModel(gitService);
-        _workingChangesViewModel = new WorkingChangesViewModel(gitService);
+        _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService);
 
         RepositoryRootItems = new ObservableCollection<object>();
 

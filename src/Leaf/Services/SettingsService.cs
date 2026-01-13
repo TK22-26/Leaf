@@ -108,6 +108,11 @@ public class AppSettings
     public string DefaultClonePath { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     public string AzureDevOpsOrganization { get; set; } = string.Empty;
     public string GitHubUsername { get; set; } = string.Empty;
+    public string DefaultAiProvider { get; set; } = string.Empty;
+    public bool IsClaudeConnected { get; set; }
+    public bool IsGeminiConnected { get; set; }
+    public bool IsCodexConnected { get; set; }
+    public int AiCliTimeoutSeconds { get; set; } = 10;
     public double WindowWidth { get; set; } = 1200;
     public double WindowHeight { get; set; } = 700;
     public double WindowLeft { get; set; } = -1;

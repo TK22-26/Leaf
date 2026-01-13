@@ -42,6 +42,7 @@
                 SelectedIndex="0">
                 <ListBoxItem Content="Authentication" />
                 <ListBoxItem Content="Clone Path" />
+                <ListBoxItem Content="AI Integrations" />
             </ListBox>
 
             <!--  Right content: Authentication  -->
@@ -324,6 +325,167 @@
                                 Padding="12,6"
                                 Click="BrowseClonePath_Click"
                                 Content="Browse..." />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </ScrollViewer>
+
+            <!--  Right content: AI Integrations  -->
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer.Style>
+                    <Style TargetType="ScrollViewer">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SelectedIndex, ElementName=SettingsNav}" Value="2">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ScrollViewer.Style>
+                <Border
+                    Padding="16"
+                    BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                    BorderThickness="1"
+                    CornerRadius="4">
+                    <StackPanel>
+                        <TextBlock
+                            Margin="0,0,0,12"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Text="AI Integrations" />
+
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                Text="Default AI" />
+                            <ComboBox
+                                x:Name="AiDefaultComboBox"
+                                Grid.Column="1"
+                                Margin="8,0,0,0"
+                                MinWidth="140"
+                                SelectionChanged="AiDefaultComboBox_SelectionChanged" />
+                        </Grid>
+
+                        <TextBlock
+                            Margin="0,0,0,12"
+                            FontSize="11"
+                            Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                            Text="Connect a local CLI to enable AI features." />
+
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                Text="CLI timeout (s)" />
+                            <TextBox
+                                x:Name="AiTimeoutTextBox"
+                                Grid.Column="1"
+                                Margin="8,0,0,0"
+                                Padding="6,4"
+                                VerticalContentAlignment="Center"
+                                Width="80"
+                                HorizontalAlignment="Right" />
+                        </Grid>
+
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock FontWeight="SemiBold" Text="Claude" />
+                                <TextBlock
+                                    x:Name="ClaudeStatusText"
+                                    FontSize="11"
+                                    Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                    Text="Not connected" />
+                            </StackPanel>
+                            <Button
+                                x:Name="ClaudeConnectButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="ClaudeConnect_Click"
+                                Content="Connect" />
+                            <Button
+                                x:Name="ClaudeDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="ClaudeDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
+                        </Grid>
+
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock FontWeight="SemiBold" Text="Gemini" />
+                                <TextBlock
+                                    x:Name="GeminiStatusText"
+                                    FontSize="11"
+                                    Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                    Text="Not connected" />
+                            </StackPanel>
+                            <Button
+                                x:Name="GeminiConnectButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="GeminiConnect_Click"
+                                Content="Connect" />
+                            <Button
+                                x:Name="GeminiDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="GeminiDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock FontWeight="SemiBold" Text="Codex" />
+                                <TextBlock
+                                    x:Name="CodexStatusText"
+                                    FontSize="11"
+                                    Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                    Text="Not connected" />
+                            </StackPanel>
+                            <Button
+                                x:Name="CodexConnectButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="CodexConnect_Click"
+                                Content="Connect" />
+                            <Button
+                                x:Name="CodexDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="CodexDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
                         </Grid>
                     </StackPanel>
                 </Border>

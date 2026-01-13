@@ -1,3 +1,4 @@
+using System.Text;
 using Leaf.Models;
 using LibGit2Sharp;
 using LibGit2Sharp.Handlers;
@@ -998,6 +999,86 @@ public class GitService : IGitService
             }
 
             return workingChanges;
+        });
+    }
+
+    public async Task<string> GetWorkingChangesPatchAsync(string repoPath)
+    {
+        return await Task.Run(() =>
+        {
+            var staged = RunGit(repoPath, "diff --cached");
+            var unstaged = RunGit(repoPath, "diff");
+
+            var builder = new StringBuilder();
+
+            if (!string.IsNullOrWhiteSpace(staged.Output))
+            {
+                builder.AppendLine("# Staged changes");
+                builder.AppendLine(staged.Output.TrimEnd());
+            }
+
+            if (!string.IsNullOrWhiteSpace(unstaged.Output))
+            {
+                if (builder.Length > 0)
+                {
+                    builder.AppendLine();
+                }
+
+                builder.AppendLine("# Unstaged changes");
+                builder.AppendLine(unstaged.Output.TrimEnd());
+            }
+
+            return builder.ToString();
+        });
+    }
+
+    public async Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100)
+    {
+        return await Task.Run(() =>
+        {
+            var status = RunGit(repoPath, "status -sb");
+            var stat = RunGit(repoPath, "diff --cached --stat");
+            var names = RunGit(repoPath, "diff --cached --name-only");
+
+            var builder = new StringBuilder();
+
+            if (!string.IsNullOrWhiteSpace(status.Output))
+            {
+                builder.AppendLine("Status:");
+                builder.AppendLine(status.Output.TrimEnd());
+            }
+
+            if (!string.IsNullOrWhiteSpace(stat.Output))
+            {
+                if (builder.Length > 0)
+                {
+                    builder.AppendLine();
+                }
+                builder.AppendLine("Staged diff stats:");
+                builder.AppendLine(stat.Output.TrimEnd());
+            }
+
+            var files = names.Output
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(f => f.Trim())
+                .Where(f => !string.IsNullOrEmpty(f))
+                .Take(Math.Max(1, maxFiles))
+                .ToList();
+
+            if (files.Count > 0)
+            {
+                if (builder.Length > 0)
+                {
+                    builder.AppendLine();
+                }
+                builder.AppendLine("Staged files:");
+                foreach (var file in files)
+                {
+                    builder.AppendLine($"- {file}");
+                }
+            }
+
+            return builder.ToString().TrimEnd();
         });
     }
 
