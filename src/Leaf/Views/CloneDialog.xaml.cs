@@ -7,19 +7,26 @@ using Microsoft.Win32;
 namespace Leaf.Views;
 
 /// <summary>
-/// Clone repository dialog with Azure DevOps browsing and PAT support.
+/// Clone repository dialog with GitHub and Azure DevOps browsing and PAT support.
 /// </summary>
 public partial class CloneDialog : Window
 {
     private readonly IGitService _gitService;
     private readonly CredentialService _credentialService;
     private readonly AzureDevOpsService _azureDevOpsService;
+    private readonly GitHubService _gitHubService;
     private readonly SettingsService _settingsService;
     private readonly string _defaultClonePath;
     private bool _isCloning;
 
+    // Azure DevOps repos
     private List<AzureDevOpsRepo> _allRepos = [];
     private List<AzureDevOpsRepo> _filteredRepos = [];
+
+    // GitHub repos
+    private List<GitHubRepo> _allGitHubRepos = [];
+    private List<GitHubRepo> _filteredGitHubRepos = [];
+
     private string _selectedUrl = string.Empty;
 
     /// <summary>
@@ -35,13 +42,14 @@ public partial class CloneDialog : Window
         _credentialService = credentialService;
         _settingsService = settingsService;
         _azureDevOpsService = new AzureDevOpsService(credentialService);
+        _gitHubService = new GitHubService(credentialService);
         _defaultClonePath = defaultClonePath;
 
         DestinationTextBox.Text = defaultClonePath;
         UpdateCloneButtonState();
 
-        // Load repos on startup
-        Loaded += async (s, e) => await LoadRepositoriesAsync();
+        // Load repos on startup (GitHub is first tab now)
+        Loaded += async (s, e) => await LoadGitHubRepositoriesAsync();
     }
 
     private async Task LoadRepositoriesAsync()
@@ -135,6 +143,110 @@ public partial class CloneDialog : Window
         await LoadRepositoriesAsync();
     }
 
+    #region GitHub
+
+    private async Task LoadGitHubRepositoriesAsync()
+    {
+        var pat = _credentialService.GetCredential("GitHub");
+
+        if (string.IsNullOrEmpty(pat))
+        {
+            GitHubStatusText.Text = "Configure GitHub PAT in Settings";
+            GitHubEmptyStateText.Text = "No GitHub PAT configured.\nGo to Settings to add your GitHub Personal Access Token.";
+            GitHubEmptyStateText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        try
+        {
+            GitHubLoadingOverlay.Visibility = Visibility.Visible;
+            GitHubEmptyStateText.Visibility = Visibility.Collapsed;
+            GitHubRefreshButton.IsEnabled = false;
+            GitHubStatusText.Text = "Loading from GitHub...";
+
+            _allGitHubRepos = await _gitHubService.GetRepositoriesAsync();
+            _allGitHubRepos = _allGitHubRepos.OrderBy(r => r.DisplayName).ToList();
+
+            FilterGitHubRepositories();
+
+            GitHubStatusText.Text = $"{_allGitHubRepos.Count} repositories";
+
+            if (_allGitHubRepos.Count == 0)
+            {
+                GitHubEmptyStateText.Text = "No repositories found.";
+                GitHubEmptyStateText.Visibility = Visibility.Visible;
+            }
+        }
+        catch (Exception ex)
+        {
+            GitHubStatusText.Text = "Failed to load repositories";
+            GitHubEmptyStateText.Text = $"Error: {ex.Message}\n\nCheck your GitHub PAT in Settings.";
+            GitHubEmptyStateText.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            GitHubLoadingOverlay.Visibility = Visibility.Collapsed;
+            GitHubRefreshButton.IsEnabled = true;
+        }
+    }
+
+    private void FilterGitHubRepositories()
+    {
+        var searchText = GitHubSearchTextBox.Text.Trim().ToLowerInvariant();
+
+        if (string.IsNullOrEmpty(searchText))
+        {
+            _filteredGitHubRepos = _allGitHubRepos.ToList();
+        }
+        else
+        {
+            _filteredGitHubRepos = _allGitHubRepos
+                .Where(r => r.DisplayName.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+                           r.RemoteUrl.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        GitHubRepoListBox.ItemsSource = _filteredGitHubRepos;
+
+        if (_filteredGitHubRepos.Count == 0 && _allGitHubRepos.Count > 0)
+        {
+            GitHubEmptyStateText.Text = "No repositories match your search.";
+            GitHubEmptyStateText.Visibility = Visibility.Visible;
+        }
+        else if (_allGitHubRepos.Count > 0)
+        {
+            GitHubEmptyStateText.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void GitHubSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        // Update placeholder visibility
+        GitHubSearchPlaceholder.Visibility = string.IsNullOrEmpty(GitHubSearchTextBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        FilterGitHubRepositories();
+    }
+
+    private async void GitHubRefresh_Click(object sender, RoutedEventArgs e)
+    {
+        await LoadGitHubRepositoriesAsync();
+    }
+
+    private void GitHubRepoListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (GitHubRepoListBox.SelectedItem is GitHubRepo repo)
+        {
+            _selectedUrl = repo.RemoteUrl;
+            SelectedUrlText.Text = repo.RemoteUrl;
+            UpdateRepoName(_selectedUrl);
+            UpdateCloneButtonState();
+        }
+    }
+
+    #endregion
+
     private void RepoListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (RepoListBox.SelectedItem is AzureDevOpsRepo repo)
@@ -146,23 +258,52 @@ public partial class CloneDialog : Window
         }
     }
 
-    private void ModeTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void ModeTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!IsLoaded) return;
 
-        // When switching to URL tab, use the URL from text box
-        if (ModeTabControl.SelectedIndex == 1)
+        // Tab 0: GitHub, Tab 1: Azure DevOps, Tab 2: Enter URL
+        switch (ModeTabControl.SelectedIndex)
         {
-            _selectedUrl = UrlTextBox.Text.Trim();
-        }
-        // When switching to Browse tab, use the selected repo
-        else if (RepoListBox.SelectedItem is AzureDevOpsRepo repo)
-        {
-            _selectedUrl = repo.RemoteUrl;
-        }
-        else
-        {
-            _selectedUrl = string.Empty;
+            case 0: // GitHub
+                if (GitHubRepoListBox.SelectedItem is GitHubRepo ghRepo)
+                {
+                    _selectedUrl = ghRepo.RemoteUrl;
+                }
+                else
+                {
+                    _selectedUrl = string.Empty;
+                }
+                // Load GitHub repos if not already loaded
+                if (_allGitHubRepos.Count == 0)
+                {
+                    await LoadGitHubRepositoriesAsync();
+                }
+                break;
+
+            case 1: // Azure DevOps
+                if (RepoListBox.SelectedItem is AzureDevOpsRepo adoRepo)
+                {
+                    _selectedUrl = adoRepo.RemoteUrl;
+                }
+                else
+                {
+                    _selectedUrl = string.Empty;
+                }
+                // Load Azure DevOps repos if not already loaded
+                if (_allRepos.Count == 0)
+                {
+                    await LoadRepositoriesAsync();
+                }
+                break;
+
+            case 2: // Enter URL
+                _selectedUrl = UrlTextBox.Text.Trim();
+                break;
+
+            default:
+                _selectedUrl = string.Empty;
+                break;
         }
 
         SelectedUrlText.Text = _selectedUrl;
@@ -180,6 +321,7 @@ public partial class CloneDialog : Window
         if (string.IsNullOrEmpty(url))
         {
             UrlHintText.Text = "Enter a Git repository URL (HTTPS)";
+            UrlHintText.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray);
         }
         else if (IsAzureDevOpsUrl(url))
         {
@@ -187,6 +329,16 @@ public partial class CloneDialog : Window
             UrlHintText.Text = hasPat
                 ? "Azure DevOps URL - will use saved PAT"
                 : "Azure DevOps URL - no PAT saved";
+            UrlHintText.Foreground = hasPat
+                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 150, 0))
+                : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 100, 0));
+        }
+        else if (IsGitHubUrl(url))
+        {
+            var hasPat = !string.IsNullOrEmpty(_credentialService.GetCredential("GitHub"));
+            UrlHintText.Text = hasPat
+                ? "GitHub URL - will use saved PAT"
+                : "GitHub URL - no PAT saved";
             UrlHintText.Foreground = hasPat
                 ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 150, 0))
                 : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 100, 0));
@@ -266,7 +418,7 @@ public partial class CloneDialog : Window
             CloneProgressBar.Visibility = Visibility.Visible;
             ProgressText.Text = "Cloning repository...";
 
-            // Get credentials if Azure DevOps
+            // Get credentials based on URL type
             string? username = null;
             string? password = null;
 
@@ -276,6 +428,15 @@ public partial class CloneDialog : Window
                 if (!string.IsNullOrEmpty(password))
                 {
                     username = "git";
+                }
+            }
+            else if (IsGitHubUrl(url))
+            {
+                password = _credentialService.GetCredential("GitHub");
+                if (!string.IsNullOrEmpty(password))
+                {
+                    // GitHub uses PAT as password with any username (or "x-access-token")
+                    username = "x-access-token";
                 }
             }
 
@@ -338,6 +499,11 @@ public partial class CloneDialog : Window
     {
         return url.Contains("dev.azure.com", StringComparison.OrdinalIgnoreCase) ||
                url.Contains("visualstudio.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsGitHubUrl(string url)
+    {
+        return url.Contains("github.com", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ExtractRepoName(string url)

@@ -34,6 +34,93 @@
 
         <!-- Tab Control for Browse/URL -->
         <TabControl Grid.Row="1" x:Name="ModeTabControl" SelectionChanged="ModeTabControl_SelectionChanged">
+            <!-- Browse GitHub Tab -->
+            <TabItem Header="Browse GitHub">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Refresh Button and Status -->
+                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock x:Name="GitHubStatusText"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                        <Button Grid.Column="1"
+                                x:Name="GitHubRefreshButton"
+                                Content="Refresh"
+                                Padding="12,4"
+                                Click="GitHubRefresh_Click"/>
+                    </Grid>
+
+                    <!-- Search Box -->
+                    <Grid Grid.Row="1" Margin="0,0,0,8">
+                        <TextBox x:Name="GitHubSearchTextBox"
+                                 Padding="8,6"
+                                 TextChanged="GitHubSearchTextBox_TextChanged"/>
+                        <TextBlock x:Name="GitHubSearchPlaceholder"
+                                   Text="Search repositories..."
+                                   IsHitTestVisible="False"
+                                   VerticalAlignment="Center"
+                                   Margin="12,0,0,0"
+                                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                    </Grid>
+
+                    <!-- Repository List -->
+                    <Border Grid.Row="2"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                        <Grid>
+                            <ListBox x:Name="GitHubRepoListBox"
+                                     SelectionChanged="GitHubRepoListBox_SelectionChanged"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="4,6">
+                                            <TextBlock Text="{Binding DisplayName}"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding RemoteUrl}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <!-- Loading Overlay -->
+                            <Border x:Name="GitHubLoadingOverlay"
+                                    Background="#80FFFFFF"
+                                    Visibility="Collapsed">
+                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <ProgressBar IsIndeterminate="True" Width="200" Height="4"/>
+                                    <TextBlock Text="Loading repositories..."
+                                               HorizontalAlignment="Center"
+                                               Margin="0,8,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Empty State -->
+                            <TextBlock x:Name="GitHubEmptyStateText"
+                                       Text="No repositories found. Configure your GitHub PAT in Settings."
+                                       TextWrapping="Wrap"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                       Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
             <!-- Browse Azure DevOps Tab -->
             <TabItem Header="Browse Azure DevOps">
                 <Grid Margin="8">
