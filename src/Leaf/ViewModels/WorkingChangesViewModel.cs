@@ -345,21 +345,34 @@ public partial class WorkingChangesViewModel : ObservableObject
 
             Debug.WriteLine($"[WorkingChanges] AutoFill start: repo={_repositoryPath}, provider={preferredProvider}");
 
-            var summary = await _gitService.GetStagedSummaryAsync(_repositoryPath);
-            if (summary.Length > MaxSummaryChars)
+            // Codex can access git directly, so we don't need to include the full diff
+            var isCodex = preferredProvider.Equals("Codex", StringComparison.OrdinalIgnoreCase);
+            var includeContext = !isCodex;
+
+            string summary;
+            if (includeContext)
             {
-                ErrorMessage = $"Staged summary is too large to send ({summary.Length} chars).";
-                Debug.WriteLine($"[WorkingChanges] AutoFill blocked: summary length {summary.Length} exceeds limit {MaxSummaryChars}.");
-                return;
+                summary = await _gitService.GetStagedSummaryAsync(_repositoryPath);
+                if (summary.Length > MaxSummaryChars)
+                {
+                    ErrorMessage = $"Staged summary is too large to send ({summary.Length} chars).";
+                    Debug.WriteLine($"[WorkingChanges] AutoFill blocked: summary length {summary.Length} exceeds limit {MaxSummaryChars}.");
+                    return;
+                }
+            }
+            else
+            {
+                // For Codex, just get basic info (no diff content)
+                summary = string.Empty;
             }
 
-            var prompt = BuildPrompt(_repositoryPath, summary);
+            var prompt = BuildPrompt(_repositoryPath, summary, includeContext);
             var timeoutSeconds = Math.Max(1, settings.AiCliTimeoutSeconds);
 
-            Debug.WriteLine($"[WorkingChanges] AutoFill prompt length: {prompt.Length}, summary={summary.Length}, timeout={timeoutSeconds}s");
+            Debug.WriteLine($"[WorkingChanges] AutoFill prompt length: {prompt.Length}, summary={summary.Length}, timeout={timeoutSeconds}s, includeContext={includeContext}");
             Debug.WriteLine($"[WorkingChanges] AutoFill prompt:\n{prompt}");
 
-            var (success, output, detail) = await RunAiPromptAsync(preferredProvider, prompt, timeoutSeconds);
+            var (success, output, detail) = await RunAiPromptAsync(preferredProvider, prompt, timeoutSeconds, _repositoryPath);
             if (!success)
             {
                 Debug.WriteLine($"[WorkingChanges] AutoFill failed: {detail}");
@@ -409,25 +422,34 @@ public partial class WorkingChangesViewModel : ObservableObject
         CommitCommand.NotifyCanExecuteChanged();
     }
 
-    private static string BuildPrompt(string repoPath, string summary)
+    private static string BuildPrompt(string repoPath, string summary, bool includeContext)
     {
+        var contextInstruction = includeContext
+            ? "Do not run any commands or tools. Use only the staged summary provided."
+            : "Run 'git diff --cached' to see the staged changes, then generate the commit message.";
+
+        var contextBlock = includeContext
+            ? $"\n\nStaged summary:\n{summary}"
+            : string.Empty;
+
         return
 $@"You are creating a git commit message and description. You are in the repository '{repoPath}'.
-Do not run any commands or tools. Use only the staged summary provided.
+{contextInstruction}
 Do not include any tool output, analysis, or commentary.
 Only consider staged changes when forming the commit message and description.
 
 Return JSON with keys: commitMessage, description.
-The commitMessage must be 72 characters or fewer. The description may be an empty string.
-Do not include any additional text or formatting.
-
-Staged summary:
-{summary}";
+The commitMessage must be 72 characters or fewer.
+The description should be a bullet-point list with each item on a new line, starting with '- '.
+Example description format: ""- Added feature X\n- Fixed bug Y\n- Updated Z""
+If there are no significant details, description may be an empty string.
+Do not include any additional text or formatting outside the JSON.{contextBlock}";
     }
 
-    private async Task<(bool success, string output, string detail)> RunAiPromptAsync(string provider, string prompt, int timeoutSeconds)
+    private async Task<(bool success, string output, string detail)> RunAiPromptAsync(
+        string provider, string prompt, int timeoutSeconds, string? repoPath = null)
     {
-        var (command, args) = BuildAiCommand(provider, prompt);
+        var (command, args, useStdin, workingDirectory) = BuildAiCommand(provider, prompt, repoPath);
         if (string.IsNullOrWhiteSpace(command))
         {
             return (false, string.Empty, "Unknown AI provider");
@@ -440,15 +462,35 @@ Staged summary:
             var psi = new ProcessStartInfo
             {
                 FileName = resolvedPath ?? command,
+                RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
 
+            // Set working directory if specified (allows AI to access git repo)
+            if (!string.IsNullOrWhiteSpace(workingDirectory))
+            {
+                psi.WorkingDirectory = workingDirectory;
+            }
+
             foreach (var arg in args)
             {
                 psi.ArgumentList.Add(arg);
+            }
+
+            // Debug: log the command (truncate long prompts in log)
+            var argsPreview = string.Join(" ", args.Select(a =>
+                a.Length > 100 ? $"\"{a[..100]}...\"" : (a.Contains(' ') ? $"\"{a}\"" : a)));
+            Debug.WriteLine($"[WorkingChanges] AI command: {psi.FileName} {argsPreview}");
+            if (!string.IsNullOrWhiteSpace(workingDirectory))
+            {
+                Debug.WriteLine($"[WorkingChanges] Working directory: {workingDirectory}");
+            }
+            if (useStdin)
+            {
+                Debug.WriteLine($"[WorkingChanges] Sending {prompt.Length} chars via stdin");
             }
 
             if (!string.IsNullOrWhiteSpace(combinedPath))
@@ -456,11 +498,23 @@ Staged summary:
                 psi.Environment["PATH"] = combinedPath;
             }
 
+            // Set environment variables for non-interactive mode
+            psi.Environment["CI"] = "true";
+            psi.Environment["NO_COLOR"] = "1";
+            psi.Environment["TERM"] = "dumb";
+
             using var process = Process.Start(psi);
             if (process == null)
             {
                 return (false, string.Empty, "Failed to start AI process");
             }
+
+            // Send prompt via stdin if needed, then close stdin
+            if (useStdin)
+            {
+                await process.StandardInput.WriteAsync(prompt);
+            }
+            process.StandardInput.Close();
 
             var outputTask = process.StandardOutput.ReadToEndAsync();
             var errorTask = process.StandardError.ReadToEndAsync();
@@ -488,6 +542,24 @@ Staged summary:
                 return (false, string.Empty, "no output");
             }
 
+            // For Codex with --json flag, extract the agent_message from JSONL output
+            if (provider.Equals("Codex", StringComparison.OrdinalIgnoreCase))
+            {
+                output = ExtractCodexJsonlMessage(output);
+            }
+
+            // For Claude with --output-format json, extract structured_output
+            if (provider.Equals("Claude", StringComparison.OrdinalIgnoreCase))
+            {
+                output = ExtractClaudeStructuredOutput(output);
+            }
+
+            // For Gemini with --output-format json, extract response field
+            if (provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+            {
+                output = ExtractGeminiResponse(output);
+            }
+
             return (true, output, string.Empty);
         }
         catch (System.ComponentModel.Win32Exception)
@@ -500,24 +572,165 @@ Staged summary:
         }
     }
 
-    private static (string command, List<string> args) BuildAiCommand(string provider, string prompt)
+    private static string ExtractCodexJsonlMessage(string jsonlOutput)
+    {
+        // Parse JSONL output from Codex --json flag
+        // Looking for: {"type":"item.completed","item":{"type":"agent_message","text":"..."}}
+        foreach (var line in jsonlOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(line);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("type", out var typeEl) &&
+                    typeEl.GetString() == "item.completed" &&
+                    root.TryGetProperty("item", out var itemEl) &&
+                    itemEl.TryGetProperty("type", out var itemTypeEl) &&
+                    itemTypeEl.GetString() == "agent_message" &&
+                    itemEl.TryGetProperty("text", out var textEl))
+                {
+                    return textEl.GetString() ?? jsonlOutput;
+                }
+            }
+            catch
+            {
+                // Skip invalid JSON lines
+            }
+        }
+
+        // Fallback to original output if parsing fails
+        return jsonlOutput;
+    }
+
+    private static string ExtractClaudeStructuredOutput(string jsonOutput)
+    {
+        // Parse JSON output from Claude --output-format json
+        // Looking for: {"type":"result","structured_output":{"commitMessage":"...","description":"..."}}
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonOutput);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("structured_output", out var structuredEl))
+            {
+                // Return the structured_output as JSON string for our existing parser
+                return structuredEl.GetRawText();
+            }
+        }
+        catch
+        {
+            // Fall through to return original
+        }
+
+        // Fallback to original output if parsing fails
+        return jsonOutput;
+    }
+
+    private static string ExtractGeminiResponse(string jsonOutput)
+    {
+        // Parse JSON output from Gemini --output-format json
+        // Looking for: {"session_id":"...","response":"...","stats":{...}}
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonOutput);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("response", out var responseEl))
+            {
+                // Return the response text (may contain markdown code fences, existing parser handles that)
+                return responseEl.GetString() ?? jsonOutput;
+            }
+        }
+        catch
+        {
+            // Fall through to return original
+        }
+
+        // Fallback to original output if parsing fails
+        return jsonOutput;
+    }
+
+    /// <summary>
+    /// Builds the AI command with arguments.
+    /// Returns: (command, args, useStdin, workingDirectory)
+    /// - useStdin: if true, send prompt via stdin instead of command line
+    /// - workingDirectory: if set, run the command in this directory (allows AI to access git)
+    /// </summary>
+    private static (string command, List<string> args, bool useStdin, string? workingDirectory) BuildAiCommand(
+        string provider, string prompt, string? repoPath)
     {
         if (provider.Equals("Claude", StringComparison.OrdinalIgnoreCase))
         {
-            return ("claude", new List<string> { "-p", prompt });
+            // -p/--print is a FLAG for non-interactive mode, prompt is positional at end
+            // --output-format json returns structured JSON
+            // --json-schema takes the schema as a STRING (not a file path!)
+            // Use stdin to avoid command line too long errors
+            var schema = """{"type":"object","properties":{"commitMessage":{"type":"string"},"description":{"type":"string"}},"required":["commitMessage","description"],"additionalProperties":false}""";
+            return ("claude", new List<string>
+            {
+                "-p",
+                "--model", "sonnet",
+                "--output-format", "json",
+                "--json-schema", schema,
+                "-"  // Read prompt from stdin
+            }, useStdin: true, workingDirectory: null);
         }
 
         if (provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
         {
-            return ("gemini", new List<string> { "-p", prompt });
+            // Use stdin to avoid command line too long errors
+            return ("gemini", new List<string> { "-p", "-", "--output-format", "json" },
+                useStdin: true, workingDirectory: null);
         }
 
         if (provider.Equals("Codex", StringComparison.OrdinalIgnoreCase))
         {
-            return ("codex", new List<string> { "e", prompt });
+            // Codex CLI uses: codex exec with --output-schema for guaranteed JSON format
+            // Run in repo directory so Codex can access git directly
+            // --full-auto enables non-interactive automatic execution
+            // --color never disables terminal detection to prevent TTY issues
+            // --json outputs structured JSONL for cleaner parsing
+            var schemaPath = GetOrCreateCodexSchemaFile();
+            return ("codex", new List<string>
+            {
+                "exec",
+                "-m", "gpt-5.1-codex-mini",
+                "--full-auto",
+                "--color", "never",
+                "--output-schema", schemaPath,
+                "--json",
+                prompt  // Codex prompt is short since it reads git directly
+            }, useStdin: false, workingDirectory: repoPath);
         }
 
-        return (string.Empty, []);
+        return (string.Empty, [], false, null);
+    }
+
+    private static string? _codexSchemaPath;
+
+    private static string GetOrCreateCodexSchemaFile()
+    {
+        if (_codexSchemaPath != null && File.Exists(_codexSchemaPath))
+            return _codexSchemaPath;
+
+        var schema = """
+            {
+                "type": "object",
+                "properties": {
+                    "commitMessage": { "type": "string" },
+                    "description": { "type": "string" }
+                },
+                "required": ["commitMessage", "description"],
+                "additionalProperties": false
+            }
+            """;
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "Leaf");
+        Directory.CreateDirectory(tempDir);
+        _codexSchemaPath = Path.Combine(tempDir, "commit-schema.json");
+        File.WriteAllText(_codexSchemaPath, schema);
+        return _codexSchemaPath;
     }
 
     private static bool IsProviderConnected(string provider, AppSettings settings)

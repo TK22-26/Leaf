@@ -411,13 +411,10 @@ public class GitService : IGitService
                 {
                     progress?.Report($"Receiving: {tp.ReceivedObjects}/{tp.TotalObjects}");
                     return true;
-                }
+                },
+                // Always set credentials provider - it will try Git Credential Manager if no explicit creds
+                CredentialsProvider = CreateCredentialsProvider(remote.Url, username, password)
             };
-
-            if (!string.IsNullOrEmpty(password))
-            {
-                options.CredentialsProvider = CreateCredentialsProvider(remote.Url, username, password);
-            }
 
             var refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
             Commands.Fetch(repo, remoteName, refSpecs, options, "Fetch from " + remoteName);
@@ -429,6 +426,7 @@ public class GitService : IGitService
         await Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
+            var remote = repo.Network.Remotes["origin"];
 
             var options = new PullOptions
             {
@@ -438,15 +436,11 @@ public class GitService : IGitService
                     {
                         progress?.Report($"Receiving: {tp.ReceivedObjects}/{tp.TotalObjects}");
                         return true;
-                    }
+                    },
+                    // Always set credentials provider - it will try Git Credential Manager if no explicit creds
+                    CredentialsProvider = CreateCredentialsProvider(remote?.Url ?? "", username, password)
                 }
             };
-
-            if (!string.IsNullOrEmpty(password))
-            {
-                var remote = repo.Network.Remotes["origin"];
-                options.FetchOptions.CredentialsProvider = CreateCredentialsProvider(remote?.Url ?? "", username, password);
-            }
 
             var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
             Commands.Pull(repo, signature, options);
@@ -458,6 +452,7 @@ public class GitService : IGitService
         await Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
+            var remote = repo.Network.Remotes["origin"];
 
             var options = new PushOptions
             {
@@ -465,14 +460,10 @@ public class GitService : IGitService
                 {
                     progress?.Report($"Pushing: {current}/{total}");
                     return true;
-                }
+                },
+                // Always set credentials provider - it will try Git Credential Manager if no explicit creds
+                CredentialsProvider = CreateCredentialsProvider(remote?.Url ?? "", username, password)
             };
-
-            if (!string.IsNullOrEmpty(password))
-            {
-                var remote = repo.Network.Remotes["origin"];
-                options.CredentialsProvider = CreateCredentialsProvider(remote?.Url ?? "", username, password);
-            }
 
             repo.Network.Push(repo.Head, options);
         });
@@ -482,22 +473,90 @@ public class GitService : IGitService
     {
         return (_, usernameFromUrl, types) =>
         {
+            var effectiveUsername = username ?? usernameFromUrl;
+            var effectivePassword = password;
+
+            // If no credentials provided, try Git Credential Manager
+            if (string.IsNullOrEmpty(effectivePassword))
+            {
+                var (gcmUser, gcmPass) = GetCredentialsFromGitCredentialManager(url);
+                if (!string.IsNullOrEmpty(gcmPass))
+                {
+                    effectiveUsername = gcmUser ?? effectiveUsername;
+                    effectivePassword = gcmPass;
+                }
+            }
+
             // Azure DevOps: use "git" as username with PAT as password
             if (IsAzureDevOpsUrl(url))
             {
                 return new UsernamePasswordCredentials
                 {
                     Username = "git",
-                    Password = password
+                    Password = effectivePassword
                 };
             }
 
             return new UsernamePasswordCredentials
             {
-                Username = username ?? usernameFromUrl,
-                Password = password
+                Username = effectiveUsername,
+                Password = effectivePassword
             };
         };
+    }
+
+    private static (string? username, string? password) GetCredentialsFromGitCredentialManager(string url)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(url)) return (null, null);
+
+            var uri = new Uri(url);
+            var input = $"protocol={uri.Scheme}\nhost={uri.Host}\n";
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "credential fill",
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process == null) return (null, null);
+
+            process.StandardInput.Write(input);
+            process.StandardInput.Close();
+
+            if (!process.WaitForExit(5000)) // 5 second timeout
+            {
+                process.Kill();
+                return (null, null);
+            }
+
+            if (process.ExitCode != 0) return (null, null);
+
+            var output = process.StandardOutput.ReadToEnd();
+            string? username = null;
+            string? password = null;
+
+            foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (line.StartsWith("username="))
+                    username = line["username=".Length..];
+                else if (line.StartsWith("password="))
+                    password = line["password=".Length..];
+            }
+
+            return (username, password);
+        }
+        catch
+        {
+            return (null, null);
+        }
     }
 
     public async Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false)
@@ -1032,13 +1091,14 @@ public class GitService : IGitService
         });
     }
 
-    public async Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100)
+    public async Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100, int maxDiffChars = 50000)
     {
         return await Task.Run(() =>
         {
             var status = RunGit(repoPath, "status -sb");
             var stat = RunGit(repoPath, "diff --cached --stat");
             var names = RunGit(repoPath, "diff --cached --name-only");
+            var diff = RunGit(repoPath, "diff --cached");
 
             var builder = new StringBuilder();
 
@@ -1075,6 +1135,26 @@ public class GitService : IGitService
                 foreach (var file in files)
                 {
                     builder.AppendLine($"- {file}");
+                }
+            }
+
+            // Include actual diff content (truncated if too large)
+            if (!string.IsNullOrWhiteSpace(diff.Output))
+            {
+                if (builder.Length > 0)
+                {
+                    builder.AppendLine();
+                }
+                builder.AppendLine("Staged diff:");
+                var diffContent = diff.Output.TrimEnd();
+                if (diffContent.Length > maxDiffChars)
+                {
+                    builder.AppendLine(diffContent[..maxDiffChars]);
+                    builder.AppendLine($"... (truncated, {diffContent.Length - maxDiffChars} more characters)");
+                }
+                else
+                {
+                    builder.AppendLine(diffContent);
                 }
             }
 

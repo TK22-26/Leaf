@@ -209,8 +209,8 @@ public partial class SettingsDialog : Window
     {
         string[] argsCandidates = command.ToLowerInvariant() switch
         {
-            "codex" => new[] { "e \"ping\"" },
-            "claude" => new[] { "-p \"ping\"" },
+            "codex" => new[] { "exec -m gpt-5.1-codex-mini --skip-git-repo-check \"ping\"" },
+            "claude" => new[] { "-p \"ping\" --model sonnet" },
             "gemini" => new[] { "-p \"ping\"" },
             _ => new[] { "-p \"ping\"" }
         };

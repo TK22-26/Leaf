@@ -138,9 +138,9 @@ public interface IGitService
     Task<string> GetWorkingChangesPatchAsync(string repoPath);
 
     /// <summary>
-    /// Get a compact summary of staged changes.
+    /// Get a compact summary of staged changes including diff content.
     /// </summary>
-    Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100);
+    Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100, int maxDiffChars = 50000);
 
     /// <summary>
     /// Stage a single file for commit.

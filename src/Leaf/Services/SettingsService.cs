@@ -112,7 +112,7 @@ public class AppSettings
     public bool IsClaudeConnected { get; set; }
     public bool IsGeminiConnected { get; set; }
     public bool IsCodexConnected { get; set; }
-    public int AiCliTimeoutSeconds { get; set; } = 10;
+    public int AiCliTimeoutSeconds { get; set; } = 60;
     public double WindowWidth { get; set; } = 1200;
     public double WindowHeight { get; set; } = 700;
     public double WindowLeft { get; set; } = -1;

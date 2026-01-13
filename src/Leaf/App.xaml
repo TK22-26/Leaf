@@ -15,6 +15,9 @@
                 <ResourceDictionary Source="Resources/MenuItem.xaml"/>
                 <ResourceDictionary Source="Resources/Styles.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+
+            <!--  Override accent color to green  -->
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#28A745" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
