@@ -20,12 +20,12 @@ namespace Leaf.Views;
         {
             if (sender is FrameworkElement element && element.DataContext is BranchInfo branch)
             {
-                if (DataContext is MainViewModel viewModel)
+                if (e.ClickCount == 2 && !branch.IsCurrent && DataContext is MainViewModel viewModel)
                 {
                     _ = viewModel.CheckoutBranchAsync(branch);
+                    e.Handled = true;
                 }
             }
-            e.Handled = true;
         }
 
         private void Branch_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
