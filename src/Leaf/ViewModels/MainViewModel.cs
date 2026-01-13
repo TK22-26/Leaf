@@ -67,6 +67,18 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _commitSearchText = string.Empty;
 
+    [ObservableProperty]
+    private ObservableCollection<RepositoryInfo> _pinnedRepositories = [];
+
+    [ObservableProperty]
+    private ObservableCollection<RepositoryInfo> _recentRepositories = [];
+
+    [ObservableProperty]
+    private ObservableCollection<object> _repositoryRootItems = [];
+
+    private readonly Models.RepositorySection _pinnedSection = new() { Name = "PINNED" };
+    private readonly Models.RepositorySection _recentSection = new() { Name = "MOST RECENT" };
+
     private string? _mergeConflictRepoPath;
 
     partial void OnCommitSearchTextChanged(string value)
@@ -101,6 +113,8 @@ public partial class MainViewModel : ObservableObject
         _gitGraphViewModel = new GitGraphViewModel(gitService);
         _commitDetailViewModel = new CommitDetailViewModel(gitService);
         _workingChangesViewModel = new WorkingChangesViewModel(gitService);
+
+        RepositoryRootItems = new ObservableCollection<object>();
 
         // Wire up file watcher events
         _fileWatcherService.WorkingDirectoryChanged += async (s, e) =>
@@ -317,6 +331,8 @@ public partial class MainViewModel : ObservableObject
                 await SelectRepositoryAsync(lastRepo);
             }
         }
+
+        RefreshQuickAccessRepositories();
     }
 
     /// <summary>
@@ -403,6 +419,12 @@ public partial class MainViewModel : ObservableObject
         {
             IsBusy = true;
             SelectedRepository = repository;
+            if (!RecentRepositories.Contains(repository))
+            {
+                repository.LastAccessed = DateTimeOffset.Now;
+                SaveRepositories();
+                RefreshQuickAccessRepositories();
+            }
             StatusMessage = $"Loading {repository.Name}...";
 
             // Start watching the new repository for live changes
@@ -923,6 +945,134 @@ public partial class MainViewModel : ObservableObject
                 SaveRepositories();
             }
         }
+
+        RefreshQuickAccessRepositories();
+    }
+
+    private void RemoveRepositoryFromGroups(RepositoryInfo repo)
+    {
+        var emptyGroups = new List<RepositoryGroup>();
+
+        foreach (var group in RepositoryGroups)
+        {
+            var existing = group.Repositories.FirstOrDefault(r => r.Path == repo.Path);
+            if (existing != null)
+            {
+                group.Repositories.Remove(existing);
+            }
+
+            if (group.Repositories.Count == 0)
+            {
+                emptyGroups.Add(group);
+            }
+        }
+
+        foreach (var group in emptyGroups)
+        {
+            RepositoryGroups.Remove(group);
+        }
+
+        RefreshQuickAccessRepositories();
+        SaveRepositories();
+    }
+
+    private void RefreshQuickAccessRepositories()
+    {
+        var allRepos = RepositoryGroups
+            .SelectMany(g => g.Repositories)
+            .DistinctBy(r => r.Path)
+            .ToList();
+
+        PinnedRepositories.Clear();
+        foreach (var repo in allRepos.Where(r => r.IsPinned))
+        {
+            PinnedRepositories.Add(repo);
+        }
+
+        RecentRepositories.Clear();
+        foreach (var repo in allRepos
+                     .OrderByDescending(r => r.LastAccessed)
+                     .Take(5))
+        {
+            RecentRepositories.Add(repo);
+        }
+
+        _pinnedSection.Repositories.Clear();
+        foreach (var repo in PinnedRepositories)
+        {
+            _pinnedSection.Repositories.Add(repo);
+        }
+
+        _recentSection.Repositories.Clear();
+        foreach (var repo in RecentRepositories)
+        {
+            _recentSection.Repositories.Add(repo);
+        }
+
+        int insertIndex = 0;
+        if (_pinnedSection.Repositories.Count > 0)
+        {
+            if (!RepositoryRootItems.Contains(_pinnedSection))
+            {
+                RepositoryRootItems.Insert(insertIndex, _pinnedSection);
+            }
+            insertIndex = RepositoryRootItems.IndexOf(_pinnedSection) + 1;
+        }
+        else if (RepositoryRootItems.Contains(_pinnedSection))
+        {
+            RepositoryRootItems.Remove(_pinnedSection);
+        }
+
+        if (_recentSection.Repositories.Count > 0)
+        {
+            if (!RepositoryRootItems.Contains(_recentSection))
+            {
+                RepositoryRootItems.Insert(insertIndex, _recentSection);
+            }
+            insertIndex = RepositoryRootItems.IndexOf(_recentSection) + 1;
+        }
+        else if (RepositoryRootItems.Contains(_recentSection))
+        {
+            RepositoryRootItems.Remove(_recentSection);
+        }
+
+        foreach (var group in RepositoryGroups)
+        {
+            if (!RepositoryRootItems.Contains(group))
+            {
+                RepositoryRootItems.Add(group);
+            }
+        }
+
+        for (int i = RepositoryRootItems.Count - 1; i >= 0; i--)
+        {
+            if (RepositoryRootItems[i] is RepositoryGroup group && !RepositoryGroups.Contains(group))
+            {
+                RepositoryRootItems.RemoveAt(i);
+            }
+        }
+    }
+
+    [RelayCommand]
+    public void TogglePinRepository(RepositoryInfo repo)
+    {
+        repo.IsPinned = !repo.IsPinned;
+        SaveRepositories();
+        RefreshQuickAccessRepositories();
+    }
+
+    [RelayCommand]
+    public void DeleteRepository(RepositoryInfo repo)
+    {
+        if (SelectedRepository != null && SelectedRepository.Path == repo.Path)
+        {
+            SelectedRepository = null;
+            var settings = _settingsService.LoadSettings();
+            settings.LastSelectedRepositoryPath = null;
+            _settingsService.SaveSettings(settings);
+        }
+
+        RemoveRepositoryFromGroups(repo);
     }
 
     /// <summary>

@@ -5,12 +5,57 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:converters="clr-namespace:Leaf.Converters"
              xmlns:models="clr-namespace:Leaf.Models"
+             xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
              mc:Ignorable="d"
              d:DesignHeight="450" d:DesignWidth="220">
 
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <converters:IntGreaterThanZeroConverter x:Key="IntGreaterThanZeroConverter"/>
+
+        <DataTemplate x:Key="RepositoryItemTemplate" DataType="{x:Type models:RepositoryInfo}">
+            <Border Padding="2,3"
+                    Background="Transparent"
+                    Cursor="Hand"
+                    HorizontalAlignment="Stretch"
+                    MouseLeftButtonDown="Repository_MouseLeftButtonDown"
+                    Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Pin"
+                                  Command="{Binding PlacementTarget.Tag.TogglePinRepositoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}"
+                                  Visibility="{Binding IsPinned, Converter={StaticResource InverseBoolConverter}}">
+                            <MenuItem.Icon>
+                                <TextBlock Text="&#xE141;" FontFamily="Segoe Fluent Icons" FontSize="14"/>
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Unpin"
+                                  Command="{Binding PlacementTarget.Tag.TogglePinRepositoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}"
+                                  Visibility="{Binding IsPinned, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <MenuItem.Icon>
+                                <TextBlock Text="&#xE141;" FontFamily="Segoe Fluent Icons" FontSize="14"/>
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <Separator/>
+                        <MenuItem Header="Remove"
+                                  Command="{Binding PlacementTarget.Tag.DeleteRepositoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}">
+                            <MenuItem.Icon>
+                                <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#E81123"/>
+                            </MenuItem.Icon>
+                        </MenuItem>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <TextBlock Text="{Binding Name}"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           VerticalAlignment="Center"
+                           FontSize="12"/>
+            </Border>
+        </DataTemplate>
     </UserControl.Resources>
 
     <Grid>
@@ -54,10 +99,37 @@
         <!-- Repository tree -->
         <TreeView Grid.Row="2"
                   x:Name="RepoTreeView"
-                  ItemsSource="{Binding RepositoryGroups}"
+                  ItemsSource="{Binding RepositoryRootItems}"
                   BorderThickness="0"
-                  Padding="4">
+                  Style="{StaticResource RepoTreeViewStyle}"
+                  SelectedItemChanged="RepoTreeView_SelectedItemChanged">
             <TreeView.Resources>
+                <!-- Quick access section template -->
+                <HierarchicalDataTemplate DataType="{x:Type models:RepositorySection}"
+                                          ItemsSource="{Binding Repositories}">
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <ic:SymbolIcon x:Name="SectionIcon"
+                                       Symbol="Pin"
+                                       FontSize="14"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0"/>
+                        <TextBlock Text="{Binding Name}"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding Repositories.Count, StringFormat=' ({0})'}"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <HierarchicalDataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding Name}" Value="MOST RECENT">
+                            <Setter TargetName="SectionIcon" Property="Symbol" Value="Clock"/>
+                        </DataTrigger>
+                    </HierarchicalDataTemplate.Triggers>
+                </HierarchicalDataTemplate>
+
                 <!-- Group template (folder containing repos) -->
                 <HierarchicalDataTemplate DataType="{x:Type models:RepositoryGroup}"
                                           ItemsSource="{Binding Repositories}">
@@ -80,30 +152,16 @@
 
                 <!-- Repository template (simple - no branches here) -->
                 <DataTemplate DataType="{x:Type models:RepositoryInfo}">
-                    <Border Padding="4,6"
-                            Background="Transparent"
-                            Cursor="Hand"
-                            MouseLeftButtonDown="Repository_MouseLeftButtonDown">
-                        <StackPanel Orientation="Horizontal">
-                            <!-- Dirty indicator -->
-                            <Ellipse Width="8" Height="8"
-                                     Fill="#FFB900"
-                                     Margin="0,0,8,0"
-                                     Visibility="{Binding IsDirty, Converter={StaticResource BoolToVisibilityConverter}}"/>
-
-                            <!-- Repo name -->
-                            <TextBlock Text="{Binding Name}"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                       VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Border>
+                    <ContentPresenter Content="{Binding}"
+                                      ContentTemplate="{StaticResource RepositoryItemTemplate}"/>
                 </DataTemplate>
             </TreeView.Resources>
 
             <TreeView.ItemContainerStyle>
-                <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                <Style TargetType="TreeViewItem" BasedOn="{StaticResource RepoTreeViewItemStyle}">
                     <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
                     <Setter Property="Padding" Value="2"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                 </Style>
             </TreeView.ItemContainerStyle>
         </TreeView>

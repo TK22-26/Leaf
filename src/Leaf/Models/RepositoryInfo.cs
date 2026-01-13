@@ -31,6 +31,12 @@ public partial class RepositoryInfo : ObservableObject
     public DateTimeOffset LastAccessed { get; set; }
 
     /// <summary>
+    /// True if this repository is pinned to the top list.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isPinned;
+
+    /// <summary>
     /// ID of the custom group this repo belongs to (if any).
     /// </summary>
     public string? GroupId { get; set; }

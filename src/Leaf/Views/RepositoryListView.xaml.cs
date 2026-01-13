@@ -26,4 +26,12 @@ public partial class RepositoryListView : UserControl
             }
         }
     }
+
+    private void RepoTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (e.NewValue is RepositoryInfo repo && DataContext is MainViewModel viewModel)
+        {
+            _ = viewModel.SelectRepositoryAsync(repo);
+        }
+    }
 }

@@ -33,6 +33,17 @@
         <Setter Property="Margin" Value="0,1"/>
     </Style>
 
+    <!-- Compact TreeView for repository pane -->
+    <Style x:Key="RepoTreeViewStyle" TargetType="TreeView" BasedOn="{StaticResource DefaultTreeViewStyle}">
+        <Setter Property="Padding" Value="2"/>
+    </Style>
+
+    <Style x:Key="RepoTreeViewItemStyle" TargetType="TreeViewItem" BasedOn="{StaticResource DefaultTreeViewItemStyle}">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="1"/>
+        <Setter Property="Margin" Value="0"/>
+    </Style>
+
     <!-- Branch Badge Style -->
     <Style x:Key="BranchBadgeStyle" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource BranchBrush0}"/>

@@ -9,6 +9,8 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Resources/BranchColors.xaml"/>
                 <ResourceDictionary Source="Resources/Converters.xaml"/>
+                <ResourceDictionary Source="Resources/TreeView.xaml"/>
+                <ResourceDictionary Source="Resources/TreeViewItem.xaml"/>
                 <ResourceDictionary Source="Resources/Menu.xaml"/>
                 <ResourceDictionary Source="Resources/MenuItem.xaml"/>
                 <ResourceDictionary Source="Resources/Styles.xaml"/>
