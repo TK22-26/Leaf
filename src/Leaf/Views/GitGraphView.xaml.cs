@@ -248,6 +248,25 @@ public partial class GitGraphView : UserControl
             return;
 
         var pos = e.GetPosition(GraphCanvas);
+        if (e.ClickCount == 2 && GraphCanvas != null)
+        {
+            var label = GraphCanvas.GetBranchLabelAt(pos);
+            if (label != null && Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
+            {
+                var name = label.IsRemote && !label.IsLocal && label.RemoteName != null
+                    ? $"{label.RemoteName}/{label.Name}"
+                    : label.Name;
+                _ = mainViewModel.CheckoutBranchAsync(new BranchInfo
+                {
+                    Name = name,
+                    IsRemote = label.IsRemote,
+                    RemoteName = label.RemoteName,
+                    IsCurrent = label.IsCurrent
+                });
+                e.Handled = true;
+                return;
+            }
+        }
         int row = (int)(pos.Y / RowHeight);
         int currentRow = 0;
 

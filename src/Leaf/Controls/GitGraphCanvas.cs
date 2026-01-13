@@ -1045,4 +1045,74 @@ public class GitGraphCanvas : FrameworkElement
     {
         return (row + 0.5) * RowHeight;
     }
+
+    public BranchLabel? GetBranchLabelAt(Point position)
+    {
+        if (Nodes == null || position.X > LabelAreaWidth)
+            return null;
+
+        int row = (int)(position.Y / RowHeight);
+        int rowOffset = (HasWorkingChanges ? 1 : 0) + StashCount;
+        int nodeIndex = row - rowOffset;
+
+        if (nodeIndex < 0 || nodeIndex >= Nodes.Count)
+            return null;
+
+        var node = Nodes[nodeIndex];
+        if (node.BranchLabels.Count == 0)
+            return null;
+
+        double y = GetYForRow(node.RowIndex + rowOffset);
+        double labelX = 4;
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+
+        foreach (var label in node.BranchLabels)
+        {
+            double fontSize = label.IsCurrent ? 13 : 11;
+            double iconFontSize = label.IsCurrent ? 13 : 11;
+            double labelHeight = label.IsCurrent ? 22 : 18;
+
+            var iconText = "";
+            if (label.IsLocal)
+                iconText += ComputerIcon;
+            if (label.IsLocal && label.IsRemote)
+                iconText += " ";
+            if (label.IsRemote)
+                iconText += CloudIcon;
+
+            var iconFormatted = new FormattedText(
+                iconText,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                LabelTypeface,
+                iconFontSize,
+                LabelTextBrush,
+                dpi);
+
+            var nameFormatted = new FormattedText(
+                label.Name,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                LabelTypeface,
+                fontSize,
+                LabelTextBrush,
+                dpi);
+
+            double iconWidth = iconFormatted.Width;
+            double nameWidth = nameFormatted.Width;
+            double hPadding = label.IsCurrent ? 8 : 6;
+            double totalWidth = hPadding + nameWidth + 4 + iconWidth + hPadding;
+
+            if (labelX + totalWidth > LabelAreaWidth - 8)
+                break;
+
+            var labelRect = new Rect(labelX, y - labelHeight / 2, totalWidth, labelHeight);
+            if (labelRect.Contains(position))
+                return label;
+
+            labelX += totalWidth + 4;
+        }
+
+        return null;
+    }
 }
