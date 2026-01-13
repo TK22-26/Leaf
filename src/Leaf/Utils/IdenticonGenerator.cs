@@ -10,6 +10,7 @@ public static class IdenticonGenerator
     private const int GridSize = 5;
     private const int MirrorColumns = 3;
     private static readonly Dictionary<string, ImageSource> Cache = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, ImageBrush> BrushCache = new(StringComparer.Ordinal);
     private static readonly object CacheLock = new();
 
     public static ImageSource GetIdenticon(string? input, int size, Color? backgroundColor = null)
@@ -70,6 +71,39 @@ public static class IdenticonGenerator
         }
 
         return image;
+    }
+
+    public static ImageBrush GetIdenticonBrush(string? input, int size, Color? backgroundColor = null)
+    {
+        var key = NormalizeKey(input);
+        var bgKey = backgroundColor.HasValue
+            ? $"{backgroundColor.Value.A:X2}{backgroundColor.Value.R:X2}{backgroundColor.Value.G:X2}{backgroundColor.Value.B:X2}"
+            : "none";
+        var cacheKey = $"{key}|{size}|{bgKey}";
+
+        lock (CacheLock)
+        {
+            if (BrushCache.TryGetValue(cacheKey, out var cached))
+            {
+                return cached;
+            }
+        }
+
+        var image = GetIdenticon(key, size, backgroundColor);
+        var brush = new ImageBrush(image)
+        {
+            Stretch = Stretch.UniformToFill,
+            AlignmentX = AlignmentX.Center,
+            AlignmentY = AlignmentY.Center
+        };
+        brush.Freeze();
+
+        lock (CacheLock)
+        {
+            BrushCache[cacheKey] = brush;
+        }
+
+        return brush;
     }
 
     public static Color? GetDefaultBackgroundColor()

@@ -707,16 +707,9 @@ public class GitGraphCanvas : FrameworkElement
                     iconSize = 10;
                 }
 
-                var identicon = IdenticonGenerator.GetIdenticon(key, iconSize, backgroundColor);
-                var fillBrush = new ImageBrush(identicon)
-                {
-                    Stretch = Stretch.UniformToFill,
-                    AlignmentX = AlignmentX.Center,
-                    AlignmentY = AlignmentY.Center
-                };
-                fillBrush.Freeze();
-                dc.DrawEllipse(fillBrush, null, new Point(x, y), avatarRadius - 1, avatarRadius - 1);
-            }
+                  var fillBrush = IdenticonGenerator.GetIdenticonBrush(key, iconSize, backgroundColor);
+                  dc.DrawEllipse(fillBrush, null, new Point(x, y), avatarRadius - 1, avatarRadius - 1);
+              }
 
         // HEAD indicator removed - now shown via enlarged branch tag instead
     }
