@@ -9,6 +9,7 @@
     <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
     <converters:EmptyToVisibilityConverter x:Key="EmptyToVisibilityConverter"/>
     <converters:FileStatusToBrushConverter x:Key="FileStatusToBrushConverter"/>
+    <converters:IdenticonConverter x:Key="IdenticonConverter"/>
 
     <!-- File Status Brushes -->
     <SolidColorBrush x:Key="AddedBrush" Color="#00AA00"/>

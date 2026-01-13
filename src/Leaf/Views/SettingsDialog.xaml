@@ -25,89 +25,253 @@
                    Margin="0,0,0,20"/>
 
         <!-- Settings Content -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
-                <!-- Azure DevOps Section -->
-                <Border BorderThickness="1"
-                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
-                        CornerRadius="4"
-                        Padding="16"
-                        Margin="0,0,0,16">
-                    <StackPanel>
-                        <TextBlock Text="Azure DevOps / GitHub Authentication"
-                                   FontWeight="SemiBold"
-                                   FontSize="14"
-                                   Margin="0,0,0,12"/>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="170"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
 
-                        <TextBlock Text="Organization"
-                                   Margin="0,0,0,4"
-                                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
-                        <TextBox x:Name="OrganizationTextBox"
-                                 Padding="8,6"
-                                 Margin="0,0,0,4"/>
-                        <TextBlock Text="Your Azure DevOps organization name (e.g., 'mycompany' from dev.azure.com/mycompany)"
-                                   TextWrapping="Wrap"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
-                                   Margin="0,0,0,16"/>
+            <!-- Left navigation -->
+            <ListBox x:Name="SettingsNav"
+                     Grid.Column="0"
+                     BorderThickness="0"
+                     SelectedIndex="0"
+                     Padding="0,4,12,0">
+                <ListBoxItem Content="Authentication"/>
+                <ListBoxItem Content="Clone Path"/>
+            </ListBox>
 
-                        <TextBlock Text="Personal Access Token (PAT)"
-                                   Margin="0,0,0,4"
-                                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
-                        <TextBlock Text="Used for cloning and fetching from private Azure DevOps repositories. Needs 'Code (Read)' scope."
-                                   TextWrapping="Wrap"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
-                                   Margin="0,0,0,8"/>
+            <!-- Right content: Authentication -->
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer.Style>
+                    <Style TargetType="ScrollViewer">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SelectedIndex, ElementName=SettingsNav}" Value="0">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ScrollViewer.Style>
+                <StackPanel>
+                    <TextBlock Text="Authentication"
+                               FontWeight="SemiBold"
+                               FontSize="14"
+                               Margin="0,0,0,12"/>
 
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
+                    <!-- Azure DevOps -->
+                    <Border BorderThickness="1"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                            CornerRadius="4"
+                            Padding="12"
+                            Margin="0,0,0,12">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Azure DevOps"
+                                           FontWeight="SemiBold"
+                                           FontSize="13"/>
+                                <TextBlock x:Name="PatStatusText"
+                                           Grid.Column="1"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"/>
+                            </Grid>
 
-                            <PasswordBox x:Name="PatPasswordBox"
-                                         Grid.Column="0"
-                                         Padding="8,6"
-                                         PasswordChanged="PatPasswordBox_PasswordChanged"/>
-                            <Button x:Name="TogglePatVisibilityButton"
-                                    Grid.Column="1"
-                                    Content="Show"
-                                    Width="60"
-                                    Margin="8,0,0,0"
-                                    Click="TogglePatVisibility_Click"/>
-                        </Grid>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Width="36"
+                                        Height="36"
+                                        CornerRadius="6"
+                                        BorderThickness="1"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                        Margin="0,0,10,0">
+                                    <Image Source="{Binding Text, ElementName=OrganizationTextBox, Converter={StaticResource IdenticonConverter}}"
+                                           Stretch="UniformToFill"/>
+                                </Border>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Organization"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                    <TextBlock Text="{Binding Text, ElementName=OrganizationTextBox}"
+                                               FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Grid>
 
-                        <TextBox x:Name="PatTextBox"
-                                 Padding="8,6"
-                                 Visibility="Collapsed"
-                                 TextChanged="PatTextBox_TextChanged"
-                                 Margin="0,8,0,0"/>
+                            <TextBlock Text="Organization"
+                                       Margin="0,0,0,4"
+                                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                            <TextBox x:Name="OrganizationTextBox"
+                                     Padding="8,6"
+                                     Margin="0,0,0,4"/>
+                            <TextBlock Text="Your Azure DevOps organization name (e.g., 'mycompany' from dev.azure.com/mycompany)"
+                                       TextWrapping="Wrap"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                       Margin="0,0,0,12"/>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                            <Button x:Name="SavePatButton"
-                                    Content="Save PAT"
-                                    Padding="12,6"
-                                    Click="SavePat_Click"/>
-                            <Button x:Name="ClearPatButton"
-                                    Content="Clear PAT"
-                                    Padding="12,6"
-                                    Margin="8,0,0,0"
-                                    Click="ClearPat_Click"/>
-                            <TextBlock x:Name="PatStatusText"
-                                       VerticalAlignment="Center"
-                                       Margin="12,0,0,0"
-                                       FontSize="11"/>
+                            <TextBlock Text="Personal Access Token (PAT)"
+                                       Margin="0,0,0,4"
+                                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                            <TextBlock Text="Used for cloning and fetching from private Azure DevOps repositories. Needs 'Code (Read)' scope."
+                                       TextWrapping="Wrap"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                       Margin="0,0,0,8"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <PasswordBox x:Name="PatPasswordBox"
+                                             Grid.Column="0"
+                                             Padding="8,6"
+                                             PasswordChanged="PatPasswordBox_PasswordChanged"/>
+                                <Button x:Name="TogglePatVisibilityButton"
+                                        Grid.Column="1"
+                                        Content="Show"
+                                        Width="60"
+                                        Margin="8,0,0,0"
+                                        Click="TogglePatVisibility_Click"/>
+                            </Grid>
+
+                            <TextBox x:Name="PatTextBox"
+                                     Padding="8,6"
+                                     Visibility="Collapsed"
+                                     TextChanged="PatTextBox_TextChanged"
+                                     Margin="0,8,0,0"/>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button x:Name="SavePatButton"
+                                        Content="Connect"
+                                        Padding="12,6"
+                                        Click="SavePat_Click"/>
+                                <Button x:Name="ClearPatButton"
+                                        Content="Disconnect"
+                                        Padding="12,6"
+                                        Margin="8,0,0,0"
+                                        Click="ClearPat_Click"/>
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
-                </Border>
+                    </Border>
 
-                <!-- Default Clone Path Section -->
+                    <!-- GitHub -->
+                    <Border BorderThickness="1"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                            CornerRadius="4"
+                            Padding="12">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="GitHub"
+                                           FontWeight="SemiBold"
+                                           FontSize="13"/>
+                                <TextBlock x:Name="GitHubStatusText"
+                                           Text="Not connected"
+                                           Grid.Column="1"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                            </Grid>
+
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Width="36"
+                                        Height="36"
+                                        CornerRadius="6"
+                                        BorderThickness="1"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                        Margin="0,0,10,0">
+                                    <Image Source="{Binding Text, ElementName=GitHubUsernameTextBox, Converter={StaticResource IdenticonConverter}}"
+                                           Stretch="UniformToFill"/>
+                                </Border>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Username"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                    <TextBlock Text="{Binding Text, ElementName=GitHubUsernameTextBox}"
+                                               FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="Username or Email"
+                                       Margin="0,0,0,4"
+                                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                            <TextBox x:Name="GitHubUsernameTextBox"
+                                     Padding="8,6"
+                                     Margin="0,0,0,4"/>
+                            <TextBlock Text="Personal Access Token (PAT)"
+                                       Margin="0,0,0,4"
+                                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <PasswordBox x:Name="GitHubPatPasswordBox"
+                                             Grid.Column="0"
+                                             Padding="8,6"
+                                             PasswordChanged="GitHubPatPasswordBox_PasswordChanged"/>
+                                <Button x:Name="ToggleGitHubPatVisibilityButton"
+                                        Grid.Column="1"
+                                        Content="Show"
+                                        Width="60"
+                                        Margin="8,0,0,0"
+                                        Click="ToggleGitHubPatVisibility_Click"/>
+                            </Grid>
+
+                            <TextBox x:Name="GitHubPatTextBox"
+                                     Padding="8,6"
+                                     Visibility="Collapsed"
+                                     TextChanged="GitHubPatTextBox_TextChanged"
+                                     Margin="0,0,0,8"/>
+
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="SaveGitHubPatButton"
+                                        Content="Connect"
+                                        Padding="12,6"
+                                        Click="SaveGitHubPat_Click"/>
+                                <Button x:Name="ClearGitHubPatButton"
+                                        Content="Disconnect"
+                                        Padding="12,6"
+                                        Margin="8,0,0,0"
+                                        Click="ClearGitHubPat_Click"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Right content: Clone Path -->
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer.Style>
+                    <Style TargetType="ScrollViewer">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SelectedIndex, ElementName=SettingsNav}" Value="1">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ScrollViewer.Style>
                 <Border BorderThickness="1"
                         BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
                         CornerRadius="4"
-                        Padding="16"
-                        Margin="0,0,0,16">
+                        Padding="16">
                     <StackPanel>
                         <TextBlock Text="Default Clone Path"
                                    FontWeight="SemiBold"
@@ -131,8 +295,8 @@
                         </Grid>
                     </StackPanel>
                 </Border>
-            </StackPanel>
-        </ScrollViewer>
+            </ScrollViewer>
+        </Grid>
 
         <!-- Footer buttons -->
         <StackPanel Grid.Row="2"

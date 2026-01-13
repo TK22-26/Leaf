@@ -29,35 +29,29 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Toolbar -->
+        <!-- Menu -->
         <Border Grid.Row="0"
                 BorderThickness="0,0,0,1"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                Padding="8,4">
-            <StackPanel Orientation="Horizontal">
-                <Button Content="Clone"
-                        Command="{Binding CloneRepositoryCommand}"
-                        Padding="12,6"
-                        Margin="0,0,4,0"/>
-                <Button Content="Add Repo"
-                        Command="{Binding AddRepositoryCommand}"
-                        Padding="12,6"
-                        Margin="0,0,4,0"/>
-                <Button Content="Fetch All"
-                        Command="{Binding FetchAllCommand}"
-                        Padding="12,6"
-                        Margin="0,0,4,0"/>
-                <Separator Margin="8,0"/>
-                <Button Content="Refresh"
-                        Command="{Binding RefreshCommand}"
-                        Padding="12,6"
-                        Margin="0,0,4,0"/>
-                <Separator Margin="8,0"/>
-                <Button Content="Settings"
-                        Command="{Binding OpenSettingsCommand}"
-                        Padding="12,6"
-                        Margin="0,0,4,0"/>
-            </StackPanel>
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+            <Menu>
+                <MenuItem Header="_File">
+                    <MenuItem Header="_Settings" Command="{Binding OpenSettingsCommand}"/>
+                </MenuItem>
+                <MenuItem Header="_Repository">
+                    <MenuItem Header="_Clone..." Command="{Binding CloneRepositoryCommand}"/>
+                    <MenuItem Header="_Add Repository..." Command="{Binding AddRepositoryCommand}"/>
+                    <Separator/>
+                    <MenuItem Header="_Fetch All" Command="{Binding FetchAllCommand}"/>
+                    <MenuItem Header="_Refresh" Command="{Binding RefreshCommand}"/>
+                    <Separator/>
+                    <MenuItem Header="_Pull..." IsEnabled="False"/>
+                    <MenuItem Header="_Push..." IsEnabled="False"/>
+                    <MenuItem Header="_Commit..." IsEnabled="False"/>
+                    <MenuItem Header="Create _Branch..." IsEnabled="False"/>
+                    <MenuItem Header="_Merge..." IsEnabled="False"/>
+                    <MenuItem Header="_Stash..." IsEnabled="False"/>
+                </MenuItem>
+            </Menu>
         </Border>
 
         <!-- Repository Action Bar -->
@@ -320,18 +314,42 @@
                                            FontWeight="SemiBold"
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                <Button HorizontalAlignment="Right"
-                                        Padding="4,2"
-                                        Cursor="Hand"
-                                        Command="{Binding ToggleRepoPaneCommand}"
-                                        Background="Transparent"
-                                        BorderThickness="0"
-                                        ToolTip="Collapse panel">
-                                    <TextBlock Text="&#xE76B;"
-                                               FontFamily="Segoe Fluent Icons"
-                                               FontSize="10"
-                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                                </Button>
+                                <StackPanel HorizontalAlignment="Right"
+                                            Orientation="Horizontal"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,0,0">
+                                    <Button Padding="4,2"
+                                            Cursor="Hand"
+                                            Command="{Binding CloneRepositoryCommand}"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            ToolTip="Clone repository">
+                                        <ic:SymbolIcon Symbol="ArrowDownload"
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </Button>
+                                    <Button Padding="4,2"
+                                            Cursor="Hand"
+                                            Command="{Binding AddRepositoryCommand}"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            ToolTip="Add repository">
+                                        <ic:SymbolIcon Symbol="Add"
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </Button>
+                                    <Button Padding="4,2"
+                                            Cursor="Hand"
+                                            Command="{Binding ToggleRepoPaneCommand}"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            ToolTip="Collapse panel">
+                                        <TextBlock Text="&#xE76B;"
+                                                   FontFamily="Segoe Fluent Icons"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </Button>
+                                </StackPanel>
                             </Grid>
                         </Border>
                         <views:RepositoryListView Grid.Row="1" DataContext="{Binding}"/>

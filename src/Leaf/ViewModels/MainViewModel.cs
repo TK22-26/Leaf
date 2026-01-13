@@ -527,7 +527,9 @@ public partial class MainViewModel : ObservableObject
     {
         var dialog = new SettingsDialog(_credentialService, _settingsService)
         {
-            Owner = _ownerWindow
+            Owner = _ownerWindow,
+            Width = 1000,
+            Height = 750
         };
         dialog.ShowDialog();
     }

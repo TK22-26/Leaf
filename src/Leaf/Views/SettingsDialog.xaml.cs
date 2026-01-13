@@ -16,6 +16,8 @@ public partial class SettingsDialog : Window
     private readonly AppSettings _settings;
     private bool _isPatVisible;
     private bool _suppressPatSync;
+    private bool _isGitHubPatVisible;
+    private bool _suppressGitHubPatSync;
 
     public SettingsDialog(CredentialService credentialService, SettingsService settingsService)
     {
@@ -35,18 +37,39 @@ public partial class SettingsDialog : Window
 
         // Load organization
         OrganizationTextBox.Text = _settings.AzureDevOpsOrganization;
+        GitHubUsernameTextBox.Text = _settings.GitHubUsername;
 
         // Check if PAT exists
         var existingPat = _credentialService.GetCredential("AzureDevOps");
         if (!string.IsNullOrEmpty(existingPat))
         {
-            PatStatusText.Text = "PAT is saved";
+            PatStatusText.Text = "Connected";
             PatStatusText.Foreground = new SolidColorBrush(Color.FromRgb(0, 150, 0));
+            SavePatButton.IsEnabled = false;
+            ClearPatButton.IsEnabled = true;
         }
         else
         {
-            PatStatusText.Text = "No PAT saved";
+            PatStatusText.Text = "Not connected";
             PatStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            SavePatButton.IsEnabled = true;
+            ClearPatButton.IsEnabled = false;
+        }
+
+        var existingGitHubPat = _credentialService.GetCredential("GitHub");
+        if (!string.IsNullOrEmpty(existingGitHubPat))
+        {
+            GitHubStatusText.Text = "Connected";
+            GitHubStatusText.Foreground = new SolidColorBrush(Color.FromRgb(0, 150, 0));
+            SaveGitHubPatButton.IsEnabled = false;
+            ClearGitHubPatButton.IsEnabled = true;
+        }
+        else
+        {
+            GitHubStatusText.Text = "Not connected";
+            GitHubStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            SaveGitHubPatButton.IsEnabled = true;
+            ClearGitHubPatButton.IsEnabled = false;
         }
     }
 
@@ -88,6 +111,44 @@ public partial class SettingsDialog : Window
         }
     }
 
+    private void GitHubPatPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressGitHubPatSync) return;
+
+        _suppressGitHubPatSync = true;
+        GitHubPatTextBox.Text = GitHubPatPasswordBox.Password;
+        _suppressGitHubPatSync = false;
+    }
+
+    private void GitHubPatTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressGitHubPatSync) return;
+
+        _suppressGitHubPatSync = true;
+        GitHubPatPasswordBox.Password = GitHubPatTextBox.Text;
+        _suppressGitHubPatSync = false;
+    }
+
+    private void ToggleGitHubPatVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        _isGitHubPatVisible = !_isGitHubPatVisible;
+
+        if (_isGitHubPatVisible)
+        {
+            GitHubPatTextBox.Text = GitHubPatPasswordBox.Password;
+            GitHubPatPasswordBox.Visibility = Visibility.Collapsed;
+            GitHubPatTextBox.Visibility = Visibility.Visible;
+            ToggleGitHubPatVisibilityButton.Content = "Hide";
+        }
+        else
+        {
+            GitHubPatPasswordBox.Password = GitHubPatTextBox.Text;
+            GitHubPatTextBox.Visibility = Visibility.Collapsed;
+            GitHubPatPasswordBox.Visibility = Visibility.Visible;
+            ToggleGitHubPatVisibilityButton.Content = "Show";
+        }
+    }
+
     private void SavePat_Click(object sender, RoutedEventArgs e)
     {
         var pat = _isPatVisible ? PatTextBox.Text : PatPasswordBox.Password;
@@ -102,8 +163,10 @@ public partial class SettingsDialog : Window
         // Save to credential manager
         _credentialService.SaveCredential("AzureDevOps", "git", pat);
 
-        PatStatusText.Text = "PAT saved successfully";
+        PatStatusText.Text = "Connected";
         PatStatusText.Foreground = new SolidColorBrush(Color.FromRgb(0, 150, 0));
+        SavePatButton.IsEnabled = false;
+        ClearPatButton.IsEnabled = true;
 
         // Clear the input
         PatPasswordBox.Password = "";
@@ -124,8 +187,62 @@ public partial class SettingsDialog : Window
 
             PatPasswordBox.Password = "";
             PatTextBox.Text = "";
-            PatStatusText.Text = "PAT cleared";
+            PatStatusText.Text = "Not connected";
             PatStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            SavePatButton.IsEnabled = true;
+            ClearPatButton.IsEnabled = false;
+        }
+    }
+
+    private void SaveGitHubPat_Click(object sender, RoutedEventArgs e)
+    {
+        var pat = _isGitHubPatVisible ? GitHubPatTextBox.Text : GitHubPatPasswordBox.Password;
+        var username = GitHubUsernameTextBox.Text.Trim();
+
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            MessageBox.Show("Please enter a GitHub username or email.", "Missing Username",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(pat))
+        {
+            MessageBox.Show("Please enter a PAT before saving.", "No PAT Entered",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _credentialService.SaveCredential("GitHub", username, pat);
+        _settings.GitHubUsername = username;
+        _settingsService.SaveSettings(_settings);
+
+        GitHubStatusText.Text = "Connected";
+        GitHubStatusText.Foreground = new SolidColorBrush(Color.FromRgb(0, 150, 0));
+        SaveGitHubPatButton.IsEnabled = false;
+        ClearGitHubPatButton.IsEnabled = true;
+
+        GitHubPatPasswordBox.Password = "";
+        GitHubPatTextBox.Text = "";
+    }
+
+    private void ClearGitHubPat_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            "Are you sure you want to disconnect GitHub?",
+            "Disconnect GitHub",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            _credentialService.DeleteCredential("GitHub");
+            GitHubPatPasswordBox.Password = "";
+            GitHubPatTextBox.Text = "";
+            GitHubStatusText.Text = "Not connected";
+            GitHubStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            SaveGitHubPatButton.IsEnabled = true;
+            ClearGitHubPatButton.IsEnabled = false;
         }
     }
 
@@ -159,6 +276,12 @@ public partial class SettingsDialog : Window
         if (_settings.AzureDevOpsOrganization != OrganizationTextBox.Text.Trim())
         {
             _settings.AzureDevOpsOrganization = OrganizationTextBox.Text.Trim();
+            changed = true;
+        }
+
+        if (_settings.GitHubUsername != GitHubUsernameTextBox.Text.Trim())
+        {
+            _settings.GitHubUsername = GitHubUsernameTextBox.Text.Trim();
             changed = true;
         }
 

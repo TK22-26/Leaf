@@ -107,6 +107,7 @@ public class AppSettings
     public string Theme { get; set; } = "System";
     public string DefaultClonePath { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     public string AzureDevOpsOrganization { get; set; } = string.Empty;
+    public string GitHubUsername { get; set; } = string.Empty;
     public double WindowWidth { get; set; } = 1200;
     public double WindowHeight { get; set; } = 700;
     public double WindowLeft { get; set; } = -1;
