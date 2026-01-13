@@ -177,7 +177,8 @@ public class GraphBuilder
                 BranchNames = [.. commit.BranchNames],
                 BranchLabels = [.. commit.BranchLabels],
                 TagNames = [.. commit.TagNames],
-                PrimaryBranch = branchName ?? commit.BranchNames.FirstOrDefault()
+                PrimaryBranch = branchName ?? commit.BranchNames.FirstOrDefault(),
+                IdenticonKey = commit.AvatarKey
             };
 
             nodes.Add(node);

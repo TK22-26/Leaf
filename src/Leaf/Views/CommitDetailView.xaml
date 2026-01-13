@@ -11,6 +11,7 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
         <converters:FileStatusToBrushConverter x:Key="FileStatusToBrushConverter"/>
+        <converters:IdenticonConverter x:Key="IdenticonConverter"/>
 
         <!-- File status colors -->
         <SolidColorBrush x:Key="StatusAddedBrush" Color="#28A745"/>
@@ -162,11 +163,21 @@
                     </Grid.ColumnDefinitions>
 
                     <!-- Author Name -->
-                    <TextBlock Grid.Row="0" Grid.Column="0"
-                               Text="{Binding Commit.Author}"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                               FontSize="12"
-                               FontWeight="SemiBold"/>
+                    <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Width="18"
+                               Height="18"
+                               Margin="0,0,8,0"
+                               Source="{Binding Commit.AvatarKey, Converter={StaticResource IdenticonConverter}, ConverterParameter=18}">
+                            <Image.Clip>
+                                <EllipseGeometry Center="9,9" RadiusX="9" RadiusY="9"/>
+                            </Image.Clip>
+                        </Image>
+                        <TextBlock Text="{Binding Commit.Author}"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
 
                     <!-- Parent SHA (clickable) -->
                     <TextBlock Grid.Row="0" Grid.Column="1"

@@ -15,6 +15,7 @@
         <!-- Trail/highlight height: NodeRadius(5) * 3.75 + 4 = 22.75, rounded to 23 -->
         <sys:Double x:Key="TrailHeight" xmlns:sys="clr-namespace:System;assembly=mscorlib">23</sys:Double>
         <converters:BoolToOpacityConverter x:Key="BoolToOpacityConverter"/>
+        <converters:IdenticonConverter x:Key="IdenticonConverter"/>
         <!-- Leaf green accent colors -->
         <SolidColorBrush x:Key="LeafAccentHoverBrush" Color="#3328A745"/>
         <SolidColorBrush x:Key="LeafAccentSelectedBrush" Color="#5528A745"/>
@@ -253,12 +254,12 @@
                                             VerticalAlignment="Center"
                                             Background="Transparent"/>
                                     <!-- Content -->
-                                    <StackPanel Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center"
-                                                Opacity="{Binding IsDimmed, Converter={StaticResource BoolToOpacityConverter}}">
-                                        <!-- Commit message (secondary color) -->
-                                        <TextBlock Text="{Binding MessageShort}"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   VerticalAlignment="Center"
+                                      <StackPanel Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                  Opacity="{Binding IsDimmed, Converter={StaticResource BoolToOpacityConverter}}">
+                                          <!-- Commit message (secondary color) -->
+                                          <TextBlock Text="{Binding MessageShort}"
+                                                     TextTrimming="CharacterEllipsis"
+                                                     VerticalAlignment="Center"
                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                    Margin="0,0,16,0"/>
 

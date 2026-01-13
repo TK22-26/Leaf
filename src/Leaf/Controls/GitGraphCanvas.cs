@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Media;
 using Leaf.Graph;
 using Leaf.Models;
+using Leaf.Utils;
 
 namespace Leaf.Controls;
 
@@ -423,12 +424,18 @@ public class GitGraphCanvas : FrameworkElement
                 targetY = wipY;
             }
 
-            if (targetY > wipY)
+            if (targetY > wipY && nodes != null && nodes.Count > 0)
             {
-                // Create clip geometry that excludes the WIP circle
+                var firstNode = nodes[0];
+                double firstNodeRadius = firstNode.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
+
+                // Create clip geometry that excludes both the WIP circle and the first commit's circle
                 var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
-                var circleClip = new EllipseGeometry(new Point(wipX, wipY), avatarRadius, avatarRadius);
-                var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, circleClip);
+                var wipCircle = new EllipseGeometry(new Point(wipX, wipY), avatarRadius, avatarRadius);
+                var firstNodeCircle = new EllipseGeometry(new Point(targetX, targetY), firstNodeRadius, firstNodeRadius);
+
+                var clipWithoutWip = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, wipCircle);
+                var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, clipWithoutWip, firstNodeCircle);
                 clipGeometry.Freeze();
 
                 dc.PushClip(clipGeometry);
@@ -626,6 +633,9 @@ public class GitGraphCanvas : FrameworkElement
         double trailEndX = ActualWidth;
         double accentWidth = 2;
 
+        // Node radius depends on commit type (merge = smaller dot, regular = avatar circle)
+        double avatarRadius = node.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
+
         // Determine if this row is highlighted (selected or search match)
         bool isHighlighted = node.Sha == SelectedSha || (IsSearchActive && node.IsSearchMatch);
 
@@ -639,13 +649,19 @@ public class GitGraphCanvas : FrameworkElement
         var accentBrush = new SolidColorBrush(baseColor);
         accentBrush.Freeze();
 
-        // Draw the main trail rectangle
+        // Create clipped trail geometry (rectangle with circle cut out)
         var trailRect = new Rect(
             trailStartX,
             y - trailHeight / 2,
             trailEndX - trailStartX - accentWidth,
             trailHeight);
-        dc.DrawRectangle(trailBrush, null, trailRect);
+        var trailGeometry = new RectangleGeometry(trailRect);
+        var circleGeometry = new EllipseGeometry(new Point(x, y), avatarRadius, avatarRadius);
+        var clippedTrail = new CombinedGeometry(GeometryCombineMode.Exclude, trailGeometry, circleGeometry);
+        clippedTrail.Freeze();
+
+        // Draw clipped trail
+        dc.DrawGeometry(trailBrush, null, clippedTrail);
 
         // Draw the accent rectangle at the end (100% opacity)
         var accentRect = new Rect(
@@ -669,26 +685,36 @@ public class GitGraphCanvas : FrameworkElement
             double mergeRadius = NodeRadius * 0.875;
             dc.DrawEllipse(brush, null, new Point(x, y), mergeRadius, mergeRadius);
         }
-        else
-        {
-            // Regular commits: circle with white interior (avatar style) - 1.875x size (1.5 * 1.25)
-            double avatarRadius = NodeRadius * 1.875;
-            var outerPen = new Pen(brush, 2.5);
-            outerPen.Freeze();
-            dc.DrawEllipse(Brushes.White, outerPen, new Point(x, y), avatarRadius, avatarRadius);
+            else
+            {
+                // Regular commits: circle with identicon fill
+                double avatarRadius = NodeRadius * 1.875;
+                var outerPen = new Pen(brush, 2.5);
+                outerPen.Freeze();
+                var backgroundColor = IdenticonGenerator.GetDefaultBackgroundColor();
+                var backgroundBrush = backgroundColor.HasValue
+                    ? new SolidColorBrush(backgroundColor.Value)
+                    : Brushes.Transparent;
+                backgroundBrush.Freeze();
+                dc.DrawEllipse(backgroundBrush, outerPen, new Point(x, y), avatarRadius, avatarRadius);
 
-            // Draw a simple person icon inside
-            var personIcon = "\uE77B"; // Person icon from Segoe Fluent Icons
-            var iconFormatted = new FormattedText(
-                personIcon,
-                CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight,
-                IconTypeface,
-                13,
-                brush,
-                VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            dc.DrawText(iconFormatted, new Point(x - iconFormatted.Width / 2, y - iconFormatted.Height / 2));
-        }
+                var key = string.IsNullOrWhiteSpace(node.IdenticonKey) ? node.Sha : node.IdenticonKey;
+                int iconSize = (int)Math.Round(avatarRadius * 2);
+                if (iconSize < 10)
+                {
+                    iconSize = 10;
+                }
+
+                var identicon = IdenticonGenerator.GetIdenticon(key, iconSize, backgroundColor);
+                var fillBrush = new ImageBrush(identicon)
+                {
+                    Stretch = Stretch.UniformToFill,
+                    AlignmentX = AlignmentX.Center,
+                    AlignmentY = AlignmentY.Center
+                };
+                fillBrush.Freeze();
+                dc.DrawEllipse(fillBrush, null, new Point(x, y), avatarRadius - 1, avatarRadius - 1);
+            }
 
         // HEAD indicator removed - now shown via enlarged branch tag instead
     }
@@ -698,6 +724,9 @@ public class GitGraphCanvas : FrameworkElement
         double nodeX = GetXForColumn(node.ColumnIndex);
         double nodeY = GetYForRow(node.RowIndex + rowOffset);
 
+        // Node radius for clipping (merge = smaller, regular = avatar)
+        double nodeRadius = node.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
+
         for (int i = 0; i < node.ParentShas.Count; i++)
         {
             var parentSha = node.ParentShas[i];
@@ -706,6 +735,7 @@ public class GitGraphCanvas : FrameworkElement
 
             double parentX = GetXForColumn(parentNode.ColumnIndex);
             double parentY = GetYForRow(parentNode.RowIndex + rowOffset);
+            double parentRadius = parentNode.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
 
             // First parent (i=0): commit-to-commit style (down then horizontal)
             // Second+ parent (i>0): merge style (horizontal then down)
@@ -720,7 +750,19 @@ public class GitGraphCanvas : FrameworkElement
             var linePen = new Pen(lineBrush, 2);
             linePen.Freeze();
 
+            // Create clip geometry that excludes both node circles
+            var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+            var nodeCircle = new EllipseGeometry(new Point(nodeX, nodeY), nodeRadius, nodeRadius);
+            var parentCircle = new EllipseGeometry(new Point(parentX, parentY), parentRadius, parentRadius);
+
+            // Exclude node circle first, then parent circle
+            var clipWithoutNode = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, nodeCircle);
+            var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, clipWithoutNode, parentCircle);
+            clipGeometry.Freeze();
+
+            dc.PushClip(clipGeometry);
             DrawRailConnection(dc, linePen, nodeX, nodeY, parentX, parentY, isMergeConnection);
+            dc.Pop();
         }
     }
 
@@ -882,17 +924,17 @@ public class GitGraphCanvas : FrameworkElement
             labelX += totalWidth + 4;
         }
 
-        // Draw connecting line from last label to the commit node (same color as tag)
-        // Thicker line for current branch
-        if (node.BranchLabels.Count > 0 && lastLabelRight > 0 && lastLabelBrush != null)
-        {
-            double lineThickness = lastLabelIsCurrent ? 2.5 : 1.5;
-            var linePen = new Pen(lastLabelBrush, lineThickness);
-            linePen.Freeze();
+            // Draw connecting line from last label to the commit node (same color as tag)
+            // Thicker line for current branch
+            if (node.BranchLabels.Count > 0 && lastLabelRight > 0 && lastLabelBrush != null)
+            {
+                double lineThickness = lastLabelIsCurrent ? 2.5 : 1.5;
+                var linePen = new Pen(lastLabelBrush, lineThickness);
+                linePen.Freeze();
 
-            // Draw horizontal line from label to node (stop 4px before node edge)
-            dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(nodeX - NodeRadius - 4, y));
-        }
+                // Draw horizontal line from label to node (stop before node edge)
+                dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(nodeX - NodeRadius - 4, y));
+            }
     }
 
     private void DrawGhostTag(DrawingContext dc, GitTreeNode node, int rowOffset = 0)
@@ -987,7 +1029,7 @@ public class GitGraphCanvas : FrameworkElement
             dc.DrawText(iconFormatted, new Point(labelX + 6 + nameWidth + 4, y - iconFormatted.Height / 2));
         }
 
-        // Draw connecting line from label to the commit node (stop 4px before node edge)
+        // Draw connecting line from label to the commit node (stop before node edge)
         var linePen = new Pen(ghostBrush, 1.5);
         linePen.Freeze();
         dc.DrawLine(linePen, new Point(labelX + totalWidth, y), new Point(nodeX - NodeRadius - 4, y));

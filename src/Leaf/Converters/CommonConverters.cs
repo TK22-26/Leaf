@@ -237,3 +237,27 @@ public class IntGreaterThanZeroConverter : IValueConverter
         throw new NotImplementedException();
     }
 }
+
+/// <summary>
+/// Converts an identicon key string into an ImageSource.
+/// </summary>
+public class IdenticonConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var key = value as string;
+        int size = 16;
+        if (parameter != null && int.TryParse(parameter.ToString(), out var parsed))
+        {
+            size = parsed;
+        }
+
+        var background = Utils.IdenticonGenerator.GetDefaultBackgroundColor();
+        return Utils.IdenticonGenerator.GetIdenticon(key, size, background);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}

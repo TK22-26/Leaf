@@ -40,6 +40,24 @@ public partial class CommitInfo : ObservableObject
 
     public string AuthorEmail { get; set; } = string.Empty;
 
+    public string AvatarKey
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(AuthorEmail))
+            {
+                return AuthorEmail.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(Author))
+            {
+                return Author.Trim();
+            }
+
+            return Sha;
+        }
+    }
+
     public DateTimeOffset Date { get; set; }
 
     public List<string> ParentShas { get; set; } = [];

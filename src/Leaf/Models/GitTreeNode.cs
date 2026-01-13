@@ -77,6 +77,11 @@ public class GitTreeNode
     public string? PrimaryBranch { get; set; }
 
     /// <summary>
+    /// Key used to generate an identicon for the commit.
+    /// </summary>
+    public string IdenticonKey { get; set; } = string.Empty;
+
+    /// <summary>
     /// True if this node matches the current search criteria.
     /// Defaults to true (all visible when no search active).
     /// </summary>
