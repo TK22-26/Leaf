@@ -71,7 +71,8 @@
                                           RowHeight="{StaticResource RowHeight}"
                                           Height="{Binding TotalHeight}"
                                           MinWidth="80"
-                                          MouseLeftButtonDown="GraphCanvas_MouseLeftButtonDown"/>
+                                          MouseLeftButtonDown="GraphCanvas_MouseLeftButtonDown"
+                                          MouseRightButtonDown="GraphCanvas_MouseRightButtonDown"/>
 
                 <!-- Commit List with Working Changes row -->
                 <StackPanel Grid.Column="1" Height="{Binding TotalHeight}">
@@ -246,7 +247,8 @@
                                     Cursor="Hand"
                                     MouseLeftButtonDown="CommitItem_MouseLeftButtonDown"
                                     MouseEnter="CommitItem_MouseEnter"
-                                    MouseLeave="CommitItem_MouseLeave">
+                                    MouseLeave="CommitItem_MouseLeave"
+                                    ContextMenuOpening="CommitItem_ContextMenuOpening">
                                 <Grid>
                                     <!-- Highlight background (matches trail height, extends to edge) -->
                                     <Border x:Name="HighlightBorder"

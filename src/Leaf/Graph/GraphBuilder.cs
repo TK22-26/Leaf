@@ -101,7 +101,7 @@ public class GraphBuilder
     /// Build graph nodes from commits.
     /// Commits should be in reverse chronological order (newest first).
     /// </summary>
-    public List<GitTreeNode> BuildGraph(IReadOnlyList<CommitInfo> commits)
+    public List<GitTreeNode> BuildGraph(IReadOnlyList<CommitInfo> commits, string? currentBranchName = null)
     {
         if (commits.Count == 0)
             return [];
@@ -113,10 +113,14 @@ public class GraphBuilder
         // Build branch data for GitKraken-style branch detection
         var branchData = BuildBranchData(commits, commitsBySha);
 
-        // Extract main branch info for lane allocation (first priority branch)
+        // Extract main branch info for lane allocation (prefer current branch if known)
         // Use allAncestors for lane allocation so all main-branch commits get lane 0 preference
-        var mainBranchData = branchData.FirstOrDefault(b =>
-            GetBranchPriority(b.name) == 0);
+        var currentBranchData = !string.IsNullOrWhiteSpace(currentBranchName)
+            ? branchData.FirstOrDefault(b => b.name.Equals(currentBranchName, StringComparison.OrdinalIgnoreCase))
+            : default;
+        var mainBranchData = currentBranchData.name != null
+            ? currentBranchData
+            : branchData.FirstOrDefault(b => GetBranchPriority(b.name) == 0);
         var mainBranchCommits = mainBranchData.allAncestors ?? new HashSet<string>();
         var mainBranchName = mainBranchData.name;
 
@@ -396,11 +400,21 @@ public class GraphBuilder
         }
 
         if (foundLane != -1)
+        {
+            // Prefer lane 0 for main branch commits even if another lane expects it
+            if (mainBranchCommits.Contains(commit.Sha) && (activeLanes.Count == 0 || activeLanes[0] == null))
+            {
+                activeLanes[foundLane] = null;
+                EnsureLaneExists(activeLanes, 0);
+                return 0;
+            }
             return foundLane;
+        }
 
         // No lane is expecting us - find a free lane or create a new one
         // Prefer lane 0 for commits on the main branch lineage
-        if (mainBranchCommits.Contains(commit.Sha))
+        bool isMainBranchCommit = mainBranchCommits.Contains(commit.Sha);
+        if (isMainBranchCommit)
         {
             if (activeLanes.Count == 0 || activeLanes[0] == null)
             {
@@ -410,7 +424,8 @@ public class GraphBuilder
         }
 
         // Find first free lane
-        for (int i = 0; i < activeLanes.Count; i++)
+        int startLane = isMainBranchCommit ? 0 : 1;
+        for (int i = startLane; i < activeLanes.Count; i++)
         {
             if (activeLanes[i] == null)
             {
@@ -419,6 +434,11 @@ public class GraphBuilder
         }
 
         // No free lane, create new one
+        if (activeLanes.Count == 0 && !isMainBranchCommit)
+        {
+            EnsureLaneExists(activeLanes, 1);
+            return 1;
+        }
         activeLanes.Add(null);
         return activeLanes.Count - 1;
     }
@@ -455,7 +475,8 @@ public class GraphBuilder
                 {
                     // If this parent is on the main branch, prefer lane 0
                     int freeLane = -1;
-                    if (mainBranchCommits.Contains(parentSha) && (activeLanes.Count == 0 || activeLanes[0] == null))
+                    bool parentIsMain = mainBranchCommits.Contains(parentSha);
+                    if (parentIsMain && (activeLanes.Count == 0 || activeLanes[0] == null))
                     {
                         EnsureLaneExists(activeLanes, 0);
                         freeLane = 0;
@@ -463,7 +484,8 @@ public class GraphBuilder
                     else
                     {
                         // Find a free lane for this parent
-                        for (int j = 0; j < activeLanes.Count; j++)
+                        int startLane = parentIsMain ? 0 : 1;
+                        for (int j = startLane; j < activeLanes.Count; j++)
                         {
                             if (activeLanes[j] == null)
                             {
@@ -474,9 +496,17 @@ public class GraphBuilder
 
                         if (freeLane == -1)
                         {
-                            freeLane = activeLanes.Count;
-                            activeLanes.Add(null);
-                            laneBranchNames.Add(null);
+                            if (activeLanes.Count == 0 && !parentIsMain)
+                            {
+                                EnsureLaneExists(activeLanes, 1);
+                                freeLane = 1;
+                            }
+                            else
+                            {
+                                freeLane = activeLanes.Count;
+                                activeLanes.Add(null);
+                                laneBranchNames.Add(null);
+                            }
                         }
                     }
 

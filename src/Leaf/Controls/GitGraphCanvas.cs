@@ -405,18 +405,21 @@ public class GitGraphCanvas : FrameworkElement
             var branchBrush = GraphBuilder.GetBranchColor(branchName) as SolidColorBrush ?? Brushes.Gray;
             var branchColor = branchBrush.Color;
 
-            // Draw connection from WIP directly to first commit (skip stashes - they're in a separate lane)
-            double wipX = GetXForColumn(0);
+            var headNode = nodes?.FirstOrDefault(n => n.IsHead);
+            var targetNode = headNode ?? (nodes != null && nodes.Count > 0 ? nodes[0] : null);
+            int wipLane = targetNode?.ColumnIndex ?? 0;
+
+            // Draw connection from WIP directly to current branch head when possible
+            double wipX = GetXForColumn(wipLane);
             double wipY = GetYForRow(0);
             double avatarRadius = NodeRadius * 1.875;
 
-            // Always connect to first commit (stashes are now isolated in their own lane)
-            double targetX, targetY;
-            if (nodes != null && nodes.Count > 0)
+            double targetX;
+            double targetY;
+            if (targetNode != null)
             {
-                var firstNode = nodes[0];
-                targetX = GetXForColumn(firstNode.ColumnIndex);
-                targetY = GetYForRow(firstNode.RowIndex + rowOffset);
+                targetX = GetXForColumn(targetNode.ColumnIndex);
+                targetY = GetYForRow(targetNode.RowIndex + rowOffset);
             }
             else
             {
@@ -424,18 +427,17 @@ public class GitGraphCanvas : FrameworkElement
                 targetY = wipY;
             }
 
-            if (targetY > wipY && nodes != null && nodes.Count > 0)
+            if (targetY > wipY && targetNode != null)
             {
-                var firstNode = nodes[0];
-                double firstNodeRadius = firstNode.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
+                double targetRadius = targetNode.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
 
-                // Create clip geometry that excludes both the WIP circle and the first commit's circle
+                // Create clip geometry that excludes both the WIP circle and the target commit's circle
                 var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
                 var wipCircle = new EllipseGeometry(new Point(wipX, wipY), avatarRadius, avatarRadius);
-                var firstNodeCircle = new EllipseGeometry(new Point(targetX, targetY), firstNodeRadius, firstNodeRadius);
+                var targetCircle = new EllipseGeometry(new Point(targetX, targetY), targetRadius, targetRadius);
 
                 var clipWithoutWip = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, wipCircle);
-                var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, clipWithoutWip, firstNodeCircle);
+                var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, clipWithoutWip, targetCircle);
                 clipGeometry.Freeze();
 
                 dc.PushClip(clipGeometry);
@@ -446,7 +448,7 @@ public class GitGraphCanvas : FrameworkElement
             }
 
             // Draw WIP node on top of connection line
-            DrawWorkingChangesRow(dc, branchColor);
+            DrawWorkingChangesRow(dc, branchColor, wipLane);
         }
 
         // Draw stash rows
@@ -520,10 +522,10 @@ public class GitGraphCanvas : FrameworkElement
         }
     }
 
-    private void DrawWorkingChangesRow(DrawingContext dc, Color branchColor)
+    private void DrawWorkingChangesRow(DrawingContext dc, Color branchColor, int laneIndex)
     {
         double y = GetYForRow(0);
-        double x = GetXForColumn(0); // Always in lane 0
+        double x = GetXForColumn(laneIndex);
         double avatarRadius = NodeRadius * 1.875;
 
         // Determine if this row is highlighted (same as regular commits)

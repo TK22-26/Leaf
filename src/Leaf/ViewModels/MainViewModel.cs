@@ -1037,11 +1037,14 @@ public partial class MainViewModel : ObservableObject
                 ? branch.Name["origin/".Length..]
                 : branch.Name;
 
-            await _gitService.CheckoutAsync(SelectedRepository.Path, branchName);
+            await _gitService.CheckoutAsync(SelectedRepository.Path, branchName, allowConflicts: true);
 
             // Refresh the repo info
             var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
             SelectedRepository.CurrentBranch = info.CurrentBranch;
+            SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
+            SelectedRepository.MergingBranch = info.MergingBranch;
+            SelectedRepository.ConflictCount = info.ConflictCount;
 
             // Reload branches to update current indicator
             SelectedRepository.BranchesLoaded = false;
@@ -1053,7 +1056,20 @@ public partial class MainViewModel : ObservableObject
                 await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
             }
 
-            StatusMessage = $"Checked out {branchName}";
+            if (SelectedRepository.ConflictCount > 0)
+            {
+                if (string.IsNullOrEmpty(SelectedRepository.MergingBranch))
+                {
+                    SelectedRepository.MergingBranch = branchName;
+                }
+
+                StatusMessage = "Checkout has conflicts - resolve to complete";
+                await RefreshMergeConflictResolutionAsync();
+            }
+            else
+            {
+                StatusMessage = $"Checked out {branchName}";
+            }
         }
         catch (Exception ex)
         {
@@ -1125,6 +1141,27 @@ public partial class MainViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    [RelayCommand]
+    public async Task MergeBranchLabelAsync(BranchLabel label)
+    {
+        if (label == null)
+            return;
+
+        var name = label.IsRemote && !label.IsLocal && label.RemoteName != null
+            ? $"{label.RemoteName}/{label.Name}"
+            : label.Name;
+
+        var branch = new BranchInfo
+        {
+            Name = name,
+            IsRemote = label.IsRemote,
+            RemoteName = label.RemoteName,
+            IsCurrent = label.IsCurrent
+        };
+
+        await MergeBranchAsync(branch);
     }
 
     /// <summary>

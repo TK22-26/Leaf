@@ -74,7 +74,7 @@ public interface IGitService
     /// <summary>
     /// Checkout a branch.
     /// </summary>
-    Task CheckoutAsync(string repoPath, string branchName);
+    Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false);
 
     /// <summary>
     /// Create a new branch.

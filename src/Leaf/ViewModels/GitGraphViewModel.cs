@@ -133,8 +133,16 @@ public partial class GitGraphViewModel : ObservableObject
             var commits = await commitsTask;
             var stashes = await stashesTask;
 
+            var currentBranchName = workingChanges?.BranchName;
+            if (string.IsNullOrWhiteSpace(currentBranchName))
+            {
+                currentBranchName = commits
+                    .SelectMany(c => c.BranchLabels)
+                    .FirstOrDefault(l => l.IsCurrent)?.Name;
+            }
+
             // Build graph
-            var nodes = _graphBuilder.BuildGraph(commits);
+            var nodes = _graphBuilder.BuildGraph(commits, currentBranchName);
 
             // Atomically replace collections to avoid flashing
             // (replacing triggers single property change vs many Add/Clear operations)

@@ -248,7 +248,7 @@ public partial class GitGraphView : UserControl
             return;
 
         var pos = e.GetPosition(GraphCanvas);
-        if (e.ClickCount == 2 && GraphCanvas != null)
+        if (GraphCanvas != null && e.ClickCount == 2)
         {
             var label = GraphCanvas.GetBranchLabelAt(pos);
             if (label != null && Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
@@ -299,5 +299,65 @@ public partial class GitGraphView : UserControl
         {
             viewModel.SelectCommit(viewModel.Commits[commitIndex]);
         }
+    }
+
+    private void CommitItem_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not CommitInfo commit)
+            return;
+
+        if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
+            return;
+
+        var menu = new ContextMenu();
+        if (commit.BranchLabels.Count == 0)
+        {
+            menu.Items.Add(new MenuItem
+            {
+                Header = "No branch labels at this commit",
+                IsEnabled = false
+            });
+        }
+        else
+        {
+            foreach (var label in commit.BranchLabels)
+            {
+                menu.Items.Add(new MenuItem
+                {
+                    Header = $"Merge {label.FullName} into current",
+                    Command = mainViewModel.MergeBranchLabelCommand,
+                    CommandParameter = label
+                });
+            }
+        }
+
+        element.ContextMenu = menu;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private void GraphCanvas_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (GraphCanvas == null)
+            return;
+
+        var label = GraphCanvas.GetBranchLabelAt(e.GetPosition(GraphCanvas));
+        if (label == null)
+            return;
+
+        if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
+            return;
+
+        var menuItem = new MenuItem
+        {
+            Header = $"Merge {label.FullName} into current",
+            Command = mainViewModel.MergeBranchLabelCommand,
+            CommandParameter = label
+        };
+
+        var menu = new ContextMenu();
+        menu.Items.Add(menuItem);
+        menu.IsOpen = true;
+        e.Handled = true;
     }
 }

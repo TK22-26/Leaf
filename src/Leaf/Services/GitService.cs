@@ -499,7 +499,7 @@ public class GitService : IGitService
         };
     }
 
-    public async Task CheckoutAsync(string repoPath, string branchName)
+    public async Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false)
     {
         await Task.Run(() =>
         {
@@ -522,21 +522,51 @@ public class GitService : IGitService
                     "Please complete or abort the merge first.");
             }
 
-            // Find the branch
+            // Find the branch (normalize remote names)
             var branch = repo.Branches[branchName];
+            var remoteName = "origin";
+            var shortName = branchName;
+            var slashIndex = branchName.IndexOf('/');
+            if (slashIndex > 0)
+            {
+                remoteName = branchName[..slashIndex];
+                shortName = branchName[(slashIndex + 1)..];
+            }
+
+            if (branch != null && branch.IsRemote)
+            {
+                var localBranch = repo.Branches[shortName];
+                if (localBranch == null)
+                {
+                    localBranch = repo.CreateBranch(shortName, branch.Tip);
+                    repo.Branches.Update(localBranch, b => b.TrackedBranch = branch.CanonicalName);
+                }
+                branch = localBranch;
+            }
+
             if (branch == null)
             {
                 // Try to find remote branch and create local tracking branch
-                var remoteBranch = repo.Branches[$"origin/{branchName}"];
+                var remoteBranch = repo.Branches[$"{remoteName}/{shortName}"];
                 if (remoteBranch != null)
                 {
-                    branch = repo.CreateBranch(branchName, remoteBranch.Tip);
+                    branch = repo.CreateBranch(shortName, remoteBranch.Tip);
                     repo.Branches.Update(branch, b => b.TrackedBranch = remoteBranch.CanonicalName);
                 }
                 else
                 {
                     throw new InvalidOperationException($"Branch '{branchName}' not found");
                 }
+            }
+
+            if (allowConflicts)
+            {
+                var result = RunGit(repoPath, $"checkout -m \"{branch.FriendlyName}\"");
+                if (result.ExitCode != 0)
+                {
+                    throw new InvalidOperationException($"Checkout failed: {result.Error}");
+                }
+                return;
             }
 
             Commands.Checkout(repo, branch);
