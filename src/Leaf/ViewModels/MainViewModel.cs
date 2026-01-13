@@ -684,6 +684,7 @@ public partial class MainViewModel : ObservableObject
             await _gitService.CreateBranchAsync(SelectedRepository.Path, branchName);
 
             StatusMessage = $"Created and checked out branch '{branchName}'";
+            SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
         catch (Exception ex)
