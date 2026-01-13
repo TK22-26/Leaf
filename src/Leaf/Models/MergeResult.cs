@@ -21,6 +21,11 @@ public class MergeResult
     public bool HasConflicts { get; set; }
 
     /// <summary>
+    /// Whether the merge failed due to unrelated histories (no common ancestor).
+    /// </summary>
+    public bool HasUnrelatedHistories { get; set; }
+
+    /// <summary>
     /// List of files with merge conflicts.
     /// </summary>
     public List<string> ConflictingFiles { get; set; } = [];

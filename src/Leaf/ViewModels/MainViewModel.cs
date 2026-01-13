@@ -1250,9 +1250,34 @@ public partial class MainViewModel : ObservableObject
             StatusMessage = $"Merging {branch.Name} into {SelectedRepository.CurrentBranch}...";
             System.Diagnostics.Debug.WriteLine($"[MainVM] Starting merge: {branch.Name} -> {SelectedRepository.CurrentBranch}");
 
+            // Initial attempt
             var result = await _gitService.MergeBranchAsync(SelectedRepository.Path, branch.Name);
-            System.Diagnostics.Debug.WriteLine($"[MainVM] Merge result: Success={result.Success}, Conflicts={result.HasConflicts}");
+            System.Diagnostics.Debug.WriteLine($"[MainVM] Merge result: Success={result.Success}, Conflicts={result.HasConflicts}, UnrelatedHistories={result.HasUnrelatedHistories}");
 
+            // Handle unrelated histories - prompt and retry
+            if (!result.Success && result.HasUnrelatedHistories)
+            {
+                var dialogResult = System.Windows.MessageBox.Show(
+                    "The branches have unrelated histories (no common ancestor).\n\n" +
+                    "This can happen when branches were created independently or the repository was recreated.\n\n" +
+                    "Do you want to merge anyway? This will combine the histories and may result in merge conflicts.",
+                    "Unrelated Histories",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Question);
+
+                if (dialogResult != System.Windows.MessageBoxResult.Yes)
+                {
+                    StatusMessage = "Merge cancelled";
+                    return;
+                }
+
+                // Retry with flag - result variable is updated
+                StatusMessage = $"Merging {branch.Name} (allowing unrelated histories)...";
+                result = await _gitService.MergeBranchAsync(SelectedRepository.Path, branch.Name, allowUnrelatedHistories: true);
+                System.Diagnostics.Debug.WriteLine($"[MainVM] Retry merge result: Success={result.Success}, Conflicts={result.HasConflicts}");
+            }
+
+            // Standard result handling (works for both initial and retry)
             if (result.Success)
             {
                 StatusMessage = $"Successfully merged {branch.Name}";
@@ -1266,7 +1291,7 @@ public partial class MainViewModel : ObservableObject
             else if (result.HasConflicts)
             {
                 StatusMessage = "Merge has conflicts - resolve to complete";
-                
+
                 // Refresh repo info to update merge banner and conflicts immediately
                 var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
                 SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;

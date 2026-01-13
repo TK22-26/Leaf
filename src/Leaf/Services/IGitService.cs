@@ -225,8 +225,9 @@ public interface IGitService
     /// </summary>
     /// <param name="repoPath">Path to the repository</param>
     /// <param name="branchName">Name of the branch to merge</param>
+    /// <param name="allowUnrelatedHistories">If true, allows merging branches with no common ancestor</param>
     /// <returns>MergeResult indicating success, conflicts, or failure</returns>
-    Task<Models.MergeResult> MergeBranchAsync(string repoPath, string branchName);
+    Task<Models.MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false);
 
     /// <summary>
     /// Open a conflict in VS Code for resolution.

@@ -1702,12 +1702,18 @@ public class GitService : IGitService
         });
     }
 
-    public async Task<Models.MergeResult> MergeBranchAsync(string repoPath, string branchName)
+    public async Task<Models.MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false)
     {
         return await Task.Run(() =>
         {
-            System.Diagnostics.Debug.WriteLine($"[GitService] Merging {branchName} in {repoPath}");
-            var result = RunGit(repoPath, $"merge \"{branchName}\"");
+            var args = $"merge \"{branchName}\"";
+            if (allowUnrelatedHistories)
+            {
+                args += " --allow-unrelated-histories";
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[GitService] Merging {branchName} in {repoPath} (allowUnrelatedHistories={allowUnrelatedHistories})");
+            var result = RunGit(repoPath, args);
             System.Diagnostics.Debug.WriteLine($"[GitService] Merge output: {result.Output}");
             System.Diagnostics.Debug.WriteLine($"[GitService] Merge error: {result.Error}");
             System.Diagnostics.Debug.WriteLine($"[GitService] Merge exit code: {result.ExitCode}");
@@ -1715,6 +1721,17 @@ public class GitService : IGitService
             if (result.ExitCode == 0)
             {
                 return new Models.MergeResult { Success = true };
+            }
+
+            // Check for unrelated histories error
+            if (result.Error.Contains("refusing to merge unrelated histories", StringComparison.OrdinalIgnoreCase))
+            {
+                return new Models.MergeResult
+                {
+                    Success = false,
+                    HasUnrelatedHistories = true,
+                    ErrorMessage = "Unrelated histories detected."
+                };
             }
 
             // Check if there are conflicts
@@ -1732,7 +1749,6 @@ public class GitService : IGitService
             return new Models.MergeResult
             {
                 Success = false,
-                HasConflicts = false,
                 ErrorMessage = result.Error
             };
         });
@@ -1776,6 +1792,9 @@ public class GitService : IGitService
             CreateNoWindow = true
         };
 
+        // Force English output for consistent error message parsing
+        startInfo.EnvironmentVariables["LC_ALL"] = "C";
+
         using var process = System.Diagnostics.Process.Start(startInfo);
         if (process == null)
         {
@@ -1802,6 +1821,9 @@ public class GitService : IGitService
             UseShellExecute = false,
             CreateNoWindow = true
         };
+
+        // Force English output for consistent error message parsing
+        startInfo.EnvironmentVariables["LC_ALL"] = "C";
 
         using var process = System.Diagnostics.Process.Start(startInfo);
         if (process == null)
