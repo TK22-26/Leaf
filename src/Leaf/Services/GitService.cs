@@ -43,11 +43,21 @@ public class GitService : IGitService
                 .GroupBy(b => b.Tip?.Sha)
                 .ToDictionary(g => g.Key ?? "", g => g.Select(b => b.FriendlyName).ToList());
 
+            // Build remote URL lookup for determining remote type (GitHub, AzureDevOps, etc.)
+            var remoteUrls = repo.Network.Remotes
+                .ToDictionary(r => r.Name, r => r.Url, StringComparer.OrdinalIgnoreCase);
+
             // Get remote branch tips (filter out HEAD, group by SHA)
             var remoteBranchTips = repo.Branches
                 .Where(b => b.IsRemote && !b.FriendlyName.EndsWith("/HEAD", StringComparison.OrdinalIgnoreCase))
                 .GroupBy(b => b.Tip?.Sha)
-                .ToDictionary(g => g.Key ?? "", g => g.Select(b => new RemoteBranchRef(GetBranchNameWithoutRemote(b.FriendlyName), b.RemoteName ?? "origin")).ToList());
+                .ToDictionary(g => g.Key ?? "", g => g.Select(b =>
+                {
+                    var remoteName = b.RemoteName ?? "origin";
+                    var remoteUrl = remoteUrls.GetValueOrDefault(remoteName, string.Empty);
+                    var remoteType = RemoteBranchGroup.GetRemoteTypeFromUrl(remoteUrl);
+                    return new RemoteBranchRef(GetBranchNameWithoutRemote(b.FriendlyName), remoteName, remoteType);
+                }).ToList());
 
             // Combined branch tips for display names
             var allBranchTips = repo.Branches
@@ -137,6 +147,7 @@ public class GitService : IGitService
                 IsLocal = true,
                 IsRemote = matchingRemote != null,
                 RemoteName = matchingRemote?.RemoteName,
+                RemoteType = matchingRemote?.RemoteType ?? RemoteType.Other,
                 IsCurrent = string.Equals(localName, currentBranchName, StringComparison.OrdinalIgnoreCase)
             });
             processedNames.Add(localName);
@@ -152,7 +163,8 @@ public class GitService : IGitService
                     Name = remote.Name,
                     IsLocal = false,
                     IsRemote = true,
-                    RemoteName = remote.RemoteName
+                    RemoteName = remote.RemoteName,
+                    RemoteType = remote.RemoteType
                 });
             }
         }
@@ -171,7 +183,7 @@ public class GitService : IGitService
     /// <summary>
     /// Helper record for tracking remote branch info.
     /// </summary>
-    private record RemoteBranchRef(string Name, string RemoteName);
+    private record RemoteBranchRef(string Name, string RemoteName, RemoteType RemoteType);
 
     public async Task<CommitInfo?> GetCommitAsync(string repoPath, string sha)
     {

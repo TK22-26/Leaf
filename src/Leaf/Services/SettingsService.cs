@@ -2,6 +2,10 @@ using System.IO;
 using System.Text.Json;
 using Leaf.Models;
 
+// Re-export auth method enums from Models for AppSettings usage
+using GitHubAuthMethod = Leaf.Models.GitHubAuthMethod;
+using AzureDevOpsAuthMethod = Leaf.Models.AzureDevOpsAuthMethod;
+
 namespace Leaf.Services;
 
 /// <summary>
@@ -118,7 +122,20 @@ public class AppSettings
     public double WindowLeft { get; set; } = -1;
     public double WindowTop { get; set; } = -1;
     public bool IsCommitDetailVisible { get; set; } = true;
+    public bool IsRepoPaneCollapsed { get; set; } = false;
     public string? LastSelectedRepositoryPath { get; set; }
+
+    // GitHub OAuth settings
+    public GitHubAuthMethod GitHubAuthMethod { get; set; } = GitHubAuthMethod.PersonalAccessToken;
+    public DateTime? GitHubOAuthTokenCreatedAt { get; set; }
+    public string? GitHubOAuthScopes { get; set; }
+
+    // Azure DevOps OAuth settings
+    public AzureDevOpsAuthMethod AzureDevOpsAuthMethod { get; set; } = AzureDevOpsAuthMethod.PersonalAccessToken;
+    public DateTime? AzureDevOpsOAuthTokenCreatedAt { get; set; }
+    public DateTime? AzureDevOpsOAuthTokenExpiresAt { get; set; }
+    public string? AzureDevOpsOAuthScopes { get; set; }
+    public string? AzureDevOpsUserDisplayName { get; set; }
 }
 
 /// <summary>

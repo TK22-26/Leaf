@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -56,7 +57,7 @@ public partial class MainViewModel : ObservableObject
     private bool _isWorkingChangesSelected;
 
     [ObservableProperty]
-    private bool _isRepoPaneCollapsed = true;
+    private bool _isRepoPaneCollapsed;
 
     [ObservableProperty]
     private string _statusMessage = "Ready";
@@ -113,6 +114,10 @@ public partial class MainViewModel : ObservableObject
         _gitGraphViewModel = new GitGraphViewModel(gitService);
         _commitDetailViewModel = new CommitDetailViewModel(gitService);
         _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService);
+
+        // Load UI state from settings
+        var settings = settingsService.LoadSettings();
+        _isRepoPaneCollapsed = settings.IsRepoPaneCollapsed;
 
         RepositoryRootItems = new ObservableCollection<object>();
 
@@ -386,6 +391,62 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Add all git repositories found in a folder (scans subdirectories).
+    /// </summary>
+    [RelayCommand]
+    public async Task AddAllReposInFolderAsync()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Select Folder to Scan for Git Repositories"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            var rootPath = dialog.FolderName;
+            var addedCount = 0;
+
+            try
+            {
+                IsBusy = true;
+                StatusMessage = "Scanning for repositories...";
+
+                // Find all directories that contain a .git folder
+                var gitDirs = Directory.GetDirectories(rootPath, ".git", SearchOption.AllDirectories);
+
+                foreach (var gitDir in gitDirs)
+                {
+                    var repoPath = Path.GetDirectoryName(gitDir);
+                    if (repoPath == null) continue;
+
+                    // Skip if already added
+                    if (RepositoryGroups.SelectMany(g => g.Repositories).Any(r => r.Path == repoPath))
+                        continue;
+
+                    if (await _gitService.IsValidRepositoryAsync(repoPath))
+                    {
+                        var repoInfo = await _gitService.GetRepositoryInfoAsync(repoPath);
+                        AddRepositoryToGroups(repoInfo);
+                        addedCount++;
+                    }
+                }
+
+                StatusMessage = addedCount > 0
+                    ? $"Added {addedCount} repositor{(addedCount == 1 ? "y" : "ies")}"
+                    : "No new repositories found";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error scanning: {ex.Message}";
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+    }
+
+    /// <summary>
     /// Clone a repository from URL.
     /// </summary>
     [RelayCommand]
@@ -585,6 +646,11 @@ public partial class MainViewModel : ObservableObject
     public void ToggleRepoPane()
     {
         IsRepoPaneCollapsed = !IsRepoPaneCollapsed;
+
+        // Persist the state
+        var settings = _settingsService.LoadSettings();
+        settings.IsRepoPaneCollapsed = IsRepoPaneCollapsed;
+        _settingsService.SaveSettings(settings);
     }
 
     /// <summary>
@@ -1132,6 +1198,10 @@ public partial class MainViewModel : ObservableObject
         {
             var branches = await _gitService.GetBranchesAsync(repo.Path);
 
+            // Get remote URLs for determining remote type (GitHub, Azure DevOps, etc.)
+            var remotes = await _gitService.GetRemotesAsync(repo.Path);
+            var remoteUrlLookup = remotes.ToDictionary(r => r.Name, r => r.Url, StringComparer.OrdinalIgnoreCase);
+
             var localBranches = branches.Where(b => !b.IsRemote).OrderBy(b => b.Name).ToList();
             // Filter out HEAD from remote branches (it's a symbolic reference, not a real branch)
             var remoteBranches = branches
@@ -1154,24 +1224,30 @@ public partial class MainViewModel : ObservableObject
             // Group remote branches by remote name (origin, upstream, etc.)
             var remoteGroups = remoteBranches
                 .GroupBy(b => b.RemoteName ?? "origin")
-                .Select(g => new RemoteBranchGroup
+                .Select(g =>
                 {
-                    Name = g.Key,
-                    Branches = new System.Collections.ObjectModel.ObservableCollection<BranchInfo>(
-                        g.Select(b => new BranchInfo
-                        {
-                            // Strip the remote prefix from the display name
-                            Name = b.Name.StartsWith($"{g.Key}/") ? b.Name[($"{g.Key}/".Length)..] : b.Name,
-                            FullName = b.FullName,
-                            IsCurrent = b.IsCurrent,
-                            IsRemote = b.IsRemote,
-                            RemoteName = b.RemoteName,
-                            TrackingBranchName = b.TrackingBranchName,
-                            TipSha = b.TipSha,
-                            AheadBy = b.AheadBy,
-                            BehindBy = b.BehindBy
-                        }).OrderBy(b => b.Name)),
-                    IsExpanded = true
+                    var remoteUrl = remoteUrlLookup.GetValueOrDefault(g.Key, string.Empty);
+                    return new RemoteBranchGroup
+                    {
+                        Name = g.Key,
+                        Url = remoteUrl,
+                        RemoteType = RemoteBranchGroup.GetRemoteTypeFromUrl(remoteUrl),
+                        Branches = new System.Collections.ObjectModel.ObservableCollection<BranchInfo>(
+                            g.Select(b => new BranchInfo
+                            {
+                                // Strip the remote prefix from the display name
+                                Name = b.Name.StartsWith($"{g.Key}/") ? b.Name[($"{g.Key}/".Length)..] : b.Name,
+                                FullName = b.FullName,
+                                IsCurrent = b.IsCurrent,
+                                IsRemote = b.IsRemote,
+                                RemoteName = b.RemoteName,
+                                TrackingBranchName = b.TrackingBranchName,
+                                TipSha = b.TipSha,
+                                AheadBy = b.AheadBy,
+                                BehindBy = b.BehindBy
+                            }).OrderBy(b => b.Name)),
+                        IsExpanded = true
+                    };
                 })
                 .OrderBy(g => g.Name)
                 .ToList();

@@ -250,31 +250,7 @@
                                 CornerRadius="8"
                                 Padding="16">
                             <StackPanel>
-                                <!-- Status header -->
-                                <Grid Margin="0,0,0,16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Width="40" Height="40"
-                                            CornerRadius="8"
-                                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                            BorderThickness="1">
-                                        <Image Source="{Binding Text, ElementName=OrganizationTextBox, Converter={StaticResource IdenticonConverter}}"
-                                               Stretch="UniformToFill" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Text, ElementName=OrganizationTextBox, TargetNullValue='No organization'}"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                        <TextBlock x:Name="PatStatusText"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                    </StackPanel>
-                                </Grid>
-
-                                <!-- Organization -->
+                                <!-- Organization (always visible) -->
                                 <TextBlock Text="Organization"
                                            FontSize="12"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -288,49 +264,242 @@
                                            Margin="0,0,0,16"
                                            TextWrapping="Wrap" />
 
-                                <!-- PAT -->
-                                <TextBlock Text="Personal Access Token (PAT)"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           Margin="0,0,0,4" />
-                                <TextBlock Text="Used for cloning and fetching from private repositories. Needs 'Code (Read)' scope."
-                                           FontSize="11"
-                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                           Margin="0,0,0,8"
-                                           TextWrapping="Wrap" />
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <PasswordBox x:Name="PatPasswordBox"
-                                                 Grid.Column="0"
-                                                 Padding="8,6"
-                                                 PasswordChanged="PatPasswordBox_PasswordChanged" />
-                                    <Button x:Name="TogglePatVisibilityButton"
-                                            Grid.Column="1"
-                                            Width="60"
-                                            Margin="8,0,0,0"
-                                            Click="TogglePatVisibility_Click"
-                                            Content="Show" />
-                                </Grid>
-                                <TextBox x:Name="PatTextBox"
-                                         Margin="0,8,0,0"
-                                         Padding="8,6"
-                                         TextChanged="PatTextBox_TextChanged"
-                                         Visibility="Collapsed" />
+                                <!-- OAuth Section -->
+                                <Border x:Name="AzureDevOpsOAuthSection"
+                                        Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="12"
+                                        Margin="0,0,0,12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
 
-                                <!-- Actions -->
-                                <StackPanel Margin="0,16,0,0" Orientation="Horizontal">
-                                    <Button x:Name="SavePatButton"
+                                        <!-- Avatar (shown when connected via OAuth) -->
+                                        <Border x:Name="AzureDevOpsOAuthAvatar"
+                                                Width="40" Height="40"
+                                                CornerRadius="20"
+                                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                Margin="0,0,12,0"
+                                                Visibility="Collapsed">
+                                            <Grid>
+                                                <Grid.Clip>
+                                                    <EllipseGeometry Center="19,19" RadiusX="19" RadiusY="19" />
+                                                </Grid.Clip>
+                                                <Image x:Name="AzureDevOpsOAuthIdenticonImage" Stretch="UniformToFill" />
+                                            </Grid>
+                                        </Border>
+
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <ic:SymbolIcon Symbol="Person" FontSize="16" Margin="0,0,8,0" />
+                                                <TextBlock Text="Sign in with Microsoft"
+                                                           FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                                <Border Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                                        CornerRadius="4"
+                                                        Padding="6,2"
+                                                        Margin="8,0,0,0">
+                                                    <TextBlock Text="Recommended"
+                                                               FontSize="10"
+                                                               Foreground="White" />
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock x:Name="AzureDevOpsOAuthStatusText"
+                                                       Text="Securely authenticate using your browser"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       Margin="24,4,0,0" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                            <Button x:Name="AzureDevOpsOAuthButton"
+                                                    Padding="16,8"
+                                                    Click="AzureDevOpsOAuth_Click"
+                                                    Content="Sign in" />
+                                            <Button x:Name="AzureDevOpsOAuthDisconnectButton"
+                                                    Padding="12,6"
+                                                    Margin="8,0,0,0"
+                                                    Click="AzureDevOpsDisconnect_Click"
+                                                    Content="Disconnect"
+                                                    Visibility="Collapsed" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- PAT Section -->
+                                <Border x:Name="AzureDevOpsPatSection"
+                                        Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="12">
+                                    <StackPanel>
+                                        <!-- PAT Header -->
+                                        <Grid Margin="0,0,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Avatar (shown when connected via PAT) -->
+                                            <Border x:Name="AzureDevOpsPatAvatar"
+                                                    Width="40" Height="40"
+                                                    CornerRadius="20"
+                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    Margin="0,0,12,0"
+                                                    Visibility="Collapsed">
+                                                <Grid>
+                                                    <Grid.Clip>
+                                                        <EllipseGeometry Center="19,19" RadiusX="19" RadiusY="19" />
+                                                    </Grid.Clip>
+                                                    <Image x:Name="AzureDevOpsPatIdenticonImage" Stretch="UniformToFill" />
+                                                </Grid>
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <ic:SymbolIcon Symbol="Key" FontSize="16" Margin="0,0,8,0" />
+                                                    <TextBlock Text="Personal Access Token"
+                                                               FontWeight="SemiBold"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                                </StackPanel>
+                                                <TextBlock x:Name="AzureDevOpsPatStatusText"
+                                                           Text="Use a PAT for authentication"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                           Margin="24,4,0,0" />
+                                            </StackPanel>
+
+                                            <Button x:Name="AzureDevOpsPatDisconnectButton"
+                                                    Grid.Column="2"
+                                                    Padding="12,6"
+                                                    Click="AzureDevOpsDisconnect_Click"
+                                                    Content="Disconnect"
+                                                    Visibility="Collapsed" />
+                                        </Grid>
+
+                                        <!-- PAT Input Fields (shown when not connected via PAT) -->
+                                        <StackPanel x:Name="AzureDevOpsPatInputPanel" Margin="0,12,0,0">
+                                            <!-- PAT -->
+                                            <TextBlock Text="Personal Access Token"
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       Margin="0,0,0,4" />
+                                            <TextBlock Text="Needs 'Code (Read)' scope for cloning/fetching, or 'Code (Read &amp; Write)' for pushing."
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                       Margin="0,0,0,8"
+                                                       TextWrapping="Wrap" />
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <PasswordBox x:Name="PatPasswordBox"
+                                                             Grid.Column="0"
+                                                             Padding="8,6"
+                                                             PasswordChanged="PatPasswordBox_PasswordChanged" />
+                                                <Button x:Name="TogglePatVisibilityButton"
+                                                        Grid.Column="1"
+                                                        Width="60"
+                                                        Margin="8,0,0,0"
+                                                        Click="TogglePatVisibility_Click"
+                                                        Content="Show" />
+                                            </Grid>
+                                            <TextBox x:Name="PatTextBox"
+                                                     Margin="0,0,0,8"
+                                                     Padding="8,6"
+                                                     TextChanged="PatTextBox_TextChanged"
+                                                     Visibility="Collapsed" />
+
+                                            <!-- PAT Connect Button -->
+                                            <Button x:Name="SavePatButton"
+                                                    Padding="12,6"
+                                                    Click="SavePat_Click"
+                                                    Content="Connect" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- OAuth Flow Panel (shown during authorization) -->
+                                <StackPanel x:Name="AzureDevOpsOAuthFlowPanel" Visibility="Collapsed">
+                                    <TextBlock Text="Complete authorization in your browser"
+                                               FontWeight="SemiBold"
+                                               FontSize="14"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                               Margin="0,0,0,16" />
+
+                                    <!-- User Code Display -->
+                                    <TextBlock Text="Your verification code:"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               Margin="0,0,0,8" />
+                                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="20,12"
+                                            HorizontalAlignment="Left">
+                                        <TextBlock x:Name="AzureDevOpsUserCodeText"
+                                                   FontSize="28"
+                                                   FontWeight="Bold"
+                                                   FontFamily="Consolas"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                   Text="XXXXXXXXX" />
+                                    </Border>
+                                    <Button x:Name="AzureDevOpsCopyCodeButton"
+                                            Margin="0,8,0,0"
                                             Padding="12,6"
-                                            Click="SavePat_Click"
-                                            Content="Connect" />
-                                    <Button x:Name="ClearPatButton"
-                                            Margin="8,0,0,0"
+                                            HorizontalAlignment="Left"
+                                            Click="AzureDevOpsCopyCode_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <ic:SymbolIcon Symbol="Copy" FontSize="14" Margin="0,0,6,0" />
+                                            <TextBlock Text="Copy Code" />
+                                        </StackPanel>
+                                    </Button>
+
+                                    <!-- Instructions -->
+                                    <StackPanel Margin="0,20,0,0">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <TextBlock Text="1. Go to "
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            <TextBlock x:Name="AzureDevOpsVerificationUriText"
+                                                       Text="https://microsoft.com/devicelogin"
+                                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                                       TextDecorations="Underline"
+                                                       Cursor="Hand"
+                                                       MouseDown="AzureDevOpsVerificationUri_Click" />
+                                        </StackPanel>
+                                        <TextBlock Text="2. Enter the code above and sign in with your Microsoft account"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+
+                                    <!-- Progress -->
+                                    <ProgressBar x:Name="AzureDevOpsOAuthProgressBar"
+                                                 IsIndeterminate="True"
+                                                 Margin="0,20,0,0" />
+                                    <TextBlock x:Name="AzureDevOpsOAuthStatusMessage"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               Margin="0,8,0,0"
+                                               Text="Waiting for authorization..." />
+
+                                    <!-- Cancel -->
+                                    <Button x:Name="AzureDevOpsCancelOAuthButton"
+                                            Margin="0,16,0,0"
                                             Padding="12,6"
-                                            Click="ClearPat_Click"
-                                            Content="Disconnect" />
+                                            Click="AzureDevOpsCancelOAuth_Click"
+                                            Content="Cancel" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -354,77 +523,243 @@
                                 CornerRadius="8"
                                 Padding="16">
                             <StackPanel>
-                                <!-- Status header -->
-                                <Grid Margin="0,0,0,16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Width="40" Height="40"
-                                            CornerRadius="8"
-                                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                            BorderThickness="1">
-                                        <Image Source="{Binding Text, ElementName=GitHubUsernameTextBox, Converter={StaticResource IdenticonConverter}}"
-                                               Stretch="UniformToFill" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Text, ElementName=GitHubUsernameTextBox, TargetNullValue='No username'}"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                        <TextBlock x:Name="GitHubStatusText"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                   Text="Not connected" />
+                                <!-- OAuth Section -->
+                                <Border x:Name="GitHubOAuthSection"
+                                        Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="12"
+                                        Margin="0,0,0,12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Avatar (shown when connected via OAuth) -->
+                                        <Border x:Name="GitHubOAuthAvatar"
+                                                Width="40" Height="40"
+                                                CornerRadius="20"
+                                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                Margin="0,0,12,0"
+                                                Visibility="Collapsed">
+                                            <Grid>
+                                                <Grid.Clip>
+                                                    <EllipseGeometry Center="19,19" RadiusX="19" RadiusY="19" />
+                                                </Grid.Clip>
+                                                <Image x:Name="GitHubOAuthIdenticonImage" Stretch="UniformToFill" />
+                                                <Image x:Name="GitHubOAuthAvatarImage" Stretch="UniformToFill" />
+                                            </Grid>
+                                        </Border>
+
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <ic:SymbolIcon Symbol="Person" FontSize="16" Margin="0,0,8,0" />
+                                                <TextBlock Text="Sign in with GitHub"
+                                                           FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                                <Border Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                                        CornerRadius="4"
+                                                        Padding="6,2"
+                                                        Margin="8,0,0,0">
+                                                    <TextBlock Text="Recommended"
+                                                               FontSize="10"
+                                                               Foreground="White" />
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock x:Name="GitHubOAuthStatusText"
+                                                       Text="Securely authenticate using your browser"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       Margin="24,4,0,0" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                            <Button x:Name="GitHubOAuthButton"
+                                                    Padding="16,8"
+                                                    Click="GitHubOAuth_Click"
+                                                    Content="Sign in" />
+                                            <Button x:Name="GitHubOAuthDisconnectButton"
+                                                    Padding="12,6"
+                                                    Margin="8,0,0,0"
+                                                    Click="GitHubDisconnect_Click"
+                                                    Content="Disconnect"
+                                                    Visibility="Collapsed" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- PAT Section -->
+                                <Border x:Name="GitHubPatSection"
+                                        Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="12">
+                                    <StackPanel>
+                                        <!-- PAT Header -->
+                                        <Grid Margin="0,0,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Avatar (shown when connected via PAT) -->
+                                            <Border x:Name="GitHubPatAvatar"
+                                                    Width="40" Height="40"
+                                                    CornerRadius="20"
+                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    Margin="0,0,12,0"
+                                                    Visibility="Collapsed">
+                                                <Grid>
+                                                    <Grid.Clip>
+                                                        <EllipseGeometry Center="19,19" RadiusX="19" RadiusY="19" />
+                                                    </Grid.Clip>
+                                                    <Image x:Name="GitHubPatIdenticonImage" Stretch="UniformToFill" />
+                                                </Grid>
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <ic:SymbolIcon Symbol="Key" FontSize="16" Margin="0,0,8,0" />
+                                                    <TextBlock Text="Personal Access Token"
+                                                               FontWeight="SemiBold"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                                </StackPanel>
+                                                <TextBlock x:Name="GitHubPatStatusText"
+                                                           Text="Use a PAT for authentication"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                           Margin="24,4,0,0" />
+                                            </StackPanel>
+
+                                            <Button x:Name="GitHubPatDisconnectButton"
+                                                    Grid.Column="2"
+                                                    Padding="12,6"
+                                                    Click="GitHubDisconnect_Click"
+                                                    Content="Disconnect"
+                                                    Visibility="Collapsed" />
+                                        </Grid>
+
+                                        <!-- PAT Input Fields (shown when not connected via PAT) -->
+                                        <StackPanel x:Name="GitHubPatInputPanel" Margin="0,12,0,0">
+                                            <!-- PAT -->
+                                            <TextBlock Text="Personal Access Token"
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       Margin="0,0,0,4" />
+                                            <TextBlock Text="Needs 'repo' scope (Full control of private repositories) for cloning, pushing, and pulling."
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                       Margin="0,0,0,8"
+                                                       TextWrapping="Wrap" />
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <PasswordBox x:Name="GitHubPatPasswordBox"
+                                                             Grid.Column="0"
+                                                             Padding="8,6"
+                                                             PasswordChanged="GitHubPatPasswordBox_PasswordChanged" />
+                                                <Button x:Name="ToggleGitHubPatVisibilityButton"
+                                                        Grid.Column="1"
+                                                        Width="60"
+                                                        Margin="8,0,0,0"
+                                                        Click="ToggleGitHubPatVisibility_Click"
+                                                        Content="Show" />
+                                            </Grid>
+                                            <TextBox x:Name="GitHubPatTextBox"
+                                                     Margin="0,0,0,8"
+                                                     Padding="8,6"
+                                                     TextChanged="GitHubPatTextBox_TextChanged"
+                                                     Visibility="Collapsed" />
+
+                                            <!-- PAT Connect Button -->
+                                            <Button x:Name="SaveGitHubPatButton"
+                                                    Padding="12,6"
+                                                    Click="SaveGitHubPat_Click"
+                                                    Content="Connect" />
+                                        </StackPanel>
                                     </StackPanel>
-                                </Grid>
+                                </Border>
 
-                                <!-- Username -->
-                                <TextBlock Text="Username or Email"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           Margin="0,0,0,4" />
-                                <TextBox x:Name="GitHubUsernameTextBox"
-                                         Margin="0,0,0,12"
-                                         Padding="8,6" />
+                                <!-- OAuth Flow Panel (shown during authorization) -->
+                                <StackPanel x:Name="GitHubOAuthFlowPanel" Visibility="Collapsed">
+                                    <TextBlock Text="Complete authorization in your browser"
+                                               FontWeight="SemiBold"
+                                               FontSize="14"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                               Margin="0,0,0,16" />
 
-                                <!-- PAT -->
-                                <TextBlock Text="Personal Access Token (PAT)"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           Margin="0,0,0,4" />
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <PasswordBox x:Name="GitHubPatPasswordBox"
-                                                 Grid.Column="0"
-                                                 Padding="8,6"
-                                                 PasswordChanged="GitHubPatPasswordBox_PasswordChanged" />
-                                    <Button x:Name="ToggleGitHubPatVisibilityButton"
-                                            Grid.Column="1"
-                                            Width="60"
-                                            Margin="8,0,0,0"
-                                            Click="ToggleGitHubPatVisibility_Click"
-                                            Content="Show" />
-                                </Grid>
-                                <TextBox x:Name="GitHubPatTextBox"
-                                         Margin="0,0,0,8"
-                                         Padding="8,6"
-                                         TextChanged="GitHubPatTextBox_TextChanged"
-                                         Visibility="Collapsed" />
-
-                                <!-- Actions -->
-                                <StackPanel Orientation="Horizontal">
-                                    <Button x:Name="SaveGitHubPatButton"
+                                    <!-- User Code Display -->
+                                    <TextBlock Text="Your verification code:"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               Margin="0,0,0,8" />
+                                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="20,12"
+                                            HorizontalAlignment="Left">
+                                        <TextBlock x:Name="GitHubUserCodeText"
+                                                   FontSize="28"
+                                                   FontWeight="Bold"
+                                                   FontFamily="Consolas"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                   Text="XXXX-XXXX" />
+                                    </Border>
+                                    <Button x:Name="GitHubCopyCodeButton"
+                                            Margin="0,8,0,0"
                                             Padding="12,6"
-                                            Click="SaveGitHubPat_Click"
-                                            Content="Connect" />
-                                    <Button x:Name="ClearGitHubPatButton"
-                                            Margin="8,0,0,0"
+                                            HorizontalAlignment="Left"
+                                            Click="GitHubCopyCode_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <ic:SymbolIcon Symbol="Copy" FontSize="14" Margin="0,0,6,0" />
+                                            <TextBlock Text="Copy Code" />
+                                        </StackPanel>
+                                    </Button>
+
+                                    <!-- Instructions -->
+                                    <StackPanel Margin="0,20,0,0">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <TextBlock Text="1. Go to "
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            <TextBlock x:Name="GitHubVerificationUriText"
+                                                       Text="https://github.com/login/device"
+                                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                                       TextDecorations="Underline"
+                                                       Cursor="Hand"
+                                                       MouseDown="GitHubVerificationUri_Click" />
+                                        </StackPanel>
+                                        <TextBlock Text="2. Enter the code above and authorize Leaf"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+
+                                    <!-- Progress -->
+                                    <ProgressBar x:Name="GitHubOAuthProgressBar"
+                                                 IsIndeterminate="True"
+                                                 Margin="0,20,0,0" />
+                                    <TextBlock x:Name="GitHubOAuthStatusMessage"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               Margin="0,8,0,0"
+                                               Text="Waiting for authorization..." />
+
+                                    <!-- Cancel -->
+                                    <Button x:Name="GitHubCancelOAuthButton"
+                                            Margin="0,16,0,0"
                                             Padding="12,6"
-                                            Click="ClearGitHubPat_Click"
-                                            Content="Disconnect" />
+                                            Click="GitHubCancelOAuth_Click"
+                                            Content="Cancel" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>

@@ -2,8 +2,12 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using FluentIcons.Common;
+using Leaf.Constants;
+using Leaf.Models;
 using Leaf.Services;
 using Microsoft.Win32;
 
@@ -26,6 +30,14 @@ public partial class SettingsDialog : Window
     private bool _isCodexConnected;
     private bool _suppressAiSelectionSync;
     private bool _suppressNavSelection;
+
+    // GitHub OAuth
+    private GitHubOAuthService? _gitHubOAuthService;
+    private CancellationTokenSource? _gitHubOAuthCancellationTokenSource;
+
+    // Azure DevOps OAuth
+    private AzureDevOpsOAuthService? _azureDevOpsOAuthService;
+    private CancellationTokenSource? _azureDevOpsOAuthCancellationTokenSource;
 
     // Search items for settings
     private readonly List<SettingsSearchItem> _allSearchItems;
@@ -275,52 +287,31 @@ public partial class SettingsDialog : Window
 
         // Load organization
         OrganizationTextBox.Text = _settings.AzureDevOpsOrganization;
-        GitHubUsernameTextBox.Text = _settings.GitHubUsername;
         AiTimeoutTextBox.Text = _settings.AiCliTimeoutSeconds.ToString();
 
-        // Check if PAT exists
-        var existingPat = _credentialService.GetCredential("AzureDevOps");
-        if (!string.IsNullOrEmpty(existingPat))
+        // Check if Azure DevOps credential exists
+        var existingAzureDevOpsToken = _credentialService.GetCredential("AzureDevOps");
+        if (!string.IsNullOrEmpty(existingAzureDevOpsToken))
         {
-            // Show dots to indicate PAT exists (not the actual PAT)
-            _suppressPatSync = true;
-            PatPasswordBox.Password = "••••••••••••••••";
-            PatTextBox.Text = "••••••••••••••••";
-            _suppressPatSync = false;
-
-            PatStatusText.Text = "Connected";
-            PatStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
-            SavePatButton.IsEnabled = false;
-            ClearPatButton.IsEnabled = true;
+            // Show connected state based on auth method
+            ShowAzureDevOpsConnectedState(_settings.AzureDevOpsUserDisplayName ?? _settings.AzureDevOpsOrganization, _settings.AzureDevOpsAuthMethod);
         }
         else
         {
-            PatStatusText.Text = "Not connected";
-            PatStatusText.Foreground = new SolidColorBrush(Colors.Gray);
-            SavePatButton.IsEnabled = true;
-            ClearPatButton.IsEnabled = false;
+            // Show disconnected state
+            ShowAzureDevOpsDisconnectedState();
         }
 
-        var existingGitHubPat = _credentialService.GetCredential("GitHub");
-        if (!string.IsNullOrEmpty(existingGitHubPat))
+        var existingGitHubToken = _credentialService.GetCredential("GitHub");
+        if (!string.IsNullOrEmpty(existingGitHubToken))
         {
-            // Show dots to indicate PAT exists (not the actual PAT)
-            _suppressGitHubPatSync = true;
-            GitHubPatPasswordBox.Password = "••••••••••••••••";
-            GitHubPatTextBox.Text = "••••••••••••••••";
-            _suppressGitHubPatSync = false;
-
-            GitHubStatusText.Text = "Connected";
-            GitHubStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
-            SaveGitHubPatButton.IsEnabled = false;
-            ClearGitHubPatButton.IsEnabled = true;
+            // Show connected state
+            ShowGitHubConnectedState(_settings.GitHubUsername, _settings.GitHubAuthMethod);
         }
         else
         {
-            GitHubStatusText.Text = "Not connected";
-            GitHubStatusText.Foreground = new SolidColorBrush(Colors.Gray);
-            SaveGitHubPatButton.IsEnabled = true;
-            ClearGitHubPatButton.IsEnabled = false;
+            // Show auth method panel
+            ShowGitHubDisconnectedState();
         }
 
         _isClaudeConnected = _settings.IsClaudeConnected;
@@ -673,6 +664,14 @@ public partial class SettingsDialog : Window
     private void SavePat_Click(object sender, RoutedEventArgs e)
     {
         var pat = _isPatVisible ? PatTextBox.Text : PatPasswordBox.Password;
+        var organization = OrganizationTextBox.Text.Trim();
+
+        if (string.IsNullOrWhiteSpace(organization))
+        {
+            MessageBox.Show("Please enter an organization name.", "Missing Organization",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(pat))
         {
@@ -684,48 +683,22 @@ public partial class SettingsDialog : Window
         // Save to credential manager
         _credentialService.SaveCredential("AzureDevOps", "git", pat);
 
-        PatStatusText.Text = "Connected";
-        PatStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
-        SavePatButton.IsEnabled = false;
-        ClearPatButton.IsEnabled = true;
+        // Update settings
+        _settings.AzureDevOpsOrganization = organization;
+        _settings.AzureDevOpsAuthMethod = AzureDevOpsAuthMethod.PersonalAccessToken;
+        _settingsService.SaveSettings(_settings);
 
-        // Clear the input
+        // Clear PAT fields
         PatPasswordBox.Password = "";
         PatTextBox.Text = "";
-    }
 
-    private void ClearPat_Click(object sender, RoutedEventArgs e)
-    {
-        var result = MessageBox.Show(
-            "Are you sure you want to clear the saved PAT?",
-            "Clear PAT",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-
-        if (result == MessageBoxResult.Yes)
-        {
-            _credentialService.DeleteCredential("AzureDevOps");
-
-            PatPasswordBox.Password = "";
-            PatTextBox.Text = "";
-            PatStatusText.Text = "Not connected";
-            PatStatusText.Foreground = new SolidColorBrush(Colors.Gray);
-            SavePatButton.IsEnabled = true;
-            ClearPatButton.IsEnabled = false;
-        }
+        // Show connected state
+        ShowAzureDevOpsConnectedState(organization, AzureDevOpsAuthMethod.PersonalAccessToken);
     }
 
     private void SaveGitHubPat_Click(object sender, RoutedEventArgs e)
     {
         var pat = _isGitHubPatVisible ? GitHubPatTextBox.Text : GitHubPatPasswordBox.Password;
-        var username = GitHubUsernameTextBox.Text.Trim();
-
-        if (string.IsNullOrWhiteSpace(username))
-        {
-            MessageBox.Show("Please enter a GitHub username or email.", "Missing Username",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
 
         if (string.IsNullOrWhiteSpace(pat))
         {
@@ -734,20 +707,156 @@ public partial class SettingsDialog : Window
             return;
         }
 
-        _credentialService.SaveCredential("GitHub", username, pat);
-        _settings.GitHubUsername = username;
+        // GitHub PAT uses "x-access-token" as username (the actual username doesn't matter)
+        _credentialService.SaveCredential("GitHub", "x-access-token", pat);
+        _settings.GitHubAuthMethod = GitHubAuthMethod.PersonalAccessToken;
         _settingsService.SaveSettings(_settings);
 
-        GitHubStatusText.Text = "Connected";
-        GitHubStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
-        SaveGitHubPatButton.IsEnabled = false;
-        ClearGitHubPatButton.IsEnabled = true;
-
+        // Clear PAT fields
         GitHubPatPasswordBox.Password = "";
         GitHubPatTextBox.Text = "";
+
+        // Show connected state
+        ShowGitHubConnectedState(null, GitHubAuthMethod.PersonalAccessToken);
     }
 
-    private void ClearGitHubPat_Click(object sender, RoutedEventArgs e)
+    #region GitHub OAuth
+
+    private async void GitHubOAuth_Click(object sender, RoutedEventArgs e)
+    {
+        _gitHubOAuthService ??= new GitHubOAuthService();
+        _gitHubOAuthService.DeviceFlowStatusChanged += OnGitHubDeviceFlowStatusChanged;
+
+        try
+        {
+            // Show OAuth flow panel, hide other sections
+            GitHubOAuthSection.Visibility = Visibility.Collapsed;
+            GitHubPatSection.Visibility = Visibility.Collapsed;
+            GitHubOAuthFlowPanel.Visibility = Visibility.Visible;
+            GitHubOAuthButton.IsEnabled = false;
+
+            // Start device flow
+            var deviceCode = await _gitHubOAuthService.StartDeviceFlowAsync();
+
+            // Display user code
+            GitHubUserCodeText.Text = deviceCode.UserCode;
+            GitHubVerificationUriText.Text = deviceCode.VerificationUri;
+
+            // Open browser automatically
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = deviceCode.VerificationUri,
+                UseShellExecute = true
+            });
+
+            // Start polling
+            _gitHubOAuthCancellationTokenSource = new CancellationTokenSource();
+            var result = await _gitHubOAuthService.PollForAccessTokenAsync(
+                deviceCode.DeviceCode,
+                deviceCode.Interval,
+                deviceCode.ExpiresIn,
+                _gitHubOAuthCancellationTokenSource.Token);
+
+            if (result.Success && !string.IsNullOrEmpty(result.AccessToken))
+            {
+                // Get user info
+                var userInfo = await _gitHubOAuthService.GetUserInfoAsync(result.AccessToken);
+                var username = userInfo?.Login ?? "oauth-user";
+
+                // Save token
+                _credentialService.SaveCredential("GitHub", username, result.AccessToken);
+
+                // Update settings
+                _settings.GitHubAuthMethod = GitHubAuthMethod.OAuth;
+                _settings.GitHubUsername = username;
+                _settings.GitHubOAuthTokenCreatedAt = DateTime.UtcNow;
+                _settings.GitHubOAuthScopes = result.Scope;
+                _settingsService.SaveSettings(_settings);
+
+                // Update UI
+                ShowGitHubConnectedState(username, GitHubAuthMethod.OAuth, userInfo?.AvatarUrl);
+            }
+            else
+            {
+                // Show error
+                var message = result.Error switch
+                {
+                    OAuthError.AccessDenied => "You denied the authorization request.",
+                    OAuthError.ExpiredToken => "The authorization timed out. Please try again.",
+                    _ => result.ErrorMessage ?? "An error occurred during authorization."
+                };
+                MessageBox.Show(message, "Authorization Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ShowGitHubDisconnectedState();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // User cancelled
+            ShowGitHubDisconnectedState();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"OAuth failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowGitHubDisconnectedState();
+        }
+        finally
+        {
+            _gitHubOAuthService.DeviceFlowStatusChanged -= OnGitHubDeviceFlowStatusChanged;
+            GitHubOAuthButton.IsEnabled = true;
+        }
+    }
+
+    private void GitHubCancelOAuth_Click(object sender, RoutedEventArgs e)
+    {
+        _gitHubOAuthCancellationTokenSource?.Cancel();
+    }
+
+    private void GitHubCopyCode_Click(object sender, RoutedEventArgs e)
+    {
+        Clipboard.SetText(GitHubUserCodeText.Text);
+        GitHubCopyCodeButton.Content = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                new FluentIcons.Wpf.SymbolIcon { Symbol = FluentIcons.Common.Symbol.Checkmark, FontSize = 14, Margin = new Thickness(0, 0, 6, 0) },
+                new TextBlock { Text = "Copied!" }
+            }
+        };
+
+        // Reset after 2 seconds
+        Task.Delay(2000).ContinueWith(_ => Dispatcher.Invoke(() =>
+        {
+            GitHubCopyCodeButton.Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Children =
+                {
+                    new FluentIcons.Wpf.SymbolIcon { Symbol = FluentIcons.Common.Symbol.Copy, FontSize = 14, Margin = new Thickness(0, 0, 6, 0) },
+                    new TextBlock { Text = "Copy Code" }
+                }
+            };
+        }));
+    }
+
+    private void GitHubVerificationUri_Click(object sender, MouseButtonEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = GitHubVerificationUriText.Text,
+            UseShellExecute = true
+        });
+    }
+
+    private void OnGitHubDeviceFlowStatusChanged(object? sender, DeviceFlowEventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            GitHubOAuthStatusMessage.Text = e.Message ?? e.Status.ToString();
+        });
+    }
+
+    private void GitHubDisconnect_Click(object sender, RoutedEventArgs e)
     {
         var result = MessageBox.Show(
             "Are you sure you want to disconnect GitHub?",
@@ -758,14 +867,362 @@ public partial class SettingsDialog : Window
         if (result == MessageBoxResult.Yes)
         {
             _credentialService.DeleteCredential("GitHub");
-            GitHubPatPasswordBox.Password = "";
-            GitHubPatTextBox.Text = "";
-            GitHubStatusText.Text = "Not connected";
-            GitHubStatusText.Foreground = new SolidColorBrush(Colors.Gray);
-            SaveGitHubPatButton.IsEnabled = true;
-            ClearGitHubPatButton.IsEnabled = false;
+            _settings.GitHubUsername = string.Empty;
+            _settings.GitHubOAuthTokenCreatedAt = null;
+            _settings.GitHubOAuthScopes = null;
+            _settingsService.SaveSettings(_settings);
+
+            ShowGitHubDisconnectedState();
         }
     }
+
+    private void ShowGitHubConnectedState(string? username, GitHubAuthMethod authMethod, string? avatarUrl = null)
+    {
+        // For PAT, we don't have a username - just show "Connected"
+        var displayName = string.IsNullOrEmpty(username) ? null : username;
+        ImageSource? identiconSource = null;
+        if (displayName != null)
+        {
+            var identiconConverter = (Converters.IdenticonConverter)FindResource("IdenticonConverter");
+            identiconSource = identiconConverter.Convert(displayName, typeof(ImageSource), null!, System.Globalization.CultureInfo.InvariantCulture) as ImageSource;
+        }
+
+        // Show both sections, hide OAuth flow panel
+        GitHubOAuthSection.Visibility = Visibility.Visible;
+        GitHubPatSection.Visibility = Visibility.Visible;
+        GitHubOAuthFlowPanel.Visibility = Visibility.Collapsed;
+
+        if (authMethod == GitHubAuthMethod.OAuth)
+        {
+            // Show OAuth as connected
+            GitHubOAuthAvatar.Visibility = Visibility.Visible;
+            GitHubOAuthIdenticonImage.Source = identiconSource;
+            GitHubOAuthStatusText.Text = $"Connected as {displayName}";
+            GitHubOAuthStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            GitHubOAuthButton.Visibility = Visibility.Collapsed;
+            GitHubOAuthDisconnectButton.Visibility = Visibility.Visible;
+
+            // Load avatar if available
+            if (!string.IsNullOrEmpty(avatarUrl))
+            {
+                try
+                {
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.UriSource = new Uri(avatarUrl);
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.EndInit();
+                    GitHubOAuthAvatarImage.Source = bitmap;
+                }
+                catch
+                {
+                    GitHubOAuthAvatarImage.Source = null;
+                }
+            }
+
+            // Reset PAT section
+            GitHubPatAvatar.Visibility = Visibility.Collapsed;
+            GitHubPatStatusText.Text = "Use a PAT for authentication";
+            GitHubPatStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            GitHubPatDisconnectButton.Visibility = Visibility.Collapsed;
+            GitHubPatInputPanel.Visibility = Visibility.Visible;
+        }
+        else // PAT
+        {
+            // Show PAT as connected (no username for PAT)
+            GitHubPatAvatar.Visibility = Visibility.Collapsed; // No avatar for PAT
+            GitHubPatStatusText.Text = "Connected";
+            GitHubPatStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            GitHubPatDisconnectButton.Visibility = Visibility.Visible;
+            GitHubPatInputPanel.Visibility = Visibility.Collapsed;
+
+            // Reset OAuth section
+            GitHubOAuthAvatar.Visibility = Visibility.Collapsed;
+            GitHubOAuthAvatarImage.Source = null;
+            GitHubOAuthStatusText.Text = "Securely authenticate using your browser";
+            GitHubOAuthStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            GitHubOAuthButton.Visibility = Visibility.Visible;
+            GitHubOAuthDisconnectButton.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void ShowGitHubDisconnectedState()
+    {
+        // Show both sections, hide OAuth flow panel
+        GitHubOAuthSection.Visibility = Visibility.Visible;
+        GitHubPatSection.Visibility = Visibility.Visible;
+        GitHubOAuthFlowPanel.Visibility = Visibility.Collapsed;
+
+        // Reset OAuth section
+        GitHubOAuthAvatar.Visibility = Visibility.Collapsed;
+        GitHubOAuthAvatarImage.Source = null;
+        GitHubOAuthStatusText.Text = "Securely authenticate using your browser";
+        GitHubOAuthStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+        GitHubOAuthButton.Visibility = Visibility.Visible;
+        GitHubOAuthDisconnectButton.Visibility = Visibility.Collapsed;
+
+        // Reset PAT section
+        GitHubPatAvatar.Visibility = Visibility.Collapsed;
+        GitHubPatStatusText.Text = "Use a PAT for authentication";
+        GitHubPatStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+        GitHubPatDisconnectButton.Visibility = Visibility.Collapsed;
+        GitHubPatInputPanel.Visibility = Visibility.Visible;
+
+        // Clear PAT fields
+        GitHubPatPasswordBox.Password = "";
+        GitHubPatTextBox.Text = "";
+    }
+
+    #endregion
+
+    #region Azure DevOps OAuth
+
+    private async void AzureDevOpsOAuth_Click(object sender, RoutedEventArgs e)
+    {
+        var organization = OrganizationTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(organization))
+        {
+            MessageBox.Show("Please enter an organization name first.", "Missing Organization",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _azureDevOpsOAuthService ??= new AzureDevOpsOAuthService();
+        _azureDevOpsOAuthService.DeviceFlowStatusChanged += OnAzureDevOpsDeviceFlowStatusChanged;
+
+        try
+        {
+            // Show OAuth flow panel, hide other sections
+            AzureDevOpsOAuthSection.Visibility = Visibility.Collapsed;
+            AzureDevOpsPatSection.Visibility = Visibility.Collapsed;
+            AzureDevOpsOAuthFlowPanel.Visibility = Visibility.Visible;
+            AzureDevOpsOAuthButton.IsEnabled = false;
+
+            // Start device flow
+            var deviceCode = await _azureDevOpsOAuthService.StartDeviceFlowAsync();
+
+            // Display user code
+            AzureDevOpsUserCodeText.Text = deviceCode.UserCode;
+            AzureDevOpsVerificationUriText.Text = deviceCode.VerificationUri;
+
+            // Open browser automatically
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = deviceCode.VerificationUri,
+                UseShellExecute = true
+            });
+
+            // Start polling
+            _azureDevOpsOAuthCancellationTokenSource = new CancellationTokenSource();
+            var result = await _azureDevOpsOAuthService.PollForAccessTokenAsync(
+                deviceCode.DeviceCode,
+                deviceCode.Interval,
+                deviceCode.ExpiresIn,
+                _azureDevOpsOAuthCancellationTokenSource.Token);
+
+            if (result.Success && !string.IsNullOrEmpty(result.AccessToken))
+            {
+                // Get user info from Azure DevOps
+                var connectionData = await _azureDevOpsOAuthService.GetConnectionDataAsync(result.AccessToken, organization);
+                var displayName = connectionData?.AuthenticatedUser?.DisplayName ??
+                                  connectionData?.AuthenticatedUser?.CustomDisplayName ??
+                                  organization;
+
+                // Save tokens
+                _credentialService.SaveCredential("AzureDevOps", displayName, result.AccessToken);
+                if (!string.IsNullOrEmpty(result.RefreshToken))
+                {
+                    _credentialService.SaveRefreshToken("AzureDevOps", result.RefreshToken);
+                }
+
+                // Update settings
+                _settings.AzureDevOpsAuthMethod = AzureDevOpsAuthMethod.OAuth;
+                _settings.AzureDevOpsOrganization = organization;
+                _settings.AzureDevOpsUserDisplayName = displayName;
+                _settings.AzureDevOpsOAuthTokenCreatedAt = DateTime.UtcNow;
+                _settings.AzureDevOpsOAuthTokenExpiresAt = result.ExpiresAt;
+                _settings.AzureDevOpsOAuthScopes = result.Scope;
+                _settingsService.SaveSettings(_settings);
+
+                // Update UI
+                ShowAzureDevOpsConnectedState(displayName, AzureDevOpsAuthMethod.OAuth);
+            }
+            else
+            {
+                // Show error
+                var message = result.Error switch
+                {
+                    EntraOAuthError.AuthorizationDeclined => "You denied the authorization request.",
+                    EntraOAuthError.ExpiredToken => "The authorization timed out. Please try again.",
+                    _ => result.ErrorMessage ?? "An error occurred during authorization."
+                };
+                MessageBox.Show(message, "Authorization Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ShowAzureDevOpsDisconnectedState();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // User cancelled
+            ShowAzureDevOpsDisconnectedState();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"OAuth failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowAzureDevOpsDisconnectedState();
+        }
+        finally
+        {
+            _azureDevOpsOAuthService.DeviceFlowStatusChanged -= OnAzureDevOpsDeviceFlowStatusChanged;
+            AzureDevOpsOAuthButton.IsEnabled = true;
+        }
+    }
+
+    private void AzureDevOpsCancelOAuth_Click(object sender, RoutedEventArgs e)
+    {
+        _azureDevOpsOAuthCancellationTokenSource?.Cancel();
+    }
+
+    private void AzureDevOpsCopyCode_Click(object sender, RoutedEventArgs e)
+    {
+        Clipboard.SetText(AzureDevOpsUserCodeText.Text);
+        AzureDevOpsCopyCodeButton.Content = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                new FluentIcons.Wpf.SymbolIcon { Symbol = FluentIcons.Common.Symbol.Checkmark, FontSize = 14, Margin = new Thickness(0, 0, 6, 0) },
+                new TextBlock { Text = "Copied!" }
+            }
+        };
+
+        // Reset after 2 seconds
+        Task.Delay(2000).ContinueWith(_ => Dispatcher.Invoke(() =>
+        {
+            AzureDevOpsCopyCodeButton.Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Children =
+                {
+                    new FluentIcons.Wpf.SymbolIcon { Symbol = FluentIcons.Common.Symbol.Copy, FontSize = 14, Margin = new Thickness(0, 0, 6, 0) },
+                    new TextBlock { Text = "Copy Code" }
+                }
+            };
+        }));
+    }
+
+    private void AzureDevOpsVerificationUri_Click(object sender, MouseButtonEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = AzureDevOpsVerificationUriText.Text,
+            UseShellExecute = true
+        });
+    }
+
+    private void OnAzureDevOpsDeviceFlowStatusChanged(object? sender, EntraDeviceFlowEventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            AzureDevOpsOAuthStatusMessage.Text = e.Message ?? e.Status.ToString();
+        });
+    }
+
+    private void AzureDevOpsDisconnect_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            "Are you sure you want to disconnect Azure DevOps?",
+            "Disconnect Azure DevOps",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            _credentialService.DeleteCredential("AzureDevOps");
+            _credentialService.DeleteRefreshToken("AzureDevOps");
+            _settings.AzureDevOpsUserDisplayName = null;
+            _settings.AzureDevOpsOAuthTokenCreatedAt = null;
+            _settings.AzureDevOpsOAuthTokenExpiresAt = null;
+            _settings.AzureDevOpsOAuthScopes = null;
+            _settingsService.SaveSettings(_settings);
+
+            ShowAzureDevOpsDisconnectedState();
+        }
+    }
+
+    private void ShowAzureDevOpsConnectedState(string displayName, AzureDevOpsAuthMethod authMethod)
+    {
+        var name = string.IsNullOrEmpty(displayName) ? "Azure DevOps User" : displayName;
+        var identiconConverter = (Converters.IdenticonConverter)FindResource("IdenticonConverter");
+        var identiconSource = identiconConverter.Convert(name, typeof(ImageSource), null!, System.Globalization.CultureInfo.InvariantCulture) as ImageSource;
+
+        // Show both sections, hide OAuth flow panel
+        AzureDevOpsOAuthSection.Visibility = Visibility.Visible;
+        AzureDevOpsPatSection.Visibility = Visibility.Visible;
+        AzureDevOpsOAuthFlowPanel.Visibility = Visibility.Collapsed;
+
+        if (authMethod == AzureDevOpsAuthMethod.OAuth)
+        {
+            // Show OAuth as connected
+            AzureDevOpsOAuthAvatar.Visibility = Visibility.Visible;
+            AzureDevOpsOAuthIdenticonImage.Source = identiconSource;
+            AzureDevOpsOAuthStatusText.Text = $"Connected as {name}";
+            AzureDevOpsOAuthStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            AzureDevOpsOAuthButton.Visibility = Visibility.Collapsed;
+            AzureDevOpsOAuthDisconnectButton.Visibility = Visibility.Visible;
+
+            // Reset PAT section
+            AzureDevOpsPatAvatar.Visibility = Visibility.Collapsed;
+            AzureDevOpsPatStatusText.Text = "Use a PAT for authentication";
+            AzureDevOpsPatStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            AzureDevOpsPatDisconnectButton.Visibility = Visibility.Collapsed;
+            AzureDevOpsPatInputPanel.Visibility = Visibility.Visible;
+        }
+        else // PAT
+        {
+            // Show PAT as connected
+            AzureDevOpsPatAvatar.Visibility = Visibility.Visible;
+            AzureDevOpsPatIdenticonImage.Source = identiconSource;
+            AzureDevOpsPatStatusText.Text = $"Connected as {name}";
+            AzureDevOpsPatStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            AzureDevOpsPatDisconnectButton.Visibility = Visibility.Visible;
+            AzureDevOpsPatInputPanel.Visibility = Visibility.Collapsed;
+
+            // Reset OAuth section
+            AzureDevOpsOAuthAvatar.Visibility = Visibility.Collapsed;
+            AzureDevOpsOAuthStatusText.Text = "Securely authenticate using your browser";
+            AzureDevOpsOAuthStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            AzureDevOpsOAuthButton.Visibility = Visibility.Visible;
+            AzureDevOpsOAuthDisconnectButton.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void ShowAzureDevOpsDisconnectedState()
+    {
+        // Show both sections, hide OAuth flow panel
+        AzureDevOpsOAuthSection.Visibility = Visibility.Visible;
+        AzureDevOpsPatSection.Visibility = Visibility.Visible;
+        AzureDevOpsOAuthFlowPanel.Visibility = Visibility.Collapsed;
+
+        // Reset OAuth section
+        AzureDevOpsOAuthAvatar.Visibility = Visibility.Collapsed;
+        AzureDevOpsOAuthStatusText.Text = "Securely authenticate using your browser";
+        AzureDevOpsOAuthStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+        AzureDevOpsOAuthButton.Visibility = Visibility.Visible;
+        AzureDevOpsOAuthDisconnectButton.Visibility = Visibility.Collapsed;
+
+        // Reset PAT section
+        AzureDevOpsPatAvatar.Visibility = Visibility.Collapsed;
+        AzureDevOpsPatStatusText.Text = "Use a PAT for authentication";
+        AzureDevOpsPatStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+        AzureDevOpsPatDisconnectButton.Visibility = Visibility.Collapsed;
+        AzureDevOpsPatInputPanel.Visibility = Visibility.Visible;
+
+        // Clear PAT fields
+        PatPasswordBox.Password = "";
+        PatTextBox.Text = "";
+    }
+
+    #endregion
 
     private void BrowseClonePath_Click(object sender, RoutedEventArgs e)
     {
@@ -800,11 +1257,6 @@ public partial class SettingsDialog : Window
             changed = true;
         }
 
-        if (_settings.GitHubUsername != GitHubUsernameTextBox.Text.Trim())
-        {
-            _settings.GitHubUsername = GitHubUsernameTextBox.Text.Trim();
-            changed = true;
-        }
 
         var defaultAi = AiDefaultComboBox.SelectedItem as string ?? string.Empty;
         if (_settings.DefaultAiProvider != defaultAi)

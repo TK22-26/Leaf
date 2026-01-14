@@ -27,6 +27,11 @@ public class BranchLabel
     public string? RemoteName { get; set; }
 
     /// <summary>
+    /// Type of remote hosting service (GitHub, AzureDevOps, or Other).
+    /// </summary>
+    public RemoteType RemoteType { get; set; } = RemoteType.Other;
+
+    /// <summary>
     /// True if local and remote are at the same commit (up-to-date).
     /// </summary>
     public bool IsSynced => IsLocal && IsRemote;

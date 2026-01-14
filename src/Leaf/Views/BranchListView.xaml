@@ -91,7 +91,18 @@
                             </ContextMenu>
                         </Border.ContextMenu>
                         <StackPanel Orientation="Horizontal" Margin="0,2">
-                            <ic:SymbolIcon Symbol="Cloud"
+                            <!-- GitHub icon -->
+                            <Viewbox x:Name="GitHubIcon" Width="11" Height="11" Margin="0,0,6,0"
+                                     VerticalAlignment="Center" Visibility="Collapsed">
+                                <Path Style="{StaticResource GitHubLogoPath}"/>
+                            </Viewbox>
+                            <!-- Azure DevOps icon -->
+                            <Viewbox x:Name="AzureIcon" Width="11" Height="11" Margin="0,0,6,0"
+                                     VerticalAlignment="Center" Visibility="Collapsed">
+                                <Path Style="{StaticResource AzureDevOpsLogoPath}"/>
+                            </Viewbox>
+                            <!-- Cloud icon (fallback) -->
+                            <ic:SymbolIcon x:Name="CloudIcon" Symbol="Cloud"
                                            IconVariant="Regular"
                                            FontSize="11"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -103,6 +114,16 @@
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                     </Border>
+                    <HierarchicalDataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding RemoteType}" Value="GitHub">
+                            <Setter TargetName="GitHubIcon" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="CloudIcon" Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding RemoteType}" Value="AzureDevOps">
+                            <Setter TargetName="AzureIcon" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="CloudIcon" Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>
 
                 <!-- Branch template -->

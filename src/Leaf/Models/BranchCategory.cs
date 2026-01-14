@@ -41,4 +41,9 @@ public class BranchCategory
     /// Whether this is the REMOTE category (for template selection).
     /// </summary>
     public bool IsRemoteCategory => Name == "REMOTE";
+
+    /// <summary>
+    /// Categories are never "current" - this silences binding warnings in TreeView.
+    /// </summary>
+    public bool IsCurrent => false;
 }

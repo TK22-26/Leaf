@@ -64,9 +64,41 @@ public class CredentialService : ICredentialService
         CredDeleteW(targetName, CRED_TYPE_GENERIC, 0);
     }
 
+    /// <summary>
+    /// Save a refresh token for a service.
+    /// </summary>
+    public void SaveRefreshToken(string service, string refreshToken)
+    {
+        var targetName = GetRefreshTokenTargetName(service);
+        WriteCredential(targetName, "refresh", refreshToken);
+    }
+
+    /// <summary>
+    /// Get a refresh token for a service.
+    /// </summary>
+    public string? GetRefreshToken(string service)
+    {
+        var targetName = GetRefreshTokenTargetName(service);
+        return ReadCredential(targetName);
+    }
+
+    /// <summary>
+    /// Delete a refresh token for a service.
+    /// </summary>
+    public void DeleteRefreshToken(string service)
+    {
+        var targetName = GetRefreshTokenTargetName(service);
+        CredDeleteW(targetName, CRED_TYPE_GENERIC, 0);
+    }
+
     private static string GetTargetName(string organization)
     {
         return $"{CredentialPrefix}{organization}";
+    }
+
+    private static string GetRefreshTokenTargetName(string service)
+    {
+        return $"{CredentialPrefix}{service}_RefreshToken";
     }
 
     #region Windows Credential Manager P/Invoke
@@ -108,7 +140,12 @@ public class CredentialService : ICredentialService
 
     private static void WriteCredential(string targetName, string userName, string secret)
     {
-        var byteArray = Encoding.Unicode.GetBytes(secret);
+        // Trim whitespace/newlines that may have been accidentally copied
+        var cleanedSecret = secret.Trim();
+
+        // Use UTF-8 to support longer tokens (Entra ID JWTs can be 1500+ chars)
+        // Unicode (UTF-16) would use 2 bytes per char, exceeding the 2560 byte limit
+        var byteArray = Encoding.UTF8.GetBytes(cleanedSecret);
 
         var credential = new CREDENTIAL
         {
@@ -147,7 +184,8 @@ public class CredentialService : ICredentialService
             var credential = Marshal.PtrToStructure<CREDENTIAL>(credentialPtr);
             var passwordBytes = new byte[credential.CredentialBlobSize];
             Marshal.Copy(credential.CredentialBlob, passwordBytes, 0, (int)credential.CredentialBlobSize);
-            return Encoding.Unicode.GetString(passwordBytes);
+            // Trim any whitespace/newlines that may have been stored accidentally
+            return Encoding.UTF8.GetString(passwordBytes).Trim();
         }
         finally
         {

@@ -50,21 +50,16 @@
             BorderThickness="0,0,0,1">
             <Menu>
                 <MenuItem Header="_File">
+                    <MenuItem Command="{Binding AddRepositoryCommand}" Header="_Add Repository..." />
+                    <MenuItem Command="{Binding AddAllReposInFolderCommand}" Header="Add All Repos in _Folder..." />
+                    <Separator />
                     <MenuItem Command="{Binding OpenSettingsCommand}" Header="_Settings" />
                 </MenuItem>
                 <MenuItem Header="_Repository">
                     <MenuItem Command="{Binding CloneRepositoryCommand}" Header="_Clone..." />
-                    <MenuItem Command="{Binding AddRepositoryCommand}" Header="_Add Repository..." />
                     <Separator />
                     <MenuItem Command="{Binding FetchAllCommand}" Header="_Fetch All" />
                     <MenuItem Command="{Binding RefreshCommand}" Header="_Refresh" />
-                    <Separator />
-                    <MenuItem Header="_Pull..." IsEnabled="False" />
-                    <MenuItem Header="_Push..." IsEnabled="False" />
-                    <MenuItem Header="_Commit..." IsEnabled="False" />
-                    <MenuItem Header="Create _Branch..." IsEnabled="False" />
-                    <MenuItem Header="_Merge..." IsEnabled="False" />
-                    <MenuItem Header="_Stash..." IsEnabled="False" />
                 </MenuItem>
             </Menu>
         </Border>

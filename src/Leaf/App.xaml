@@ -16,6 +16,7 @@
                 <ResourceDictionary Source="Resources/Menu.xaml"/>
                 <ResourceDictionary Source="Resources/MenuItem.xaml"/>
                 <ResourceDictionary Source="Resources/Styles.xaml"/>
+                <ResourceDictionary Source="Resources/Icons.xaml"/>
             </ResourceDictionary.MergedDictionaries>
 
             <!--  Override accent color to green  -->
