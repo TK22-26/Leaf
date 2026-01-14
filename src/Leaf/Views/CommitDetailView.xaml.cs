@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using Leaf.ViewModels;
 
 namespace Leaf.Views;
@@ -10,6 +11,8 @@ namespace Leaf.Views;
 /// </summary>
 public partial class CommitDetailView : UserControl
 {
+    private DispatcherTimer? _copiedPopupTimer;
+
     public CommitDetailView()
     {
         InitializeComponent();
@@ -28,7 +31,25 @@ public partial class CommitDetailView : UserControl
         if (DataContext is CommitDetailViewModel vm)
         {
             vm.CopySha();
+            ShowCopiedPopup();
         }
+    }
+
+    private void ShowCopiedPopup()
+    {
+        CopiedPopup.IsOpen = true;
+
+        _copiedPopupTimer?.Stop();
+        _copiedPopupTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1.5)
+        };
+        _copiedPopupTimer.Tick += (s, e) =>
+        {
+            CopiedPopup.IsOpen = false;
+            _copiedPopupTimer.Stop();
+        };
+        _copiedPopupTimer.Start();
     }
 
     private void ParentSha_Click(object sender, MouseButtonEventArgs e)
