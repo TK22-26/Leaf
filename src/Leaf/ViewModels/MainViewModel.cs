@@ -451,8 +451,8 @@ public partial class MainViewModel : ObservableObject
             repository.MergingBranch = info.MergingBranch;
             repository.ConflictCount = info.ConflictCount;
 
-            // Load branches for the branch panel
-            await LoadBranchesForRepoAsync(repository);
+            // Load branches for the branch panel (force reload to pick up pruned branches)
+            await LoadBranchesForRepoAsync(repository, forceReload: true);
 
             await RefreshMergeConflictResolutionAsync();
 
@@ -504,6 +504,52 @@ public partial class MainViewModel : ObservableObject
             {
                 await SelectRepositoryAsync(SelectedRepository);
             }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Fetch from a specific remote.
+    /// </summary>
+    [RelayCommand]
+    public async Task FetchRemoteAsync(string? remoteName)
+    {
+        if (SelectedRepository == null || string.IsNullOrEmpty(remoteName))
+            return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"Fetching from {remoteName}...";
+
+            // Get credentials for this remote
+            string? pat = null;
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remoteUrl = remotes.FirstOrDefault(r => r.Name == remoteName)?.Url;
+            if (!string.IsNullOrEmpty(remoteUrl))
+            {
+                try
+                {
+                    var host = new Uri(remoteUrl).Host;
+                    pat = _credentialService.GetPat(host);
+                }
+                catch
+                {
+                    // Invalid URL, skip PAT
+                }
+            }
+
+            await _gitService.FetchAsync(SelectedRepository.Path, remoteName, password: pat);
+
+            StatusMessage = $"Fetched from {remoteName}";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Fetch failed: {ex.Message}";
         }
         finally
         {
@@ -1337,6 +1383,43 @@ public partial class MainViewModel : ObservableObject
         };
 
         await MergeBranchAsync(branch);
+    }
+
+    [RelayCommand]
+    public async Task FastForwardBranchLabelAsync(BranchLabel label)
+    {
+        if (label == null || SelectedRepository == null)
+            return;
+
+        var targetName = label.IsRemote && label.RemoteName != null
+            ? $"{label.RemoteName}/{label.Name}"
+            : label.Name;
+
+        IsBusy = true;
+        StatusMessage = $"Fast-forwarding to {targetName}...";
+
+        try
+        {
+            var result = await _gitService.FastForwardAsync(SelectedRepository.Path, targetName);
+
+            if (result.Success)
+            {
+                StatusMessage = $"Fast-forwarded to {targetName}";
+                await RefreshAsync();
+            }
+            else
+            {
+                StatusMessage = result.ErrorMessage ?? "Fast-forward failed";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Fast-forward failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     /// <summary>

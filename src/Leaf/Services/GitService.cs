@@ -407,6 +407,7 @@ public class GitService : IGitService
 
             var options = new FetchOptions
             {
+                Prune = true, // Remove remote-tracking branches that no longer exist on remote
                 OnTransferProgress = tp =>
                 {
                     progress?.Report($"Receiving: {tp.ReceivedObjects}/{tp.TotalObjects}");
@@ -432,6 +433,7 @@ public class GitService : IGitService
             {
                 FetchOptions = new FetchOptions
                 {
+                    Prune = true, // Remove remote-tracking branches that no longer exist on remote
                     OnTransferProgress = tp =>
                     {
                         progress?.Report($"Receiving: {tp.ReceivedObjects}/{tp.TotalObjects}");
@@ -1751,6 +1753,44 @@ public class GitService : IGitService
             {
                 Success = false,
                 ErrorMessage = result.Error
+            };
+        });
+    }
+
+    public async Task<Models.MergeResult> FastForwardAsync(string repoPath, string targetBranchName)
+    {
+        return await Task.Run(() =>
+        {
+            // Use --ff-only to ensure we only fast-forward (no merge commit)
+            var args = $"merge --ff-only \"{targetBranchName}\"";
+
+            System.Diagnostics.Debug.WriteLine($"[GitService] Fast-forwarding to {targetBranchName} in {repoPath}");
+            var result = RunGit(repoPath, args);
+            System.Diagnostics.Debug.WriteLine($"[GitService] Fast-forward output: {result.Output}");
+            System.Diagnostics.Debug.WriteLine($"[GitService] Fast-forward error: {result.Error}");
+            System.Diagnostics.Debug.WriteLine($"[GitService] Fast-forward exit code: {result.ExitCode}");
+
+            if (result.ExitCode == 0)
+            {
+                return new Models.MergeResult { Success = true };
+            }
+
+            // Check if fast-forward is not possible (branches have diverged)
+            if (result.Error.Contains("Not possible to fast-forward", StringComparison.OrdinalIgnoreCase) ||
+                result.Output.Contains("Not possible to fast-forward", StringComparison.OrdinalIgnoreCase))
+            {
+                return new Models.MergeResult
+                {
+                    Success = false,
+                    ErrorMessage = "Cannot fast-forward: branches have diverged. Use merge instead."
+                };
+            }
+
+            // Some other failure
+            return new Models.MergeResult
+            {
+                Success = false,
+                ErrorMessage = string.IsNullOrEmpty(result.Error) ? result.Output : result.Error
             };
         });
     }

@@ -230,6 +230,15 @@ public interface IGitService
     Task<Models.MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false);
 
     /// <summary>
+    /// Fast-forward the current branch to match a target branch (e.g., origin/main).
+    /// Only succeeds if the current branch is strictly behind the target (no divergence).
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="targetBranchName">Name of the branch to fast-forward to (e.g., "origin/main")</param>
+    /// <returns>MergeResult indicating success or failure</returns>
+    Task<Models.MergeResult> FastForwardAsync(string repoPath, string targetBranchName);
+
+    /// <summary>
     /// Open a conflict in VS Code for resolution.
     /// </summary>
     Task OpenConflictInVsCodeAsync(string repoPath, string filePath);

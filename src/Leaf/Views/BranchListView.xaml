@@ -73,18 +73,36 @@
                 <!-- Remote branch group template (origin, upstream, etc.) -->
                 <HierarchicalDataTemplate DataType="{x:Type models:RemoteBranchGroup}"
                                           ItemsSource="{Binding Branches}">
-                    <StackPanel Orientation="Horizontal" Margin="0,2">
-                        <ic:SymbolIcon Symbol="Cloud"
-                                       IconVariant="Regular"
+                    <Border Background="Transparent"
+                            Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Command="{Binding PlacementTarget.Tag.FetchRemoteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding Name}">
+                                    <MenuItem.Header>
+                                        <TextBlock>
+                                            <Run Text="Fetch "/><Run Text="{Binding Name, Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </MenuItem.Header>
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon Symbol="ArrowDownload" FontSize="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <ic:SymbolIcon Symbol="Cloud"
+                                           IconVariant="Regular"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding Name}"
                                        FontSize="11"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                       VerticalAlignment="Center"
-                                       Margin="0,0,6,0"/>
-                        <TextBlock Text="{Binding Name}"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
                 </HierarchicalDataTemplate>
 
                 <!-- Branch template -->

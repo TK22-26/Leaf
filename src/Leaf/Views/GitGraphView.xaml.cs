@@ -32,6 +32,21 @@ public partial class GitGraphView : UserControl
     {
         if (Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
         {
+            // If this is a remote-only label and we're on the matching local branch, fast-forward
+            if (label.IsRemote && !label.IsLocal && label.RemoteName != null)
+            {
+                if (DataContext is GitGraphViewModel viewModel)
+                {
+                    var currentBranchName = viewModel.WorkingChanges?.BranchName;
+                    if (currentBranchName == label.Name)
+                    {
+                        _ = mainViewModel.FastForwardBranchLabelAsync(label);
+                        return;
+                    }
+                }
+            }
+
+            // Otherwise do regular checkout
             var branchName = label.IsRemote && !label.IsLocal && label.RemoteName != null
                 ? $"{label.RemoteName}/{label.Name}"
                 : label.Name;
@@ -283,6 +298,21 @@ public partial class GitGraphView : UserControl
             var label = GraphCanvas.GetBranchLabelAt(pos);
             if (label != null && Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
             {
+                // If this is a remote-only label (local is at different commit)
+                // and we're currently on the matching local branch, fast-forward instead of checkout
+                if (label.IsRemote && !label.IsLocal && label.RemoteName != null)
+                {
+                    var currentBranchName = viewModel.WorkingChanges?.BranchName;
+                    if (currentBranchName == label.Name)
+                    {
+                        // Fast-forward current branch to this remote
+                        _ = mainViewModel.FastForwardBranchLabelAsync(label);
+                        e.Handled = true;
+                        return;
+                    }
+                }
+
+                // Otherwise do regular checkout
                 var name = label.IsRemote && !label.IsLocal && label.RemoteName != null
                     ? $"{label.RemoteName}/{label.Name}"
                     : label.Name;
