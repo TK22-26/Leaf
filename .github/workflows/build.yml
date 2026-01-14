@@ -1,0 +1,78 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Generate Version
+      id: version
+      shell: pwsh
+      run: |
+        $now = Get-Date
+        $midnight = $now.Date
+        $minutesSinceMidnight = [int]($now - $midnight).TotalMinutes
+        $version = "$($now.ToString('yyyy.MM.dd')).$minutesSinceMidnight"
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "Generated version: $version"
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore src/Leaf/Leaf.csproj
+
+    - name: Build
+      run: dotnet build src/Leaf/Leaf.csproj --configuration Release --no-restore /p:Version=${{ steps.version.outputs.VERSION }}
+
+    - name: Publish
+      run: dotnet publish src/Leaf/Leaf.csproj --configuration Release --no-build --output ./publish /p:Version=${{ steps.version.outputs.VERSION }}
+
+    - name: Create Release Package
+      shell: pwsh
+      run: |
+        # Create Leaf.zip from published files
+        Compress-Archive -Path ./publish/* -DestinationPath ./Leaf.zip
+
+        # Create release folder with install script and zip
+        New-Item -ItemType Directory -Path ./release -Force
+        Copy-Item ./Install-Leaf.ps1 ./release/
+        Copy-Item ./Leaf.zip ./release/
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Leaf-${{ steps.version.outputs.VERSION }}
+        path: ./release/
+
+    - name: Create GitHub Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ steps.version.outputs.VERSION }}
+        name: Leaf v${{ steps.version.outputs.VERSION }}
+        body: |
+          Automated release from main branch.
+
+          ## Installation
+          1. Download both files below
+          2. Place them in the same folder
+          3. Run `Install-Leaf.ps1` in PowerShell
+
+          Or run: `powershell -ExecutionPolicy Bypass -File Install-Leaf.ps1`
+        files: |
+          ./release/Install-Leaf.ps1
+          ./release/Leaf.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
