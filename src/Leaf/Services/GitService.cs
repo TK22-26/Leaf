@@ -1706,7 +1706,8 @@ public class GitService : IGitService
     {
         return await Task.Run(() =>
         {
-            var args = $"merge \"{branchName}\"";
+            // Always use --no-ff to create merge commit with visible merge lines in git graph
+            var args = $"merge --no-ff \"{branchName}\"";
             if (allowUnrelatedHistories)
             {
                 args += " --allow-unrelated-histories";
