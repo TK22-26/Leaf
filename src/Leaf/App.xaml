@@ -12,6 +12,7 @@
                 <ResourceDictionary Source="Resources/TreeView.xaml"/>
                 <ResourceDictionary Source="Resources/TreeViewItem.xaml"/>
                 <ResourceDictionary Source="Resources/TextBox.xaml"/>
+                <ResourceDictionary Source="Resources/PasswordBox.xaml"/>
                 <ResourceDictionary Source="Resources/Menu.xaml"/>
                 <ResourceDictionary Source="Resources/MenuItem.xaml"/>
                 <ResourceDictionary Source="Resources/Styles.xaml"/>

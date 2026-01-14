@@ -282,6 +282,12 @@ public partial class SettingsDialog : Window
         var existingPat = _credentialService.GetCredential("AzureDevOps");
         if (!string.IsNullOrEmpty(existingPat))
         {
+            // Show dots to indicate PAT exists (not the actual PAT)
+            _suppressPatSync = true;
+            PatPasswordBox.Password = "••••••••••••••••";
+            PatTextBox.Text = "••••••••••••••••";
+            _suppressPatSync = false;
+
             PatStatusText.Text = "Connected";
             PatStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
             SavePatButton.IsEnabled = false;
@@ -298,6 +304,12 @@ public partial class SettingsDialog : Window
         var existingGitHubPat = _credentialService.GetCredential("GitHub");
         if (!string.IsNullOrEmpty(existingGitHubPat))
         {
+            // Show dots to indicate PAT exists (not the actual PAT)
+            _suppressGitHubPatSync = true;
+            GitHubPatPasswordBox.Password = "••••••••••••••••";
+            GitHubPatTextBox.Text = "••••••••••••••••";
+            _suppressGitHubPatSync = false;
+
             GitHubStatusText.Text = "Connected";
             GitHubStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
             SaveGitHubPatButton.IsEnabled = false;
