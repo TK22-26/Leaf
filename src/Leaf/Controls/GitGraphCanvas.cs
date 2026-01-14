@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using Leaf.Graph;
 using Leaf.Models;
@@ -271,6 +273,45 @@ public class GitGraphCanvas : FrameworkElement
 
     private const double GhostTagOpacity = 0.4;
 
+    // Track overflow labels by row for hit testing
+    private readonly Dictionary<int, (List<BranchLabel> Labels, Rect HitArea)> _overflowByRow = new();
+    private int _hoveredOverflowRow = -1;
+
+    // Track which rows are expanded (showing all branches vertically)
+    // Key: node index (not display row), Value: number of extra rows needed
+    private readonly Dictionary<int, int> _expandedNodes = new();
+
+    // Track animation progress for each expanded node (0.0 to 1.0)
+    private readonly Dictionary<int, double> _expansionProgress = new();
+    private System.Windows.Threading.DispatcherTimer? _animationTimer;
+    private const double AnimationDuration = 80; // milliseconds - snappy expand/collapse
+    private const double AnimationStep = 8; // ~120fps for smooth short animation
+
+    // Track hovered item in expanded dropdown: (nodeIndex, branchIndex)
+    private (int NodeIndex, int BranchIndex) _hoveredExpandedItem = (-1, -1);
+
+    // Track expanded item hit areas for hover/click detection
+    private readonly Dictionary<int, List<(BranchLabel Label, Rect HitArea)>> _expandedItemHitAreas = new();
+
+    // Popup for showing branch names tooltip
+    private System.Windows.Controls.Primitives.Popup? _branchTooltipPopup;
+    private System.Windows.Controls.StackPanel? _branchTooltipPanel;
+
+    /// <summary>
+    /// Event raised when a row expansion state changes.
+    /// </summary>
+    public event EventHandler<RowExpansionChangedEventArgs>? RowExpansionChanged;
+
+    /// <summary>
+    /// Event raised when user double-clicks a branch to checkout.
+    /// </summary>
+    public event EventHandler<BranchLabel>? BranchCheckoutRequested;
+
+    /// <summary>
+    /// Gets the total extra height from all expanded rows.
+    /// </summary>
+    public double TotalExpansionHeight => _expandedNodes.Values.Sum() * RowHeight;
+
     static GitGraphCanvas()
     {
         LabelBorderPen.Freeze();
@@ -280,12 +321,401 @@ public class GitGraphCanvas : FrameworkElement
     {
         MouseMove += OnMouseMove;
         MouseLeave += OnMouseLeave;
+        MouseLeftButtonUp += OnMouseLeftButtonUp;
+        MouseLeftButtonDown += OnMouseLeftButtonDown;
+    }
+
+    private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Handle double-click on expanded branch item
+        if (e.ClickCount == 2)
+        {
+            var pos = e.GetPosition(this);
+            foreach (var kvp in _expandedItemHitAreas)
+            {
+                for (int i = 0; i < kvp.Value.Count; i++)
+                {
+                    var item = kvp.Value[i];
+                    if (item.HitArea.Contains(pos))
+                    {
+                        // Double-clicked on a branch - request checkout
+                        BranchCheckoutRequested?.Invoke(this, item.Label);
+                        e.Handled = true;
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    private void StartExpansionAnimation(int nodeIndex, bool expanding)
+    {
+        if (_animationTimer == null)
+        {
+            _animationTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(AnimationStep)
+            };
+            _animationTimer.Tick += OnAnimationTick;
+        }
+
+        // Set initial progress
+        if (expanding)
+        {
+            _expansionProgress[nodeIndex] = 0.0;
+        }
+        // For collapsing, progress will decrease from current value
+
+        if (!_animationTimer.IsEnabled)
+        {
+            _animationTimer.Start();
+        }
+    }
+
+    private void OnAnimationTick(object? sender, EventArgs e)
+    {
+        bool anyAnimating = false;
+        double step = AnimationStep / AnimationDuration;
+
+        var nodesToUpdate = _expansionProgress.Keys.ToList();
+        foreach (var nodeIndex in nodesToUpdate)
+        {
+            bool isExpanded = _expandedNodes.ContainsKey(nodeIndex);
+            double current = _expansionProgress[nodeIndex];
+
+            if (isExpanded)
+            {
+                // Expanding - increase progress
+                current = Math.Min(1.0, current + step);
+                _expansionProgress[nodeIndex] = current;
+                if (current < 1.0) anyAnimating = true;
+            }
+            else
+            {
+                // Collapsing - decrease progress
+                current = Math.Max(0.0, current - step);
+                if (current > 0.0)
+                {
+                    _expansionProgress[nodeIndex] = current;
+                    anyAnimating = true;
+                }
+                else
+                {
+                    _expansionProgress.Remove(nodeIndex);
+                }
+            }
+        }
+
+        InvalidateVisual();
+
+        if (!anyAnimating)
+        {
+            _animationTimer?.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Ease-out function for smoother animation (fast start, slow end).
+    /// </summary>
+    private static double EaseOut(double t) => 1 - Math.Pow(1 - t, 3);
+
+    private void ShowBranchTooltip(List<BranchLabel> branches, Rect tagRect)
+    {
+        if (_branchTooltipPopup == null)
+        {
+            _branchTooltipPanel = new System.Windows.Controls.StackPanel
+            {
+                Orientation = System.Windows.Controls.Orientation.Vertical
+            };
+
+            var border = new System.Windows.Controls.Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(60, 60, 60)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(6),
+                Child = _branchTooltipPanel,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = Colors.Black,
+                    BlurRadius = 12,
+                    ShadowDepth = 4,
+                    Opacity = 0.4
+                }
+            };
+
+            _branchTooltipPopup = new System.Windows.Controls.Primitives.Popup
+            {
+                Child = border,
+                AllowsTransparency = true,
+                PlacementTarget = this,
+                Placement = System.Windows.Controls.Primitives.PlacementMode.Relative,
+                StaysOpen = true
+            };
+        }
+
+        // Clear and rebuild branch items
+        _branchTooltipPanel!.Children.Clear();
+
+        foreach (var branch in branches)
+        {
+            var branchBrush = GraphBuilder.GetBranchColor(branch.Name);
+
+            // Create a row: colored circle + name + icons
+            var row = new System.Windows.Controls.StackPanel
+            {
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
+                Margin = new Thickness(4, 3, 4, 3)
+            };
+
+            // Colored circle
+            var circle = new System.Windows.Shapes.Ellipse
+            {
+                Width = 10,
+                Height = 10,
+                Fill = branchBrush,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            row.Children.Add(circle);
+
+            // Branch name
+            var nameText = new System.Windows.Controls.TextBlock
+            {
+                Text = branch.Name,
+                Foreground = new SolidColorBrush(Color.FromRgb(220, 220, 220)),
+                FontSize = 12,
+                FontFamily = new FontFamily("Segoe UI"),
+                FontWeight = branch.IsCurrent ? FontWeights.SemiBold : FontWeights.Normal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            row.Children.Add(nameText);
+
+            // Icons (local/remote)
+            var iconText = "";
+            if (branch.IsLocal) iconText += ComputerIcon;
+            if (branch.IsLocal && branch.IsRemote) iconText += " ";
+            if (branch.IsRemote) iconText += CloudIcon;
+
+            if (!string.IsNullOrEmpty(iconText))
+            {
+                var icons = new System.Windows.Controls.TextBlock
+                {
+                    Text = iconText,
+                    Foreground = new SolidColorBrush(Color.FromRgb(160, 160, 160)),
+                    FontSize = 11,
+                    FontFamily = new FontFamily("Segoe Fluent Icons"),
+                    Margin = new Thickness(8, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                row.Children.Add(icons);
+            }
+
+            _branchTooltipPanel.Children.Add(row);
+        }
+
+        _branchTooltipPopup.HorizontalOffset = tagRect.Right + 10;
+        _branchTooltipPopup.VerticalOffset = tagRect.Top - 4;
+        _branchTooltipPopup.IsOpen = true;
+    }
+
+    private void HideBranchTooltip()
+    {
+        if (_branchTooltipPopup != null)
+        {
+            _branchTooltipPopup.IsOpen = false;
+        }
+    }
+
+    private void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        var pos = e.GetPosition(this);
+
+        // Check if clicking on any overflow indicator (iterate through all, checking hit areas)
+        if (pos.X < LabelAreaWidth)
+        {
+            foreach (var kvp in _overflowByRow)
+            {
+                int displayRow = kvp.Key;
+                var overflow = kvp.Value;
+
+                if (overflow.HitArea.Contains(pos))
+                {
+                    // Calculate node index from display row
+                    int rowOffset = (HasWorkingChanges ? 1 : 0) + StashCount;
+                    int nodeIndex = displayRow - rowOffset;
+
+                    if (nodeIndex >= 0)
+                    {
+                        // Toggle expansion
+                        bool wasExpanded = _expandedNodes.ContainsKey(nodeIndex);
+                        if (wasExpanded)
+                        {
+                            _expandedNodes.Remove(nodeIndex);
+                            _expandedItemHitAreas.Remove(nodeIndex);
+                            // Release mouse capture when collapsing
+                            if (_expandedNodes.Count == 0)
+                                Mouse.Capture(null);
+                        }
+                        else
+                        {
+                            _expandedNodes[nodeIndex] = overflow.Labels.Count;
+                            // Capture mouse to detect clicks outside
+                            Mouse.Capture(this, CaptureMode.SubTree);
+                        }
+
+                        // Start animation
+                        StartExpansionAnimation(nodeIndex, !wasExpanded);
+
+                        // Redraw
+                        InvalidateVisual();
+                        InvalidateMeasure();
+
+                        // Notify listeners
+                        RowExpansionChanged?.Invoke(this, new RowExpansionChangedEventArgs(
+                            nodeIndex,
+                            !wasExpanded,
+                            !wasExpanded ? overflow.Labels.Count : 0,
+                            TotalExpansionHeight));
+                    }
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
+        // If clicking outside any expanded tag, collapse all expanded tags with animation
+        if (_expandedNodes.Count > 0)
+        {
+            // Check if click is inside any expanded tag hit area
+            bool clickedInsideExpanded = false;
+            foreach (var kvp in _expandedItemHitAreas)
+            {
+                foreach (var item in kvp.Value)
+                {
+                    if (item.HitArea.Contains(pos))
+                    {
+                        clickedInsideExpanded = true;
+                        break;
+                    }
+                }
+                if (clickedInsideExpanded) break;
+            }
+
+            // Also check if clicked on the overflow tag itself
+            foreach (var kvp in _overflowByRow)
+            {
+                if (kvp.Value.HitArea.Contains(pos))
+                {
+                    clickedInsideExpanded = true;
+                    break;
+                }
+            }
+
+            if (!clickedInsideExpanded)
+            {
+                // Collapse all expanded nodes with animation
+                CollapseAllExpandedTags();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Collapse all expanded branch tags with animation.
+    /// </summary>
+    private void CollapseAllExpandedTags()
+    {
+        if (_expandedNodes.Count == 0)
+            return;
+
+        var nodesToCollapse = _expandedNodes.Keys.ToList();
+        foreach (var nodeIndex in nodesToCollapse)
+        {
+            _expandedNodes.Remove(nodeIndex);
+            _expandedItemHitAreas.Remove(nodeIndex);
+            StartExpansionAnimation(nodeIndex, false); // Animate collapse
+        }
+
+        // Release mouse capture
+        Mouse.Capture(null);
+
+        InvalidateVisual();
+        InvalidateMeasure();
+
+        // Notify listeners
+        RowExpansionChanged?.Invoke(this, new RowExpansionChangedEventArgs(
+            -1, false, 0, TotalExpansionHeight));
     }
 
     private void OnMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
         var pos = e.GetPosition(this);
         var nodes = Nodes;
+
+        // Check for hover over expanded dropdown items first
+        bool foundExpandedHover = false;
+        foreach (var kvp in _expandedItemHitAreas)
+        {
+            for (int i = 0; i < kvp.Value.Count; i++)
+            {
+                if (kvp.Value[i].HitArea.Contains(pos))
+                {
+                    if (_hoveredExpandedItem != (kvp.Key, i))
+                    {
+                        _hoveredExpandedItem = (kvp.Key, i);
+                        Cursor = Cursors.Hand;
+                        InvalidateVisual();
+                    }
+                    foundExpandedHover = true;
+                    break;
+                }
+            }
+            if (foundExpandedHover) break;
+        }
+
+        if (!foundExpandedHover && _hoveredExpandedItem.NodeIndex >= 0)
+        {
+            _hoveredExpandedItem = (-1, -1);
+            Cursor = Cursors.Arrow;
+            InvalidateVisual();
+        }
+
+        // Check for overflow indicator hover first (within label area) - show tooltip
+        if (pos.X < LabelAreaWidth)
+        {
+            foreach (var kvp in _overflowByRow)
+            {
+                int displayRow = kvp.Key;
+                var overflow = kvp.Value;
+
+                if (overflow.HitArea.Contains(pos))
+                {
+                    if (_hoveredOverflowRow != displayRow)
+                    {
+                        _hoveredOverflowRow = displayRow;
+                        // Show popup with all branch names (including visible first one)
+                        int tooltipRowOffset = (HasWorkingChanges ? 1 : 0) + StashCount;
+                        int tooltipNodeIndex = displayRow - tooltipRowOffset;
+                        if (Nodes != null && tooltipNodeIndex >= 0 && tooltipNodeIndex < Nodes.Count)
+                        {
+                            var tooltipNode = Nodes[tooltipNodeIndex];
+                            ShowBranchTooltip(tooltipNode.BranchLabels, overflow.HitArea);
+                        }
+                    }
+                    Cursor = Cursors.Hand;
+                    return;
+                }
+            }
+        }
+
+        // If we were hovering over overflow but now left, hide tooltip
+        if (_hoveredOverflowRow >= 0)
+        {
+            _hoveredOverflowRow = -1;
+            HideBranchTooltip();
+            Cursor = Cursors.Arrow;
+        }
 
         // Calculate which row the mouse is over
         int row = (int)(pos.Y / RowHeight);
@@ -351,6 +781,12 @@ public class GitGraphCanvas : FrameworkElement
         HoveredSha = null;
         IsWorkingChangesHovered = false;
         HoveredStashIndex = -1;
+
+        if (_hoveredOverflowRow >= 0)
+        {
+            _hoveredOverflowRow = -1;
+            HideBranchTooltip();
+        }
     }
 
     #endregion
@@ -382,6 +818,8 @@ public class GitGraphCanvas : FrameworkElement
             rowCount += 1;
         }
         rowCount += StashCount;
+
+        // Expansion is rendered as overlay, doesn't affect layout height
         double height = rowCount * RowHeight;
 
         return new Size(width, height);
@@ -389,6 +827,8 @@ public class GitGraphCanvas : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
+        // Clear overflow tracking before re-drawing
+        _overflowByRow.Clear();
         base.OnRender(dc);
 
         // Row offset: working changes (0 or 1) + stash count
@@ -520,6 +960,19 @@ public class GitGraphCanvas : FrameworkElement
         {
             DrawGhostTag(dc, hoveredNode, rowOffset);
         }
+
+        // Sixth pass: Draw expanded branch dropdowns on top of everything
+        foreach (var kvp in _expandedNodes)
+        {
+            int nodeIndex = kvp.Key;
+            if (nodeIndex >= 0 && nodeIndex < nodes.Count)
+            {
+                var node = nodes[nodeIndex];
+                double y = GetYForRow(node.RowIndex + rowOffset);
+                double nodeX = GetXForColumn(node.ColumnIndex);
+                DrawExpandedBranchLabels(dc, node, y, nodeX, rowOffset);
+            }
+        }
     }
 
     private void DrawWorkingChangesRow(DrawingContext dc, Color branchColor, int laneIndex)
@@ -638,8 +1091,8 @@ public class GitGraphCanvas : FrameworkElement
         // Node radius depends on commit type (merge = smaller dot, regular = avatar circle)
         double avatarRadius = node.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
 
-        // Determine if this row is highlighted (selected or search match)
-        bool isHighlighted = node.Sha == SelectedSha || (IsSearchActive && node.IsSearchMatch);
+        // Determine if this row is highlighted (selected, hovered, or search match)
+        bool isHighlighted = node.Sha == SelectedSha || node.Sha == HoveredSha || (IsSearchActive && node.IsSearchMatch);
 
         // Trail opacity: 15% normal, 50% when highlighted
         double trailOpacity = isHighlighted ? 0.5 : 0.15;
@@ -849,6 +1302,16 @@ public class GitGraphCanvas : FrameworkElement
         double lastLabelRight = 0;
         Brush? lastLabelBrush = null;
         bool lastLabelIsCurrent = false;
+        int drawnCount = 0;
+        int displayRow = node.RowIndex + rowOffset;
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+
+        // Check if this row is expanded - if so, skip (drawn in final pass as overlay)
+        int nodeIndex = node.RowIndex;
+        if (_expandedNodes.ContainsKey(nodeIndex))
+        {
+            return;
+        }
 
         foreach (var label in node.BranchLabels)
         {
@@ -878,7 +1341,7 @@ public class GitGraphCanvas : FrameworkElement
                 IconTypeface,
                 iconFontSize,
                 LabelTextBrush,
-                VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                dpi);
 
             // Measure branch name text
             var nameFormatted = new FormattedText(
@@ -888,13 +1351,49 @@ public class GitGraphCanvas : FrameworkElement
                 LabelTypeface,
                 fontSize,
                 LabelTextBrush,
-                VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                dpi);
 
             // Calculate label dimensions (name first, then icons)
             double iconWidth = iconFormatted.Width;
             double nameWidth = nameFormatted.Width;
             double hPadding = label.IsCurrent ? 8 : 6;
             double totalWidth = hPadding + nameWidth + 4 + iconWidth + hPadding;
+
+            // Check if this is the last label that will fit - if more remain, add "+N" suffix
+            int remainingAfterThis = node.BranchLabels.Count - drawnCount - 1;
+            string overflowSuffix = "";
+            double suffixWidth = 0;
+
+            if (remainingAfterThis > 0)
+            {
+                // Check if next label would fit
+                var nextLabel = node.BranchLabels[drawnCount + 1];
+                var nextNameFormatted = new FormattedText(
+                    nextLabel.Name,
+                    CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    LabelTypeface,
+                    nextLabel.IsCurrent ? 13 : 11,
+                    LabelTextBrush,
+                    dpi);
+                double nextEstWidth = (nextLabel.IsCurrent ? 8 : 6) * 2 + nextNameFormatted.Width + 20; // rough estimate
+
+                if (labelX + totalWidth + 4 + nextEstWidth > LabelAreaWidth - 8)
+                {
+                    // Next won't fit, so this is the last - add overflow suffix
+                    overflowSuffix = $" +{remainingAfterThis}";
+                    var suffixFormatted = new FormattedText(
+                        overflowSuffix,
+                        CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight,
+                        LabelTypeface,
+                        fontSize,
+                        LabelTextBrush,
+                        dpi);
+                    suffixWidth = suffixFormatted.Width;
+                    totalWidth += suffixWidth;
+                }
+            }
 
             // Check if label would overflow the label area
             if (labelX + totalWidth > LabelAreaWidth - 8)
@@ -908,29 +1407,240 @@ public class GitGraphCanvas : FrameworkElement
             dc.DrawText(nameFormatted, new Point(labelX + hPadding, y - nameFormatted.Height / 2));
 
             // Draw icons after name
-            dc.DrawText(iconFormatted, new Point(labelX + hPadding + nameWidth + 4, y - iconFormatted.Height / 2));
+            double iconX = labelX + hPadding + nameWidth + 4;
+            dc.DrawText(iconFormatted, new Point(iconX, y - iconFormatted.Height / 2));
+
+            // Draw overflow suffix if present
+            if (!string.IsNullOrEmpty(overflowSuffix))
+            {
+                var suffixFormatted = new FormattedText(
+                    overflowSuffix,
+                    CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    LabelTypeface,
+                    fontSize,
+                    LabelTextBrush,
+                    dpi);
+                dc.DrawText(suffixFormatted, new Point(iconX + iconWidth, y - suffixFormatted.Height / 2));
+
+                // Store overflow info - hit area is the entire tag, dropdown at left edge
+                var overflowLabels = node.BranchLabels.Skip(drawnCount + 1).ToList();
+                _overflowByRow[displayRow] = (overflowLabels, labelRect);
+            }
 
             // Track the rightmost edge of labels and the last brush color
             lastLabelRight = labelX + totalWidth;
             lastLabelBrush = bgBrush;
             lastLabelIsCurrent = label.IsCurrent;
+            drawnCount++;
+
+            // If we added overflow suffix, we're done
+            if (!string.IsNullOrEmpty(overflowSuffix))
+                break;
 
             // Move X for next label
             labelX += totalWidth + 4;
         }
 
-            // Draw connecting line from last label to the commit node (same color as tag)
-            // Thicker line for current branch
-            if (node.BranchLabels.Count > 0 && lastLabelRight > 0 && lastLabelBrush != null)
-            {
-                double lineThickness = lastLabelIsCurrent ? 2.5 : 1.5;
-                var linePen = new Pen(lastLabelBrush, lineThickness);
-                linePen.Freeze();
+        // Clear overflow tracking if no overflow
+        if (drawnCount == node.BranchLabels.Count)
+        {
+            _overflowByRow.Remove(displayRow);
+        }
 
-                // Draw horizontal line from label to node (stop before node edge)
-                double lineEndX = node.IsMerge ? nodeX : nodeX - NodeRadius - 4;
-                dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(lineEndX, y));
+        // Draw connecting line from last label to the commit node (same color as tag)
+        // Thicker line for current branch
+        if (node.BranchLabels.Count > 0 && lastLabelRight > 0 && lastLabelBrush != null)
+        {
+            double lineThickness = lastLabelIsCurrent ? 2.5 : 1.5;
+            var linePen = new Pen(lastLabelBrush, lineThickness);
+            linePen.Freeze();
+
+            // Draw horizontal line from label to node (stop before node edge)
+            double lineEndX = node.IsMerge ? nodeX : nodeX - NodeRadius - 4;
+            dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(lineEndX, y));
+        }
+    }
+
+    /// <summary>
+    /// Draw expanded tag showing all branches as rows inside one tall tag.
+    /// </summary>
+    private void DrawExpandedBranchLabels(DrawingContext dc, GitTreeNode node, double baseY, double nodeX, int rowOffset)
+    {
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        double labelX = 4;
+        int displayRow = node.RowIndex + rowOffset;
+        int nodeIndex = node.RowIndex;
+
+        // Get animation progress (1.0 = fully expanded) with ease-out
+        double rawProgress = _expansionProgress.GetValueOrDefault(nodeIndex, 1.0);
+        double progress = EaseOut(rawProgress);
+
+        // Use first label's color for the expanded tag background
+        var firstLabel = node.BranchLabels[0];
+        Brush tagBgBrush = GraphBuilder.GetBranchColor(firstLabel.Name);
+
+        // Calculate dimensions - use first label's width (same as collapsed state with +N)
+        double firstFontSize = firstLabel.IsCurrent ? 13 : 11;
+        double itemHeight = firstLabel.IsCurrent ? 22 : 18;
+        double hPadding = firstLabel.IsCurrent ? 8 : 6;
+
+        // Measure first label to get the collapsed tag width
+        var firstNameFormatted = new FormattedText(
+            firstLabel.Name,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            LabelTypeface,
+            firstFontSize,
+            LabelTextBrush,
+            dpi);
+
+        var firstIconText = "";
+        if (firstLabel.IsLocal) firstIconText += ComputerIcon;
+        if (firstLabel.IsLocal && firstLabel.IsRemote) firstIconText += " ";
+        if (firstLabel.IsRemote) firstIconText += CloudIcon;
+
+        var firstIconFormatted = new FormattedText(
+            firstIconText,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            IconTypeface,
+            firstFontSize,
+            LabelTextBrush,
+            dpi);
+
+        // Include the "+N" suffix width in the calculation
+        int overflowCount = node.BranchLabels.Count - 1;
+        var suffixFormatted = new FormattedText(
+            $" +{overflowCount}",
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            LabelTypeface,
+            firstFontSize,
+            LabelTextBrush,
+            dpi);
+
+        // Tag width matches collapsed state (name + icons + suffix)
+        double tagWidth = hPadding + firstNameFormatted.Width + 4 + firstIconFormatted.Width + suffixFormatted.Width + hPadding;
+
+        // Calculate heights - first item uses itemHeight, others have good vertical padding
+        double otherItemHeight = 22; // Good vertical spacing between items
+        double fullExpandedHeight = itemHeight + ((node.BranchLabels.Count - 1) * otherItemHeight);
+
+        // Animate height from collapsed (itemHeight) to fully expanded
+        double tagHeight = itemHeight + ((fullExpandedHeight - itemHeight) * progress);
+
+        // Tag top stays at same position as collapsed tag (centered on baseY)
+        double tagTop = baseY - itemHeight / 2;
+
+        // Draw the single expanded tag background
+        var tagRect = new Rect(labelX, tagTop, tagWidth, tagHeight);
+        dc.DrawRoundedRectangle(tagBgBrush, LabelBorderPen, tagRect, 4, 4);
+
+        // Clear and rebuild hit areas for this node
+        var hitAreas = new List<(BranchLabel Label, Rect HitArea)>();
+
+        // Draw each branch name as a row inside the tag
+        // First item centered at baseY (same as collapsed), others below
+        double currentY = baseY;
+        int branchIndex = 0;
+
+        foreach (var label in node.BranchLabels)
+        {
+            // Current branch gets larger font, others stay small
+            double labelFontSize = label.IsCurrent ? 13 : 11;
+            double currentItemHeight = branchIndex == 0 ? itemHeight : otherItemHeight;
+            // Use appropriate padding for each item
+            double itemHPadding = label.IsCurrent ? 8 : 6;
+
+            // Only draw if within animated bounds
+            double itemTop = currentY - currentItemHeight / 2;
+            if (itemTop < tagTop + tagHeight)
+            {
+                // Check if this item is hovered
+                bool isHovered = _hoveredExpandedItem == (nodeIndex, branchIndex);
+
+                // Get this branch's color for border and background
+                Brush branchColorBrush = GraphBuilder.GetBranchColor(label.Name);
+                var branchColor = ((SolidColorBrush)branchColorBrush).Color;
+
+                // Draw border and background around non-first items using their branch color
+                // Fills edge-to-edge to completely cover the underlying tag color
+                // Opacity increases on hover (like WIP row behavior)
+                if (branchIndex > 0)
+                {
+                    byte alpha = isHovered ? (byte)255 : (byte)200; // More solid on hover
+                    var bgBrush = new SolidColorBrush(Color.FromArgb(alpha, branchColor.R, branchColor.G, branchColor.B));
+                    bgBrush.Freeze();
+                    // Full width/height to cover underlying tag, no border
+                    var borderRect = new Rect(labelX, itemTop, tagWidth, currentItemHeight);
+                    dc.DrawRoundedRectangle(bgBrush, null, borderRect, 3, 3);
+                }
+
+                var nameFormatted = new FormattedText(
+                    label.Name,
+                    CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    LabelTypeface,
+                    labelFontSize,
+                    LabelTextBrush,
+                    dpi);
+
+                var iconText = "";
+                if (label.IsLocal) iconText += ComputerIcon;
+                if (label.IsLocal && label.IsRemote) iconText += " ";
+                if (label.IsRemote) iconText += CloudIcon;
+
+                var iconFormatted = new FormattedText(
+                    iconText,
+                    CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    IconTypeface,
+                    labelFontSize,
+                    LabelTextBrush,
+                    dpi);
+
+                // Calculate opacity based on how much of the item is visible during animation
+                double itemBottom = itemTop + currentItemHeight;
+                double visibleRatio = Math.Min(1.0, Math.Max(0.0, (tagTop + tagHeight - itemTop) / currentItemHeight));
+
+                if (visibleRatio > 0.3) // Only draw if more than 30% visible
+                {
+                    // Draw name with proper padding for this item
+                    dc.DrawText(nameFormatted, new Point(labelX + itemHPadding, currentY - nameFormatted.Height / 2));
+
+                    // Draw icons
+                    dc.DrawText(iconFormatted, new Point(labelX + itemHPadding + nameFormatted.Width + 4, currentY - iconFormatted.Height / 2));
+                }
+
+                // Store hit area for this item
+                var itemHitRect = new Rect(labelX, itemTop, tagWidth, currentItemHeight);
+                hitAreas.Add((label, itemHitRect));
             }
+
+            // Move Y down - first item uses full height, others use smaller height
+            if (branchIndex == 0)
+            {
+                currentY += itemHeight / 2 + otherItemHeight / 2;
+            }
+            else
+            {
+                currentY += otherItemHeight;
+            }
+            branchIndex++;
+        }
+
+        // Store hit areas for hover/click detection
+        _expandedItemHitAreas[nodeIndex] = hitAreas;
+
+        // Draw connecting line from tag to node
+        var linePen = new Pen(tagBgBrush, 1.5);
+        linePen.Freeze();
+        double lineEndX = node.IsMerge ? nodeX : nodeX - NodeRadius - 4;
+        dc.DrawLine(linePen, new Point(labelX + tagWidth, baseY), new Point(lineEndX, baseY));
+
+        // Store hit area for click-to-collapse
+        _overflowByRow[displayRow] = (node.BranchLabels.Skip(1).ToList(), tagRect);
     }
 
     private void DrawGhostTag(DrawingContext dc, GitTreeNode node, int rowOffset = 0)
@@ -1040,7 +1750,8 @@ public class GitGraphCanvas : FrameworkElement
 
     private double GetYForRow(int row)
     {
-        return (row + 0.5) * RowHeight;
+        // Simple calculation - expansion is rendered as overlay
+        return row * RowHeight + RowHeight / 2;
     }
 
     public BranchLabel? GetBranchLabelAt(Point position)
@@ -1111,5 +1822,24 @@ public class GitGraphCanvas : FrameworkElement
         }
 
         return null;
+    }
+}
+
+/// <summary>
+/// Event args for row expansion changes.
+/// </summary>
+public class RowExpansionChangedEventArgs : EventArgs
+{
+    public int NodeIndex { get; }
+    public bool IsExpanded { get; }
+    public int ExtraRows { get; }
+    public double TotalExpansionHeight { get; }
+
+    public RowExpansionChangedEventArgs(int nodeIndex, bool isExpanded, int extraRows, double totalExpansionHeight)
+    {
+        NodeIndex = nodeIndex;
+        IsExpanded = isExpanded;
+        ExtraRows = extraRows;
+        TotalExpansionHeight = totalExpansionHeight;
     }
 }

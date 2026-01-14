@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Leaf.Controls;
 using Leaf.Models;
 using Leaf.ViewModels;
 
@@ -18,6 +19,35 @@ public partial class GitGraphView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+
+        // Subscribe to expansion changes from the canvas
+        if (GraphCanvas != null)
+        {
+            GraphCanvas.RowExpansionChanged += OnRowExpansionChanged;
+            GraphCanvas.BranchCheckoutRequested += OnBranchCheckoutRequested;
+        }
+    }
+
+    private void OnBranchCheckoutRequested(object? sender, BranchLabel label)
+    {
+        if (Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
+        {
+            var branchName = label.IsRemote && !label.IsLocal && label.RemoteName != null
+                ? $"{label.RemoteName}/{label.Name}"
+                : label.Name;
+            _ = mainViewModel.CheckoutBranchAsync(new BranchInfo
+            {
+                Name = branchName,
+                IsRemote = label.IsRemote,
+                RemoteName = label.RemoteName,
+                IsCurrent = label.IsCurrent
+            });
+        }
+    }
+
+    private void OnRowExpansionChanged(object? sender, RowExpansionChangedEventArgs e)
+    {
+        // Canvas handles expansion as overlay - nothing to sync
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -360,4 +390,5 @@ public partial class GitGraphView : UserControl
         menu.IsOpen = true;
         e.Handled = true;
     }
+
 }
