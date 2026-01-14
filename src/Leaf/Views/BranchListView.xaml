@@ -107,8 +107,10 @@
 
                 <!-- Branch template -->
                 <DataTemplate DataType="{x:Type models:BranchInfo}">
-                    <Border Padding="2,3"
+                    <Border x:Name="BranchBorder"
+                            Padding="2,3"
                             Background="Transparent"
+                            CornerRadius="2"
                             Cursor="Hand"
                             MouseLeftButtonDown="Branch_MouseLeftButtonDown"
                             MouseRightButtonDown="Branch_MouseRightButtonDown"
@@ -173,6 +175,12 @@
                 <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                     <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
                     <Setter Property="Padding" Value="2"/>
+                    <Style.Triggers>
+                        <!-- Auto-select the current branch -->
+                        <DataTrigger Binding="{Binding IsCurrent, FallbackValue=False}" Value="True">
+                            <Setter Property="IsSelected" Value="True"/>
+                        </DataTrigger>
+                    </Style.Triggers>
                 </Style>
             </TreeView.ItemContainerStyle>
         </TreeView>

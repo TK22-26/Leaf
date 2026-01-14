@@ -21,6 +21,19 @@
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
         <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
         <converters:IntGreaterThanZeroConverter x:Key="IntGreaterThanZeroConverter" />
+
+        <!--  Action bar button style with green hover  -->
+        <Style x:Key="ActionBarButtonStyle" BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="Padding" Value="10,8" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -116,11 +129,8 @@
                     Orientation="Horizontal">
                     <!--  Undo  -->
                     <Button
-                        Margin="2,0"
-                        Padding="10,8"
-                        Background="Transparent"
-                        BorderThickness="0"
                         Command="{Binding UndoCommand}"
+                        Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Undo last commit (before push)">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock
@@ -137,11 +147,8 @@
                     </Button>
                     <!--  Redo  -->
                     <Button
-                        Margin="2,0"
-                        Padding="10,8"
-                        Background="Transparent"
-                        BorderThickness="0"
                         Command="{Binding RedoCommand}"
+                        Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Redo last undone commit">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock
@@ -164,11 +171,8 @@
                         Fill="{DynamicResource TextFillColorSecondaryBrush}" />
                     <!--  Pull  -->
                     <Button
-                        Margin="2,0"
-                        Padding="10,8"
-                        Background="Transparent"
-                        BorderThickness="0"
                         Command="{Binding PullCommand}"
+                        Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Pull changes from remote">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock
@@ -185,11 +189,8 @@
                     </Button>
                     <!--  Push  -->
                     <Button
-                        Margin="2,0"
-                        Padding="10,8"
-                        Background="Transparent"
-                        BorderThickness="0"
                         Command="{Binding PushCommand}"
+                        Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Push changes to remote">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock
@@ -212,11 +213,8 @@
                         Fill="{DynamicResource TextFillColorSecondaryBrush}" />
                     <!--  Branch  -->
                     <Button
-                        Margin="2,0"
-                        Padding="10,8"
-                        Background="Transparent"
-                        BorderThickness="0"
                         Command="{Binding CreateBranchCommand}"
+                        Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Create new branch">
                         <StackPanel Orientation="Horizontal">
                             <ic:SymbolIcon
@@ -238,11 +236,8 @@
                         Fill="{DynamicResource TextFillColorSecondaryBrush}" />
                     <!--  Stash  -->
                     <Button
-                        Margin="2,0"
-                        Padding="10,8"
-                        Background="Transparent"
-                        BorderThickness="0"
                         Command="{Binding StashCommand}"
+                        Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Stash changes">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock
@@ -259,14 +254,10 @@
                     </Button>
                     <!--  Pop  -->
                     <Button
-                        Margin="2,0"
-                        Padding="10,8"
-                        Background="Transparent"
-                        BorderThickness="0"
                         Command="{Binding PopStashCommand}"
                         ToolTip="Pop stashed changes (select a stash first)">
                         <Button.Style>
-                            <Style BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
+                            <Style BasedOn="{StaticResource ActionBarButtonStyle}" TargetType="Button">
                                 <Setter Property="Opacity" Value="1" />
                                 <Style.Triggers>
                                     <Trigger Property="IsEnabled" Value="False">

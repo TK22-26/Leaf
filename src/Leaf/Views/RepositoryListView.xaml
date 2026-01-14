@@ -16,8 +16,10 @@
         <converters:IntGreaterThanZeroConverter x:Key="IntGreaterThanZeroConverter"/>
 
         <DataTemplate x:Key="RepositoryItemTemplate" DataType="{x:Type models:RepositoryInfo}">
-            <Border Padding="2,3"
+            <Border x:Name="RepoBorder"
+                    Padding="2,3"
                     Background="Transparent"
+                    CornerRadius="2"
                     Cursor="Hand"
                     HorizontalAlignment="Stretch"
                     MouseLeftButtonDown="Repository_MouseLeftButtonDown"

@@ -78,7 +78,7 @@
 
                     <Button
                         Margin="0,0,2,0"
-                        Padding="8,0"
+                        Padding="8,2"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Center"
                         VerticalContentAlignment="Center"
@@ -268,6 +268,8 @@
                 Margin="8,0,8,0"
                 Padding="8"
                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource LeafAccentSubtleBrush}"
+                BorderThickness="0,0,0,1"
                 CornerRadius="6,6,0,0">
                 <StackPanel Orientation="Horizontal">
                     <!--  Modified count  -->
@@ -348,6 +350,8 @@
                                     Margin="4,2"
                                     Padding="8,6"
                                     Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="2,0,0,0"
                                     CornerRadius="4"
                                     ToolTip="{Binding Path}">
                                     <Grid>
@@ -424,7 +428,8 @@
                                 </Border>
                                 <DataTemplate.Triggers>
                                     <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#28A745" />
                                     </Trigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>

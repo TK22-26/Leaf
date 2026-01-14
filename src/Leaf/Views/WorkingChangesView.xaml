@@ -24,46 +24,11 @@
         <!--  Commit button color  -->
         <SolidColorBrush x:Key="CommitButtonBrush" Color="#28A745" />
 
-        <!--  TextBox style without clear button  -->
+        <!--  TextBox style without clear button (inherits global green accent style)  -->
         <Style
             x:Key="NoClearButtonTextBox"
             BasedOn="{StaticResource {x:Type TextBox}}"
-            TargetType="TextBox">
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TextBox">
-                        <Border
-                            Name="ContentBorder"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="{TemplateBinding Border.CornerRadius}">
-                            <ScrollViewer
-                                x:Name="PART_ContentHost"
-                                Margin="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}"
-                                HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
-                                VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ContentBorder" Property="Background" Value="{DynamicResource TextControlBackgroundPointerOver}" />
-                                <Setter TargetName="ContentBorder" Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushPointerOver}" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="ContentBorder" Property="Background" Value="{DynamicResource TextControlBackgroundFocused}" />
-                                <Setter TargetName="ContentBorder" Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushFocused}" />
-                                <Setter TargetName="ContentBorder" Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThicknessFocused}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="ContentBorder" Property="Background" Value="{DynamicResource TextControlBackgroundDisabled}" />
-                                <Setter TargetName="ContentBorder" Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushDisabled}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+            TargetType="TextBox" />
     </UserControl.Resources>
 
     <Grid>
@@ -130,6 +95,8 @@
                 Grid.Row="0"
                 Padding="8"
                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource LeafAccentSubtleBrush}"
+                BorderThickness="0,0,0,1"
                 CornerRadius="6,6,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -184,6 +151,8 @@
                                     Margin="2,1"
                                     Padding="8,6"
                                     Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="2,0,0,0"
                                     CornerRadius="4"
                                     Cursor="Hand"
                                     MouseLeftButtonDown="UnstagedFile_MouseLeftButtonDown"
@@ -275,7 +244,8 @@
                                 </Border>
                                 <DataTemplate.Triggers>
                                     <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#28A745" />
                                         <Setter TargetName="StageButton" Property="Visibility" Value="Visible" />
                                     </Trigger>
                                 </DataTemplate.Triggers>
@@ -298,6 +268,8 @@
                 Grid.Row="0"
                 Padding="8"
                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource LeafAccentSubtleBrush}"
+                BorderThickness="0,0,0,1"
                 CornerRadius="6,6,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -352,6 +324,8 @@
                                     Margin="2,1"
                                     Padding="8,6"
                                     Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="2,0,0,0"
                                     CornerRadius="4"
                                     Cursor="Hand"
                                     MouseLeftButtonDown="StagedFile_MouseLeftButtonDown"
@@ -440,7 +414,8 @@
                                 </Border>
                                 <DataTemplate.Triggers>
                                     <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#28A745" />
                                         <Setter TargetName="UnstageButton" Property="Visibility" Value="Visible" />
                                     </Trigger>
                                 </DataTemplate.Triggers>

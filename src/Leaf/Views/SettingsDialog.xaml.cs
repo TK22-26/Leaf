@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using FluentIcons.Common;
 using Leaf.Services;
 using Microsoft.Win32;
 
@@ -24,6 +25,10 @@ public partial class SettingsDialog : Window
     private bool _isGeminiConnected;
     private bool _isCodexConnected;
     private bool _suppressAiSelectionSync;
+    private bool _suppressNavSelection;
+
+    // Search items for settings
+    private readonly List<SettingsSearchItem> _allSearchItems;
 
     public SettingsDialog(CredentialService credentialService, SettingsService settingsService)
     {
@@ -33,7 +38,171 @@ public partial class SettingsDialog : Window
         _settingsService = settingsService;
         _settings = settingsService.LoadSettings();
 
+        // Initialize search items
+        _allSearchItems = new List<SettingsSearchItem>
+        {
+            new("Clone Path", "Default directory for cloning repositories", "ClonePath", Symbol.Folder),
+            new("Default Clone Directory", "Set where new repositories are cloned", "ClonePath", Symbol.Folder),
+            new("Azure DevOps", "Connect to Azure DevOps for private repositories", "AzureDevOps", Symbol.Cloud),
+            new("Azure DevOps PAT", "Personal Access Token for Azure DevOps", "AzureDevOps", Symbol.Key),
+            new("Azure DevOps Organization", "Your Azure DevOps organization name", "AzureDevOps", Symbol.Cloud),
+            new("GitHub", "Connect to GitHub for private repositories", "GitHub", Symbol.Code),
+            new("GitHub PAT", "Personal Access Token for GitHub", "GitHub", Symbol.Key),
+            new("GitHub Username", "Your GitHub username or email", "GitHub", Symbol.Code),
+            new("AI Settings", "Configure AI integration settings", "AIGeneral", Symbol.Bot),
+            new("Default AI Provider", "Select which AI to use by default", "AIGeneral", Symbol.Bot),
+            new("CLI Timeout", "Maximum time to wait for AI CLI responses", "AIGeneral", Symbol.Options),
+            new("Claude", "Connect to Claude CLI for AI features", "Claude", Symbol.Bot),
+            new("Gemini", "Connect to Gemini CLI for AI features", "Gemini", Symbol.Bot),
+            new("Codex", "Connect to Codex CLI for AI features", "Codex", Symbol.Bot),
+        };
+
         LoadCurrentSettings();
+
+        // Select first item by default
+        NavClonePath.IsSelected = true;
+    }
+
+    private void SettingsNavTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (_suppressNavSelection) return;
+
+        if (e.NewValue is TreeViewItem item && item.Tag is string tag)
+        {
+            ShowContent(tag);
+        }
+    }
+
+    private void ShowContent(string tag)
+    {
+        // Hide all content panels
+        ContentClonePath.Visibility = Visibility.Collapsed;
+        ContentAzureDevOps.Visibility = Visibility.Collapsed;
+        ContentGitHub.Visibility = Visibility.Collapsed;
+        ContentAIGeneral.Visibility = Visibility.Collapsed;
+        ContentClaude.Visibility = Visibility.Collapsed;
+        ContentGemini.Visibility = Visibility.Collapsed;
+        ContentCodex.Visibility = Visibility.Collapsed;
+        ContentSearchResults.Visibility = Visibility.Collapsed;
+
+        // Show the selected content
+        switch (tag)
+        {
+            case "ClonePath":
+                ContentClonePath.Visibility = Visibility.Visible;
+                break;
+            case "AzureDevOps":
+                ContentAzureDevOps.Visibility = Visibility.Visible;
+                break;
+            case "GitHub":
+                ContentGitHub.Visibility = Visibility.Visible;
+                break;
+            case "AIGeneral":
+                ContentAIGeneral.Visibility = Visibility.Visible;
+                break;
+            case "Claude":
+                ContentClaude.Visibility = Visibility.Visible;
+                break;
+            case "Gemini":
+                ContentGemini.Visibility = Visibility.Visible;
+                break;
+            case "Codex":
+                ContentCodex.Visibility = Visibility.Visible;
+                break;
+            case "General":
+                // Show clone path for General category
+                ContentClonePath.Visibility = Visibility.Visible;
+                break;
+            case "Authentication":
+                // Show Azure DevOps for Authentication category
+                ContentAzureDevOps.Visibility = Visibility.Visible;
+                break;
+            case "AI":
+                // Show AI General for AI category
+                ContentAIGeneral.Visibility = Visibility.Visible;
+                break;
+        }
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var searchText = SearchBox.Text.Trim();
+
+        if (string.IsNullOrEmpty(searchText))
+        {
+            // Clear search, show normal navigation
+            ContentSearchResults.Visibility = Visibility.Collapsed;
+            SettingsNavTree.Visibility = Visibility.Visible;
+
+            // Show previously selected content
+            if (SettingsNavTree.SelectedItem is TreeViewItem item && item.Tag is string tag)
+            {
+                ShowContent(tag);
+            }
+            return;
+        }
+
+        // Perform search
+        var results = _allSearchItems
+            .Where(item => item.Title.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+                          item.Description.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        // Hide nav tree, show search results
+        SettingsNavTree.Visibility = Visibility.Collapsed;
+
+        // Hide all content panels
+        ContentClonePath.Visibility = Visibility.Collapsed;
+        ContentAzureDevOps.Visibility = Visibility.Collapsed;
+        ContentGitHub.Visibility = Visibility.Collapsed;
+        ContentAIGeneral.Visibility = Visibility.Collapsed;
+        ContentClaude.Visibility = Visibility.Collapsed;
+        ContentGemini.Visibility = Visibility.Collapsed;
+        ContentCodex.Visibility = Visibility.Collapsed;
+
+        // Show search results
+        ContentSearchResults.Visibility = Visibility.Visible;
+        SearchResultsItemsControl.ItemsSource = results;
+        NoSearchResultsText.Visibility = results.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SearchResult_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is string tag)
+        {
+            // Clear search
+            SearchBox.Text = "";
+            SettingsNavTree.Visibility = Visibility.Visible;
+            ContentSearchResults.Visibility = Visibility.Collapsed;
+
+            // Navigate to the item
+            _suppressNavSelection = true;
+            SelectNavItem(tag);
+            _suppressNavSelection = false;
+
+            ShowContent(tag);
+        }
+    }
+
+    private void SelectNavItem(string tag)
+    {
+        TreeViewItem? itemToSelect = tag switch
+        {
+            "ClonePath" => NavClonePath,
+            "AzureDevOps" => NavAzureDevOps,
+            "GitHub" => NavGitHub,
+            "AIGeneral" => NavAIGeneral,
+            "Claude" => NavClaude,
+            "Gemini" => NavGemini,
+            "Codex" => NavCodex,
+            _ => null
+        };
+
+        if (itemToSelect != null)
+        {
+            itemToSelect.IsSelected = true;
+            itemToSelect.BringIntoView();
+        }
     }
 
     private async void ClaudeConnect_Click(object sender, RoutedEventArgs e)
@@ -114,7 +283,7 @@ public partial class SettingsDialog : Window
         if (!string.IsNullOrEmpty(existingPat))
         {
             PatStatusText.Text = "Connected";
-            PatStatusText.Foreground = new SolidColorBrush(Color.FromRgb(0, 150, 0));
+            PatStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
             SavePatButton.IsEnabled = false;
             ClearPatButton.IsEnabled = true;
         }
@@ -130,7 +299,7 @@ public partial class SettingsDialog : Window
         if (!string.IsNullOrEmpty(existingGitHubPat))
         {
             GitHubStatusText.Text = "Connected";
-            GitHubStatusText.Foreground = new SolidColorBrush(Color.FromRgb(0, 150, 0));
+            GitHubStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
             SaveGitHubPatButton.IsEnabled = false;
             ClearGitHubPatButton.IsEnabled = true;
         }
@@ -169,7 +338,7 @@ public partial class SettingsDialog : Window
         {
             case CliCheckResult.Connected:
                 statusText.Text = "Connected";
-                statusText.Foreground = new SolidColorBrush(Color.FromRgb(0, 150, 0));
+                statusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
                 actionButton.IsEnabled = false;
                 onConnected?.Invoke();
                 switch (command.ToLowerInvariant())
@@ -189,7 +358,7 @@ public partial class SettingsDialog : Window
                 break;
             case CliCheckResult.NotInstalled:
                 statusText.Text = string.IsNullOrWhiteSpace(detail) ? "Not installed" : $"Not installed: {detail}";
-                statusText.Foreground = new SolidColorBrush(Color.FromRgb(180, 0, 0));
+                statusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
                 actionButton.IsEnabled = true;
                 break;
             case CliCheckResult.NotConnected:
@@ -400,7 +569,7 @@ public partial class SettingsDialog : Window
         if (isConnected)
         {
             status.Text = "Connected";
-            status.Foreground = new SolidColorBrush(Color.FromRgb(0, 150, 0));
+            status.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
             connect.IsEnabled = false;
             disconnect.IsEnabled = true;
         }
@@ -504,7 +673,7 @@ public partial class SettingsDialog : Window
         _credentialService.SaveCredential("AzureDevOps", "git", pat);
 
         PatStatusText.Text = "Connected";
-        PatStatusText.Foreground = new SolidColorBrush(Color.FromRgb(0, 150, 0));
+        PatStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
         SavePatButton.IsEnabled = false;
         ClearPatButton.IsEnabled = true;
 
@@ -558,7 +727,7 @@ public partial class SettingsDialog : Window
         _settingsService.SaveSettings(_settings);
 
         GitHubStatusText.Text = "Connected";
-        GitHubStatusText.Foreground = new SolidColorBrush(Color.FromRgb(0, 150, 0));
+        GitHubStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
         SaveGitHubPatButton.IsEnabled = false;
         ClearGitHubPatButton.IsEnabled = true;
 
@@ -664,5 +833,24 @@ public partial class SettingsDialog : Window
 
         DialogResult = true;
         Close();
+    }
+}
+
+/// <summary>
+/// Represents a searchable settings item.
+/// </summary>
+public class SettingsSearchItem
+{
+    public string Title { get; }
+    public string Description { get; }
+    public string Tag { get; }
+    public Symbol Icon { get; }
+
+    public SettingsSearchItem(string title, string description, string tag, Symbol icon)
+    {
+        Title = title;
+        Description = description;
+        Tag = tag;
+        Icon = icon;
     }
 }
