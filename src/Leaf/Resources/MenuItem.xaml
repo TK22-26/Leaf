@@ -1,8 +1,8 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:system="clr-namespace:System;assembly=System.Runtime">
-  <system1:String x:Key="MenuItemChevronRightGlyph" xmlns:system1="clr-namespace:System;assembly=System.Private.CoreLib">Œ?ª</system1:String>
-  <String x:Key="MenuItemCheckedGlyph" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">Œo_</String>
+  <system1:String x:Key="MenuItemChevronRightGlyph" xmlns:system1="clr-namespace:System;assembly=System.Private.CoreLib">›</system1:String>
+  <String x:Key="MenuItemCheckedGlyph" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">✓</String>
   <Style x:Key="MenuItemScrollViewerStyle" BasedOn="{StaticResource {x:Type ScrollViewer}}" TargetType="{x:Type ScrollViewer}">
     <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
     <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
@@ -134,7 +134,7 @@
           <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut" />
         </Grid.ColumnDefinitions>
         <Border Name="CheckBoxIconBorder" Grid.Column="0" Width="20" Height="20" Margin="0,0,6,0" VerticalAlignment="Center" Background="{DynamicResource CheckBoxBackground}" BorderBrush="{DynamicResource CheckBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Visibility="Collapsed">
-          <TextBlock Name="CheckBoxIcon" HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{DynamicResource SymbolThemeFontFamily}" FontSize="16" Text="" TextAlignment="Center" />
+          <TextBlock Name="CheckBoxIcon" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="14" Text="" TextAlignment="Center" />
         </Border>
         <ContentPresenter Name="Icon" Grid.Column="1" Margin="0,0,6,0" VerticalAlignment="Center" SnapsToDevicePixels="{TemplateBinding UIElement.SnapsToDevicePixels}" Content="{TemplateBinding MenuItem.Icon}" />
         <ContentPresenter Grid.Column="2" ContentSource="Header" RecognizesAccessKey="True" Margin="{TemplateBinding Control.Padding}" SnapsToDevicePixels="{TemplateBinding UIElement.SnapsToDevicePixels}" TextElement.Foreground="{TemplateBinding Control.Foreground}" />
@@ -182,7 +182,7 @@
           <ContentPresenter Name="Icon" Grid.Column="0" Margin="0,0,6,0" VerticalAlignment="Center" SnapsToDevicePixels="{TemplateBinding UIElement.SnapsToDevicePixels}" Content="{TemplateBinding MenuItem.Icon}" />
           <ContentPresenter Name="HeaderHost" Grid.Column="1" SnapsToDevicePixels="{TemplateBinding UIElement.SnapsToDevicePixels}" Margin="{TemplateBinding Control.Padding}" ContentSource="Header" RecognizesAccessKey="True" />
           <Grid Column="2">
-            <TextBlock Name="Chevron" Margin="0,3,0,0" VerticalAlignment="Center" FontFamily="{DynamicResource SymbolThemeFontFamily}" FontSize="{TemplateBinding Control.FontSize}" Text="{StaticResource MenuItemChevronRightGlyph}" />
+            <TextBlock Name="Chevron" Margin="0,3,0,0" VerticalAlignment="Center" FontSize="{TemplateBinding Control.FontSize}" Text="{StaticResource MenuItemChevronRightGlyph}" />
           </Grid>
         </Grid>
       </Border>

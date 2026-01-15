@@ -19,7 +19,7 @@
         <converters:BranchNameToGitFlowVisibilityConverter x:Key="BranchNameToGitFlowVisibilityConverter"/>
     </UserControl.Resources>
 
-    <Grid>
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -91,29 +91,11 @@
                                 VerticalContentAlignment="Center"
                                 Cursor="Hand"
                                 Click="GitFlowActionButton_Click"
-                                ToolTip="GitFlow actions">
+                                ToolTip="GitFlow actions"
+                                Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
                             <ic:SymbolIcon Symbol="ChevronRight" FontSize="10" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                             <Button.ContextMenu>
-                                <ContextMenu>
-                                    <MenuItem Header="Start Feature..."
-                                              Command="{Binding PlacementTarget.Tag.Tag.StartFeatureCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
-                                        <MenuItem.Icon>
-                                            <Border Width="14" Height="14" CornerRadius="7" Background="#8250DF"/>
-                                        </MenuItem.Icon>
-                                    </MenuItem>
-                                    <MenuItem Header="Start Release..."
-                                              Command="{Binding PlacementTarget.Tag.Tag.StartReleaseCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
-                                        <MenuItem.Icon>
-                                            <Border Width="14" Height="14" CornerRadius="7" Background="#BF8700"/>
-                                        </MenuItem.Icon>
-                                    </MenuItem>
-                                    <MenuItem Header="Start Hotfix..."
-                                              Command="{Binding PlacementTarget.Tag.Tag.StartHotfixCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
-                                        <MenuItem.Icon>
-                                            <Border Width="14" Height="14" CornerRadius="7" Background="#CF222E"/>
-                                        </MenuItem.Icon>
-                                    </MenuItem>
-                                </ContextMenu>
+                                <ContextMenu/>
                             </Button.ContextMenu>
                         </Button>
                     </Grid>
@@ -141,9 +123,6 @@
                                             <Run Text="Fetch "/><Run Text="{Binding Name, Mode=OneWay}"/>
                                         </TextBlock>
                                     </MenuItem.Header>
-                                    <MenuItem.Icon>
-                                        <ic:SymbolIcon Symbol="ArrowDownload" FontSize="14"/>
-                                    </MenuItem.Icon>
                                 </MenuItem>
                             </ContextMenu>
                         </Border.ContextMenu>
@@ -197,50 +176,28 @@
                             <ContextMenu>
                                 <MenuItem Header="Checkout"
                                           Command="{Binding PlacementTarget.Tag.CheckoutBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                          CommandParameter="{Binding}">
-                                    <MenuItem.Icon>
-                                        <ic:SymbolIcon Symbol="Branch" FontSize="14"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
+                                          CommandParameter="{Binding}"/>
                                 <MenuItem Header="Merge into current branch"
                                           Command="{Binding PlacementTarget.Tag.MergeBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
-                                          IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}">
-                                    <MenuItem.Icon>
-                                        <ic:SymbolIcon Symbol="Merge" FontSize="14"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
+                                          IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}"/>
                                 <Separator/>
                                 <!-- GitFlow Section (branch-specific actions only) -->
                                 <MenuItem Header="GitFlow"
                                           Visibility="{Binding Name, Converter={StaticResource BranchNameToGitFlowVisibilityConverter}}">
-                                    <MenuItem.Icon>
-                                        <ic:SymbolIcon Symbol="BranchFork" FontSize="14"/>
-                                    </MenuItem.Icon>
                                     <MenuItem Header="Finish Branch"
                                               Command="{Binding PlacementTarget.Tag.FinishGitFlowBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                              CommandParameter="{Binding}">
-                                        <MenuItem.Icon>
-                                            <ic:SymbolIcon Symbol="Checkmark" FontSize="14"/>
-                                        </MenuItem.Icon>
-                                    </MenuItem>
+                                              CommandParameter="{Binding}"/>
                                     <MenuItem Header="Publish Branch"
                                               Command="{Binding PlacementTarget.Tag.PublishGitFlowBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                              CommandParameter="{Binding}">
-                                        <MenuItem.Icon>
-                                            <ic:SymbolIcon Symbol="ArrowUpload" FontSize="14"/>
-                                        </MenuItem.Icon>
-                                    </MenuItem>
+                                              CommandParameter="{Binding}"/>
                                 </MenuItem>
                                 <Separator/>
                                 <MenuItem Header="Delete"
                                           Command="{Binding PlacementTarget.Tag.DeleteBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
-                                          IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}">
-                                    <MenuItem.Icon>
-                                        <ic:SymbolIcon Symbol="Delete" FontSize="14" Foreground="#DC2626"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
+                                          IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}"
+                                          Foreground="#DC2626"/>
                             </ContextMenu>
                         </Border.ContextMenu>
                         <StackPanel Orientation="Horizontal">
@@ -280,17 +237,112 @@
             </TreeView.Resources>
 
             <TreeView.ItemContainerStyle>
+                <!-- Uses DataContext.IsSelected to allow showing multiple branches as selected -->
+                <!-- (e.g., same branch in GITFLOW and LOCAL categories) -->
                 <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                     <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
                     <Setter Property="Padding" Value="2"/>
                     <Style.Triggers>
-                        <!-- Auto-select the current branch -->
-                        <DataTrigger Binding="{Binding IsCurrent, FallbackValue=False}" Value="True">
+                        <!-- Show selection visual based on BranchInfo.IsSelected -->
+                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
                             <Setter Property="IsSelected" Value="True"/>
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </TreeView.ItemContainerStyle>
         </TreeView>
+
+        <!-- GitFlow Quick Create Flyout -->
+        <Popup x:Name="QuickCreatePopup"
+               Placement="Right"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               PopupAnimation="Fade">
+            <Border Background="{DynamicResource ApplicationBackgroundBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="12"
+                    MinWidth="240">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.3"/>
+                </Border.Effect>
+                <StackPanel>
+                    <!-- Header -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <Border x:Name="QuickCreateTypeIndicator"
+                                Width="8" Height="8" CornerRadius="4"
+                                VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBlock x:Name="QuickCreateHeader"
+                                   Text="Start Feature"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    </StackPanel>
+
+                    <!-- Name Input -->
+                    <TextBox x:Name="QuickCreateNameBox"
+                             Padding="8,6"
+                             FontSize="12"
+                             KeyDown="QuickCreateNameBox_KeyDown"
+                             TextChanged="QuickCreateNameBox_TextChanged"/>
+
+                    <!-- Branch Preview -->
+                    <TextBlock x:Name="QuickCreatePreview"
+                               FontSize="10"
+                               FontFamily="Consolas"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               Margin="2,4,0,0"/>
+
+                    <!-- Suggested Version (for release/hotfix) -->
+                    <StackPanel x:Name="QuickCreateVersionPanel"
+                                Orientation="Horizontal"
+                                Margin="0,6,0,0"
+                                Visibility="Collapsed">
+                        <TextBlock Text="Suggested:"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,6,0"/>
+                        <Button x:Name="QuickCreateVersionButton"
+                                Padding="6,2"
+                                Click="QuickCreateVersionButton_Click"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}">
+                            <TextBlock x:Name="QuickCreateVersionText" FontSize="10"/>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Buttons -->
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Margin="0,10,0,0">
+                        <Button Content="Cancel"
+                                Padding="10,4"
+                                FontSize="11"
+                                Click="QuickCreateCancel_Click"/>
+                        <Button x:Name="QuickCreateStartButton"
+                                Content="Start"
+                                Margin="6,0,0,0"
+                                Padding="12,4"
+                                FontSize="11"
+                                IsEnabled="False"
+                                Click="QuickCreateStart_Click"
+                                Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                Foreground="White"/>
+                    </StackPanel>
+
+                    <!-- Progress -->
+                    <StackPanel x:Name="QuickCreateProgress" Visibility="Collapsed" Margin="0,8,0,0">
+                        <ProgressBar IsIndeterminate="True" Height="2"/>
+                        <TextBlock x:Name="QuickCreateProgressText"
+                                   Text="Creating branch..."
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,4,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Popup>
     </Grid>
 </UserControl>

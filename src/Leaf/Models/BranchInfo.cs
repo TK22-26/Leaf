@@ -1,10 +1,18 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+
 namespace Leaf.Models;
 
 /// <summary>
-/// POCO representing a Git branch.
+/// Represents a Git branch with observable selection state.
 /// </summary>
-public class BranchInfo
+public partial class BranchInfo : ObservableObject
 {
+    /// <summary>
+    /// True if this branch is selected in the tree view.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSelected;
+
     /// <summary>
     /// Full name of the branch (e.g., "refs/heads/main").
     /// </summary>
