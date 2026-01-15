@@ -87,6 +87,11 @@ public interface IGitService
     Task StashAsync(string repoPath, string? message = null);
 
     /// <summary>
+    /// Stash only staged changes (requires Git 2.35+).
+    /// </summary>
+    Task StashStagedAsync(string repoPath, string? message = null);
+
+    /// <summary>
     /// Pop stashed changes.
     /// </summary>
     Task<Models.MergeResult> PopStashAsync(string repoPath);

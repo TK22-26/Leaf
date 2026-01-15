@@ -67,3 +67,5 @@ Package.StoreAssociation.xml
 *.tmp
 *.temp
 ~$*
+
+CLAUDE.md

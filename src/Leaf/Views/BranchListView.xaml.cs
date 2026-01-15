@@ -38,9 +38,10 @@ public partial class BranchListView : UserControl
             return;
         }
 
-        // Single click - select this branch and any matching branches in other categories
-        // (e.g., same branch in GITFLOW and LOCAL)
-        SelectBranchByName(viewModel.SelectedRepository, branch.Name);
+        // Single click - select this branch
+        // For local branches, this also selects in GITFLOW since they share instances
+        // For remote branches, only that specific branch is selected
+        SelectBranch(viewModel.SelectedRepository, branch);
         e.Handled = true;
     }
 
@@ -52,30 +53,27 @@ public partial class BranchListView : UserControl
         if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
             return;
 
-        // If right-clicked branch is not selected, select it (and matching branches)
+        // If right-clicked branch is not selected, select it
         if (!branch.IsSelected)
         {
-            SelectBranchByName(viewModel.SelectedRepository, branch.Name);
+            SelectBranch(viewModel.SelectedRepository, branch);
         }
 
         // Don't mark handled - let context menu open
     }
 
     /// <summary>
-    /// Selects all branches with the given name across all categories (GITFLOW, LOCAL).
-    /// This allows the same branch to appear selected in both places.
+    /// Selects the given branch. For local branches (which are shared between GITFLOW and LOCAL
+    /// categories), this automatically shows selection in both places since they're the same instance.
     /// </summary>
-    private static void SelectBranchByName(RepositoryInfo repo, string branchName)
+    private static void SelectBranch(RepositoryInfo repo, BranchInfo branch)
     {
         // Clear current selection
         repo.ClearBranchSelection();
 
-        // Select all branches with matching name (in both LocalBranches and any GitFlow display)
-        foreach (var b in repo.LocalBranches.Where(b => b.Name == branchName))
-        {
-            b.IsSelected = true;
-            repo.SelectedBranches.Add(b);
-        }
+        // Select the clicked branch
+        branch.IsSelected = true;
+        repo.SelectedBranches.Add(branch);
     }
 
     private Button? _lastChevronButton;

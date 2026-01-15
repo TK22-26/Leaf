@@ -51,4 +51,9 @@ public class BranchCategory
     /// Categories are never "current" - this silences binding warnings in TreeView.
     /// </summary>
     public bool IsCurrent => false;
+
+    /// <summary>
+    /// Categories are never "selected" - this silences binding warnings in TreeView.
+    /// </summary>
+    public bool IsSelected => false;
 }

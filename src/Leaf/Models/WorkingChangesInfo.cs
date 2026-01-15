@@ -122,6 +122,11 @@ public partial class FileStatusInfo : ObservableObject
     public string Directory => System.IO.Path.GetDirectoryName(Path) ?? string.Empty;
 
     /// <summary>
+    /// File extension (including the dot, e.g., ".cs").
+    /// </summary>
+    public string Extension => System.IO.Path.GetExtension(Path);
+
+    /// <summary>
     /// Status icon character (Segoe Fluent Icons).
     /// </summary>
     public string StatusIcon => Status switch

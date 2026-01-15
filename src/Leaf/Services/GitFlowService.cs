@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Leaf.Models;
@@ -7,16 +9,12 @@ namespace Leaf.Services;
 /// <summary>
 /// Service for GitFlow workflow operations.
 /// Manages feature, release, and hotfix branches following the GitFlow branching model.
+/// Configuration is stored in .git/config using the standard git-flow format for compatibility
+/// with other Git clients (SourceTree, GitKraken, git-flow CLI, etc.).
 /// </summary>
 public partial class GitFlowService : IGitFlowService
 {
     private readonly IGitService _gitService;
-    private const string ConfigFileName = ".gitflow";
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
-    };
 
     public GitFlowService(IGitService gitService)
     {
@@ -55,20 +53,94 @@ public partial class GitFlowService : IGitFlowService
         await SaveConfigAsync(repoPath, config);
     }
 
+    /// <summary>
+    /// Reads GitFlow configuration from .git/config (standard git-flow format).
+    /// This is compatible with git-flow CLI, SourceTree, GitKraken, and other Git clients.
+    /// </summary>
     public Task<GitFlowConfig?> GetConfigAsync(string repoPath)
     {
         return Task.Run(() =>
         {
-            var configPath = System.IO.Path.Combine(repoPath, ConfigFileName);
-            if (!System.IO.File.Exists(configPath))
-            {
+            var gitConfigPath = Path.Combine(repoPath, ".git", "config");
+            if (!File.Exists(gitConfigPath))
                 return null;
-            }
 
             try
             {
-                var json = System.IO.File.ReadAllText(configPath);
-                return JsonSerializer.Deserialize<GitFlowConfig>(json, JsonOptions);
+                var configContent = File.ReadAllText(gitConfigPath);
+
+                // Check if gitflow section exists
+                if (!configContent.Contains("[gitflow", StringComparison.OrdinalIgnoreCase))
+                    return null;
+
+                var config = new GitFlowConfig { IsInitialized = true };
+
+                // Parse branch settings - find [gitflow "branch"] section
+                var branchSection = Regex.Match(configContent, @"\[gitflow\s+""branch""\]([\s\S]*?)(?=\[|$)", RegexOptions.IgnoreCase);
+                if (branchSection.Success)
+                {
+                    var branchContent = branchSection.Groups[1].Value;
+
+                    var masterMatch = Regex.Match(branchContent, @"master\s*=\s*(.+)", RegexOptions.IgnoreCase);
+                    if (masterMatch.Success)
+                        config.MainBranch = masterMatch.Groups[1].Value.Trim();
+
+                    var developMatch = Regex.Match(branchContent, @"develop\s*=\s*(.+)", RegexOptions.IgnoreCase);
+                    if (developMatch.Success)
+                        config.DevelopBranch = developMatch.Groups[1].Value.Trim();
+                }
+
+                // Parse prefix settings - find [gitflow "prefix"] section
+                var prefixSection = Regex.Match(configContent, @"\[gitflow\s+""prefix""\]([\s\S]*?)(?=\[|$)", RegexOptions.IgnoreCase);
+                if (prefixSection.Success)
+                {
+                    var prefixContent = prefixSection.Groups[1].Value;
+
+                    var featureMatch = Regex.Match(prefixContent, @"feature\s*=\s*(.+)", RegexOptions.IgnoreCase);
+                    if (featureMatch.Success)
+                        config.FeaturePrefix = featureMatch.Groups[1].Value.Trim();
+
+                    var releaseMatch = Regex.Match(prefixContent, @"release\s*=\s*(.+)", RegexOptions.IgnoreCase);
+                    if (releaseMatch.Success)
+                        config.ReleasePrefix = releaseMatch.Groups[1].Value.Trim();
+
+                    var hotfixMatch = Regex.Match(prefixContent, @"hotfix\s*=\s*(.+)", RegexOptions.IgnoreCase);
+                    if (hotfixMatch.Success)
+                        config.HotfixPrefix = hotfixMatch.Groups[1].Value.Trim();
+
+                    var supportMatch = Regex.Match(prefixContent, @"support\s*=\s*(.+)", RegexOptions.IgnoreCase);
+                    if (supportMatch.Success)
+                        config.SupportPrefix = supportMatch.Groups[1].Value.Trim();
+
+                    var versiontagMatch = Regex.Match(prefixContent, @"versiontag\s*=\s*(.+)", RegexOptions.IgnoreCase);
+                    if (versiontagMatch.Success)
+                        config.VersionTagPrefix = versiontagMatch.Groups[1].Value.Trim();
+                }
+
+                // Parse Leaf-specific settings - find [gitflow "leaf"] section
+                var leafSection = Regex.Match(configContent, @"\[gitflow\s+""leaf""\]([\s\S]*?)(?=\[|$)", RegexOptions.IgnoreCase);
+                if (leafSection.Success)
+                {
+                    var leafContent = leafSection.Groups[1].Value;
+
+                    var mergeStrategyMatch = Regex.Match(leafContent, @"mergestrategy\s*=\s*(.+)", RegexOptions.IgnoreCase);
+                    if (mergeStrategyMatch.Success && Enum.TryParse<MergeStrategy>(mergeStrategyMatch.Groups[1].Value.Trim(), true, out var strategy))
+                        config.DefaultMergeStrategy = strategy;
+
+                    var autoPushMatch = Regex.Match(leafContent, @"autopush\s*=\s*(.+)", RegexOptions.IgnoreCase);
+                    if (autoPushMatch.Success && bool.TryParse(autoPushMatch.Groups[1].Value.Trim(), out var autoPush))
+                        config.AutoPushAfterFinish = autoPush;
+
+                    var deleteBranchMatch = Regex.Match(leafContent, @"deletebranch\s*=\s*(.+)", RegexOptions.IgnoreCase);
+                    if (deleteBranchMatch.Success && bool.TryParse(deleteBranchMatch.Groups[1].Value.Trim(), out var deleteBranch))
+                        config.DeleteBranchAfterFinish = deleteBranch;
+
+                    var changelogMatch = Regex.Match(leafContent, @"changelog\s*=\s*(.+)", RegexOptions.IgnoreCase);
+                    if (changelogMatch.Success && bool.TryParse(changelogMatch.Groups[1].Value.Trim(), out var changelog))
+                        config.GenerateChangelog = changelog;
+                }
+
+                return config;
             }
             catch
             {
@@ -77,13 +149,48 @@ public partial class GitFlowService : IGitFlowService
         });
     }
 
-    public Task SaveConfigAsync(string repoPath, GitFlowConfig config)
+    /// <summary>
+    /// Saves GitFlow configuration to .git/config using git config commands.
+    /// Uses the standard git-flow format for compatibility with other Git clients.
+    /// </summary>
+    public async Task SaveConfigAsync(string repoPath, GitFlowConfig config)
+    {
+        // Standard git-flow settings (compatible with git-flow CLI, SourceTree, etc.)
+        await SetGitConfigAsync(repoPath, "gitflow.branch.master", config.MainBranch);
+        await SetGitConfigAsync(repoPath, "gitflow.branch.develop", config.DevelopBranch);
+        await SetGitConfigAsync(repoPath, "gitflow.prefix.feature", config.FeaturePrefix);
+        await SetGitConfigAsync(repoPath, "gitflow.prefix.release", config.ReleasePrefix);
+        await SetGitConfigAsync(repoPath, "gitflow.prefix.hotfix", config.HotfixPrefix);
+        await SetGitConfigAsync(repoPath, "gitflow.prefix.support", config.SupportPrefix);
+        await SetGitConfigAsync(repoPath, "gitflow.prefix.versiontag", config.VersionTagPrefix);
+
+        // Leaf-specific settings (stored in [gitflow "leaf"] section)
+        await SetGitConfigAsync(repoPath, "gitflow.leaf.mergestrategy", config.DefaultMergeStrategy.ToString());
+        await SetGitConfigAsync(repoPath, "gitflow.leaf.autopush", config.AutoPushAfterFinish.ToString().ToLower());
+        await SetGitConfigAsync(repoPath, "gitflow.leaf.deletebranch", config.DeleteBranchAfterFinish.ToString().ToLower());
+        await SetGitConfigAsync(repoPath, "gitflow.leaf.changelog", config.GenerateChangelog.ToString().ToLower());
+    }
+
+    /// <summary>
+    /// Sets a git config value using the git config command.
+    /// </summary>
+    private static Task SetGitConfigAsync(string repoPath, string key, string value)
     {
         return Task.Run(() =>
         {
-            var configPath = System.IO.Path.Combine(repoPath, ConfigFileName);
-            var json = JsonSerializer.Serialize(config, JsonOptions);
-            System.IO.File.WriteAllText(configPath, json);
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = $"config \"{key}\" \"{value}\"",
+                WorkingDirectory = repoPath,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(startInfo);
+            process?.WaitForExit();
         });
     }
 

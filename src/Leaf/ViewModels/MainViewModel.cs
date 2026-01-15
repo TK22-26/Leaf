@@ -1261,11 +1261,12 @@ public partial class MainViewModel : ObservableObject
             var gitFlowConfig = await _gitFlowService.GetConfigAsync(repo.Path);
             if (gitFlowConfig?.IsInitialized == true)
             {
+                // Classify all branches by GitFlow type for proper coloring
+                ClassifyBranchesByGitFlowType(localBranches, gitFlowConfig);
+
                 var gitFlowBranches = localBranches
-                    .Where(b => b.Name.StartsWith(gitFlowConfig.FeaturePrefix, StringComparison.OrdinalIgnoreCase) ||
-                                b.Name.StartsWith(gitFlowConfig.ReleasePrefix, StringComparison.OrdinalIgnoreCase) ||
-                                b.Name.StartsWith(gitFlowConfig.HotfixPrefix, StringComparison.OrdinalIgnoreCase) ||
-                                b.Name.StartsWith(gitFlowConfig.SupportPrefix, StringComparison.OrdinalIgnoreCase))
+                    .Where(b => b.GitFlowType is GitFlowBranchType.Feature or GitFlowBranchType.Release
+                                                 or GitFlowBranchType.Hotfix or GitFlowBranchType.Support)
                     .ToList();
 
                 var gitFlowCategory = new BranchCategory
@@ -1312,6 +1313,15 @@ public partial class MainViewModel : ObservableObject
 
             // Assign new collection (replaces entire collection atomically)
             repo.BranchCategories = categories;
+
+            // Auto-select the current branch
+            var currentBranch = localBranches.FirstOrDefault(b => b.IsCurrent);
+            if (currentBranch != null)
+            {
+                repo.ClearBranchSelection();
+                currentBranch.IsSelected = true;
+                repo.SelectedBranches.Add(currentBranch);
+            }
 
             repo.BranchesLoaded = true;
         }
@@ -2033,6 +2043,46 @@ public partial class MainViewModel : ObservableObject
         }
 
         await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Classifies branches by their GitFlow type based on the GitFlow configuration.
+    /// Sets the GitFlowType property on each branch for proper coloring.
+    /// </summary>
+    private static void ClassifyBranchesByGitFlowType(IEnumerable<BranchInfo> branches, GitFlowConfig config)
+    {
+        foreach (var branch in branches)
+        {
+            branch.GitFlowType = GetGitFlowBranchType(branch.Name, config);
+        }
+    }
+
+    /// <summary>
+    /// Determines the GitFlow branch type for a branch name.
+    /// </summary>
+    private static GitFlowBranchType GetGitFlowBranchType(string branchName, GitFlowConfig config)
+    {
+        // Check for exact matches first (main/develop)
+        if (branchName.Equals(config.MainBranch, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Main;
+
+        if (branchName.Equals(config.DevelopBranch, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Develop;
+
+        // Check for prefixed branches
+        if (branchName.StartsWith(config.FeaturePrefix, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Feature;
+
+        if (branchName.StartsWith(config.ReleasePrefix, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Release;
+
+        if (branchName.StartsWith(config.HotfixPrefix, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Hotfix;
+
+        if (branchName.StartsWith(config.SupportPrefix, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Support;
+
+        return GitFlowBranchType.None;
     }
 
     #endregion

@@ -62,6 +62,11 @@ public class FileChangeInfo
     public string Directory => System.IO.Path.GetDirectoryName(Path) ?? string.Empty;
 
     /// <summary>
+    /// File extension (including the dot, e.g., ".cs").
+    /// </summary>
+    public string Extension => System.IO.Path.GetExtension(Path);
+
+    /// <summary>
     /// Status indicator character for display.
     /// </summary>
     public string StatusIndicator => Status switch

@@ -343,3 +343,37 @@ public class BranchNameToGitFlowVisibilityConverter : IValueConverter
         throw new NotImplementedException();
     }
 }
+
+/// <summary>
+/// Converts a GitFlowBranchType to Visibility.
+/// By default, returns Visible for any GitFlow branch type except None.
+/// Pass "Finishable" as parameter to only show for Feature/Release/Hotfix/Support branches.
+/// </summary>
+public class GitFlowTypeToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is Models.GitFlowBranchType branchType)
+        {
+            // If "Finishable" parameter, only show for branches that can be finished
+            if (parameter is string param && param.Equals("Finishable", StringComparison.OrdinalIgnoreCase))
+            {
+                return branchType is Models.GitFlowBranchType.Feature
+                                  or Models.GitFlowBranchType.Release
+                                  or Models.GitFlowBranchType.Hotfix
+                                  or Models.GitFlowBranchType.Support
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+
+            // Default: show for all non-None types
+            return branchType != Models.GitFlowBranchType.None ? Visibility.Visible : Visibility.Collapsed;
+        }
+        return Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}

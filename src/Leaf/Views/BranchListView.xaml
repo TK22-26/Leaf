@@ -17,6 +17,106 @@
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
         <converters:BranchNameToGitFlowColorConverter x:Key="BranchNameToGitFlowColorConverter"/>
         <converters:BranchNameToGitFlowVisibilityConverter x:Key="BranchNameToGitFlowVisibilityConverter"/>
+        <converters:GitFlowTypeToVisibilityConverter x:Key="GitFlowTypeToVisibilityConverter"/>
+
+        <!-- Multi-select TreeViewItem style for BranchInfo items -->
+        <!-- NOTE: Does NOT use TreeViewItem.IsSelected triggers to avoid single-selection enforcement -->
+        <!-- Selection visuals are driven by DataTrigger on DataContext.IsSelected instead -->
+        <Style x:Key="MultiSelectBranchTreeViewItemStyle" TargetType="{x:Type TreeViewItem}">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForeground}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="IsTabStop" Value="True"/>
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TreeViewItem}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Full-width highlight border -->
+                            <Border x:Name="HighlightBorder"
+                                    Grid.Row="0"
+                                    CornerRadius="{DynamicResource ControlCornerRadius}"
+                                    Margin="0,1">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource LeafAccentHoverBrush}"/>
+                                            </Trigger>
+                                            <!-- Use DataContext.IsSelected for multi-select visual -->
+                                            <!-- FallbackValue=False prevents errors for BranchCategory/RemoteBranchGroup items -->
+                                            <DataTrigger Binding="{Binding IsSelected, FallbackValue=False}" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource LeafAccentSelectedBrush}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="19"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Selection indicator bar -->
+                                    <Rectangle x:Name="ActiveRectangle"
+                                               Grid.Column="0"
+                                               Width="3" Height="16"
+                                               HorizontalAlignment="Left"
+                                               VerticalAlignment="Center"
+                                               Fill="#28A745"
+                                               RadiusX="2" RadiusY="2"
+                                               Visibility="{Binding IsSelected, FallbackValue=Collapsed, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                                    <!-- Expander button -->
+                                    <ToggleButton x:Name="Expander"
+                                                  Grid.Column="0"
+                                                  Margin="8,0"
+                                                  ClickMode="Press"
+                                                  Style="{StaticResource ExpandCollapseToggleButtonStyle}"
+                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"/>
+
+                                    <!-- Content -->
+                                    <ContentPresenter x:Name="PART_Header"
+                                                      Grid.Column="1"
+                                                      Margin="{TemplateBinding Padding}"
+                                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                      ContentSource="Header"
+                                                      TextElement.FontSize="{TemplateBinding FontSize}"/>
+                                </Grid>
+                            </Border>
+
+                            <!-- Child items container -->
+                            <ItemsPresenter x:Name="ItemsHost"
+                                            Grid.Row="1"
+                                            Margin="19,0,0,0"
+                                            Visibility="Collapsed"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
+                            </Trigger>
+                            <Trigger Property="IsExpanded" Value="True">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <Grid x:Name="RootGrid">
@@ -184,7 +284,7 @@
                                 <Separator/>
                                 <!-- GitFlow Section (branch-specific actions only) -->
                                 <MenuItem Header="GitFlow"
-                                          Visibility="{Binding Name, Converter={StaticResource BranchNameToGitFlowVisibilityConverter}}">
+                                          Visibility="{Binding GitFlowType, Converter={StaticResource GitFlowTypeToVisibilityConverter}, ConverterParameter=Finishable}">
                                     <MenuItem Header="Finish Branch"
                                               Command="{Binding PlacementTarget.Tag.FinishGitFlowBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                               CommandParameter="{Binding}"/>
@@ -201,11 +301,11 @@
                             </ContextMenu>
                         </Border.ContextMenu>
                         <StackPanel Orientation="Horizontal">
-                            <!-- GitFlow type indicator -->
+                            <!-- GitFlow type indicator (colored dot) -->
                             <Border Width="6" Height="6"
                                     CornerRadius="3"
-                                    Background="{Binding Name, Converter={StaticResource BranchNameToGitFlowColorConverter}}"
-                                    Visibility="{Binding Name, Converter={StaticResource BranchNameToGitFlowVisibilityConverter}}"
+                                    Background="{Binding GitFlowColor}"
+                                    Visibility="{Binding GitFlowType, Converter={StaticResource GitFlowTypeToVisibilityConverter}}"
                                     VerticalAlignment="Center"
                                     Margin="0,0,4,0"/>
 
@@ -237,17 +337,10 @@
             </TreeView.Resources>
 
             <TreeView.ItemContainerStyle>
-                <!-- Uses DataContext.IsSelected to allow showing multiple branches as selected -->
-                <!-- (e.g., same branch in GITFLOW and LOCAL categories) -->
-                <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
-                    <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                <!-- Uses custom template with DataContext.IsSelected for multi-select visual -->
+                <!-- This allows showing the same branch as selected in both GITFLOW and LOCAL -->
+                <Style TargetType="TreeViewItem" BasedOn="{StaticResource MultiSelectBranchTreeViewItemStyle}">
                     <Setter Property="Padding" Value="2"/>
-                    <Style.Triggers>
-                        <!-- Show selection visual based on BranchInfo.IsSelected -->
-                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                            <Setter Property="IsSelected" Value="True"/>
-                        </DataTrigger>
-                    </Style.Triggers>
                 </Style>
             </TreeView.ItemContainerStyle>
         </TreeView>
