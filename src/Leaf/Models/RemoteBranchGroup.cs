@@ -48,6 +48,11 @@ public class RemoteBranchGroup
     public bool IsCurrent => false;
 
     /// <summary>
+    /// Remote groups are never "selected" - this silences binding warnings in TreeView.
+    /// </summary>
+    public bool IsSelected => false;
+
+    /// <summary>
     /// Determines the remote type from a URL.
     /// </summary>
     public static RemoteType GetRemoteTypeFromUrl(string? url)

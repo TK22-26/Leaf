@@ -693,6 +693,19 @@ public class GitService : IGitService
         });
     }
 
+    public async Task StashStagedAsync(string repoPath, string? message = null)
+    {
+        // Use git command line since LibGit2Sharp doesn't support --staged option (Git 2.35+)
+        var args = new List<string> { "stash", "push", "--staged" };
+        if (!string.IsNullOrEmpty(message))
+        {
+            args.Add("-m");
+            args.Add(message);
+        }
+
+        await RunGitCommandAsync(repoPath, args.ToArray());
+    }
+
     public async Task<Models.MergeResult> PopStashAsync(string repoPath)
     {
         return await PopStashAsync(repoPath, 0);
@@ -2612,6 +2625,15 @@ public class GitService : IGitService
         process.WaitForExit();
 
         return (process.ExitCode, output, error);
+    }
+
+    private static async Task<(int ExitCode, string Output, string Error)> RunGitCommandAsync(string repoPath, params string[] args)
+    {
+        return await Task.Run(() =>
+        {
+            var arguments = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+            return RunGitCommand(repoPath, arguments);
+        });
     }
 
     #endregion

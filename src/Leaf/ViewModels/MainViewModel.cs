@@ -1254,18 +1254,19 @@ public partial class MainViewModel : ObservableObject
                 .OrderBy(g => g.Name)
                 .ToList();
 
-            // Set up branch categories for display
-            repo.BranchCategories.Clear();
+            // Build all categories first, then assign as a new collection (atomic operation)
+            var categories = new ObservableCollection<BranchCategory>();
 
             // GITFLOW category (if initialized - always show when GitFlow is active)
             var gitFlowConfig = await _gitFlowService.GetConfigAsync(repo.Path);
             if (gitFlowConfig?.IsInitialized == true)
             {
+                // Classify all branches by GitFlow type for proper coloring
+                ClassifyBranchesByGitFlowType(localBranches, gitFlowConfig);
+
                 var gitFlowBranches = localBranches
-                    .Where(b => b.Name.StartsWith(gitFlowConfig.FeaturePrefix, StringComparison.OrdinalIgnoreCase) ||
-                                b.Name.StartsWith(gitFlowConfig.ReleasePrefix, StringComparison.OrdinalIgnoreCase) ||
-                                b.Name.StartsWith(gitFlowConfig.HotfixPrefix, StringComparison.OrdinalIgnoreCase) ||
-                                b.Name.StartsWith(gitFlowConfig.SupportPrefix, StringComparison.OrdinalIgnoreCase))
+                    .Where(b => b.GitFlowType is GitFlowBranchType.Feature or GitFlowBranchType.Release
+                                                 or GitFlowBranchType.Hotfix or GitFlowBranchType.Support)
                     .ToList();
 
                 var gitFlowCategory = new BranchCategory
@@ -1279,7 +1280,7 @@ public partial class MainViewModel : ObservableObject
                 {
                     gitFlowCategory.Branches.Add(branch);
                 }
-                repo.BranchCategories.Add(gitFlowCategory);
+                categories.Add(gitFlowCategory);
             }
 
             // LOCAL category
@@ -1294,7 +1295,7 @@ public partial class MainViewModel : ObservableObject
             {
                 localCategory.Branches.Add(branch);
             }
-            repo.BranchCategories.Add(localCategory);
+            categories.Add(localCategory);
 
             // REMOTE category
             var remoteCategory = new BranchCategory
@@ -1308,7 +1309,19 @@ public partial class MainViewModel : ObservableObject
             {
                 remoteCategory.RemoteGroups.Add(group);
             }
-            repo.BranchCategories.Add(remoteCategory);
+            categories.Add(remoteCategory);
+
+            // Assign new collection (replaces entire collection atomically)
+            repo.BranchCategories = categories;
+
+            // Auto-select the current branch
+            var currentBranch = localBranches.FirstOrDefault(b => b.IsCurrent);
+            if (currentBranch != null)
+            {
+                repo.ClearBranchSelection();
+                currentBranch.IsSelected = true;
+                repo.SelectedBranches.Add(currentBranch);
+            }
 
             repo.BranchesLoaded = true;
         }
@@ -1778,7 +1791,7 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        var dialog = new Views.StartBranchDialog(_gitFlowService, SelectedRepository.Path, Models.GitFlowBranchType.Feature)
+        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Feature)
         {
             Owner = _ownerWindow
         };
@@ -1806,7 +1819,7 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        var dialog = new Views.StartBranchDialog(_gitFlowService, SelectedRepository.Path, Models.GitFlowBranchType.Release)
+        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Release)
         {
             Owner = _ownerWindow
         };
@@ -1834,7 +1847,7 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        var dialog = new Views.StartBranchDialog(_gitFlowService, SelectedRepository.Path, Models.GitFlowBranchType.Hotfix)
+        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Hotfix)
         {
             Owner = _ownerWindow
         };
@@ -1943,6 +1956,133 @@ public partial class MainViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Get GitFlow configuration for the selected repository.
+    /// </summary>
+    public async Task<GitFlowConfig?> GetGitFlowConfigAsync()
+    {
+        if (SelectedRepository == null) return null;
+        return await _gitFlowService.GetConfigAsync(SelectedRepository.Path);
+    }
+
+    /// <summary>
+    /// Get GitFlow status for the selected repository.
+    /// </summary>
+    public async Task<GitFlowStatus?> GetGitFlowStatusAsync()
+    {
+        if (SelectedRepository == null) return null;
+        return await _gitFlowService.GetStatusAsync(SelectedRepository.Path);
+    }
+
+    /// <summary>
+    /// Get suggested version for release or hotfix.
+    /// </summary>
+    public async Task<SemanticVersion?> GetSuggestedVersionAsync(GitFlowBranchType branchType)
+    {
+        if (SelectedRepository == null) return null;
+        try
+        {
+            return await _gitFlowService.SuggestNextVersionAsync(SelectedRepository.Path, branchType);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Get repository info for the selected repository.
+    /// </summary>
+    public async Task<RepositoryInfo?> GetRepositoryInfoAsync()
+    {
+        if (SelectedRepository == null) return null;
+        return await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+    }
+
+    /// <summary>
+    /// Stash changes with a message.
+    /// </summary>
+    public async Task StashChangesAsync(string message)
+    {
+        if (SelectedRepository == null) return;
+        await _gitService.StashAsync(SelectedRepository.Path, message);
+    }
+
+    /// <summary>
+    /// Create a GitFlow branch (feature, release, or hotfix).
+    /// </summary>
+    public async Task CreateGitFlowBranchAsync(GitFlowBranchType branchType, string name)
+    {
+        if (SelectedRepository == null)
+            throw new InvalidOperationException("No repository selected.");
+
+        var isInitialized = await _gitFlowService.IsInitializedAsync(SelectedRepository.Path);
+        if (!isInitialized)
+            throw new InvalidOperationException("GitFlow is not initialized in this repository.");
+
+        var progress = new Progress<string>(msg => StatusMessage = msg);
+
+        switch (branchType)
+        {
+            case GitFlowBranchType.Feature:
+                await _gitFlowService.StartFeatureAsync(SelectedRepository.Path, name, progress);
+                StatusMessage = $"Started feature '{name}'";
+                break;
+            case GitFlowBranchType.Release:
+                await _gitFlowService.StartReleaseAsync(SelectedRepository.Path, name, progress);
+                StatusMessage = $"Started release '{name}'";
+                break;
+            case GitFlowBranchType.Hotfix:
+                await _gitFlowService.StartHotfixAsync(SelectedRepository.Path, name, progress);
+                StatusMessage = $"Started hotfix '{name}'";
+                break;
+            default:
+                throw new ArgumentException($"Unsupported branch type: {branchType}");
+        }
+
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Classifies branches by their GitFlow type based on the GitFlow configuration.
+    /// Sets the GitFlowType property on each branch for proper coloring.
+    /// </summary>
+    private static void ClassifyBranchesByGitFlowType(IEnumerable<BranchInfo> branches, GitFlowConfig config)
+    {
+        foreach (var branch in branches)
+        {
+            branch.GitFlowType = GetGitFlowBranchType(branch.Name, config);
+        }
+    }
+
+    /// <summary>
+    /// Determines the GitFlow branch type for a branch name.
+    /// </summary>
+    private static GitFlowBranchType GetGitFlowBranchType(string branchName, GitFlowConfig config)
+    {
+        // Check for exact matches first (main/develop)
+        if (branchName.Equals(config.MainBranch, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Main;
+
+        if (branchName.Equals(config.DevelopBranch, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Develop;
+
+        // Check for prefixed branches
+        if (branchName.StartsWith(config.FeaturePrefix, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Feature;
+
+        if (branchName.StartsWith(config.ReleasePrefix, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Release;
+
+        if (branchName.StartsWith(config.HotfixPrefix, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Hotfix;
+
+        if (branchName.StartsWith(config.SupportPrefix, StringComparison.OrdinalIgnoreCase))
+            return GitFlowBranchType.Support;
+
+        return GitFlowBranchType.None;
     }
 
     #endregion

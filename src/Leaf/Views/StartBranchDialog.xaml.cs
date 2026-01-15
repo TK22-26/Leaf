@@ -8,6 +8,7 @@ namespace Leaf.Views;
 public partial class StartBranchDialog : Window
 {
     private readonly IGitFlowService _gitFlowService;
+    private readonly IGitService _gitService;
     private readonly string _repoPath;
     private GitFlowConfig? _config;
     private SemanticVersion? _suggestedVersion;
@@ -16,10 +17,11 @@ public partial class StartBranchDialog : Window
     public string? BranchName { get; private set; }
     public string? BaseRef { get; private set; }
 
-    public StartBranchDialog(IGitFlowService gitFlowService, string repoPath, GitFlowBranchType? preselectedType = null)
+    public StartBranchDialog(IGitFlowService gitFlowService, IGitService gitService, string repoPath, GitFlowBranchType? preselectedType = null)
     {
         InitializeComponent();
         _gitFlowService = gitFlowService;
+        _gitService = gitService;
         _repoPath = repoPath;
 
         LoadConfigAndSetDefaults(preselectedType);
@@ -275,6 +277,39 @@ public partial class StartBranchDialog : Window
         try
         {
             var progress = new Progress<string>(msg => ProgressText.Text = msg);
+
+            // Check for uncommitted changes before starting
+            ProgressText.Text = "Checking for uncommitted changes...";
+            var repoInfo = await _gitService.GetRepositoryInfoAsync(_repoPath);
+
+            if (repoInfo.IsDirty)
+            {
+                ProgressSection.Visibility = Visibility.Collapsed;
+
+                var result = MessageBox.Show(
+                    "You have uncommitted changes in your working directory.\n\n" +
+                    "Starting a new GitFlow branch requires switching branches, which may fail or cause issues with your changes.\n\n" +
+                    "Would you like to stash your changes first? They can be restored after switching.",
+                    "Uncommitted Changes Detected",
+                    MessageBoxButton.YesNoCancel,
+                    MessageBoxImage.Warning);
+
+                if (result == MessageBoxResult.Cancel)
+                {
+                    StartButton.IsEnabled = true;
+                    return;
+                }
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    ProgressSection.Visibility = Visibility.Visible;
+                    ProgressText.Text = "Stashing changes...";
+                    await _gitService.StashAsync(_repoPath, $"Auto-stash before starting {type.ToString().ToLower()} '{name}'");
+                }
+                // If No, proceed anyway (user's choice)
+
+                ProgressSection.Visibility = Visibility.Visible;
+            }
 
             switch (type)
             {

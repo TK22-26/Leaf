@@ -156,7 +156,52 @@
                                     CornerRadius="4"
                                     Cursor="Hand"
                                     MouseLeftButtonDown="UnstagedFile_MouseLeftButtonDown"
+                                    MouseRightButtonDown="FileItem_MouseRightButtonDown"
+                                    Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                     ToolTip="{Binding Path}">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Stage"
+                                                      Command="{Binding PlacementTarget.Tag.StageFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
+                                            <MenuItem Header="Discard changes"
+                                                      Command="{Binding PlacementTarget.Tag.DiscardFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"
+                                                      Foreground="#E81123"/>
+                                            <Separator/>
+                                            <MenuItem Header="Ignore">
+                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}">
+                                                    <MenuItem.Header>
+                                                        <TextBlock>
+                                                            <Run Text="Ignore '"/><Run Text="{Binding FileName, Mode=OneWay}"/><Run Text="'"/>
+                                                        </TextBlock>
+                                                    </MenuItem.Header>
+                                                </MenuItem>
+                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreExtensionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}">
+                                                    <MenuItem.Header>
+                                                        <TextBlock>
+                                                            <Run Text="All files with extension '"/><Run Text="{Binding Extension, Mode=OneWay}"/><Run Text="'"/>
+                                                        </TextBlock>
+                                                    </MenuItem.Header>
+                                                </MenuItem>
+                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreDirectoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}"
+                                                          Visibility="{Binding Directory, Converter={StaticResource NullToVisibilityConverter}}">
+                                                    <MenuItem.Header>
+                                                        <TextBlock>
+                                                            <Run Text="All files in '"/><Run Text="{Binding Directory, Mode=OneWay}"/><Run Text="/'"/>
+                                                        </TextBlock>
+                                                    </MenuItem.Header>
+                                                </MenuItem>
+                                            </MenuItem>
+                                            <Separator/>
+                                            <MenuItem Header="Stash file"
+                                                      Command="{Binding PlacementTarget.Tag.StashFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="20" />
@@ -329,7 +374,44 @@
                                     CornerRadius="4"
                                     Cursor="Hand"
                                     MouseLeftButtonDown="StagedFile_MouseLeftButtonDown"
+                                    MouseRightButtonDown="FileItem_MouseRightButtonDown"
+                                    Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                     ToolTip="{Binding Path}">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Unstage"
+                                                      Command="{Binding PlacementTarget.Tag.UnstageFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
+                                            <Separator/>
+                                            <MenuItem Header="Ignore">
+                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}">
+                                                    <MenuItem.Header>
+                                                        <TextBlock>
+                                                            <Run Text="Ignore '"/><Run Text="{Binding FileName, Mode=OneWay}"/><Run Text="'"/>
+                                                        </TextBlock>
+                                                    </MenuItem.Header>
+                                                </MenuItem>
+                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreExtensionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}">
+                                                    <MenuItem.Header>
+                                                        <TextBlock>
+                                                            <Run Text="All files with extension '"/><Run Text="{Binding Extension, Mode=OneWay}"/><Run Text="'"/>
+                                                        </TextBlock>
+                                                    </MenuItem.Header>
+                                                </MenuItem>
+                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreDirectoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}"
+                                                          Visibility="{Binding Directory, Converter={StaticResource NullToVisibilityConverter}}">
+                                                    <MenuItem.Header>
+                                                        <TextBlock>
+                                                            <Run Text="All files in '"/><Run Text="{Binding Directory, Mode=OneWay}"/><Run Text="/'"/>
+                                                        </TextBlock>
+                                                    </MenuItem.Header>
+                                                </MenuItem>
+                                            </MenuItem>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="20" />

@@ -39,4 +39,11 @@ public partial class WorkingChangesView : UserControl
             }
         }
     }
+
+    private void FileItem_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Ensure the item is selected when right-clicking to open context menu
+        // The context menu will open automatically
+        e.Handled = false;
+    }
 }

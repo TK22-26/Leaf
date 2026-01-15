@@ -245,6 +245,157 @@ public partial class WorkingChangesViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Discard changes for a single file.
+    /// </summary>
+    [RelayCommand]
+    public async Task DiscardFileAsync(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        var result = MessageBox.Show(
+            $"Are you sure you want to discard changes to '{file.FileName}'?\n\nThis cannot be undone.",
+            "Discard Changes",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            await _gitService.DiscardFileChangesAsync(_repositoryPath, file.Path);
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Discard failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Add a specific file to .gitignore.
+    /// </summary>
+    [RelayCommand]
+    public async Task IgnoreFileAsync(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        try
+        {
+            await AddToGitignoreAsync(file.Path);
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Ignore failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Add all files with a specific extension to .gitignore.
+    /// </summary>
+    [RelayCommand]
+    public async Task IgnoreExtensionAsync(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null || string.IsNullOrEmpty(file.Extension))
+            return;
+
+        try
+        {
+            await AddToGitignoreAsync($"*{file.Extension}");
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Ignore extension failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Add all files in a specific directory to .gitignore.
+    /// </summary>
+    [RelayCommand]
+    public async Task IgnoreDirectoryAsync(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null || string.IsNullOrEmpty(file.Directory))
+            return;
+
+        try
+        {
+            // Add trailing slash for directory pattern
+            await AddToGitignoreAsync($"{file.Directory}/");
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Ignore directory failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Stash a single file.
+    /// </summary>
+    [RelayCommand]
+    public async Task StashFileAsync(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        try
+        {
+            // Stage the file first, then stash only staged changes
+            await _gitService.StageFileAsync(_repositoryPath, file.Path);
+            await _gitService.StashStagedAsync(_repositoryPath, $"Stash: {file.FileName}");
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Stash failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Adds a pattern to the repository's .gitignore file.
+    /// </summary>
+    private async Task AddToGitignoreAsync(string pattern)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath))
+            return;
+
+        var gitignorePath = Path.Combine(_repositoryPath, ".gitignore");
+
+        await Task.Run(() =>
+        {
+            var lines = File.Exists(gitignorePath)
+                ? File.ReadAllLines(gitignorePath).ToList()
+                : new List<string>();
+
+            // Check if pattern already exists
+            if (lines.Any(l => l.Trim().Equals(pattern, StringComparison.OrdinalIgnoreCase)))
+                return;
+
+            // Add blank line if file doesn't end with one
+            if (lines.Count > 0 && !string.IsNullOrWhiteSpace(lines[^1]))
+                lines.Add("");
+
+            lines.Add(pattern);
+            File.WriteAllLines(gitignorePath, lines);
+        });
+    }
+
+    /// <summary>
     /// Discard all working directory changes.
     /// </summary>
     [RelayCommand]

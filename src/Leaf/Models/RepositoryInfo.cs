@@ -133,4 +133,22 @@ public partial class RepositoryInfo : ObservableObject
     [JsonIgnore]
     [ObservableProperty]
     private int _conflictCount;
+
+    /// <summary>
+    /// Currently selected branches in the tree view (supports multi-selection).
+    /// </summary>
+    [JsonIgnore]
+    public ObservableCollection<BranchInfo> SelectedBranches { get; } = [];
+
+    /// <summary>
+    /// Clears all branch selections.
+    /// </summary>
+    public void ClearBranchSelection()
+    {
+        foreach (var branch in SelectedBranches.ToList())
+        {
+            branch.IsSelected = false;
+        }
+        SelectedBranches.Clear();
+    }
 }
