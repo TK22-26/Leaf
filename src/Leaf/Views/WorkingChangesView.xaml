@@ -14,6 +14,7 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
         <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+        <converters:ReservedFileNameToVisibilityConverter x:Key="ReservedFileNameToVisibilityConverter" />
 
         <!--  File status colors  -->
         <SolidColorBrush x:Key="StatusAddedBrush" Color="#28A745" />
@@ -200,6 +201,14 @@
                                             <MenuItem Header="Stash file"
                                                       Command="{Binding PlacementTarget.Tag.StashFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       CommandParameter="{Binding}"/>
+                                            <!-- Admin delete for Windows reserved filenames (nul, con, prn, etc.) -->
+                                            <Separator Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}"/>
+                                            <MenuItem Header="Admin Delete (Reserved Name)"
+                                                      Command="{Binding PlacementTarget.Tag.AdminDeleteReservedFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"
+                                                      Foreground="#E81123"
+                                                      FontWeight="SemiBold"
+                                                      Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}"/>
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <Grid>

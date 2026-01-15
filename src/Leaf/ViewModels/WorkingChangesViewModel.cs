@@ -367,6 +367,85 @@ public partial class WorkingChangesViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Delete a Windows reserved filename (nul, con, prn, etc.) using admin privileges.
+    /// These files cannot be deleted normally due to Windows restrictions.
+    /// </summary>
+    [RelayCommand]
+    public async Task AdminDeleteReservedFileAsync(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        var result = MessageBox.Show(
+            $"Delete reserved file '{file.FileName}'?\n\nThis requires administrator privileges and will run a command to rename and delete the file.",
+            "Admin Delete",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            var fullPath = Path.Combine(_repositoryPath, file.Path);
+            var directory = Path.GetDirectoryName(fullPath) ?? _repositoryPath;
+            var fileName = Path.GetFileName(fullPath);
+            var tempName = $"_leaf_temp_{Guid.NewGuid():N}.tmp";
+
+            // Build the batch script to rename and delete the reserved file
+            // Uses \\?\ prefix to bypass Windows reserved name restrictions
+            var script = $@"
+@echo off
+cd /d ""{directory}""
+ren ""\\?\{fullPath}"" ""{tempName}""
+del ""{Path.Combine(directory, tempName)}""
+exit /b %errorlevel%
+";
+
+            var batchFile = Path.Combine(Path.GetTempPath(), $"leaf_admin_delete_{Guid.NewGuid():N}.bat");
+            await File.WriteAllTextAsync(batchFile, script);
+
+            // Run with admin privileges
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = batchFile,
+                Verb = "runas", // Request admin elevation
+                UseShellExecute = true,
+                CreateNoWindow = false
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process != null)
+            {
+                await process.WaitForExitAsync();
+
+                // Clean up batch file
+                try { File.Delete(batchFile); } catch { }
+
+                if (process.ExitCode == 0)
+                {
+                    WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+                    OnPropertyChanged(nameof(HasChanges));
+                    OnPropertyChanged(nameof(FileChangesSummary));
+                }
+                else
+                {
+                    ErrorMessage = $"Admin delete failed with exit code {process.ExitCode}";
+                }
+            }
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            // User cancelled UAC prompt
+            ErrorMessage = "Admin delete cancelled by user.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Admin delete failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
     /// Adds a pattern to the repository's .gitignore file.
     /// </summary>
     private async Task AddToGitignoreAsync(string pattern)
