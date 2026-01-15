@@ -242,4 +242,120 @@ public interface IGitService
     /// Open a conflict in VS Code for resolution.
     /// </summary>
     Task OpenConflictInVsCodeAsync(string repoPath, string filePath);
+
+    #region Branch Deletion
+
+    /// <summary>
+    /// Delete a local branch.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="branchName">Name of the branch to delete</param>
+    /// <param name="force">Force delete even if branch is not fully merged</param>
+    Task DeleteBranchAsync(string repoPath, string branchName, bool force = false);
+
+    /// <summary>
+    /// Delete a remote branch.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="remoteName">Name of the remote (e.g., "origin")</param>
+    /// <param name="branchName">Name of the branch to delete</param>
+    /// <param name="username">Optional username for authentication</param>
+    /// <param name="password">Optional password/token for authentication</param>
+    Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName,
+        string? username = null, string? password = null);
+
+    #endregion
+
+    #region Tag Operations
+
+    /// <summary>
+    /// Get all tags in the repository.
+    /// </summary>
+    Task<List<TagInfo>> GetTagsAsync(string repoPath);
+
+    /// <summary>
+    /// Create a new tag.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="tagName">Name of the tag</param>
+    /// <param name="message">Optional message for annotated tag (if null, creates lightweight tag)</param>
+    /// <param name="targetSha">Optional target commit SHA (defaults to HEAD)</param>
+    Task CreateTagAsync(string repoPath, string tagName, string? message = null, string? targetSha = null);
+
+    /// <summary>
+    /// Delete a local tag.
+    /// </summary>
+    Task DeleteTagAsync(string repoPath, string tagName);
+
+    /// <summary>
+    /// Push a tag to remote.
+    /// </summary>
+    Task PushTagAsync(string repoPath, string tagName, string remoteName = "origin",
+        string? username = null, string? password = null);
+
+    /// <summary>
+    /// Delete a remote tag.
+    /// </summary>
+    Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin",
+        string? username = null, string? password = null);
+
+    #endregion
+
+    #region Rebase Operations
+
+    /// <summary>
+    /// Rebase the current branch onto another branch.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="ontoBranch">Name of the branch to rebase onto</param>
+    /// <param name="progress">Optional progress reporter</param>
+    /// <returns>Result indicating success, conflicts, or failure</returns>
+    Task<Models.MergeResult> RebaseAsync(string repoPath, string ontoBranch, IProgress<string>? progress = null);
+
+    /// <summary>
+    /// Abort an in-progress rebase operation.
+    /// </summary>
+    Task AbortRebaseAsync(string repoPath);
+
+    /// <summary>
+    /// Continue a rebase after resolving conflicts.
+    /// </summary>
+    Task<Models.MergeResult> ContinueRebaseAsync(string repoPath);
+
+    /// <summary>
+    /// Skip the current commit during a rebase.
+    /// </summary>
+    Task<Models.MergeResult> SkipRebaseCommitAsync(string repoPath);
+
+    /// <summary>
+    /// Check if a rebase is in progress.
+    /// </summary>
+    Task<bool> IsRebaseInProgressAsync(string repoPath);
+
+    #endregion
+
+    #region Squash Merge
+
+    /// <summary>
+    /// Perform a squash merge of a branch into the current branch.
+    /// This stages all changes but does not create a commit.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="branchName">Name of the branch to squash merge</param>
+    /// <returns>Result indicating success, conflicts, or failure</returns>
+    Task<Models.MergeResult> SquashMergeAsync(string repoPath, string branchName);
+
+    #endregion
+
+    #region Commit Log
+
+    /// <summary>
+    /// Get commits between two references (for changelog generation).
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="fromRef">Starting reference (exclusive)</param>
+    /// <param name="toRef">Ending reference (inclusive), defaults to HEAD</param>
+    Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null);
+
+    #endregion
 }

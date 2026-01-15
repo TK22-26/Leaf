@@ -43,6 +43,11 @@ public class BranchCategory
     public bool IsRemoteCategory => Name == "REMOTE";
 
     /// <summary>
+    /// Whether this is the GITFLOW category (for template selection).
+    /// </summary>
+    public bool IsGitFlowCategory => Name == "GITFLOW";
+
+    /// <summary>
     /// Categories are never "current" - this silences binding warnings in TreeView.
     /// </summary>
     public bool IsCurrent => false;

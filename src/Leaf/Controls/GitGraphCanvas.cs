@@ -1505,9 +1505,26 @@ public class GitGraphCanvas : FrameworkElement
             var linePen = new Pen(lastLabelBrush, lineThickness);
             linePen.Freeze();
 
-            // Draw horizontal line from label to node (stop before node edge)
-            double lineEndX = node.IsMerge ? nodeX : nodeX - NodeRadius - 4;
-            dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(lineEndX, y));
+            // Draw horizontal line from label to node
+            // For merge commits, clip out the dot so line renders behind it
+            // For regular commits, stop before the avatar edge
+            if (node.IsMerge)
+            {
+                double mergeRadius = NodeRadius * 0.875;
+                var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+                var mergeCircle = new EllipseGeometry(new Point(nodeX, y), mergeRadius, mergeRadius);
+                var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, mergeCircle);
+                clipGeometry.Freeze();
+
+                dc.PushClip(clipGeometry);
+                dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(nodeX, y));
+                dc.Pop();
+            }
+            else
+            {
+                double lineEndX = nodeX - NodeRadius - 4;
+                dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(lineEndX, y));
+            }
         }
     }
 
@@ -1725,10 +1742,28 @@ public class GitGraphCanvas : FrameworkElement
         _expandedItemHitAreas[nodeIndex] = hitAreas;
 
         // Draw connecting line from tag to node
+        // For merge commits, clip out the dot so line renders behind it
+        // For regular commits, stop before the avatar edge
         var linePen = new Pen(tagBgBrush, 1.5);
         linePen.Freeze();
-        double lineEndX = node.IsMerge ? nodeX : nodeX - NodeRadius - 4;
-        dc.DrawLine(linePen, new Point(labelX + tagWidth, baseY), new Point(lineEndX, baseY));
+
+        if (node.IsMerge)
+        {
+            double expandedMergeRadius = NodeRadius * 0.875;
+            var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+            var mergeCircle = new EllipseGeometry(new Point(nodeX, baseY), expandedMergeRadius, expandedMergeRadius);
+            var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, mergeCircle);
+            clipGeometry.Freeze();
+
+            dc.PushClip(clipGeometry);
+            dc.DrawLine(linePen, new Point(labelX + tagWidth, baseY), new Point(nodeX, baseY));
+            dc.Pop();
+        }
+        else
+        {
+            double lineEndX = nodeX - NodeRadius - 4;
+            dc.DrawLine(linePen, new Point(labelX + tagWidth, baseY), new Point(lineEndX, baseY));
+        }
 
         // Store hit area for click-to-collapse
         _overflowByRow[displayRow] = (node.BranchLabels.Skip(1).ToList(), tagRect);
@@ -1863,11 +1898,29 @@ public class GitGraphCanvas : FrameworkElement
             dc.Pop();
         }
 
-        // Draw connecting line from label to the commit node (stop before node edge)
+        // Draw connecting line from label to the commit node
+        // For merge commits, clip out the dot so line renders behind it
+        // For regular commits, stop before the avatar edge
         var linePen = new Pen(ghostBrush, 1.5);
         linePen.Freeze();
-        double lineEndX = node.IsMerge ? nodeX : nodeX - NodeRadius - 4;
-        dc.DrawLine(linePen, new Point(labelX + totalWidth, y), new Point(lineEndX, y));
+
+        if (node.IsMerge)
+        {
+            double ghostMergeRadius = NodeRadius * 0.875;
+            var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+            var mergeCircle = new EllipseGeometry(new Point(nodeX, y), ghostMergeRadius, ghostMergeRadius);
+            var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, mergeCircle);
+            clipGeometry.Freeze();
+
+            dc.PushClip(clipGeometry);
+            dc.DrawLine(linePen, new Point(labelX + totalWidth, y), new Point(nodeX, y));
+            dc.Pop();
+        }
+        else
+        {
+            double lineEndX = nodeX - NodeRadius - 4;
+            dc.DrawLine(linePen, new Point(labelX + totalWidth, y), new Point(lineEndX, y));
+        }
     }
 
     private double GetXForColumn(int column)

@@ -136,6 +136,16 @@ public class AppSettings
     public DateTime? AzureDevOpsOAuthTokenExpiresAt { get; set; }
     public string? AzureDevOpsOAuthScopes { get; set; }
     public string? AzureDevOpsUserDisplayName { get; set; }
+
+    // GitFlow default settings
+    public string GitFlowDefaultMainBranch { get; set; } = "main";
+    public string GitFlowDefaultDevelopBranch { get; set; } = "develop";
+    public string GitFlowDefaultFeaturePrefix { get; set; } = "feature/";
+    public string GitFlowDefaultReleasePrefix { get; set; } = "release/";
+    public string GitFlowDefaultHotfixPrefix { get; set; } = "hotfix/";
+    public string GitFlowDefaultVersionTagPrefix { get; set; } = "v";
+    public bool GitFlowDefaultDeleteBranch { get; set; } = true;
+    public bool GitFlowDefaultGenerateChangelog { get; set; } = true;
 }
 
 /// <summary>

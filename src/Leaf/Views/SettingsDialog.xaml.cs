@@ -39,6 +39,7 @@ public partial class SettingsDialog : Window
     private AzureDevOpsOAuthService? _azureDevOpsOAuthService;
     private CancellationTokenSource? _azureDevOpsOAuthCancellationTokenSource;
 
+
     // Search items for settings
     private readonly List<SettingsSearchItem> _allSearchItems;
 
@@ -95,6 +96,7 @@ public partial class SettingsDialog : Window
         ContentClaude.Visibility = Visibility.Collapsed;
         ContentGemini.Visibility = Visibility.Collapsed;
         ContentCodex.Visibility = Visibility.Collapsed;
+        ContentGitFlow.Visibility = Visibility.Collapsed;
         ContentSearchResults.Visibility = Visibility.Collapsed;
 
         // Show the selected content
@@ -132,6 +134,10 @@ public partial class SettingsDialog : Window
             case "AI":
                 // Show AI General for AI category
                 ContentAIGeneral.Visibility = Visibility.Visible;
+                break;
+            case "GitFlow":
+                ContentGitFlow.Visibility = Visibility.Visible;
+                LoadGitFlowDefaults();
                 break;
         }
     }
@@ -1242,62 +1248,59 @@ public partial class SettingsDialog : Window
 
     private void Close_Click(object sender, RoutedEventArgs e)
     {
-        // Save settings if changed
-        var changed = false;
-
-        if (_settings.DefaultClonePath != ClonePathTextBox.Text)
-        {
-            _settings.DefaultClonePath = ClonePathTextBox.Text;
-            changed = true;
-        }
-
-        if (_settings.AzureDevOpsOrganization != OrganizationTextBox.Text.Trim())
-        {
-            _settings.AzureDevOpsOrganization = OrganizationTextBox.Text.Trim();
-            changed = true;
-        }
-
-
-        var defaultAi = AiDefaultComboBox.SelectedItem as string ?? string.Empty;
-        if (_settings.DefaultAiProvider != defaultAi)
-        {
-            _settings.DefaultAiProvider = defaultAi;
-            changed = true;
-        }
+        // Update settings from UI
+        _settings.DefaultClonePath = ClonePathTextBox.Text;
+        _settings.AzureDevOpsOrganization = OrganizationTextBox.Text.Trim();
+        _settings.DefaultAiProvider = AiDefaultComboBox.SelectedItem as string ?? string.Empty;
 
         if (int.TryParse(AiTimeoutTextBox.Text, out var timeoutSeconds) && timeoutSeconds > 0)
         {
-            if (_settings.AiCliTimeoutSeconds != timeoutSeconds)
-            {
-                _settings.AiCliTimeoutSeconds = timeoutSeconds;
-                changed = true;
-            }
+            _settings.AiCliTimeoutSeconds = timeoutSeconds;
         }
 
-        if (_settings.IsClaudeConnected != _isClaudeConnected)
-        {
-            _settings.IsClaudeConnected = _isClaudeConnected;
-            changed = true;
-        }
-        if (_settings.IsGeminiConnected != _isGeminiConnected)
-        {
-            _settings.IsGeminiConnected = _isGeminiConnected;
-            changed = true;
-        }
-        if (_settings.IsCodexConnected != _isCodexConnected)
-        {
-            _settings.IsCodexConnected = _isCodexConnected;
-            changed = true;
-        }
+        _settings.IsClaudeConnected = _isClaudeConnected;
+        _settings.IsGeminiConnected = _isGeminiConnected;
+        _settings.IsCodexConnected = _isCodexConnected;
 
-        if (changed)
-        {
-            _settingsService.SaveSettings(_settings);
-        }
+        // Save GitFlow defaults
+        SaveGitFlowDefaults();
+
+        // Save all settings
+        _settingsService.SaveSettings(_settings);
 
         DialogResult = true;
         Close();
     }
+
+    #region GitFlow Defaults
+
+    private void LoadGitFlowDefaults()
+    {
+        // Load defaults from settings
+        GitFlowDefaultMainBranch.Text = _settings.GitFlowDefaultMainBranch;
+        GitFlowDefaultDevelopBranch.Text = _settings.GitFlowDefaultDevelopBranch;
+        GitFlowDefaultFeaturePrefix.Text = _settings.GitFlowDefaultFeaturePrefix;
+        GitFlowDefaultReleasePrefix.Text = _settings.GitFlowDefaultReleasePrefix;
+        GitFlowDefaultHotfixPrefix.Text = _settings.GitFlowDefaultHotfixPrefix;
+        GitFlowDefaultVersionTagPrefix.Text = _settings.GitFlowDefaultVersionTagPrefix;
+        GitFlowDefaultDeleteBranch.IsChecked = _settings.GitFlowDefaultDeleteBranch;
+        GitFlowDefaultGenerateChangelog.IsChecked = _settings.GitFlowDefaultGenerateChangelog;
+    }
+
+    private void SaveGitFlowDefaults()
+    {
+        // Save defaults to settings
+        _settings.GitFlowDefaultMainBranch = GitFlowDefaultMainBranch.Text;
+        _settings.GitFlowDefaultDevelopBranch = GitFlowDefaultDevelopBranch.Text;
+        _settings.GitFlowDefaultFeaturePrefix = GitFlowDefaultFeaturePrefix.Text;
+        _settings.GitFlowDefaultReleasePrefix = GitFlowDefaultReleasePrefix.Text;
+        _settings.GitFlowDefaultHotfixPrefix = GitFlowDefaultHotfixPrefix.Text;
+        _settings.GitFlowDefaultVersionTagPrefix = GitFlowDefaultVersionTagPrefix.Text;
+        _settings.GitFlowDefaultDeleteBranch = GitFlowDefaultDeleteBranch.IsChecked == true;
+        _settings.GitFlowDefaultGenerateChangelog = GitFlowDefaultGenerateChangelog.IsChecked == true;
+    }
+
+    #endregion
 }
 
 /// <summary>

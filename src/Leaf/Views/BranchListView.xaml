@@ -15,6 +15,8 @@
         <converters:NullToVisibilityInverseConverter x:Key="NullToVisibilityInverseConverter"/>
         <converters:BranchCategoryItemsConverter x:Key="BranchCategoryItemsConverter"/>
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <converters:BranchNameToGitFlowColorConverter x:Key="BranchNameToGitFlowColorConverter"/>
+        <converters:BranchNameToGitFlowVisibilityConverter x:Key="BranchNameToGitFlowVisibilityConverter"/>
     </UserControl.Resources>
 
     <Grid>
@@ -48,26 +50,81 @@
                   Padding="4"
                   Visibility="{Binding SelectedRepository, Converter={StaticResource NullToVisibilityConverter}}">
             <TreeView.Resources>
-                <!-- Branch category template (LOCAL/REMOTE) -->
+                <!-- Branch category template (LOCAL/REMOTE/GITFLOW) -->
                 <HierarchicalDataTemplate DataType="{x:Type models:BranchCategory}"
                                           ItemsSource="{Binding Converter={StaticResource BranchCategoryItemsConverter}}">
-                    <StackPanel Orientation="Horizontal" Margin="0,4">
-                        <ic:SymbolIcon Symbol="BranchFork"
-                                       IconVariant="Regular"
-                                       FontSize="12"
+                    <Grid Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,4">
+                            <ic:SymbolIcon x:Name="CategoryIcon"
+                                           Symbol="BranchFork"
+                                           IconVariant="Regular"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,6,0"/>
+                            <TextBlock x:Name="CategoryName"
+                                       Text="{Binding Name}"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                       VerticalAlignment="Center"
-                                       Margin="0,0,6,0"/>
-                        <TextBlock Text="{Binding Name}"
-                                   FontSize="11"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding BranchCount, StringFormat=' ({0})'}"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding BranchCount, StringFormat=' ({0})'}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <!-- GitFlow action button -->
+                        <Button x:Name="GitFlowActionButton"
+                                Grid.Column="1"
+                                Visibility="Collapsed"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Padding="0"
+                                Margin="0"
+                                Width="{Binding ActualHeight, RelativeSource={RelativeSource Self}}"
+                                VerticalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Cursor="Hand"
+                                Click="GitFlowActionButton_Click"
+                                ToolTip="GitFlow actions">
+                            <ic:SymbolIcon Symbol="ChevronRight" FontSize="10" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Start Feature..."
+                                              Command="{Binding PlacementTarget.Tag.Tag.StartFeatureCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                        <MenuItem.Icon>
+                                            <Border Width="14" Height="14" CornerRadius="7" Background="#8250DF"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Start Release..."
+                                              Command="{Binding PlacementTarget.Tag.Tag.StartReleaseCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                        <MenuItem.Icon>
+                                            <Border Width="14" Height="14" CornerRadius="7" Background="#BF8700"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Start Hotfix..."
+                                              Command="{Binding PlacementTarget.Tag.Tag.StartHotfixCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                        <MenuItem.Icon>
+                                            <Border Width="14" Height="14" CornerRadius="7" Background="#CF222E"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                    </Grid>
+                    <HierarchicalDataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsGitFlowCategory}" Value="True">
+                            <Setter TargetName="CategoryIcon" Property="Symbol" Value="Flow"/>
+                            <Setter TargetName="CategoryIcon" Property="Foreground" Value="#10B981"/>
+                            <Setter TargetName="CategoryName" Property="Foreground" Value="#10B981"/>
+                            <Setter TargetName="GitFlowActionButton" Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>
 
                 <!-- Remote branch group template (origin, upstream, etc.) -->
@@ -154,6 +211,28 @@
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <Separator/>
+                                <!-- GitFlow Section (branch-specific actions only) -->
+                                <MenuItem Header="GitFlow"
+                                          Visibility="{Binding Name, Converter={StaticResource BranchNameToGitFlowVisibilityConverter}}">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon Symbol="BranchFork" FontSize="14"/>
+                                    </MenuItem.Icon>
+                                    <MenuItem Header="Finish Branch"
+                                              Command="{Binding PlacementTarget.Tag.FinishGitFlowBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              CommandParameter="{Binding}">
+                                        <MenuItem.Icon>
+                                            <ic:SymbolIcon Symbol="Checkmark" FontSize="14"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Publish Branch"
+                                              Command="{Binding PlacementTarget.Tag.PublishGitFlowBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              CommandParameter="{Binding}">
+                                        <MenuItem.Icon>
+                                            <ic:SymbolIcon Symbol="ArrowUpload" FontSize="14"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                </MenuItem>
+                                <Separator/>
                                 <MenuItem Header="Delete"
                                           Command="{Binding PlacementTarget.Tag.DeleteBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
@@ -165,6 +244,14 @@
                             </ContextMenu>
                         </Border.ContextMenu>
                         <StackPanel Orientation="Horizontal">
+                            <!-- GitFlow type indicator -->
+                            <Border Width="6" Height="6"
+                                    CornerRadius="3"
+                                    Background="{Binding Name, Converter={StaticResource BranchNameToGitFlowColorConverter}}"
+                                    Visibility="{Binding Name, Converter={StaticResource BranchNameToGitFlowVisibilityConverter}}"
+                                    VerticalAlignment="Center"
+                                    Margin="0,0,4,0"/>
+
                             <!-- Branch icon -->
                             <ic:SymbolIcon Symbol="Branch"
                                            IconVariant="Regular"

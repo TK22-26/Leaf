@@ -18,9 +18,10 @@ public partial class MainWindow : Window
         var gitService = new GitService();
         var credentialService = new CredentialService();
         var settingsService = new SettingsService();
+        var gitFlowService = new GitFlowService(gitService);
 
         // Create view model with all services
-        var viewModel = new MainViewModel(gitService, credentialService, settingsService, this);
+        var viewModel = new MainViewModel(gitService, credentialService, settingsService, gitFlowService, this);
 
         DataContext = viewModel;
     }
@@ -100,4 +101,5 @@ public partial class MainWindow : Window
             }
         }
     }
+
 }

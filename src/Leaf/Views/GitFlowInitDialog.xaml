@@ -1,0 +1,760 @@
+<Window x:Class="Leaf.Views.GitFlowInitDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+        xmlns:models="clr-namespace:Leaf.Models"
+        Title="Initialize GitFlow"
+        Width="700"
+        Height="550"
+        MinWidth="600"
+        MinHeight="450"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource ApplicationBackgroundBrush}"
+        ResizeMode="CanResize">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left Sidebar - Steps Navigation -->
+        <Border Grid.Column="0"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,0,1,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header -->
+                <StackPanel Grid.Row="0" Margin="16,16,16,24">
+                    <ic:SymbolIcon Symbol="BranchFork" FontSize="32"
+                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}"
+                                   HorizontalAlignment="Left"
+                                   Margin="0,0,0,12"/>
+                    <TextBlock Text="GitFlow Setup"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock Text="Configure your workflow"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <!-- Steps List -->
+                <StackPanel Grid.Row="1" Margin="12,0,12,16">
+                    <!-- Step 1: Welcome -->
+                    <Button x:Name="Step1Button" Tag="1" Click="StepButton_Click"
+                            Padding="12,10" Margin="0,0,0,4"
+                            HorizontalContentAlignment="Left"
+                            Background="Transparent" BorderThickness="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="Step1Circle" Width="24" Height="24" CornerRadius="12"
+                                    Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                    Margin="0,0,10,0">
+                                <TextBlock Text="1" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Welcome" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        </Grid>
+                    </Button>
+
+                    <!-- Step 2: Branch Names -->
+                    <Button x:Name="Step2Button" Tag="2" Click="StepButton_Click"
+                            Padding="12,10" Margin="0,0,0,4"
+                            HorizontalContentAlignment="Left"
+                            Background="Transparent" BorderThickness="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="Step2Circle" Width="24" Height="24" CornerRadius="12"
+                                    Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                    Margin="0,0,10,0">
+                                <TextBlock Text="2" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Branch Names" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        </Grid>
+                    </Button>
+
+                    <!-- Step 3: Prefixes -->
+                    <Button x:Name="Step3Button" Tag="3" Click="StepButton_Click"
+                            Padding="12,10" Margin="0,0,0,4"
+                            HorizontalContentAlignment="Left"
+                            Background="Transparent" BorderThickness="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="Step3Circle" Width="24" Height="24" CornerRadius="12"
+                                    Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                    Margin="0,0,10,0">
+                                <TextBlock Text="3" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Prefixes" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        </Grid>
+                    </Button>
+
+                    <!-- Step 4: Options -->
+                    <Button x:Name="Step4Button" Tag="4" Click="StepButton_Click"
+                            Padding="12,10" Margin="0,0,0,4"
+                            HorizontalContentAlignment="Left"
+                            Background="Transparent" BorderThickness="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="Step4Circle" Width="24" Height="24" CornerRadius="12"
+                                    Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                    Margin="0,0,10,0">
+                                <TextBlock Text="4" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Options" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        </Grid>
+                    </Button>
+
+                    <!-- Step 5: Confirm -->
+                    <Button x:Name="Step5Button" Tag="5" Click="StepButton_Click"
+                            Padding="12,10" Margin="0,0,0,4"
+                            HorizontalContentAlignment="Left"
+                            Background="Transparent" BorderThickness="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="Step5Circle" Width="24" Height="24" CornerRadius="12"
+                                    Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                    Margin="0,0,10,0">
+                                <TextBlock Text="5" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Confirm" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        </Grid>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Right Content Panel -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Content Area -->
+            <ScrollViewer Grid.Row="0" Padding="24,20" VerticalScrollBarVisibility="Auto">
+                <Grid>
+                    <!-- Step 1: Welcome -->
+                    <StackPanel x:Name="Step1Content" Visibility="Visible">
+                        <TextBlock Text="Welcome to GitFlow"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock Text="GitFlow is a branching model that helps teams manage releases efficiently."
+                                   FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,20"/>
+
+                        <!-- GitFlow Diagram -->
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="20"
+                                Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="How GitFlow Works"
+                                           FontWeight="SemiBold"
+                                           FontSize="14"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           Margin="0,0,0,16"/>
+
+                                <!-- Branch descriptions -->
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="12" Height="12" CornerRadius="6"
+                                            Background="#0969DA" Margin="0,0,12,0" VerticalAlignment="Top"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="main" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="Production-ready code. Only receives merges from release and hotfix branches."
+                                                   FontSize="12" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="12" Height="12" CornerRadius="6"
+                                            Background="#1F883D" Margin="0,0,12,0" VerticalAlignment="Top"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="develop" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="Integration branch for features. The latest development changes live here."
+                                                   FontSize="12" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="12" Height="12" CornerRadius="6"
+                                            Background="#8250DF" Margin="0,0,12,0" VerticalAlignment="Top"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="feature/*" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="New features branch from develop and merge back when complete."
+                                                   FontSize="12" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="12" Height="12" CornerRadius="6"
+                                            Background="#BF8700" Margin="0,0,12,0" VerticalAlignment="Top"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="release/*" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="Prepare releases. Branch from develop, merge to main and develop."
+                                                   FontSize="12" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="12" Height="12" CornerRadius="6"
+                                            Background="#CF222E" Margin="0,0,12,0" VerticalAlignment="Top"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="hotfix/*" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="Emergency fixes. Branch from main, merge to main and develop."
+                                                   FontSize="12" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Step 2: Branch Names -->
+                    <StackPanel x:Name="Step2Content" Visibility="Collapsed">
+                        <TextBlock Text="Branch Names"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock Text="Configure the names for your main branches."
+                                   FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,20"/>
+
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="20">
+                            <StackPanel>
+                                <!-- Main Branch -->
+                                <StackPanel Margin="0,0,0,20">
+                                    <TextBlock Text="Production Branch"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                               Margin="0,0,0,4"/>
+                                    <TextBlock Text="The branch that always reflects a production-ready state."
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <TextBox x:Name="MainBranchTextBox" Padding="10,8" Text="main"/>
+                                </StackPanel>
+
+                                <!-- Develop Branch -->
+                                <StackPanel>
+                                    <TextBlock Text="Development Branch"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                               Margin="0,0,0,4"/>
+                                    <TextBlock Text="The branch where features are integrated for the next release."
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <TextBox x:Name="DevelopBranchTextBox" Padding="10,8" Text="develop"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Tip -->
+                        <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                CornerRadius="6"
+                                Padding="12"
+                                Margin="0,16,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <ic:SymbolIcon Symbol="Info" FontSize="16"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               Margin="0,0,10,0" VerticalAlignment="Top"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="If these branches don't exist, they will be created during initialization."
+                                           FontSize="12" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Step 3: Prefixes -->
+                    <StackPanel x:Name="Step3Content" Visibility="Collapsed">
+                        <TextBlock Text="Branch Prefixes"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock Text="Configure the prefixes used for feature, release, and hotfix branches."
+                                   FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,20"/>
+
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="20">
+                            <StackPanel>
+                                <!-- Feature Prefix -->
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="150"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Feature Prefix"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="e.g., feature/my-feature"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </StackPanel>
+                                    <TextBox x:Name="FeaturePrefixTextBox" Grid.Column="1"
+                                             Padding="10,8" Text="feature/"/>
+                                </Grid>
+
+                                <!-- Release Prefix -->
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="150"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Release Prefix"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="e.g., release/1.0.0"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </StackPanel>
+                                    <TextBox x:Name="ReleasePrefixTextBox" Grid.Column="1"
+                                             Padding="10,8" Text="release/"/>
+                                </Grid>
+
+                                <!-- Hotfix Prefix -->
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="150"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Hotfix Prefix"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="e.g., hotfix/1.0.1"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </StackPanel>
+                                    <TextBox x:Name="HotfixPrefixTextBox" Grid.Column="1"
+                                             Padding="10,8" Text="hotfix/"/>
+                                </Grid>
+
+                                <!-- Support Prefix -->
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="150"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Support Prefix"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="e.g., support/1.x"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </StackPanel>
+                                    <TextBox x:Name="SupportPrefixTextBox" Grid.Column="1"
+                                             Padding="10,8" Text="support/"/>
+                                </Grid>
+
+                                <!-- Version Tag Prefix -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="150"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Version Tag Prefix"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="e.g., v1.0.0"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </StackPanel>
+                                    <TextBox x:Name="VersionTagPrefixTextBox" Grid.Column="1"
+                                             Padding="10,8" Text="v"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Step 4: Options -->
+                    <StackPanel x:Name="Step4Content" Visibility="Collapsed">
+                        <TextBlock Text="Options"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock Text="Configure default behavior for GitFlow operations."
+                                   FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,20"/>
+
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="20">
+                            <StackPanel>
+                                <!-- Default Merge Strategy -->
+                                <StackPanel Margin="0,0,0,20">
+                                    <TextBlock Text="Default Merge Strategy"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                               Margin="0,0,0,4"/>
+                                    <TextBlock Text="How branches should be merged when finishing features, releases, or hotfixes."
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap"
+                                               Margin="0,0,0,12"/>
+
+                                    <RadioButton x:Name="MergeStrategyMerge" Content="Merge (Recommended)"
+                                                 IsChecked="True" Margin="0,0,0,8"
+                                                 Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                    <TextBlock Text="Creates a merge commit preserving full branch history."
+                                               FontSize="11" Margin="24,0,0,12"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+
+                                    <RadioButton x:Name="MergeStrategySquash" Content="Squash"
+                                                 Margin="0,0,0,8"
+                                                 Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                    <TextBlock Text="Combines all commits into a single commit for a cleaner history."
+                                               FontSize="11" Margin="24,0,0,12"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+
+                                    <RadioButton x:Name="MergeStrategyRebase" Content="Rebase"
+                                                 Margin="0,0,0,8"
+                                                 Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                    <TextBlock Text="Replays commits on top of the target branch for a linear history."
+                                               FontSize="11" Margin="24,0,0,0"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                </StackPanel>
+
+                                <Border Height="1" Background="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        Margin="0,0,0,20"/>
+
+                                <!-- Additional Options -->
+                                <CheckBox x:Name="DeleteBranchCheckBox" IsChecked="True"
+                                          Margin="0,0,0,12"
+                                          Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="Delete branch after finish"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock Text="Automatically delete feature/release/hotfix branches after merging."
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </StackPanel>
+                                </CheckBox>
+
+                                <CheckBox x:Name="AutoPushCheckBox" IsChecked="False"
+                                          Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="Auto-push after finish"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock Text="Automatically push changes to remote after finishing branches."
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </StackPanel>
+                                </CheckBox>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Step 5: Confirm -->
+                    <StackPanel x:Name="Step5Content" Visibility="Collapsed">
+                        <TextBlock Text="Confirm Configuration"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock Text="Review your GitFlow configuration before initializing."
+                                   FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,20"/>
+
+                        <!-- Summary Card -->
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="20">
+                            <StackPanel>
+                                <!-- Branch Names -->
+                                <TextBlock Text="BRANCH NAMES"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           Margin="0,0,0,8"/>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Production:"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock x:Name="SummaryMainBranch" Grid.Column="1"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Development:"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock x:Name="SummaryDevelopBranch" Grid.Column="1"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                </Grid>
+
+                                <!-- Prefixes -->
+                                <TextBlock Text="PREFIXES"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           Margin="0,0,0,8"/>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Feature:"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock x:Name="SummaryFeaturePrefix" Grid.Column="1"
+                                               FontFamily="Consolas"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Release:"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock x:Name="SummaryReleasePrefix" Grid.Column="1"
+                                               FontFamily="Consolas"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Hotfix:"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock x:Name="SummaryHotfixPrefix" Grid.Column="1"
+                                               FontFamily="Consolas"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Version Tag:"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock x:Name="SummaryVersionTagPrefix" Grid.Column="1"
+                                               FontFamily="Consolas"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                </Grid>
+
+                                <!-- Options -->
+                                <TextBlock Text="OPTIONS"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           Margin="0,0,0,8"/>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Merge Strategy:"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock x:Name="SummaryMergeStrategy" Grid.Column="1"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Delete Branch:"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock x:Name="SummaryDeleteBranch" Grid.Column="1"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Auto-Push:"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock x:Name="SummaryAutoPush" Grid.Column="1"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Warning if develop branch will be created -->
+                        <Border x:Name="CreateDevelopWarning"
+                                Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
+                                BorderBrush="{DynamicResource SystemFillColorCautionBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="12"
+                                Margin="0,16,0,0"
+                                Visibility="Collapsed">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <ic:SymbolIcon Symbol="Warning" FontSize="16"
+                                               Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                                               Margin="0,0,10,0" VerticalAlignment="Top"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="The develop branch does not exist and will be created from the current HEAD."
+                                           FontSize="12" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Progress Section -->
+                        <StackPanel x:Name="InitProgressSection" Visibility="Collapsed" Margin="0,16,0,0">
+                            <ProgressBar x:Name="InitProgressBar" IsIndeterminate="True" Height="4"/>
+                            <TextBlock x:Name="InitProgressText"
+                                       Text="Initializing GitFlow..."
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Margin="0,8,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+
+            <!-- Footer -->
+            <Border Grid.Row="1"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="0,1,0,0"
+                    Padding="24,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="BackButton"
+                            Content="Back"
+                            Padding="20,10"
+                            Click="Back_Click"
+                            Visibility="Collapsed"/>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Cancel"
+                                Padding="20,10"
+                                IsCancel="True"
+                                Click="Cancel_Click"/>
+                        <Button x:Name="NextButton"
+                                Content="Next"
+                                Margin="12,0,0,0"
+                                Padding="24,10"
+                                Click="Next_Click"
+                                Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                Foreground="White"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

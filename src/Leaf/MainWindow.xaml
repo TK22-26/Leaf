@@ -60,6 +60,33 @@
                     <Separator />
                     <MenuItem Command="{Binding FetchAllCommand}" Header="_Fetch All" />
                     <MenuItem Command="{Binding RefreshCommand}" Header="_Refresh" />
+                    <Separator />
+                    <MenuItem Header="_GitFlow">
+                        <MenuItem.Icon>
+                            <ic:SymbolIcon Symbol="BranchFork" FontSize="14"/>
+                        </MenuItem.Icon>
+                        <MenuItem Header="Initialize GitFlow..." Command="{Binding InitializeGitFlowCommand}">
+                            <MenuItem.Icon>
+                                <ic:SymbolIcon Symbol="Settings" FontSize="14"/>
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <Separator/>
+                        <MenuItem Header="Start Feature..." Command="{Binding StartFeatureCommand}">
+                            <MenuItem.Icon>
+                                <Border Width="14" Height="14" CornerRadius="7" Background="#8250DF"/>
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Start Release..." Command="{Binding StartReleaseCommand}">
+                            <MenuItem.Icon>
+                                <Border Width="14" Height="14" CornerRadius="7" Background="#BF8700"/>
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Start Hotfix..." Command="{Binding StartHotfixCommand}">
+                            <MenuItem.Icon>
+                                <Border Width="14" Height="14" CornerRadius="7" Background="#CF222E"/>
+                            </MenuItem.Icon>
+                        </MenuItem>
+                    </MenuItem>
                 </MenuItem>
             </Menu>
         </Border>
@@ -223,6 +250,23 @@
                                 Text="Branch" />
                         </StackPanel>
                     </Button>
+                    <!--  GitFlow  -->
+                    <Button
+                        Command="{Binding InitializeGitFlowCommand}"
+                        Style="{StaticResource ActionBarButtonStyle}"
+                        ToolTip="GitFlow settings">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon
+                                VerticalAlignment="Center"
+                                FontSize="14"
+                                Symbol="Flow" />
+                            <TextBlock
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Text="GitFlow" />
+                        </StackPanel>
+                    </Button>
                     <Rectangle
                         Width="1"
                         Height="28"
@@ -309,7 +353,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="200" MinWidth="150" />
+                <ColumnDefinition Width="250" MinWidth="200" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
