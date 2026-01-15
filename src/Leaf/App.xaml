@@ -11,13 +11,33 @@
                 <ResourceDictionary Source="Resources/Converters.xaml"/>
                 <ResourceDictionary Source="Resources/TreeView.xaml"/>
                 <ResourceDictionary Source="Resources/TreeViewItem.xaml"/>
+                <ResourceDictionary Source="Resources/TextBox.xaml"/>
+                <ResourceDictionary Source="Resources/PasswordBox.xaml"/>
                 <ResourceDictionary Source="Resources/Menu.xaml"/>
                 <ResourceDictionary Source="Resources/MenuItem.xaml"/>
                 <ResourceDictionary Source="Resources/Styles.xaml"/>
+                <ResourceDictionary Source="Resources/Icons.xaml"/>
             </ResourceDictionary.MergedDictionaries>
 
             <!--  Override accent color to green  -->
             <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#28A745" />
+
+            <!--  Leaf Green Accent Variations (subtle opacity levels)  -->
+            <SolidColorBrush x:Key="LeafAccentSubtleBrush" Color="#1A28A745" />
+            <SolidColorBrush x:Key="LeafAccentHoverBrush" Color="#3328A745" />
+            <SolidColorBrush x:Key="LeafAccentSelectedBrush" Color="#5528A745" />
+            <SolidColorBrush x:Key="LeafAccentFocusBrush" Color="#4D28A745" />
+
+            <!--  TextBox focus accent (bottom border gradient)  -->
+            <LinearGradientBrush x:Key="TextControlElevationBorderFocusedBrush" MappingMode="Absolute" StartPoint="0,0" EndPoint="0,2">
+                <LinearGradientBrush.RelativeTransform>
+                    <ScaleTransform ScaleY="-1" CenterY="0.5" />
+                </LinearGradientBrush.RelativeTransform>
+                <GradientStop Offset="1.0" Color="#28A745" />
+                <GradientStop Offset="1.0" Color="{DynamicResource ControlStrokeColorDefault}" />
+            </LinearGradientBrush>
+
+
         </ResourceDictionary>
     </Application.Resources>
 </Application>

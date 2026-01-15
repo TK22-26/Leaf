@@ -261,3 +261,85 @@ public class IdenticonConverter : IValueConverter
         throw new NotImplementedException();
     }
 }
+
+/// <summary>
+/// Converts a branch name to a GitFlow type indicator color.
+/// Returns the appropriate brush for feature/release/hotfix branches, or Transparent for others.
+/// </summary>
+public class BranchNameToGitFlowColorConverter : IValueConverter
+{
+    private static readonly System.Windows.Media.SolidColorBrush FeatureColor =
+        new(System.Windows.Media.Color.FromRgb(0x82, 0x50, 0xDF)); // Purple
+    private static readonly System.Windows.Media.SolidColorBrush ReleaseColor =
+        new(System.Windows.Media.Color.FromRgb(0xBF, 0x87, 0x00)); // Yellow/Orange
+    private static readonly System.Windows.Media.SolidColorBrush HotfixColor =
+        new(System.Windows.Media.Color.FromRgb(0xCF, 0x22, 0x2E)); // Red
+    private static readonly System.Windows.Media.SolidColorBrush SupportColor =
+        new(System.Windows.Media.Color.FromRgb(0x57, 0x60, 0x6A)); // Gray
+    private static readonly System.Windows.Media.SolidColorBrush MainColor =
+        new(System.Windows.Media.Color.FromRgb(0x09, 0x69, 0xDA)); // Blue
+    private static readonly System.Windows.Media.SolidColorBrush DevelopColor =
+        new(System.Windows.Media.Color.FromRgb(0x1F, 0x88, 0x3D)); // Green
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not string branchName)
+            return System.Windows.Media.Brushes.Transparent;
+
+        // Check for GitFlow prefixes
+        if (branchName.StartsWith("feature/", StringComparison.OrdinalIgnoreCase))
+            return FeatureColor;
+        if (branchName.StartsWith("release/", StringComparison.OrdinalIgnoreCase))
+            return ReleaseColor;
+        if (branchName.StartsWith("hotfix/", StringComparison.OrdinalIgnoreCase))
+            return HotfixColor;
+        if (branchName.StartsWith("support/", StringComparison.OrdinalIgnoreCase))
+            return SupportColor;
+        if (branchName.Equals("main", StringComparison.OrdinalIgnoreCase) ||
+            branchName.Equals("master", StringComparison.OrdinalIgnoreCase))
+            return MainColor;
+        if (branchName.Equals("develop", StringComparison.OrdinalIgnoreCase) ||
+            branchName.Equals("development", StringComparison.OrdinalIgnoreCase))
+            return DevelopColor;
+
+        return System.Windows.Media.Brushes.Transparent;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Converts a branch name to Visibility based on whether it's a GitFlow branch.
+/// Returns Visible for feature/release/hotfix/support branches, Collapsed for others.
+/// </summary>
+public class BranchNameToGitFlowVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not string branchName)
+            return Visibility.Collapsed;
+
+        // Check for GitFlow prefixes or main branches
+        if (branchName.StartsWith("feature/", StringComparison.OrdinalIgnoreCase) ||
+            branchName.StartsWith("release/", StringComparison.OrdinalIgnoreCase) ||
+            branchName.StartsWith("hotfix/", StringComparison.OrdinalIgnoreCase) ||
+            branchName.StartsWith("support/", StringComparison.OrdinalIgnoreCase) ||
+            branchName.Equals("main", StringComparison.OrdinalIgnoreCase) ||
+            branchName.Equals("master", StringComparison.OrdinalIgnoreCase) ||
+            branchName.Equals("develop", StringComparison.OrdinalIgnoreCase) ||
+            branchName.Equals("development", StringComparison.OrdinalIgnoreCase))
+        {
+            return Visibility.Visible;
+        }
+
+        return Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}

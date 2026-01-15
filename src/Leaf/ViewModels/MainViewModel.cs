@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -16,6 +17,7 @@ namespace Leaf.ViewModels;
 public partial class MainViewModel : ObservableObject
 {
     private readonly IGitService _gitService;
+    private readonly IGitFlowService _gitFlowService;
     private readonly CredentialService _credentialService;
     private readonly SettingsService _settingsService;
     private readonly Window _ownerWindow;
@@ -56,7 +58,7 @@ public partial class MainViewModel : ObservableObject
     private bool _isWorkingChangesSelected;
 
     [ObservableProperty]
-    private bool _isRepoPaneCollapsed = true;
+    private bool _isRepoPaneCollapsed;
 
     [ObservableProperty]
     private string _statusMessage = "Ready";
@@ -102,9 +104,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _newBranchName = string.Empty;
 
-    public MainViewModel(IGitService gitService, CredentialService credentialService, SettingsService settingsService, Window ownerWindow)
+    public MainViewModel(IGitService gitService, CredentialService credentialService, SettingsService settingsService, IGitFlowService gitFlowService, Window ownerWindow)
     {
         _gitService = gitService;
+        _gitFlowService = gitFlowService;
         _credentialService = credentialService;
         _settingsService = settingsService;
         _ownerWindow = ownerWindow;
@@ -113,6 +116,10 @@ public partial class MainViewModel : ObservableObject
         _gitGraphViewModel = new GitGraphViewModel(gitService);
         _commitDetailViewModel = new CommitDetailViewModel(gitService);
         _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService);
+
+        // Load UI state from settings
+        var settings = settingsService.LoadSettings();
+        _isRepoPaneCollapsed = settings.IsRepoPaneCollapsed;
 
         RepositoryRootItems = new ObservableCollection<object>();
 
@@ -386,6 +393,62 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Add all git repositories found in a folder (scans subdirectories).
+    /// </summary>
+    [RelayCommand]
+    public async Task AddAllReposInFolderAsync()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Select Folder to Scan for Git Repositories"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            var rootPath = dialog.FolderName;
+            var addedCount = 0;
+
+            try
+            {
+                IsBusy = true;
+                StatusMessage = "Scanning for repositories...";
+
+                // Find all directories that contain a .git folder
+                var gitDirs = Directory.GetDirectories(rootPath, ".git", SearchOption.AllDirectories);
+
+                foreach (var gitDir in gitDirs)
+                {
+                    var repoPath = Path.GetDirectoryName(gitDir);
+                    if (repoPath == null) continue;
+
+                    // Skip if already added
+                    if (RepositoryGroups.SelectMany(g => g.Repositories).Any(r => r.Path == repoPath))
+                        continue;
+
+                    if (await _gitService.IsValidRepositoryAsync(repoPath))
+                    {
+                        var repoInfo = await _gitService.GetRepositoryInfoAsync(repoPath);
+                        AddRepositoryToGroups(repoInfo);
+                        addedCount++;
+                    }
+                }
+
+                StatusMessage = addedCount > 0
+                    ? $"Added {addedCount} repositor{(addedCount == 1 ? "y" : "ies")}"
+                    : "No new repositories found";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error scanning: {ex.Message}";
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+    }
+
+    /// <summary>
     /// Clone a repository from URL.
     /// </summary>
     [RelayCommand]
@@ -585,6 +648,11 @@ public partial class MainViewModel : ObservableObject
     public void ToggleRepoPane()
     {
         IsRepoPaneCollapsed = !IsRepoPaneCollapsed;
+
+        // Persist the state
+        var settings = _settingsService.LoadSettings();
+        settings.IsRepoPaneCollapsed = IsRepoPaneCollapsed;
+        _settingsService.SaveSettings(settings);
     }
 
     /// <summary>
@@ -1132,6 +1200,10 @@ public partial class MainViewModel : ObservableObject
         {
             var branches = await _gitService.GetBranchesAsync(repo.Path);
 
+            // Get remote URLs for determining remote type (GitHub, Azure DevOps, etc.)
+            var remotes = await _gitService.GetRemotesAsync(repo.Path);
+            var remoteUrlLookup = remotes.ToDictionary(r => r.Name, r => r.Url, StringComparer.OrdinalIgnoreCase);
+
             var localBranches = branches.Where(b => !b.IsRemote).OrderBy(b => b.Name).ToList();
             // Filter out HEAD from remote branches (it's a symbolic reference, not a real branch)
             var remoteBranches = branches
@@ -1154,30 +1226,61 @@ public partial class MainViewModel : ObservableObject
             // Group remote branches by remote name (origin, upstream, etc.)
             var remoteGroups = remoteBranches
                 .GroupBy(b => b.RemoteName ?? "origin")
-                .Select(g => new RemoteBranchGroup
+                .Select(g =>
                 {
-                    Name = g.Key,
-                    Branches = new System.Collections.ObjectModel.ObservableCollection<BranchInfo>(
-                        g.Select(b => new BranchInfo
-                        {
-                            // Strip the remote prefix from the display name
-                            Name = b.Name.StartsWith($"{g.Key}/") ? b.Name[($"{g.Key}/".Length)..] : b.Name,
-                            FullName = b.FullName,
-                            IsCurrent = b.IsCurrent,
-                            IsRemote = b.IsRemote,
-                            RemoteName = b.RemoteName,
-                            TrackingBranchName = b.TrackingBranchName,
-                            TipSha = b.TipSha,
-                            AheadBy = b.AheadBy,
-                            BehindBy = b.BehindBy
-                        }).OrderBy(b => b.Name)),
-                    IsExpanded = true
+                    var remoteUrl = remoteUrlLookup.GetValueOrDefault(g.Key, string.Empty);
+                    return new RemoteBranchGroup
+                    {
+                        Name = g.Key,
+                        Url = remoteUrl,
+                        RemoteType = RemoteBranchGroup.GetRemoteTypeFromUrl(remoteUrl),
+                        Branches = new System.Collections.ObjectModel.ObservableCollection<BranchInfo>(
+                            g.Select(b => new BranchInfo
+                            {
+                                // Strip the remote prefix from the display name
+                                Name = b.Name.StartsWith($"{g.Key}/") ? b.Name[($"{g.Key}/".Length)..] : b.Name,
+                                FullName = b.FullName,
+                                IsCurrent = b.IsCurrent,
+                                IsRemote = b.IsRemote,
+                                RemoteName = b.RemoteName,
+                                TrackingBranchName = b.TrackingBranchName,
+                                TipSha = b.TipSha,
+                                AheadBy = b.AheadBy,
+                                BehindBy = b.BehindBy
+                            }).OrderBy(b => b.Name)),
+                        IsExpanded = true
+                    };
                 })
                 .OrderBy(g => g.Name)
                 .ToList();
 
             // Set up branch categories for display
             repo.BranchCategories.Clear();
+
+            // GITFLOW category (if initialized - always show when GitFlow is active)
+            var gitFlowConfig = await _gitFlowService.GetConfigAsync(repo.Path);
+            if (gitFlowConfig?.IsInitialized == true)
+            {
+                var gitFlowBranches = localBranches
+                    .Where(b => b.Name.StartsWith(gitFlowConfig.FeaturePrefix, StringComparison.OrdinalIgnoreCase) ||
+                                b.Name.StartsWith(gitFlowConfig.ReleasePrefix, StringComparison.OrdinalIgnoreCase) ||
+                                b.Name.StartsWith(gitFlowConfig.HotfixPrefix, StringComparison.OrdinalIgnoreCase) ||
+                                b.Name.StartsWith(gitFlowConfig.SupportPrefix, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                var gitFlowCategory = new BranchCategory
+                {
+                    Name = "GITFLOW",
+                    Icon = "\uE8A3", // Flow icon
+                    BranchCount = gitFlowBranches.Count,
+                    IsExpanded = true
+                };
+                foreach (var branch in gitFlowBranches)
+                {
+                    gitFlowCategory.Branches.Add(branch);
+                }
+                repo.BranchCategories.Add(gitFlowCategory);
+            }
 
             // LOCAL category
             var localCategory = new BranchCategory
@@ -1636,4 +1739,211 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = success ? "Merge completed successfully" : "Merge aborted";
         await RefreshAsync();
     }
+
+    #region GitFlow Commands
+
+    /// <summary>
+    /// Initialize GitFlow in the current repository.
+    /// </summary>
+    [RelayCommand]
+    public async Task InitializeGitFlowAsync()
+    {
+        if (SelectedRepository == null) return;
+
+        var dialog = new Views.GitFlowInitDialog(_gitFlowService, _settingsService, SelectedRepository.Path)
+        {
+            Owner = _ownerWindow
+        };
+
+        if (dialog.ShowDialog() == true && dialog.Result != null)
+        {
+            StatusMessage = "GitFlow initialized successfully";
+            await RefreshAsync();
+        }
+    }
+
+    /// <summary>
+    /// Start a new GitFlow feature branch.
+    /// </summary>
+    [RelayCommand]
+    public async Task StartFeatureAsync()
+    {
+        if (SelectedRepository == null) return;
+
+        var isInitialized = await _gitFlowService.IsInitializedAsync(SelectedRepository.Path);
+        if (!isInitialized)
+        {
+            MessageBox.Show("GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
+                "GitFlow Not Initialized", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new Views.StartBranchDialog(_gitFlowService, SelectedRepository.Path, Models.GitFlowBranchType.Feature)
+        {
+            Owner = _ownerWindow
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            StatusMessage = $"Started feature {dialog.BranchName}";
+            await RefreshAsync();
+        }
+    }
+
+    /// <summary>
+    /// Start a new GitFlow release branch.
+    /// </summary>
+    [RelayCommand]
+    public async Task StartReleaseAsync()
+    {
+        if (SelectedRepository == null) return;
+
+        var isInitialized = await _gitFlowService.IsInitializedAsync(SelectedRepository.Path);
+        if (!isInitialized)
+        {
+            MessageBox.Show("GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
+                "GitFlow Not Initialized", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new Views.StartBranchDialog(_gitFlowService, SelectedRepository.Path, Models.GitFlowBranchType.Release)
+        {
+            Owner = _ownerWindow
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            StatusMessage = $"Started release {dialog.BranchName}";
+            await RefreshAsync();
+        }
+    }
+
+    /// <summary>
+    /// Start a new GitFlow hotfix branch.
+    /// </summary>
+    [RelayCommand]
+    public async Task StartHotfixAsync()
+    {
+        if (SelectedRepository == null) return;
+
+        var isInitialized = await _gitFlowService.IsInitializedAsync(SelectedRepository.Path);
+        if (!isInitialized)
+        {
+            MessageBox.Show("GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
+                "GitFlow Not Initialized", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new Views.StartBranchDialog(_gitFlowService, SelectedRepository.Path, Models.GitFlowBranchType.Hotfix)
+        {
+            Owner = _ownerWindow
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            StatusMessage = $"Started hotfix {dialog.BranchName}";
+            await RefreshAsync();
+        }
+    }
+
+    /// <summary>
+    /// Finish a GitFlow branch (feature, release, or hotfix).
+    /// </summary>
+    [RelayCommand]
+    public async Task FinishGitFlowBranchAsync(BranchInfo branch)
+    {
+        if (SelectedRepository == null || branch == null) return;
+
+        var config = await _gitFlowService.GetConfigAsync(SelectedRepository.Path);
+        if (config == null)
+        {
+            MessageBox.Show("GitFlow is not initialized in this repository.",
+                "GitFlow Not Initialized", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var branchType = _gitFlowService.GetBranchType(branch.Name, config);
+        var flowName = _gitFlowService.GetFlowName(branch.Name, config);
+
+        if (branchType == Models.GitFlowBranchType.None || string.IsNullOrEmpty(flowName))
+        {
+            MessageBox.Show("This branch is not a GitFlow branch (feature, release, or hotfix).",
+                "Not a GitFlow Branch", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new Views.FinishBranchDialog(_gitFlowService, SelectedRepository.Path, branch.Name, branchType, flowName)
+        {
+            Owner = _ownerWindow
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            StatusMessage = $"Finished {branchType.ToString().ToLower()} {flowName}";
+            await RefreshAsync();
+        }
+    }
+
+    /// <summary>
+    /// Publish a GitFlow branch to remote.
+    /// </summary>
+    [RelayCommand]
+    public async Task PublishGitFlowBranchAsync(BranchInfo branch)
+    {
+        if (SelectedRepository == null || branch == null) return;
+
+        var config = await _gitFlowService.GetConfigAsync(SelectedRepository.Path);
+        if (config == null)
+        {
+            MessageBox.Show("GitFlow is not initialized in this repository.",
+                "GitFlow Not Initialized", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var branchType = _gitFlowService.GetBranchType(branch.Name, config);
+        var flowName = _gitFlowService.GetFlowName(branch.Name, config);
+
+        if (branchType == Models.GitFlowBranchType.None || string.IsNullOrEmpty(flowName))
+        {
+            MessageBox.Show("This branch is not a GitFlow branch.",
+                "Not a GitFlow Branch", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"Publishing {branchType.ToString().ToLower()} {flowName}...";
+
+            var progress = new Progress<string>(msg => StatusMessage = msg);
+
+            switch (branchType)
+            {
+                case Models.GitFlowBranchType.Feature:
+                    await _gitFlowService.PublishFeatureAsync(SelectedRepository.Path, flowName, progress);
+                    break;
+                case Models.GitFlowBranchType.Release:
+                    await _gitFlowService.PublishReleaseAsync(SelectedRepository.Path, flowName, progress);
+                    break;
+                case Models.GitFlowBranchType.Hotfix:
+                    await _gitFlowService.PublishHotfixAsync(SelectedRepository.Path, flowName, progress);
+                    break;
+            }
+
+            StatusMessage = $"Published {branchType.ToString().ToLower()} {flowName}";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Publish failed: {ex.Message}";
+            MessageBox.Show($"Failed to publish branch:\n\n{ex.Message}",
+                "Publish Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    #endregion
 }

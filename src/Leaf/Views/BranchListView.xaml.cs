@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using Leaf.Models;
 using Leaf.ViewModels;
@@ -32,5 +33,16 @@ namespace Leaf.Views;
         {
             // Just mark handled to prevent tree selection
             e.Handled = true;
+        }
+
+        private void GitFlowActionButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.ContextMenu != null)
+            {
+                button.ContextMenu.PlacementTarget = button;
+                button.ContextMenu.Placement = PlacementMode.Right;
+                button.ContextMenu.IsOpen = true;
+                e.Handled = true;
+            }
         }
     }

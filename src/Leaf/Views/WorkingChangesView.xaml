@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="clr-namespace:Leaf.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     d:DesignHeight="600"
     d:DesignWidth="350"
@@ -23,52 +24,17 @@
         <!--  Commit button color  -->
         <SolidColorBrush x:Key="CommitButtonBrush" Color="#28A745" />
 
-        <!--  TextBox style without clear button  -->
+        <!--  TextBox style without clear button (inherits global green accent style)  -->
         <Style
             x:Key="NoClearButtonTextBox"
             BasedOn="{StaticResource {x:Type TextBox}}"
-            TargetType="TextBox">
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TextBox">
-                        <Border
-                            Name="ContentBorder"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="{TemplateBinding Border.CornerRadius}">
-                            <ScrollViewer
-                                x:Name="PART_ContentHost"
-                                Margin="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}"
-                                HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
-                                VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ContentBorder" Property="Background" Value="{DynamicResource TextControlBackgroundPointerOver}" />
-                                <Setter TargetName="ContentBorder" Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushPointerOver}" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="ContentBorder" Property="Background" Value="{DynamicResource TextControlBackgroundFocused}" />
-                                <Setter TargetName="ContentBorder" Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushFocused}" />
-                                <Setter TargetName="ContentBorder" Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThicknessFocused}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="ContentBorder" Property="Background" Value="{DynamicResource TextControlBackgroundDisabled}" />
-                                <Setter TargetName="ContentBorder" Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushDisabled}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+            TargetType="TextBox" />
     </UserControl.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
             <!--  Top Banner  -->
-            <RowDefinition Height="30" />
+            <RowDefinition Height="35" />
             <!--  Unstaged files  -->
             <RowDefinition Height="*" />
             <!--  Staged files  -->
@@ -76,17 +42,12 @@
             <!--  Commit section  -->
             <RowDefinition Height="200" />
         </Grid.RowDefinitions>
-        <Rectangle
-            Height="1"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Top"
-            Fill="#AA14761e" />
 
         <!--  Top Banner  -->
         <Border
             Grid.Row="0"
-            Padding="12,0"
-            Background="{DynamicResource ControlFillColorDefaultBrush}"
+            Padding="8"
+            Background="{DynamicResource ControlFillColorTertiaryBrush}"
             BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
             BorderThickness="0,0,0,1">
             <Grid>
@@ -98,17 +59,17 @@
                 <!--  Discard All Button (trashcan icon)  -->
                 <Button
                     Grid.Column="0"
+                    Margin="-4"
                     Padding="6,4"
-                    VerticalAlignment="Center"
+                    VerticalAlignment="Stretch"
                     Background="Transparent"
                     BorderThickness="0"
                     Command="{Binding DiscardAllCommand}"
                     ToolTip="Discard all changes">
-                    <TextBlock
-                        FontFamily="Segoe Fluent Icons"
+                    <ic:SymbolIcon
                         FontSize="14"
                         Foreground="#E81123"
-                        Text="&#xE74D;" />
+                        Symbol="Delete" />
                 </Button>
 
                 <!--  File changes summary  -->
@@ -123,7 +84,7 @@
         </Border>
 
         <!--  Unstaged Files Section  -->
-        <Grid Grid.Row="1" Margin="12,8,12,4">
+        <Grid Grid.Row="1" Margin="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -132,8 +93,10 @@
             <!--  Unstaged Header Bar  -->
             <Border
                 Grid.Row="0"
-                Padding="12,8"
+                Padding="8"
                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource LeafAccentSubtleBrush}"
+                BorderThickness="0,0,0,1"
                 CornerRadius="6,6,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -188,6 +151,8 @@
                                     Margin="2,1"
                                     Padding="8,6"
                                     Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="2,0,0,0"
                                     CornerRadius="4"
                                     Cursor="Hand"
                                     MouseLeftButtonDown="UnstagedFile_MouseLeftButtonDown"
@@ -279,7 +244,8 @@
                                 </Border>
                                 <DataTemplate.Triggers>
                                     <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#28A745" />
                                         <Setter TargetName="StageButton" Property="Visibility" Value="Visible" />
                                     </Trigger>
                                 </DataTemplate.Triggers>
@@ -291,7 +257,7 @@
         </Grid>
 
         <!--  Staged Files Section  -->
-        <Grid Grid.Row="2" Margin="12,4,12,8">
+        <Grid Grid.Row="2" Margin="8,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -300,8 +266,10 @@
             <!--  Staged Header Bar  -->
             <Border
                 Grid.Row="0"
-                Padding="12,8"
+                Padding="8"
                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource LeafAccentSubtleBrush}"
+                BorderThickness="0,0,0,1"
                 CornerRadius="6,6,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -356,6 +324,8 @@
                                     Margin="2,1"
                                     Padding="8,6"
                                     Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="2,0,0,0"
                                     CornerRadius="4"
                                     Cursor="Hand"
                                     MouseLeftButtonDown="StagedFile_MouseLeftButtonDown"
@@ -444,7 +414,8 @@
                                 </Border>
                                 <DataTemplate.Triggers>
                                     <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#28A745" />
                                         <Setter TargetName="UnstageButton" Property="Visibility" Value="Visible" />
                                     </Trigger>
                                 </DataTemplate.Triggers>
@@ -456,7 +427,7 @@
         </Grid>
 
         <!--  Commit Section  -->
-        <Grid Grid.Row="3" Margin="12,0,12,12">
+        <Grid Grid.Row="3" Margin="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />

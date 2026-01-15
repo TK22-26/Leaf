@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using Leaf.Services;
 using Microsoft.Win32;
 
@@ -28,6 +29,7 @@ public partial class CloneDialog : Window
     private List<GitHubRepo> _filteredGitHubRepos = [];
 
     private string _selectedUrl = string.Empty;
+    private int _currentSource = 0; // 0=GitHub, 1=Azure, 2=URL
 
     /// <summary>
     /// The path to the cloned repository (set after successful clone).
@@ -47,10 +49,138 @@ public partial class CloneDialog : Window
 
         DestinationTextBox.Text = defaultClonePath;
         UpdateCloneButtonState();
+        UpdateSourceButtonStates();
 
-        // Load repos on startup (GitHub is first tab now)
-        Loaded += async (s, e) => await LoadGitHubRepositoriesAsync();
+        // Load repos from both sources on startup (in parallel) so counts are shown immediately
+        Loaded += async (s, e) =>
+        {
+            // Load both sources in parallel
+            var gitHubTask = LoadGitHubRepositoriesAsync();
+            var azureTask = LoadAzureRepositoriesInBackgroundAsync();
+            await Task.WhenAll(gitHubTask, azureTask);
+        };
     }
+
+    /// <summary>
+    /// Load Azure DevOps repos in the background (just for count display, no UI updates except status).
+    /// </summary>
+    private async Task LoadAzureRepositoriesInBackgroundAsync()
+    {
+        var settings = _settingsService.LoadSettings();
+        var organization = settings.AzureDevOpsOrganization;
+        var pat = _credentialService.GetCredential("AzureDevOps");
+
+        if (string.IsNullOrEmpty(organization) || string.IsNullOrEmpty(pat))
+        {
+            AzureSourceStatus.Text = "Not configured";
+            return;
+        }
+
+        try
+        {
+            AzureSourceStatus.Text = "Loading...";
+            _allRepos = await _azureDevOpsService.GetRepositoriesAsync(organization);
+            _allRepos = _allRepos.OrderBy(r => r.DisplayName).ToList();
+            AzureSourceStatus.Text = $"{_allRepos.Count} repos";
+        }
+        catch
+        {
+            AzureSourceStatus.Text = "Error";
+        }
+    }
+
+    #region Source Navigation
+
+    private void GitHubSource_Click(object sender, RoutedEventArgs e)
+    {
+        SwitchToSource(0);
+    }
+
+    private void AzureSource_Click(object sender, RoutedEventArgs e)
+    {
+        SwitchToSource(1);
+    }
+
+    private void UrlSource_Click(object sender, RoutedEventArgs e)
+    {
+        SwitchToSource(2);
+    }
+
+    private async void SwitchToSource(int source)
+    {
+        _currentSource = source;
+        UpdateSourceButtonStates();
+
+        // Update content visibility
+        GitHubContent.Visibility = source == 0 ? Visibility.Visible : Visibility.Collapsed;
+        AzureContent.Visibility = source == 1 ? Visibility.Visible : Visibility.Collapsed;
+        UrlContent.Visibility = source == 2 ? Visibility.Visible : Visibility.Collapsed;
+
+        // Update selected URL based on source
+        switch (source)
+        {
+            case 0: // GitHub
+                if (GitHubRepoListBox.SelectedItem is GitHubRepo ghRepo)
+                {
+                    _selectedUrl = ghRepo.RemoteUrl;
+                }
+                else
+                {
+                    _selectedUrl = string.Empty;
+                }
+                // Load GitHub repos if not already loaded
+                if (_allGitHubRepos.Count == 0)
+                {
+                    await LoadGitHubRepositoriesAsync();
+                }
+                break;
+
+            case 1: // Azure DevOps
+                if (RepoListBox.SelectedItem is AzureDevOpsRepo adoRepo)
+                {
+                    _selectedUrl = adoRepo.RemoteUrl;
+                }
+                else
+                {
+                    _selectedUrl = string.Empty;
+                }
+                // Load Azure DevOps repos if not already loaded, otherwise just display them
+                if (_allRepos.Count == 0)
+                {
+                    await LoadRepositoriesAsync();
+                }
+                else
+                {
+                    // Repos already loaded in background, just display them
+                    FilterRepositories();
+                    var settings = _settingsService.LoadSettings();
+                    AzureStatusText.Text = $"{_allRepos.Count} repositories in {settings.AzureDevOpsOrganization}";
+                }
+                break;
+
+            case 2: // URL
+                _selectedUrl = UrlTextBox.Text.Trim();
+                break;
+        }
+
+        UpdateSelectedRepoDisplay();
+        UpdateCloneButtonState();
+    }
+
+    private void UpdateSourceButtonStates()
+    {
+        // Visual feedback for selected source
+        var selectedBrush = (SolidColorBrush)FindResource("LeafAccentSubtleBrush");
+        var normalBrush = new SolidColorBrush(Colors.Transparent);
+
+        GitHubSourceButton.Background = _currentSource == 0 ? selectedBrush : normalBrush;
+        AzureSourceButton.Background = _currentSource == 1 ? selectedBrush : normalBrush;
+        UrlSourceButton.Background = _currentSource == 2 ? selectedBrush : normalBrush;
+    }
+
+    #endregion
+
+    #region Azure DevOps
 
     private async Task LoadRepositoriesAsync()
     {
@@ -60,18 +190,20 @@ public partial class CloneDialog : Window
 
         if (string.IsNullOrEmpty(organization) || string.IsNullOrEmpty(pat))
         {
-            AzureStatusText.Text = "Configure organization and PAT in Settings";
-            EmptyStateText.Text = "No organization or PAT configured.\nGo to Settings to add your Azure DevOps organization and PAT.";
-            EmptyStateText.Visibility = Visibility.Visible;
+            AzureStatusText.Text = "Configure organization and credentials in Settings";
+            AzureSourceStatus.Text = "Not configured";
+            EmptyStateText.Text = "No organization or credentials configured.\nGo to Settings to add your Azure DevOps organization.";
+            EmptyState.Visibility = Visibility.Visible;
             return;
         }
 
         try
         {
             LoadingOverlay.Visibility = Visibility.Visible;
-            EmptyStateText.Visibility = Visibility.Collapsed;
+            EmptyState.Visibility = Visibility.Collapsed;
             RefreshButton.IsEnabled = false;
             AzureStatusText.Text = $"Loading from {organization}...";
+            AzureSourceStatus.Text = organization;
 
             _allRepos = await _azureDevOpsService.GetRepositoriesAsync(organization);
             _allRepos = _allRepos.OrderBy(r => r.DisplayName).ToList();
@@ -79,18 +211,20 @@ public partial class CloneDialog : Window
             FilterRepositories();
 
             AzureStatusText.Text = $"{_allRepos.Count} repositories in {organization}";
+            AzureSourceStatus.Text = $"{_allRepos.Count} repos";
 
             if (_allRepos.Count == 0)
             {
                 EmptyStateText.Text = "No repositories found in this organization.";
-                EmptyStateText.Visibility = Visibility.Visible;
+                EmptyState.Visibility = Visibility.Visible;
             }
         }
         catch (Exception ex)
         {
             AzureStatusText.Text = "Failed to load repositories";
-            EmptyStateText.Text = $"Error: {ex.Message}\n\nCheck your organization name and PAT in Settings.";
-            EmptyStateText.Visibility = Visibility.Visible;
+            AzureSourceStatus.Text = "Error";
+            EmptyStateText.Text = $"Error: {ex.Message}\n\nCheck your organization name and credentials in Settings.";
+            EmptyState.Visibility = Visibility.Visible;
         }
         finally
         {
@@ -120,11 +254,11 @@ public partial class CloneDialog : Window
         if (_filteredRepos.Count == 0 && _allRepos.Count > 0)
         {
             EmptyStateText.Text = "No repositories match your search.";
-            EmptyStateText.Visibility = Visibility.Visible;
+            EmptyState.Visibility = Visibility.Visible;
         }
         else if (_allRepos.Count > 0)
         {
-            EmptyStateText.Visibility = Visibility.Collapsed;
+            EmptyState.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -143,6 +277,18 @@ public partial class CloneDialog : Window
         await LoadRepositoriesAsync();
     }
 
+    private void RepoListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (RepoListBox.SelectedItem is AzureDevOpsRepo repo)
+        {
+            _selectedUrl = repo.RemoteUrl;
+            UpdateSelectedRepoDisplay();
+            UpdateCloneButtonState();
+        }
+    }
+
+    #endregion
+
     #region GitHub
 
     private async Task LoadGitHubRepositoriesAsync()
@@ -151,16 +297,17 @@ public partial class CloneDialog : Window
 
         if (string.IsNullOrEmpty(pat))
         {
-            GitHubStatusText.Text = "Configure GitHub PAT in Settings";
-            GitHubEmptyStateText.Text = "No GitHub PAT configured.\nGo to Settings to add your GitHub Personal Access Token.";
-            GitHubEmptyStateText.Visibility = Visibility.Visible;
+            GitHubStatusText.Text = "Configure GitHub credentials in Settings";
+            GitHubSourceStatus.Text = "Not configured";
+            GitHubEmptyStateText.Text = "No GitHub credentials configured.\nGo to Settings to connect your GitHub account.";
+            GitHubEmptyState.Visibility = Visibility.Visible;
             return;
         }
 
         try
         {
             GitHubLoadingOverlay.Visibility = Visibility.Visible;
-            GitHubEmptyStateText.Visibility = Visibility.Collapsed;
+            GitHubEmptyState.Visibility = Visibility.Collapsed;
             GitHubRefreshButton.IsEnabled = false;
             GitHubStatusText.Text = "Loading from GitHub...";
 
@@ -170,18 +317,20 @@ public partial class CloneDialog : Window
             FilterGitHubRepositories();
 
             GitHubStatusText.Text = $"{_allGitHubRepos.Count} repositories";
+            GitHubSourceStatus.Text = $"{_allGitHubRepos.Count} repos";
 
             if (_allGitHubRepos.Count == 0)
             {
                 GitHubEmptyStateText.Text = "No repositories found.";
-                GitHubEmptyStateText.Visibility = Visibility.Visible;
+                GitHubEmptyState.Visibility = Visibility.Visible;
             }
         }
         catch (Exception ex)
         {
             GitHubStatusText.Text = "Failed to load repositories";
-            GitHubEmptyStateText.Text = $"Error: {ex.Message}\n\nCheck your GitHub PAT in Settings.";
-            GitHubEmptyStateText.Visibility = Visibility.Visible;
+            GitHubSourceStatus.Text = "Error";
+            GitHubEmptyStateText.Text = $"Error: {ex.Message}\n\nCheck your GitHub credentials in Settings.";
+            GitHubEmptyState.Visibility = Visibility.Visible;
         }
         finally
         {
@@ -211,11 +360,11 @@ public partial class CloneDialog : Window
         if (_filteredGitHubRepos.Count == 0 && _allGitHubRepos.Count > 0)
         {
             GitHubEmptyStateText.Text = "No repositories match your search.";
-            GitHubEmptyStateText.Visibility = Visibility.Visible;
+            GitHubEmptyState.Visibility = Visibility.Visible;
         }
         else if (_allGitHubRepos.Count > 0)
         {
-            GitHubEmptyStateText.Visibility = Visibility.Collapsed;
+            GitHubEmptyState.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -239,118 +388,74 @@ public partial class CloneDialog : Window
         if (GitHubRepoListBox.SelectedItem is GitHubRepo repo)
         {
             _selectedUrl = repo.RemoteUrl;
-            SelectedUrlText.Text = repo.RemoteUrl;
-            UpdateRepoName(_selectedUrl);
+            UpdateSelectedRepoDisplay();
             UpdateCloneButtonState();
         }
     }
 
     #endregion
 
-    private void RepoListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (RepoListBox.SelectedItem is AzureDevOpsRepo repo)
-        {
-            _selectedUrl = repo.RemoteUrl;
-            SelectedUrlText.Text = repo.RemoteUrl;
-            UpdateRepoName(_selectedUrl);
-            UpdateCloneButtonState();
-        }
-    }
-
-    private async void ModeTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!IsLoaded) return;
-
-        // Tab 0: GitHub, Tab 1: Azure DevOps, Tab 2: Enter URL
-        switch (ModeTabControl.SelectedIndex)
-        {
-            case 0: // GitHub
-                if (GitHubRepoListBox.SelectedItem is GitHubRepo ghRepo)
-                {
-                    _selectedUrl = ghRepo.RemoteUrl;
-                }
-                else
-                {
-                    _selectedUrl = string.Empty;
-                }
-                // Load GitHub repos if not already loaded
-                if (_allGitHubRepos.Count == 0)
-                {
-                    await LoadGitHubRepositoriesAsync();
-                }
-                break;
-
-            case 1: // Azure DevOps
-                if (RepoListBox.SelectedItem is AzureDevOpsRepo adoRepo)
-                {
-                    _selectedUrl = adoRepo.RemoteUrl;
-                }
-                else
-                {
-                    _selectedUrl = string.Empty;
-                }
-                // Load Azure DevOps repos if not already loaded
-                if (_allRepos.Count == 0)
-                {
-                    await LoadRepositoriesAsync();
-                }
-                break;
-
-            case 2: // Enter URL
-                _selectedUrl = UrlTextBox.Text.Trim();
-                break;
-
-            default:
-                _selectedUrl = string.Empty;
-                break;
-        }
-
-        SelectedUrlText.Text = _selectedUrl;
-        UpdateRepoName(_selectedUrl);
-        UpdateCloneButtonState();
-    }
+    #region URL Input
 
     private void UrlTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         var url = UrlTextBox.Text.Trim();
         _selectedUrl = url;
-        SelectedUrlText.Text = url;
 
         // Update hints based on URL
         if (string.IsNullOrEmpty(url))
         {
-            UrlHintText.Text = "Enter a Git repository URL (HTTPS)";
-            UrlHintText.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray);
+            UrlHintText.Text = "Enter a Git repository URL (HTTPS or SSH)";
+            UrlHintText.Foreground = (Brush)FindResource("TextFillColorTertiaryBrush");
         }
         else if (IsAzureDevOpsUrl(url))
         {
             var hasPat = !string.IsNullOrEmpty(_credentialService.GetCredential("AzureDevOps"));
             UrlHintText.Text = hasPat
-                ? "Azure DevOps URL - will use saved PAT"
-                : "Azure DevOps URL - no PAT saved";
+                ? "Azure DevOps URL - will use saved credentials"
+                : "Azure DevOps URL - no credentials saved";
             UrlHintText.Foreground = hasPat
-                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 150, 0))
-                : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 100, 0));
+                ? new SolidColorBrush(Color.FromRgb(40, 167, 69))
+                : new SolidColorBrush(Color.FromRgb(200, 100, 0));
         }
         else if (IsGitHubUrl(url))
         {
             var hasPat = !string.IsNullOrEmpty(_credentialService.GetCredential("GitHub"));
             UrlHintText.Text = hasPat
-                ? "GitHub URL - will use saved PAT"
-                : "GitHub URL - no PAT saved";
+                ? "GitHub URL - will use saved credentials"
+                : "GitHub URL - no credentials saved";
             UrlHintText.Foreground = hasPat
-                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 150, 0))
-                : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 100, 0));
+                ? new SolidColorBrush(Color.FromRgb(40, 167, 69))
+                : new SolidColorBrush(Color.FromRgb(200, 100, 0));
         }
         else
         {
             UrlHintText.Text = "Git repository URL";
-            UrlHintText.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray);
+            UrlHintText.Foreground = (Brush)FindResource("TextFillColorTertiaryBrush");
         }
 
-        UpdateRepoName(url);
+        UpdateSelectedRepoDisplay();
         UpdateCloneButtonState();
+    }
+
+    #endregion
+
+    #region Common
+
+    private void UpdateSelectedRepoDisplay()
+    {
+        SelectedUrlText.Text = _selectedUrl;
+        UpdateRepoName(_selectedUrl);
+
+        // Show/hide selected repo section
+        SelectedRepoSection.Visibility = string.IsNullOrEmpty(_selectedUrl)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+        // Update icon based on source
+        SelectedRepoGitHubIcon.Visibility = _currentSource == 0 ? Visibility.Visible : Visibility.Collapsed;
+        SelectedRepoAzureIcon.Visibility = _currentSource == 1 ? Visibility.Visible : Visibility.Collapsed;
+        SelectedRepoCloudIcon.Visibility = _currentSource == 2 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void DestinationTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -387,6 +492,25 @@ public partial class CloneDialog : Window
         }
     }
 
+    private void OpenSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var settingsDialog = new SettingsDialog(_credentialService, _settingsService)
+        {
+            Owner = this
+        };
+        settingsDialog.ShowDialog();
+
+        // Refresh current source after settings close
+        if (_currentSource == 0)
+        {
+            _ = LoadGitHubRepositoriesAsync();
+        }
+        else if (_currentSource == 1)
+        {
+            _ = LoadRepositoriesAsync();
+        }
+    }
+
     private async void Clone_Click(object sender, RoutedEventArgs e)
     {
         if (_isCloning) return;
@@ -415,7 +539,7 @@ public partial class CloneDialog : Window
         {
             _isCloning = true;
             CloneButton.IsEnabled = false;
-            CloneProgressBar.Visibility = Visibility.Visible;
+            CloneProgressSection.Visibility = Visibility.Visible;
             ProgressText.Text = "Cloning repository...";
 
             // Get credentials based on URL type
@@ -454,12 +578,12 @@ public partial class CloneDialog : Window
         catch (Exception ex)
         {
             ProgressText.Text = "";
-            CloneProgressBar.Visibility = Visibility.Collapsed;
+            CloneProgressSection.Visibility = Visibility.Collapsed;
 
             var message = ex.Message;
             if (message.Contains("401") || message.Contains("403") || message.Contains("Authentication"))
             {
-                message = "Authentication failed. Check your PAT in Settings.\n\n" + message;
+                message = "Authentication failed. Check your credentials in Settings.\n\n" + message;
             }
 
             MessageBox.Show($"Clone failed:\n\n{message}", "Clone Error",
@@ -469,7 +593,7 @@ public partial class CloneDialog : Window
         {
             _isCloning = false;
             CloneButton.IsEnabled = true;
-            CloneProgressBar.Visibility = Visibility.Collapsed;
+            CloneProgressSection.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -489,10 +613,22 @@ public partial class CloneDialog : Window
                                 !string.IsNullOrEmpty(repoName) &&
                                 !_isCloning;
 
-        // Update URL display visibility
-        SelectedUrlBorder.Visibility = string.IsNullOrEmpty(_selectedUrl)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        // Update footer info
+        if (string.IsNullOrEmpty(_selectedUrl))
+        {
+            FooterInfoText.Text = "Select a repository to clone";
+            FooterInfoIcon.Visibility = Visibility.Visible;
+        }
+        else if (string.IsNullOrEmpty(destination))
+        {
+            FooterInfoText.Text = "Choose a destination folder";
+            FooterInfoIcon.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            FooterInfoText.Text = "";
+            FooterInfoIcon.Visibility = Visibility.Collapsed;
+        }
     }
 
     private static bool IsAzureDevOpsUrl(string url)
@@ -530,4 +666,6 @@ public partial class CloneDialog : Window
 
         return null;
     }
+
+    #endregion
 }

@@ -16,9 +16,6 @@
         <sys:Double x:Key="TrailHeight" xmlns:sys="clr-namespace:System;assembly=mscorlib">23</sys:Double>
         <converters:BoolToOpacityConverter x:Key="BoolToOpacityConverter"/>
         <converters:IdenticonConverter x:Key="IdenticonConverter"/>
-        <!-- Leaf green accent colors -->
-        <SolidColorBrush x:Key="LeafAccentHoverBrush" Color="#3328A745"/>
-        <SolidColorBrush x:Key="LeafAccentSelectedBrush" Color="#5528A745"/>
     </UserControl.Resources>
 
     <Grid>
@@ -219,11 +216,11 @@
                                 <DataTemplate.Triggers>
                                     <!-- Hover: subtle green highlight -->
                                     <Trigger SourceName="StashRowContainer" Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="StashHighlightBorder" Property="Background" Value="{StaticResource LeafAccentHoverBrush}"/>
+                                        <Setter TargetName="StashHighlightBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}"/>
                                     </Trigger>
                                     <!-- Selected: stronger highlight -->
                                     <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                        <Setter TargetName="StashHighlightBorder" Property="Background" Value="{StaticResource LeafAccentSelectedBrush}"/>
+                                        <Setter TargetName="StashHighlightBorder" Property="Background" Value="{DynamicResource LeafAccentSelectedBrush}"/>
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
@@ -276,11 +273,11 @@
                             <DataTemplate.Triggers>
                                 <!-- Hover: subtle green highlight -->
                                 <Trigger SourceName="RowContainer" Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="HighlightBorder" Property="Background" Value="{StaticResource LeafAccentHoverBrush}"/>
+                                    <Setter TargetName="HighlightBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}"/>
                                 </Trigger>
                                 <!-- Selected or search match: stronger green highlight -->
                                 <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
-                                    <Setter TargetName="HighlightBorder" Property="Background" Value="{StaticResource LeafAccentSelectedBrush}"/>
+                                    <Setter TargetName="HighlightBorder" Property="Background" Value="{DynamicResource LeafAccentSelectedBrush}"/>
                                 </DataTrigger>
                             </DataTemplate.Triggers>
                         </DataTemplate>
