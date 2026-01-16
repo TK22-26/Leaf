@@ -1,3 +1,4 @@
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
@@ -24,6 +25,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IAutoFetchService _autoFetchService;
     private readonly Window _ownerWindow;
     private readonly FileWatcherService _fileWatcherService;
+    private string? _pendingBranchBaseSha;
 
     /// <summary>
     /// Auto-fetch timer interval (10 minutes).
@@ -761,6 +763,18 @@ public partial class MainViewModel : ObservableObject
         if (SelectedRepository == null) return;
 
         // Show floating branch input
+        _pendingBranchBaseSha = null;
+        NewBranchName = string.Empty;
+        IsBranchInputVisible = true;
+    }
+
+    [RelayCommand]
+    public void CreateBranchAtCommit(CommitInfo commit)
+    {
+        if (SelectedRepository == null || commit == null)
+            return;
+
+        _pendingBranchBaseSha = commit.Sha;
         NewBranchName = string.Empty;
         IsBranchInputVisible = true;
     }
@@ -778,11 +792,18 @@ public partial class MainViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            StatusMessage = $"Creating branch '{branchName}'...";
-
-            await _gitService.CreateBranchAsync(SelectedRepository.Path, branchName);
-
-            StatusMessage = $"Created and checked out branch '{branchName}'";
+            if (!string.IsNullOrWhiteSpace(_pendingBranchBaseSha))
+            {
+                StatusMessage = $"Creating branch '{branchName}' at {_pendingBranchBaseSha[..7]}...";
+                await _gitService.CreateBranchAtCommitAsync(SelectedRepository.Path, branchName, _pendingBranchBaseSha);
+                StatusMessage = $"Created and checked out branch '{branchName}'";
+            }
+            else
+            {
+                StatusMessage = $"Creating branch '{branchName}'...";
+                await _gitService.CreateBranchAsync(SelectedRepository.Path, branchName);
+                StatusMessage = $"Created and checked out branch '{branchName}'";
+            }
             SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
@@ -792,6 +813,7 @@ public partial class MainViewModel : ObservableObject
         }
         finally
         {
+            _pendingBranchBaseSha = null;
             IsBusy = false;
         }
     }
@@ -801,6 +823,7 @@ public partial class MainViewModel : ObservableObject
     {
         IsBranchInputVisible = false;
         NewBranchName = string.Empty;
+        _pendingBranchBaseSha = null;
     }
 
     /// <summary>
@@ -809,15 +832,98 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     public async Task DeleteBranchAsync(BranchInfo branch)
     {
-        if (SelectedRepository == null) return;
+        if (SelectedRepository == null || branch == null)
+            return;
 
-        // TODO: Implement actual deletion logic with safety checks (merged/unmerged)
-        // For now, just show the placeholder message that was previously in the View
-        await Application.Current.Dispatcher.InvokeAsync(() => 
+        if (!await ConfirmBranchDeletionAsync(branch))
+            return;
+
+        try
         {
-             MessageBox.Show($"Delete branch '{branch.Name}' - not yet implemented in Service",
+            IsBusy = true;
+            StatusMessage = $"Deleting branch {branch.Name}...";
+
+            if (branch.IsRemote)
+            {
+                var remoteName = branch.RemoteName ?? "origin";
+                var branchName = GetRemoteBranchShortName(branch.Name, remoteName);
+                await _gitService.DeleteRemoteBranchAsync(SelectedRepository.Path, remoteName, branchName);
+            }
+            else
+            {
+                await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: false);
+            }
+
+            StatusMessage = $"Deleted branch {branch.Name}";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            if (!branch.IsRemote && await ConfirmForceDeleteAsync(branch, ex.Message))
+            {
+                try
+                {
+                    await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: true);
+                    StatusMessage = $"Force deleted branch {branch.Name}";
+                    await RefreshAsync();
+                    return;
+                }
+                catch (Exception forceEx)
+                {
+                    StatusMessage = $"Delete branch failed: {forceEx.Message}";
+                }
+            }
+            else
+            {
+                StatusMessage = $"Delete branch failed: {ex.Message}";
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private static string GetRemoteBranchShortName(string branchName, string remoteName)
+    {
+        var prefix = remoteName + "/";
+        return branchName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? branchName[prefix.Length..]
+            : branchName;
+    }
+
+    private Task<bool> ConfirmBranchDeletionAsync(BranchInfo branch)
+    {
+        return Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            if (branch.IsCurrent)
+            {
+                MessageBox.Show("Cannot delete the currently checked out branch.",
                     "Delete Branch", MessageBoxButton.OK, MessageBoxImage.Information);
-        });
+                return false;
+            }
+
+            var scope = branch.IsRemote ? "remote" : "local";
+            var result = MessageBox.Show(
+                $"Delete {scope} branch '{branch.Name}'?\n\nThis cannot be undone.",
+                "Delete Branch",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            return result == MessageBoxResult.Yes;
+        }).Task;
+    }
+
+    private Task<bool> ConfirmForceDeleteAsync(BranchInfo branch, string error)
+    {
+        return Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            var result = MessageBox.Show(
+                $"Failed to delete branch '{branch.Name}'.\n\n{error}\n\nForce delete this branch?",
+                "Force Delete Branch",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            return result == MessageBoxResult.Yes;
+        }).Task;
     }
 
     /// <summary>
@@ -1037,6 +1143,51 @@ public partial class MainViewModel : ObservableObject
     {
         IsDiffViewerVisible = false;
         DiffViewerViewModel?.Clear();
+    }
+
+    private static FileDiffResult BuildUnifiedDiffResult(string diffText, string title)
+    {
+        var result = new FileDiffResult
+        {
+            FileName = title,
+            FilePath = title,
+            InlineContent = diffText
+        };
+
+        int linesAdded = 0;
+        int linesDeleted = 0;
+
+        foreach (var rawLine in diffText.Split('\n'))
+        {
+            var line = rawLine.TrimEnd('\r');
+            var type = DiffLineType.Unchanged;
+
+            if (line.StartsWith("+") && !line.StartsWith("+++"))
+            {
+                type = DiffLineType.Added;
+                linesAdded++;
+            }
+            else if (line.StartsWith("-") && !line.StartsWith("---"))
+            {
+                type = DiffLineType.Deleted;
+                linesDeleted++;
+            }
+            else if (line.StartsWith("@@"))
+            {
+                type = DiffLineType.Modified;
+            }
+
+            result.Lines.Add(new DiffLine
+            {
+                Text = line,
+                Type = type
+            });
+        }
+
+        result.LinesAddedCount = linesAdded;
+        result.LinesDeletedCount = linesDeleted;
+
+        return result;
     }
 
     /// <summary>
@@ -1453,6 +1604,118 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusMessage = $"Checkout failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public void CopyCommitSha(CommitInfo commit)
+    {
+        if (commit == null)
+            return;
+
+        Clipboard.SetText(commit.Sha);
+        StatusMessage = $"Copied {commit.ShortSha} to clipboard";
+    }
+
+    [RelayCommand]
+    public async Task CherryPickCommitAsync(CommitInfo commit)
+    {
+        if (commit == null || SelectedRepository == null)
+            return;
+
+        IsBusy = true;
+        StatusMessage = $"Cherry-picking {commit.ShortSha}...";
+
+        try
+        {
+            var result = await _gitService.CherryPickAsync(SelectedRepository.Path, commit.Sha);
+            if (result.Success)
+            {
+                StatusMessage = $"Cherry-picked {commit.ShortSha}";
+                await RefreshAsync();
+            }
+            else if (result.HasConflicts)
+            {
+                StatusMessage = $"Cherry-pick has conflicts: {commit.ShortSha}";
+                await RefreshAsync();
+            }
+            else
+            {
+                StatusMessage = $"Cherry-pick failed: {result.ErrorMessage}";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Cherry-pick failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task CompareCommitToWorkingDirectoryAsync(CommitInfo commit)
+    {
+        if (commit == null || SelectedRepository == null || DiffViewerViewModel == null)
+            return;
+
+        DiffViewerViewModel.IsLoading = true;
+        IsDiffViewerVisible = true;
+
+        try
+        {
+            var diffText = await _gitService.GetCommitToWorkingTreeDiffAsync(SelectedRepository.Path, commit.Sha);
+            if (string.IsNullOrWhiteSpace(diffText))
+            {
+                StatusMessage = "No differences between commit and working directory";
+                IsDiffViewerVisible = false;
+                return;
+            }
+
+            var diffResult = BuildUnifiedDiffResult(diffText, $"Working Directory vs {commit.ShortSha}");
+            DiffViewerViewModel.LoadDiff(diffResult);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Compare failed: {ex.Message}";
+            IsDiffViewerVisible = false;
+        }
+        finally
+        {
+            DiffViewerViewModel.IsLoading = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task CreateTagAtCommitAsync(CommitInfo commit)
+    {
+        if (commit == null || SelectedRepository == null)
+            return;
+
+        var dialog = new CreateTagDialog
+        {
+            Owner = _ownerWindow
+        };
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"Creating tag '{dialog.TagName}'...";
+            await _gitService.CreateTagAsync(SelectedRepository.Path, dialog.TagName, dialog.TagMessage, commit.Sha);
+            StatusMessage = $"Created tag '{dialog.TagName}'";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Create tag failed: {ex.Message}";
         }
         finally
         {

@@ -100,6 +100,21 @@ public interface IGitService
     Task CreateBranchAsync(string repoPath, string branchName, bool checkout = true);
 
     /// <summary>
+    /// Create a new branch at a specific commit.
+    /// </summary>
+    Task CreateBranchAtCommitAsync(string repoPath, string branchName, string commitSha, bool checkout = true);
+
+    /// <summary>
+    /// Cherry-pick a commit onto the current branch.
+    /// </summary>
+    Task<Models.MergeResult> CherryPickAsync(string repoPath, string commitSha);
+
+    /// <summary>
+    /// Get a unified diff between a commit and the working tree.
+    /// </summary>
+    Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha);
+
+    /// <summary>
     /// Stash changes.
     /// </summary>
     Task StashAsync(string repoPath, string? message = null);

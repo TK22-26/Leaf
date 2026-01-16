@@ -285,11 +285,13 @@ public class GitGraphCanvas : FrameworkElement
 
     // Track overflow labels by row for hit testing
     private readonly Dictionary<int, (List<BranchLabel> Labels, Rect HitArea)> _overflowByRow = new();
+    private readonly Dictionary<int, (List<string> Tags, Rect HitArea, double StartX)> _tagOverflowByRow = new();
     private int _hoveredOverflowRow = -1;
 
     // Track which rows are expanded (showing all branches vertically)
     // Key: node index (not display row), Value: number of extra rows needed
     private readonly Dictionary<int, int> _expandedNodes = new();
+    private readonly HashSet<int> _expandedTagNodes = new();
 
     // Track animation progress for each expanded node (0.0 to 1.0)
     private readonly Dictionary<int, double> _expansionProgress = new();
@@ -302,6 +304,7 @@ public class GitGraphCanvas : FrameworkElement
 
     // Track expanded item hit areas for hover/click detection
     private readonly Dictionary<int, List<(BranchLabel Label, Rect HitArea)>> _expandedItemHitAreas = new();
+    private readonly Dictionary<int, List<Rect>> _expandedTagHitAreas = new();
 
     // Popup for showing branch names tooltip
     private System.Windows.Controls.Primitives.Popup? _branchTooltipPopup;
@@ -595,10 +598,44 @@ public class GitGraphCanvas : FrameworkElement
                     return;
                 }
             }
+
+            foreach (var kvp in _tagOverflowByRow)
+            {
+                int displayRow = kvp.Key;
+                var overflow = kvp.Value;
+
+                if (overflow.HitArea.Contains(pos))
+                {
+                    int rowOffset = (HasWorkingChanges ? 1 : 0) + StashCount;
+                    int nodeIndex = displayRow - rowOffset;
+
+                    if (nodeIndex >= 0)
+                    {
+                        bool wasExpanded = _expandedTagNodes.Contains(nodeIndex);
+                        if (wasExpanded)
+                        {
+                            _expandedTagNodes.Remove(nodeIndex);
+                            _expandedTagHitAreas.Remove(nodeIndex);
+                            if (_expandedNodes.Count == 0 && _expandedTagNodes.Count == 0)
+                                Mouse.Capture(null);
+                        }
+                        else
+                        {
+                            _expandedTagNodes.Add(nodeIndex);
+                            Mouse.Capture(this, CaptureMode.SubTree);
+                        }
+
+                        InvalidateVisual();
+                        InvalidateMeasure();
+                    }
+                    e.Handled = true;
+                    return;
+                }
+            }
         }
 
         // If clicking outside any expanded tag, collapse all expanded tags with animation
-        if (_expandedNodes.Count > 0)
+        if (_expandedNodes.Count > 0 || _expandedTagNodes.Count > 0)
         {
             // Check if click is inside any expanded tag hit area
             bool clickedInsideExpanded = false;
@@ -607,6 +644,19 @@ public class GitGraphCanvas : FrameworkElement
                 foreach (var item in kvp.Value)
                 {
                     if (item.HitArea.Contains(pos))
+                    {
+                        clickedInsideExpanded = true;
+                        break;
+                    }
+                }
+                if (clickedInsideExpanded) break;
+            }
+
+            foreach (var kvp in _expandedTagHitAreas)
+            {
+                foreach (var rect in kvp.Value)
+                {
+                    if (rect.Contains(pos))
                     {
                         clickedInsideExpanded = true;
                         break;
@@ -625,10 +675,20 @@ public class GitGraphCanvas : FrameworkElement
                 }
             }
 
+            foreach (var kvp in _tagOverflowByRow)
+            {
+                if (kvp.Value.HitArea.Contains(pos))
+                {
+                    clickedInsideExpanded = true;
+                    break;
+                }
+            }
+
             if (!clickedInsideExpanded)
             {
                 // Collapse all expanded nodes with animation
                 CollapseAllExpandedTags();
+                CollapseAllExpandedTagLabels();
             }
         }
     }
@@ -658,6 +718,23 @@ public class GitGraphCanvas : FrameworkElement
         // Notify listeners
         RowExpansionChanged?.Invoke(this, new RowExpansionChangedEventArgs(
             -1, false, 0, TotalExpansionHeight));
+    }
+
+    private void CollapseAllExpandedTagLabels()
+    {
+        if (_expandedTagNodes.Count == 0)
+            return;
+
+        _expandedTagNodes.Clear();
+        _expandedTagHitAreas.Clear();
+
+        if (_expandedNodes.Count == 0)
+        {
+            Mouse.Capture(null);
+        }
+
+        InvalidateVisual();
+        InvalidateMeasure();
     }
 
     private void OnMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
@@ -715,6 +792,18 @@ public class GitGraphCanvas : FrameworkElement
                             ShowBranchTooltip(tooltipNode.BranchLabels, overflow.HitArea);
                         }
                     }
+                    Cursor = Cursors.Hand;
+                    return;
+                }
+            }
+
+            foreach (var kvp in _tagOverflowByRow)
+            {
+                int displayRow = kvp.Key;
+                var overflow = kvp.Value;
+
+                if (overflow.HitArea.Contains(pos))
+                {
                     Cursor = Cursors.Hand;
                     return;
                 }
@@ -841,6 +930,7 @@ public class GitGraphCanvas : FrameworkElement
     {
         // Clear overflow tracking before re-drawing
         _overflowByRow.Clear();
+        _tagOverflowByRow.Clear();
         base.OnRender(dc);
 
         // Row offset: working changes (0 or 1) + stash count
@@ -947,9 +1037,16 @@ public class GitGraphCanvas : FrameworkElement
         for (int i = minNodeIndex; i <= maxNodeIndex; i++)
         {
             var node = nodes[i];
+            double branchLabelRight = 0;
             if (node.BranchLabels.Count > 0)
             {
-                DrawBranchLabels(dc, node, rowOffset);
+                branchLabelRight = DrawBranchLabels(dc, node, rowOffset);
+            }
+
+            if (node.TagNames.Count > 0 && !_expandedNodes.ContainsKey(node.RowIndex))
+            {
+                double tagStartX = branchLabelRight > 0 ? branchLabelRight + 4 : 4;
+                DrawTagLabels(dc, node, rowOffset, tagStartX);
             }
         }
 
@@ -959,14 +1056,14 @@ public class GitGraphCanvas : FrameworkElement
         var hoveredNode = HoveredSha != null ? nodesBySha.GetValueOrDefault(HoveredSha) : null;
 
         // Draw selected ghost tag first (so hovered draws on top if same row)
-        if (selectedNode != null && selectedNode.BranchLabels.Count == 0 &&
+        if (selectedNode != null && selectedNode.BranchLabels.Count == 0 && selectedNode.TagNames.Count == 0 &&
             selectedNode.RowIndex >= minNodeIndex && selectedNode.RowIndex <= maxNodeIndex)
         {
             DrawGhostTag(dc, selectedNode, rowOffset);
         }
 
         // Draw hovered ghost tag (even if same as selected, it will just overlap)
-        if (hoveredNode != null && hoveredNode.BranchLabels.Count == 0 &&
+        if (hoveredNode != null && hoveredNode.BranchLabels.Count == 0 && hoveredNode.TagNames.Count == 0 &&
             hoveredNode.RowIndex >= minNodeIndex && hoveredNode.RowIndex <= maxNodeIndex &&
             hoveredNode.Sha != SelectedSha) // Don't draw twice if same commit
         {
@@ -983,6 +1080,16 @@ public class GitGraphCanvas : FrameworkElement
                 double y = GetYForRow(node.RowIndex + rowOffset);
                 double nodeX = GetXForColumn(node.ColumnIndex);
                 DrawExpandedBranchLabels(dc, node, y, nodeX, rowOffset);
+            }
+        }
+
+        // Seventh pass: Draw expanded tag dropdowns on top of everything
+        foreach (var nodeIndex in _expandedTagNodes)
+        {
+            if (nodeIndex >= 0 && nodeIndex < nodes.Count)
+            {
+                var node = nodes[nodeIndex];
+                DrawExpandedTagLabels(dc, node, rowOffset);
             }
         }
     }
@@ -1306,7 +1413,7 @@ public class GitGraphCanvas : FrameworkElement
         dc.DrawGeometry(null, pen, geometry);
     }
 
-    private void DrawBranchLabels(DrawingContext dc, GitTreeNode node, int rowOffset = 0)
+    private double DrawBranchLabels(DrawingContext dc, GitTreeNode node, int rowOffset = 0)
     {
         double y = GetYForRow(node.RowIndex + rowOffset);
         double nodeX = GetXForColumn(node.ColumnIndex);
@@ -1322,7 +1429,7 @@ public class GitGraphCanvas : FrameworkElement
         int nodeIndex = node.RowIndex;
         if (_expandedNodes.ContainsKey(nodeIndex))
         {
-            return;
+            return 0;
         }
 
         foreach (var label in node.BranchLabels)
@@ -1525,6 +1632,255 @@ public class GitGraphCanvas : FrameworkElement
                 double lineEndX = nodeX - NodeRadius - 4;
                 dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(lineEndX, y));
             }
+        }
+
+        return lastLabelRight;
+    }
+
+    private void DrawTagLabels(DrawingContext dc, GitTreeNode node, int rowOffset, double startX)
+    {
+        double y = GetYForRow(node.RowIndex + rowOffset);
+        double nodeX = GetXForColumn(node.ColumnIndex);
+        double labelX = Math.Max(4, startX);
+        double lastLabelRight = 0;
+        Brush? lastLabelBrush = null;
+        int drawnCount = 0;
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        int displayRow = node.RowIndex + rowOffset;
+
+        if (_expandedTagNodes.Contains(node.RowIndex))
+        {
+            _tagOverflowByRow[displayRow] = (node.TagNames, Rect.Empty, labelX);
+            return;
+        }
+
+        var ghostTextBrush = new SolidColorBrush(Color.FromArgb(
+            (byte)(255 * GhostTagOpacity), 255, 255, 255));
+        ghostTextBrush.Freeze();
+
+        foreach (var tagName in node.TagNames)
+        {
+            var baseBrush = GraphBuilder.GetBranchColor(tagName) as SolidColorBrush ?? Brushes.Gray;
+            var baseColor = baseBrush.Color;
+            var ghostBrush = new SolidColorBrush(Color.FromArgb(
+                (byte)(baseColor.A * GhostTagOpacity),
+                baseColor.R, baseColor.G, baseColor.B));
+            ghostBrush.Freeze();
+
+            double fontSize = 11;
+            double labelHeight = 18;
+            double cornerRadius = 4;
+            double hPadding = 6;
+
+            var nameFormatted = new FormattedText(
+                tagName,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                LabelTypeface,
+                fontSize,
+                ghostTextBrush,
+                dpi);
+
+            double nameWidth = nameFormatted.Width;
+            double totalWidth = hPadding + nameWidth + hPadding;
+
+            int remainingAfterThis = node.TagNames.Count - drawnCount - 1;
+            string overflowSuffix = "";
+            double suffixWidth = 0;
+
+            if (remainingAfterThis > 0)
+            {
+                var nextNameFormatted = new FormattedText(
+                    node.TagNames[drawnCount + 1],
+                    CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    LabelTypeface,
+                    fontSize,
+                    ghostTextBrush,
+                    dpi);
+
+                double nextEstWidth = hPadding * 2 + nextNameFormatted.Width;
+                if (labelX + totalWidth + 4 + nextEstWidth > LabelAreaWidth - 8)
+                {
+                    overflowSuffix = $" +{remainingAfterThis}";
+                    var suffixFormatted = new FormattedText(
+                        overflowSuffix,
+                        CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight,
+                        LabelTypeface,
+                        fontSize,
+                        ghostTextBrush,
+                        dpi);
+                    suffixWidth = suffixFormatted.Width;
+                    totalWidth += suffixWidth;
+                }
+            }
+
+            if (labelX + totalWidth > LabelAreaWidth - 8)
+                break;
+
+            var labelRect = new Rect(labelX, y - labelHeight / 2, totalWidth, labelHeight);
+            dc.DrawRoundedRectangle(ghostBrush, LabelBorderPen, labelRect, cornerRadius, cornerRadius);
+            dc.DrawText(nameFormatted, new Point(labelX + hPadding, y - nameFormatted.Height / 2));
+
+            if (!string.IsNullOrEmpty(overflowSuffix))
+            {
+                var suffixFormatted = new FormattedText(
+                    overflowSuffix,
+                    CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    LabelTypeface,
+                    fontSize,
+                    ghostTextBrush,
+                    dpi);
+                dc.DrawText(suffixFormatted, new Point(labelX + hPadding + nameWidth, y - suffixFormatted.Height / 2));
+                lastLabelRight = labelX + totalWidth;
+                lastLabelBrush = ghostBrush;
+                var overflowTags = node.TagNames.Skip(drawnCount + 1).ToList();
+                _tagOverflowByRow[displayRow] = (overflowTags, labelRect, labelX);
+                break;
+            }
+
+            lastLabelRight = labelX + totalWidth;
+            lastLabelBrush = ghostBrush;
+            drawnCount++;
+            labelX += totalWidth + 4;
+        }
+
+        if (lastLabelRight > 0 && lastLabelBrush != null)
+        {
+            var linePen = new Pen(lastLabelBrush, 1.5);
+            linePen.Freeze();
+
+            if (node.IsMerge)
+            {
+                double mergeRadius = NodeRadius * 0.875;
+                var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+                var mergeCircle = new EllipseGeometry(new Point(nodeX, y), mergeRadius, mergeRadius);
+                var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, mergeCircle);
+                clipGeometry.Freeze();
+
+                dc.PushClip(clipGeometry);
+                dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(nodeX, y));
+                dc.Pop();
+            }
+            else
+            {
+                double lineEndX = nodeX - NodeRadius - 4;
+                dc.DrawLine(linePen, new Point(lastLabelRight, y), new Point(lineEndX, y));
+            }
+        }
+    }
+
+    private void DrawExpandedTagLabels(DrawingContext dc, GitTreeNode node, int rowOffset)
+    {
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        int displayRow = node.RowIndex + rowOffset;
+        double y = GetYForRow(node.RowIndex + rowOffset);
+        double nodeX = GetXForColumn(node.ColumnIndex);
+
+        if (!_tagOverflowByRow.TryGetValue(displayRow, out var overflow))
+            return;
+
+        var tags = node.TagNames;
+        if (tags.Count == 0)
+            return;
+
+        double labelX = overflow.StartX;
+        double fontSize = 11;
+        double itemHeight = 18;
+        double hPadding = 6;
+
+        var ghostTextBrush = new SolidColorBrush(Color.FromArgb(
+            (byte)(255 * GhostTagOpacity), 255, 255, 255));
+        ghostTextBrush.Freeze();
+
+        var firstNameFormatted = new FormattedText(
+            tags[0],
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            LabelTypeface,
+            fontSize,
+            ghostTextBrush,
+            dpi);
+
+        int overflowCount = tags.Count - 1;
+        var suffixFormatted = new FormattedText(
+            $" +{overflowCount}",
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            LabelTypeface,
+            fontSize,
+            ghostTextBrush,
+            dpi);
+
+        double tagWidth = hPadding + firstNameFormatted.Width + suffixFormatted.Width + hPadding;
+        double tagHeight = itemHeight + ((tags.Count - 1) * itemHeight);
+        double tagTop = y - itemHeight / 2;
+
+        var firstBrush = GraphBuilder.GetBranchColor(tags[0]) as SolidColorBrush ?? Brushes.Gray;
+        var firstColor = firstBrush.Color;
+        var tagBgBrush = new SolidColorBrush(Color.FromArgb(
+            (byte)(firstColor.A * GhostTagOpacity),
+            firstColor.R, firstColor.G, firstColor.B));
+        tagBgBrush.Freeze();
+
+        var tagRect = new Rect(labelX, tagTop, tagWidth, tagHeight);
+        dc.DrawRoundedRectangle(tagBgBrush, LabelBorderPen, tagRect, 4, 4);
+
+        var hitAreas = new List<Rect>();
+
+        double currentY = y;
+        for (int i = 0; i < tags.Count; i++)
+        {
+            var tagName = tags[i];
+            var nameFormatted = new FormattedText(
+                tagName,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                LabelTypeface,
+                fontSize,
+                ghostTextBrush,
+                dpi);
+
+            if (i > 0)
+            {
+                var tagBrush = GraphBuilder.GetBranchColor(tagName) as SolidColorBrush ?? Brushes.Gray;
+                var tagColor = tagBrush.Color;
+                var rowBrush = new SolidColorBrush(Color.FromArgb(
+                    (byte)(tagColor.A * GhostTagOpacity),
+                    tagColor.R, tagColor.G, tagColor.B));
+                rowBrush.Freeze();
+                var rowRect = new Rect(labelX, currentY - itemHeight / 2, tagWidth, itemHeight);
+                dc.DrawRoundedRectangle(rowBrush, null, rowRect, 3, 3);
+            }
+
+            dc.DrawText(nameFormatted, new Point(labelX + hPadding, currentY - nameFormatted.Height / 2));
+            hitAreas.Add(new Rect(labelX, currentY - itemHeight / 2, tagWidth, itemHeight));
+            currentY += itemHeight;
+        }
+
+        _expandedTagHitAreas[node.RowIndex] = hitAreas;
+
+        var linePen = new Pen(tagBgBrush, 1.5);
+        linePen.Freeze();
+
+        if (node.IsMerge)
+        {
+            double mergeRadius = NodeRadius * 0.875;
+            var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+            var mergeCircle = new EllipseGeometry(new Point(nodeX, y), mergeRadius, mergeRadius);
+            var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, mergeCircle);
+            clipGeometry.Freeze();
+
+            dc.PushClip(clipGeometry);
+            dc.DrawLine(linePen, new Point(labelX + tagWidth, y), new Point(nodeX, y));
+            dc.Pop();
+        }
+        else
+        {
+            double lineEndX = nodeX - NodeRadius - 4;
+            dc.DrawLine(linePen, new Point(labelX + tagWidth, y), new Point(lineEndX, y));
         }
     }
 

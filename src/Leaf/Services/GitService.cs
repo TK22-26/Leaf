@@ -872,6 +872,54 @@ public class GitService : IGitService
         });
     }
 
+    public async Task CreateBranchAtCommitAsync(string repoPath, string branchName, string commitSha, bool checkout = true)
+    {
+        await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+            var commit = repo.Lookup<Commit>(commitSha);
+            if (commit == null)
+            {
+                throw new InvalidOperationException($"Commit '{commitSha}' not found.");
+            }
+
+            var branch = repo.CreateBranch(branchName, commit);
+            if (checkout)
+            {
+                Commands.Checkout(repo, branch);
+            }
+        });
+    }
+
+    public async Task<Models.MergeResult> CherryPickAsync(string repoPath, string commitSha)
+    {
+        var result = await RunGitCommandAsync(repoPath, "cherry-pick", commitSha);
+        if (result.ExitCode == 0)
+        {
+            return new Models.MergeResult { Success = true };
+        }
+
+        var conflicts = await GetConflictsAsync(repoPath);
+        return new Models.MergeResult
+        {
+            Success = false,
+            HasConflicts = conflicts.Count > 0,
+            ErrorMessage = string.IsNullOrWhiteSpace(result.Error) ? result.Output : result.Error
+        };
+    }
+
+    public async Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha)
+    {
+        var result = await RunGitCommandAsync(repoPath, "diff", commitSha);
+        if (result.ExitCode != 0)
+        {
+            var message = string.IsNullOrWhiteSpace(result.Error) ? result.Output : result.Error;
+            throw new InvalidOperationException(message);
+        }
+
+        return result.Output;
+    }
+
     public async Task StashAsync(string repoPath, string? message = null)
     {
         await Task.Run(() =>

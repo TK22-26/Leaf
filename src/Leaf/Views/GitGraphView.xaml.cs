@@ -405,6 +405,62 @@ public partial class GitGraphView : UserControl
         };
         menu.Items.Add(checkoutItem);
 
+        // Create branch here
+        var createBranchItem = new MenuItem
+        {
+            Header = "Create branch here...",
+            Command = mainViewModel.CreateBranchAtCommitCommand,
+            CommandParameter = commit,
+            Icon = new TextBlock
+            {
+                Text = "\uE8B7",
+                FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"),
+                FontSize = 14
+            }
+        };
+        menu.Items.Add(createBranchItem);
+
+        // Cherry-pick commit
+        var cherryPickItem = new MenuItem
+        {
+            Header = "Cherry-pick commit",
+            Command = mainViewModel.CherryPickCommitCommand,
+            CommandParameter = commit
+        };
+        menu.Items.Add(cherryPickItem);
+
+        menu.Items.Add(new Separator());
+
+        var copyShaItem = new MenuItem
+        {
+            Header = "Copy SHA",
+            Command = mainViewModel.CopyCommitShaCommand,
+            CommandParameter = commit,
+            Icon = new TextBlock
+            {
+                Text = "\uE8C8",
+                FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"),
+                FontSize = 14
+            }
+        };
+        menu.Items.Add(copyShaItem);
+
+        var compareItem = new MenuItem
+        {
+            Header = "Compare with working directory",
+            Command = mainViewModel.CompareCommitToWorkingDirectoryCommand,
+            CommandParameter = commit
+        };
+        menu.Items.Add(compareItem);
+
+        var createTagItem = new MenuItem
+        {
+            Header = "Create tag here...",
+            Command = mainViewModel.CreateTagAtCommitCommand,
+            CommandParameter = commit
+        };
+        menu.Items.Add(createTagItem);
+
         // Merge branch labels
         if (commit.BranchLabels.Count > 0)
         {
