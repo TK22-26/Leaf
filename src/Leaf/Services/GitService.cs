@@ -95,7 +95,7 @@ public class GitService : IGitService
                 });
             }
 
-            return commits
+            var commitList = commits
                 .Take(count)
                 .Select(c => new CommitInfo
                 {
@@ -112,7 +112,74 @@ public class GitService : IGitService
                     TagNames = tagTips.TryGetValue(c.Sha, out var tags) ? tags : []
                 })
                 .ToList();
+
+            var commitsBySha = commitList.ToDictionary(c => c.Sha, StringComparer.OrdinalIgnoreCase);
+            var visibleShas = new HashSet<string>(commitsBySha.Keys, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var tipSha in localBranchTips.Keys.Concat(remoteBranchTips.Keys))
+            {
+                if (string.IsNullOrWhiteSpace(tipSha) || visibleShas.Contains(tipSha))
+                    continue;
+
+                var nearestSha = FindNearestVisibleAncestor(repo, tipSha, visibleShas);
+                if (nearestSha == null || !commitsBySha.TryGetValue(nearestSha, out var targetCommit))
+                    continue;
+
+                var labels = BuildBranchLabels(tipSha, localBranchTips, remoteBranchTips, currentBranchName);
+                AddBranchLabels(targetCommit, labels);
+            }
+
+            return commitList;
         });
+    }
+
+    private static string? FindNearestVisibleAncestor(Repository repo, string tipSha, HashSet<string> visibleShas)
+    {
+        var start = repo.Lookup<Commit>(tipSha);
+        if (start == null)
+            return null;
+
+        var queue = new Queue<Commit>();
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        queue.Enqueue(start);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!visited.Add(current.Sha))
+                continue;
+
+            if (visibleShas.Contains(current.Sha))
+                return current.Sha;
+
+            foreach (var parent in current.Parents)
+            {
+                if (!visited.Contains(parent.Sha))
+                {
+                    queue.Enqueue(parent);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static void AddBranchLabels(CommitInfo commit, List<BranchLabel> labels)
+    {
+        foreach (var label in labels)
+        {
+            if (!commit.BranchLabels.Any(existing =>
+                    string.Equals(existing.FullName, label.FullName, StringComparison.OrdinalIgnoreCase)))
+            {
+                commit.BranchLabels.Add(label);
+            }
+
+            if (label.IsLocal && !commit.BranchNames.Any(name =>
+                    string.Equals(name, label.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                commit.BranchNames.Add(label.Name);
+            }
+        }
     }
 
     private static string GetBranchNameWithoutRemote(string fullName)
