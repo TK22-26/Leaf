@@ -1,4 +1,6 @@
+using System;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Graph;
@@ -19,6 +21,7 @@ public partial class GitGraphViewModel : ObservableObject
 
     private readonly IGitService _gitService;
     private readonly GraphBuilder _graphBuilder = new();
+    private readonly Dictionary<string, Task<MergeCommitTooltipViewModel?>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
 
     [ObservableProperty]
     private string? _repositoryPath;
@@ -111,6 +114,11 @@ public partial class GitGraphViewModel : ObservableObject
 
         try
         {
+            if (!string.Equals(RepositoryPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                _mergeTooltipTasks.Clear();
+            }
+
             // Only show loading overlay on initial load (no existing data)
             // This prevents flashing when refreshing
             bool isInitialLoad = Commits.Count == 0;
@@ -430,5 +438,64 @@ public partial class GitGraphViewModel : ObservableObject
         {
             SelectCommit(commit);
         }
+    }
+
+    public bool TryGetMergeTooltip(string sha, out MergeCommitTooltipViewModel? tooltip)
+    {
+        if (_mergeTooltipTasks.TryGetValue(sha, out var task) && task.IsCompletedSuccessfully)
+        {
+            tooltip = task.Result;
+            return tooltip != null;
+        }
+
+        tooltip = null;
+        return false;
+    }
+
+    public Task<MergeCommitTooltipViewModel?> GetMergeTooltipAsync(CommitInfo commit)
+    {
+        if (!commit.IsMerge || string.IsNullOrWhiteSpace(RepositoryPath))
+        {
+            return Task.FromResult<MergeCommitTooltipViewModel?>(null);
+        }
+
+        if (_mergeTooltipTasks.TryGetValue(commit.Sha, out var existing))
+        {
+            return existing;
+        }
+
+        var task = BuildMergeTooltipAsync(commit, RepositoryPath);
+        _mergeTooltipTasks[commit.Sha] = task;
+        return task;
+    }
+
+    private async Task<MergeCommitTooltipViewModel?> BuildMergeTooltipAsync(CommitInfo commit, string repoPath)
+    {
+        var mergeCommits = await _gitService.GetMergeCommitsAsync(repoPath, commit.Sha);
+        if (mergeCommits.Count == 0)
+        {
+            return null;
+        }
+
+        var existingCommits = Commits.ToDictionary(c => c.Sha, StringComparer.OrdinalIgnoreCase);
+        foreach (var mergeCommit in mergeCommits)
+        {
+            if (existingCommits.TryGetValue(mergeCommit.Sha, out var existing))
+            {
+                mergeCommit.BranchNames = new List<string>(existing.BranchNames);
+                mergeCommit.BranchLabels = new List<BranchLabel>(existing.BranchLabels);
+                mergeCommit.TagNames = new List<string>(existing.TagNames);
+            }
+        }
+
+        var tooltipGraphBuilder = new GraphBuilder();
+        var visibleCommits = mergeCommits.Take(10).ToList();
+        var nodes = tooltipGraphBuilder.BuildGraph(visibleCommits);
+
+        return new MergeCommitTooltipViewModel(
+            new ObservableCollection<CommitInfo>(mergeCommits),
+            new ObservableCollection<GitTreeNode>(nodes),
+            tooltipGraphBuilder.MaxLane,
+            RowHeight);
     }
 }

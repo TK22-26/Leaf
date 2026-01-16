@@ -44,15 +44,15 @@ public partial class RepositoryInfo : ObservableObject
     /// <summary>
     /// Current branch name (refreshed on open).
     /// </summary>
-    [JsonIgnore]
     [ObservableProperty]
+    [property: JsonIgnore]
     private string _currentBranch = string.Empty;
 
     /// <summary>
     /// True if working directory has uncommitted changes.
     /// </summary>
-    [JsonIgnore]
     [ObservableProperty]
+    [property: JsonIgnore]
     private bool _isDirty;
 
     /// <summary>
@@ -77,27 +77,37 @@ public partial class RepositoryInfo : ObservableObject
     /// True if the repository exists on disk.
     /// </summary>
     [JsonIgnore]
-    public bool Exists => Directory.Exists(Path) && Directory.Exists(System.IO.Path.Combine(Path, ".git"));
+    public bool Exists
+    {
+        get
+        {
+            if (!Directory.Exists(Path))
+                return false;
+
+            var gitPath = System.IO.Path.Combine(Path, ".git");
+            return Directory.Exists(gitPath) || File.Exists(gitPath);
+        }
+    }
 
     /// <summary>
     /// Local branches in this repository.
     /// </summary>
-    [JsonIgnore]
     [ObservableProperty]
+    [property: JsonIgnore]
     private ObservableCollection<BranchInfo> _localBranches = [];
 
     /// <summary>
     /// Remote branches in this repository.
     /// </summary>
-    [JsonIgnore]
     [ObservableProperty]
+    [property: JsonIgnore]
     private ObservableCollection<BranchInfo> _remoteBranches = [];
 
     /// <summary>
     /// Whether this repo item is expanded in the tree view.
     /// </summary>
-    [JsonIgnore]
     [ObservableProperty]
+    [property: JsonIgnore]
     private bool _isExpanded;
 
     /// <summary>
@@ -109,29 +119,29 @@ public partial class RepositoryInfo : ObservableObject
     /// <summary>
     /// Branch categories for tree display (Local/Remote).
     /// </summary>
-    [JsonIgnore]
     [ObservableProperty]
+    [property: JsonIgnore]
     private ObservableCollection<BranchCategory> _branchCategories = [];
 
     /// <summary>
     /// True if a merge is currently in progress.
     /// </summary>
-    [JsonIgnore]
     [ObservableProperty]
+    [property: JsonIgnore]
     private bool _isMergeInProgress;
 
     /// <summary>
     /// The branch being merged (from MERGE_HEAD).
     /// </summary>
-    [JsonIgnore]
     [ObservableProperty]
+    [property: JsonIgnore]
     private string _mergingBranch = string.Empty;
 
     /// <summary>
     /// Number of files with merge conflicts.
     /// </summary>
-    [JsonIgnore]
     [ObservableProperty]
+    [property: JsonIgnore]
     private int _conflictCount;
 
     /// <summary>

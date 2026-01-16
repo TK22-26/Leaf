@@ -20,6 +20,7 @@ public interface IGitService
     /// <param name="count">Maximum number of commits to retrieve</param>
     /// <param name="branchName">Optional branch name to filter by</param>
     Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null);
+    Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha);
 
     /// <summary>
     /// Get details for a specific commit.

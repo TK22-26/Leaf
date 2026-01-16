@@ -61,13 +61,18 @@ public class RepositoryManagementService : IRepositoryManagementService
             .DistinctBy(r => r.Path)
             .ToList();
 
+        var minimalRepos = allRepos
+            .Select(CreateRepoSnapshot)
+            .ToList();
+
         var customGroups = RepositoryGroups
             .Where(g => g.Type == GroupType.Custom)
+            .Select(CreateGroupSnapshot)
             .ToList();
 
         var data = new RepositoryData
         {
-            Repositories = allRepos,
+            Repositories = minimalRepos,
             CustomGroups = customGroups
         };
 
@@ -267,5 +272,41 @@ public class RepositoryManagementService : IRepositoryManagementService
                 RepositoryRootItems.RemoveAt(i);
             }
         }
+    }
+
+    private static RepositoryInfo CreateRepoSnapshot(RepositoryInfo repo)
+    {
+        return new RepositoryInfo
+        {
+            Path = repo.Path,
+            Name = repo.Name,
+            Tags = repo.Tags.ToList(),
+            LastAccessed = repo.LastAccessed,
+            GroupId = repo.GroupId,
+            IsPinned = repo.IsPinned
+        };
+    }
+
+    private static RepositoryGroup CreateGroupSnapshot(RepositoryGroup group)
+    {
+        var snapshot = new RepositoryGroup
+        {
+            Id = group.Id,
+            Name = group.Name,
+            Type = group.Type,
+            IsExpanded = group.IsExpanded
+        };
+
+        foreach (var repo in group.Repositories)
+        {
+            snapshot.Repositories.Add(CreateRepoSnapshot(repo));
+        }
+
+        foreach (var child in group.Children)
+        {
+            snapshot.Children.Add(CreateGroupSnapshot(child));
+        }
+
+        return snapshot;
     }
 }

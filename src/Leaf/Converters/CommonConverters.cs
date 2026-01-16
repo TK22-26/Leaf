@@ -239,6 +239,27 @@ public class IntGreaterThanZeroConverter : IValueConverter
 }
 
 /// <summary>
+/// Formats a commit overflow count (e.g., "+ 1 commit", "+ 5 commits").
+/// </summary>
+public class OverflowCommitCountConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is int count)
+        {
+            return $"+ {count} commit" + (count == 1 ? string.Empty : "s");
+        }
+
+        return "+ 0 commits";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
 /// Converts an identicon key string into an ImageSource.
 /// </summary>
 public class IdenticonConverter : IValueConverter

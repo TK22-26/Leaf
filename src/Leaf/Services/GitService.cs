@@ -2645,6 +2645,53 @@ public class GitService : IGitService
 
     #region Commit Log
 
+    public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha)
+    {
+        return Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+            var mergeCommit = repo.Lookup<Commit>(mergeSha);
+            if (mergeCommit == null)
+            {
+                return new List<CommitInfo>();
+            }
+
+            var parents = mergeCommit.Parents.ToList();
+            if (parents.Count < 2)
+            {
+                return new List<CommitInfo>();
+            }
+
+            var mainParent = parents[0];
+            var mergedParent = parents[1];
+            var mergeBase = repo.ObjectDatabase.FindMergeBase(mainParent, mergedParent);
+            if (mergeBase == null)
+            {
+                return new List<CommitInfo>();
+            }
+
+            var filter = new CommitFilter
+            {
+                IncludeReachableFrom = mergedParent,
+                ExcludeReachableFrom = mergeBase,
+                SortBy = CommitSortStrategies.Topological | CommitSortStrategies.Time
+            };
+
+            return repo.Commits.QueryBy(filter)
+                .Select(commit => new CommitInfo
+                {
+                    Sha = commit.Sha,
+                    Message = commit.Message,
+                    MessageShort = commit.MessageShort,
+                    Author = commit.Author.Name,
+                    AuthorEmail = commit.Author.Email,
+                    Date = commit.Author.When,
+                    ParentShas = commit.Parents.Select(p => p.Sha).ToList()
+                })
+                .ToList();
+        });
+    }
+
     public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null)
     {
         return Task.Run(() =>

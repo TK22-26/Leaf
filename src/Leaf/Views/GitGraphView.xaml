@@ -42,7 +42,8 @@
         <!-- Main content: Single ScrollViewer containing graph + commit list -->
         <ScrollViewer HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
-                      x:Name="MainScrollViewer">
+                      x:Name="MainScrollViewer"
+                      PreviewMouseWheel="MainScrollViewer_PreviewMouseWheel">
             <Grid Margin="0,0,0,28" VerticalAlignment="Top">
                 <Grid.ColumnDefinitions>
                     <!-- Graph canvas column (auto width based on lanes) -->
@@ -69,7 +70,11 @@
                                           Height="{Binding TotalHeight}"
                                           MinWidth="80"
                                           MouseLeftButtonDown="GraphCanvas_MouseLeftButtonDown"
-                                          MouseRightButtonDown="GraphCanvas_MouseRightButtonDown"/>
+                                          MouseRightButtonDown="GraphCanvas_MouseRightButtonDown"
+                                          MouseMove="GraphCanvas_MouseMove"
+                                          ToolTipOpening="GraphCanvas_ToolTipOpening"
+                                          MouseLeave="GraphCanvas_MouseLeave"
+                                          ToolTip=""/>
 
                 <!-- Commit List with Working Changes row -->
                 <StackPanel Grid.Column="1" Height="{Binding TotalHeight}">
@@ -245,7 +250,9 @@
                                     MouseLeftButtonDown="CommitItem_MouseLeftButtonDown"
                                     MouseEnter="CommitItem_MouseEnter"
                                     MouseLeave="CommitItem_MouseLeave"
-                                    ContextMenuOpening="CommitItem_ContextMenuOpening">
+                                    ContextMenuOpening="CommitItem_ContextMenuOpening"
+                                    ToolTipOpening="CommitItem_ToolTipOpening"
+                                    ToolTip="">
                                 <Grid>
                                     <!-- Highlight background (matches trail height, extends to edge) -->
                                     <Border x:Name="HighlightBorder"
