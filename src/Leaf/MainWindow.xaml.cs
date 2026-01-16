@@ -102,4 +102,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BranchNameInput_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is true && sender is System.Windows.Controls.TextBox textBox)
+        {
+            // Use Dispatcher to ensure focus happens after the UI is fully rendered
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
+            {
+                textBox.Focus();
+                Keyboard.Focus(textBox);
+            });
+        }
+    }
+
 }

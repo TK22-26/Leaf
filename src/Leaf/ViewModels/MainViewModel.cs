@@ -49,6 +49,9 @@ public partial class MainViewModel : ObservableObject
     private WorkingChangesViewModel? _workingChangesViewModel;
 
     [ObservableProperty]
+    private DiffViewerViewModel? _diffViewerViewModel;
+
+    [ObservableProperty]
     private ConflictResolutionViewModel? _mergeConflictResolutionViewModel;
 
     [ObservableProperty]
@@ -56,6 +59,9 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isWorkingChangesSelected;
+
+    [ObservableProperty]
+    private bool _isDiffViewerVisible;
 
     [ObservableProperty]
     private bool _isRepoPaneCollapsed;
@@ -116,6 +122,8 @@ public partial class MainViewModel : ObservableObject
         _gitGraphViewModel = new GitGraphViewModel(gitService);
         _commitDetailViewModel = new CommitDetailViewModel(gitService);
         _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService);
+        _diffViewerViewModel = new DiffViewerViewModel();
+        _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
 
         // Load UI state from settings
         var settings = settingsService.LoadSettings();
@@ -1032,6 +1040,114 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Show the diff viewer for a file in a commit.
+    /// </summary>
+    public async Task ShowFileDiffAsync(Models.FileChangeInfo file, string commitSha)
+    {
+        if (SelectedRepository == null || DiffViewerViewModel == null)
+            return;
+
+        DiffViewerViewModel.IsLoading = true;
+        IsDiffViewerVisible = true;
+
+        try
+        {
+            // Get the file content from the commit
+            var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
+                SelectedRepository.Path, commitSha, file.Path);
+
+            // Compute the diff
+            var diffService = new Services.DiffService();
+            var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
+
+            // Load into the view model
+            DiffViewerViewModel.LoadDiff(result);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to load diff: {ex.Message}";
+            IsDiffViewerVisible = false;
+        }
+        finally
+        {
+            DiffViewerViewModel.IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Close the diff viewer.
+    /// </summary>
+    public void CloseDiffViewer()
+    {
+        IsDiffViewerVisible = false;
+        DiffViewerViewModel?.Clear();
+    }
+
+    /// <summary>
+    /// Show diff for an unstaged file (working directory vs index).
+    /// </summary>
+    public async Task ShowUnstagedFileDiffAsync(Models.FileStatusInfo file)
+    {
+        if (SelectedRepository == null || DiffViewerViewModel == null)
+            return;
+
+        DiffViewerViewModel.IsLoading = true;
+        IsDiffViewerVisible = true;
+
+        try
+        {
+            var (oldContent, newContent) = await _gitService.GetUnstagedFileDiffAsync(
+                SelectedRepository.Path, file.Path);
+
+            var diffService = new Services.DiffService();
+            var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
+
+            DiffViewerViewModel.LoadDiff(result);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to load diff: {ex.Message}";
+            IsDiffViewerVisible = false;
+        }
+        finally
+        {
+            DiffViewerViewModel.IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Show diff for a staged file (index vs HEAD).
+    /// </summary>
+    public async Task ShowStagedFileDiffAsync(Models.FileStatusInfo file)
+    {
+        if (SelectedRepository == null || DiffViewerViewModel == null)
+            return;
+
+        DiffViewerViewModel.IsLoading = true;
+        IsDiffViewerVisible = true;
+
+        try
+        {
+            var (oldContent, newContent) = await _gitService.GetStagedFileDiffAsync(
+                SelectedRepository.Path, file.Path);
+
+            var diffService = new Services.DiffService();
+            var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
+
+            DiffViewerViewModel.LoadDiff(result);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to load diff: {ex.Message}";
+            IsDiffViewerVisible = false;
+        }
+        finally
+        {
+            DiffViewerViewModel.IsLoading = false;
+        }
+    }
+
     private void AddRepositoryToGroups(RepositoryInfo repo, bool save = true)
     {
         // Find or create folder-based group
@@ -1499,6 +1615,31 @@ public partial class MainViewModel : ObservableObject
         };
 
         await MergeBranchAsync(branch);
+    }
+
+    [RelayCommand]
+    public async Task CheckoutCommitAsync(CommitInfo commit)
+    {
+        if (commit == null || SelectedRepository == null)
+            return;
+
+        IsBusy = true;
+        StatusMessage = $"Checking out commit {commit.ShortSha}...";
+
+        try
+        {
+            await _gitService.CheckoutCommitAsync(SelectedRepository.Path, commit.Sha);
+            StatusMessage = $"Checked out commit {commit.ShortSha} (detached HEAD)";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Checkout failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]

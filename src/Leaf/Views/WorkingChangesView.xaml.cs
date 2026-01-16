@@ -18,24 +18,24 @@ public partial class WorkingChangesView : UserControl
 
     private void UnstagedFile_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        // Select the file for diff viewing (future feature)
         if (sender is FrameworkElement element && element.DataContext is FileStatusInfo file)
         {
-            if (DataContext is WorkingChangesViewModel viewModel)
+            // Get MainViewModel from Window
+            if (Window.GetWindow(this)?.DataContext is MainViewModel mainVm)
             {
-                // Could add SelectedFile property in future for diff viewing
+                _ = mainVm.ShowUnstagedFileDiffAsync(file);
             }
         }
     }
 
     private void StagedFile_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        // Select the file for diff viewing (future feature)
         if (sender is FrameworkElement element && element.DataContext is FileStatusInfo file)
         {
-            if (DataContext is WorkingChangesViewModel viewModel)
+            // Get MainViewModel from Window
+            if (Window.GetWindow(this)?.DataContext is MainViewModel mainVm)
             {
-                // Could add SelectedFile property in future for diff viewing
+                _ = mainVm.ShowStagedFileDiffAsync(file);
             }
         }
     }

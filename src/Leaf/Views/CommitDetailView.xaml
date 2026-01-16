@@ -353,6 +353,8 @@
                                     BorderBrush="Transparent"
                                     BorderThickness="2,0,0,0"
                                     CornerRadius="4"
+                                    Cursor="Hand"
+                                    MouseLeftButtonDown="FileItem_Click"
                                     ToolTip="{Binding Path}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>

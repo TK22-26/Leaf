@@ -37,6 +37,16 @@ public interface IGitService
     Task<(string oldContent, string newContent)> GetFileDiffAsync(string repoPath, string sha, string filePath);
 
     /// <summary>
+    /// Get diff content for an unstaged file (working directory vs index).
+    /// </summary>
+    Task<(string oldContent, string newContent)> GetUnstagedFileDiffAsync(string repoPath, string filePath);
+
+    /// <summary>
+    /// Get diff content for a staged file (index vs HEAD).
+    /// </summary>
+    Task<(string oldContent, string newContent)> GetStagedFileDiffAsync(string repoPath, string filePath);
+
+    /// <summary>
     /// Get all branches in the repository.
     /// </summary>
     Task<List<BranchInfo>> GetBranchesAsync(string repoPath);
@@ -75,6 +85,13 @@ public interface IGitService
     /// Checkout a branch.
     /// </summary>
     Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false);
+
+    /// <summary>
+    /// Checkout a specific commit (detached HEAD).
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="commitSha">SHA of the commit to checkout</param>
+    Task CheckoutCommitAsync(string repoPath, string commitSha);
 
     /// <summary>
     /// Create a new branch.

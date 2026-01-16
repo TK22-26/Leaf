@@ -201,6 +201,11 @@
                                             <MenuItem Header="Stash file"
                                                       Command="{Binding PlacementTarget.Tag.StashFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       CommandParameter="{Binding}"/>
+                                            <Separator/>
+                                            <MenuItem Header="Delete file"
+                                                      Command="{Binding PlacementTarget.Tag.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"
+                                                      Foreground="#E81123"/>
                                             <!-- Admin delete for Windows reserved filenames (nul, con, prn, etc.) -->
                                             <Separator Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}"/>
                                             <MenuItem Header="Admin Delete (Reserved Name)"
@@ -419,6 +424,11 @@
                                                     </MenuItem.Header>
                                                 </MenuItem>
                                             </MenuItem>
+                                            <Separator/>
+                                            <MenuItem Header="Delete file"
+                                                      Command="{Binding PlacementTarget.Tag.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"
+                                                      Foreground="#E81123"/>
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <Grid>

@@ -367,6 +367,46 @@ public partial class WorkingChangesViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Delete a file from the filesystem.
+    /// </summary>
+    [RelayCommand]
+    public async Task DeleteFileAsync(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        var result = MessageBox.Show(
+            $"Are you sure you want to delete '{file.FileName}'?\n\nThis will permanently delete the file from disk and cannot be undone.",
+            "Delete File",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            var fullPath = Path.Combine(_repositoryPath, file.Path);
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+            }
+            else if (Directory.Exists(fullPath))
+            {
+                Directory.Delete(fullPath, recursive: true);
+            }
+
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Delete failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
     /// Delete a Windows reserved filename (nul, con, prn, etc.) using admin privileges.
     /// These files cannot be deleted normally due to Windows restrictions.
     /// </summary>

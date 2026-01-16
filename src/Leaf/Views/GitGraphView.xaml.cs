@@ -370,16 +370,26 @@ public partial class GitGraphView : UserControl
             return;
 
         var menu = new ContextMenu();
-        if (commit.BranchLabels.Count == 0)
+
+        // Checkout commit option
+        var checkoutItem = new MenuItem
         {
-            menu.Items.Add(new MenuItem
+            Header = $"Checkout {commit.ShortSha}",
+            Command = mainViewModel.CheckoutCommitCommand,
+            CommandParameter = commit,
+            Icon = new TextBlock
             {
-                Header = "No branch labels at this commit",
-                IsEnabled = false
-            });
-        }
-        else
+                Text = "\uE8AB",
+                FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"),
+                FontSize = 14
+            }
+        };
+        menu.Items.Add(checkoutItem);
+
+        // Merge branch labels
+        if (commit.BranchLabels.Count > 0)
         {
+            menu.Items.Add(new Separator());
             foreach (var label in commit.BranchLabels)
             {
                 menu.Items.Add(new MenuItem
