@@ -19,9 +19,18 @@ public partial class MainWindow : Window
         var credentialService = new CredentialService();
         var settingsService = new SettingsService();
         var gitFlowService = new GitFlowService(gitService);
+        var repositoryService = new RepositoryManagementService(settingsService);
+        var autoFetchService = new AutoFetchService(gitService, credentialService);
 
         // Create view model with all services
-        var viewModel = new MainViewModel(gitService, credentialService, settingsService, gitFlowService, this);
+        var viewModel = new MainViewModel(
+            gitService,
+            credentialService,
+            settingsService,
+            gitFlowService,
+            repositoryService,
+            autoFetchService,
+            this);
 
         DataContext = viewModel;
     }

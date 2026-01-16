@@ -367,6 +367,38 @@ public partial class WorkingChangesViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Open the file's containing folder in Windows Explorer and select the file.
+    /// </summary>
+    [RelayCommand]
+    public void OpenInExplorer(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        var fullPath = Path.Combine(_repositoryPath, file.Path);
+
+        if (File.Exists(fullPath))
+        {
+            // Open Explorer and select the file
+            Process.Start("explorer.exe", $"/select,\"{fullPath}\"");
+        }
+        else if (Directory.Exists(fullPath))
+        {
+            // Open the directory
+            Process.Start("explorer.exe", $"\"{fullPath}\"");
+        }
+        else
+        {
+            // File doesn't exist (deleted), open the containing folder
+            var directory = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            {
+                Process.Start("explorer.exe", $"\"{directory}\"");
+            }
+        }
+    }
+
+    /// <summary>
     /// Delete a file from the filesystem.
     /// </summary>
     [RelayCommand]

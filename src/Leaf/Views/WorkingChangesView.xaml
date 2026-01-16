@@ -167,9 +167,7 @@
                                                       CommandParameter="{Binding}"/>
                                             <MenuItem Header="Discard changes"
                                                       Command="{Binding PlacementTarget.Tag.DiscardFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"
-                                                      Foreground="#E81123"/>
-                                            <Separator/>
+                                                      CommandParameter="{Binding}"/>
                                             <MenuItem Header="Ignore">
                                                 <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                           CommandParameter="{Binding}">
@@ -197,9 +195,12 @@
                                                     </MenuItem.Header>
                                                 </MenuItem>
                                             </MenuItem>
-                                            <Separator/>
                                             <MenuItem Header="Stash file"
                                                       Command="{Binding PlacementTarget.Tag.StashFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
+                                            <Separator/>
+                                            <MenuItem Header="Open in Explorer"
+                                                      Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       CommandParameter="{Binding}"/>
                                             <Separator/>
                                             <MenuItem Header="Delete file"
@@ -396,7 +397,9 @@
                                             <MenuItem Header="Unstage"
                                                       Command="{Binding PlacementTarget.Tag.UnstageFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       CommandParameter="{Binding}"/>
-                                            <Separator/>
+                                            <MenuItem Header="Discard changes"
+                                                      Command="{Binding PlacementTarget.Tag.DiscardFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
                                             <MenuItem Header="Ignore">
                                                 <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                           CommandParameter="{Binding}">
@@ -424,6 +427,13 @@
                                                     </MenuItem.Header>
                                                 </MenuItem>
                                             </MenuItem>
+                                            <MenuItem Header="Stash file"
+                                                      Command="{Binding PlacementTarget.Tag.StashFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
+                                            <Separator/>
+                                            <MenuItem Header="Open in Explorer"
+                                                      Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
                                             <Separator/>
                                             <MenuItem Header="Delete file"
                                                       Command="{Binding PlacementTarget.Tag.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"

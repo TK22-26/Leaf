@@ -4,7 +4,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace Leaf.Models;
 
 /// <summary>
-/// Top-level section for quick access repository lists.
+/// Top-level section for quick access repository lists (PINNED, MOST RECENT).
+/// Uses QuickAccessItem wrappers to ensure unique object instances for TreeView selection.
 /// </summary>
 public partial class RepositorySection : ObservableObject
 {
@@ -14,5 +15,5 @@ public partial class RepositorySection : ObservableObject
     private bool _isExpanded = true;
 
     [ObservableProperty]
-    private ObservableCollection<RepositoryInfo> _repositories = [];
+    private ObservableCollection<QuickAccessItem> _items = [];
 }

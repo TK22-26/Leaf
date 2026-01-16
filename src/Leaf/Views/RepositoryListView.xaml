@@ -22,7 +22,6 @@
                     CornerRadius="2"
                     Cursor="Hand"
                     HorizontalAlignment="Stretch"
-                    MouseLeftButtonDown="Repository_MouseLeftButtonDown"
                     Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
                 <Border.ContextMenu>
                     <ContextMenu>
@@ -106,9 +105,9 @@
                   Style="{StaticResource RepoTreeViewStyle}"
                   SelectedItemChanged="RepoTreeView_SelectedItemChanged">
             <TreeView.Resources>
-                <!-- Quick access section template -->
+                <!-- Quick access section template (PINNED, MOST RECENT) -->
                 <HierarchicalDataTemplate DataType="{x:Type models:RepositorySection}"
-                                          ItemsSource="{Binding Repositories}">
+                                          ItemsSource="{Binding Items}">
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <ic:SymbolIcon x:Name="SectionIcon"
                                        Symbol="Pin"
@@ -121,7 +120,7 @@
                                    FontSize="12"
                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                    VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding Repositories.Count, StringFormat=' ({0})'}"
+                        <TextBlock Text="{Binding Items.Count, StringFormat=' ({0})'}"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
@@ -152,7 +151,13 @@
                     </StackPanel>
                 </HierarchicalDataTemplate>
 
-                <!-- Repository template (simple - no branches here) -->
+                <!-- QuickAccessItem template - uses same visual as RepositoryInfo but binds to Repository property -->
+                <DataTemplate DataType="{x:Type models:QuickAccessItem}">
+                    <ContentPresenter Content="{Binding Repository}"
+                                      ContentTemplate="{StaticResource RepositoryItemTemplate}"/>
+                </DataTemplate>
+
+                <!-- Repository template (for repos in folder groups) -->
                 <DataTemplate DataType="{x:Type models:RepositoryInfo}">
                     <ContentPresenter Content="{Binding}"
                                       ContentTemplate="{StaticResource RepositoryItemTemplate}"/>
