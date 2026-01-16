@@ -375,7 +375,9 @@ public partial class WorkingChangesViewModel : ObservableObject
         if (string.IsNullOrEmpty(_repositoryPath) || file == null)
             return;
 
-        var fullPath = Path.Combine(_repositoryPath, file.Path);
+        // Normalize path separators (Git uses forward slashes)
+        var normalizedFilePath = file.Path.Replace('/', '\\');
+        var fullPath = Path.Combine(_repositoryPath, normalizedFilePath);
 
         if (File.Exists(fullPath))
         {
@@ -396,6 +398,20 @@ public partial class WorkingChangesViewModel : ObservableObject
                 Process.Start("explorer.exe", $"\"{directory}\"");
             }
         }
+    }
+
+    /// <summary>
+    /// Copy the file's full path to the clipboard.
+    /// </summary>
+    [RelayCommand]
+    public void CopyFilePath(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        var normalizedFilePath = file.Path.Replace('/', '\\');
+        var fullPath = Path.Combine(_repositoryPath, normalizedFilePath);
+        Clipboard.SetText(fullPath);
     }
 
     /// <summary>

@@ -202,6 +202,9 @@
                                             <MenuItem Header="Open in Explorer"
                                                       Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       CommandParameter="{Binding}"/>
+                                            <MenuItem Header="Copy file path"
+                                                      Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
                                             <Separator/>
                                             <MenuItem Header="Delete file"
                                                       Command="{Binding PlacementTarget.Tag.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
@@ -433,6 +436,9 @@
                                             <Separator/>
                                             <MenuItem Header="Open in Explorer"
                                                       Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
+                                            <MenuItem Header="Copy file path"
+                                                      Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       CommandParameter="{Binding}"/>
                                             <Separator/>
                                             <MenuItem Header="Delete file"

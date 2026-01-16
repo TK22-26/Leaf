@@ -18,4 +18,7 @@ public class QuickAccessItem
     public string Name => Repository.Name;
     public string Path => Repository.Path;
     public bool IsPinned => Repository.IsPinned;
+
+    // Required for TreeViewItem binding (leaf nodes don't expand, but binding must exist)
+    public bool IsExpanded { get; set; }
 }
