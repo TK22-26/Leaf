@@ -1,7 +1,11 @@
 using System.ComponentModel;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using Leaf.Controls;
 using Leaf.Models;
 using Leaf.ViewModels;
@@ -14,11 +18,21 @@ namespace Leaf.Views;
 public partial class GitGraphView : UserControl
 {
     private const double RowHeight = 28.0;
+    private readonly DispatcherTimer _tooltipCloseTimer;
+    private ToolTip? _pendingTooltipClose;
+    private FrameworkElement? _pendingTooltipTarget;
+    private string? _graphTooltipSha;
 
     public GitGraphView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+
+        _tooltipCloseTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(200)
+        };
+        _tooltipCloseTimer.Tick += OnTooltipCloseTimerTick;
 
         // Subscribe to expansion changes from the canvas
         if (GraphCanvas != null)
@@ -178,6 +192,11 @@ public partial class GitGraphView : UserControl
         if (DataContext is GitGraphViewModel viewModel)
         {
             viewModel.HoveredSha = null;
+        }
+
+        if (sender is FrameworkElement element)
+        {
+            ScheduleTooltipClose(element);
         }
     }
 
@@ -370,16 +389,26 @@ public partial class GitGraphView : UserControl
             return;
 
         var menu = new ContextMenu();
-        if (commit.BranchLabels.Count == 0)
+
+        // Checkout commit option
+        var checkoutItem = new MenuItem
         {
-            menu.Items.Add(new MenuItem
+            Header = $"Checkout {commit.ShortSha}",
+            Command = mainViewModel.CheckoutCommitCommand,
+            CommandParameter = commit,
+            Icon = new TextBlock
             {
-                Header = "No branch labels at this commit",
-                IsEnabled = false
-            });
-        }
-        else
+                Text = "\uE8AB",
+                FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"),
+                FontSize = 14
+            }
+        };
+        menu.Items.Add(checkoutItem);
+
+        // Merge branch labels
+        if (commit.BranchLabels.Count > 0)
         {
+            menu.Items.Add(new Separator());
             foreach (var label in commit.BranchLabels)
             {
                 menu.Items.Add(new MenuItem
@@ -394,6 +423,216 @@ public partial class GitGraphView : UserControl
         element.ContextMenu = menu;
         menu.IsOpen = true;
         e.Handled = true;
+    }
+
+    private async void CommitItem_ToolTipOpening(object sender, ToolTipEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not CommitInfo commit)
+            return;
+
+        var toolTip = GetOrCreateTooltip(element);
+        if (!commit.IsMerge)
+        {
+            toolTip.Content = null;
+            e.Handled = true;
+            return;
+        }
+
+        await ShowMergeTooltipAsync(element, commit);
+    }
+
+    private async void GraphCanvas_ToolTipOpening(object sender, ToolTipEventArgs e)
+    {
+        if (sender is not FrameworkElement element)
+            return;
+
+        if (DataContext is not GitGraphViewModel viewModel)
+            return;
+
+        var toolTip = GetOrCreateTooltip(element);
+        var hoveredCommit = GetCommitAtMousePosition(viewModel);
+        if (hoveredCommit == null)
+        {
+            toolTip.Content = null;
+            e.Handled = true;
+            return;
+        }
+
+        if (!hoveredCommit.IsMerge)
+        {
+            toolTip.Content = null;
+            e.Handled = true;
+            return;
+        }
+
+        _graphTooltipSha = hoveredCommit.Sha;
+        await ShowMergeTooltipAsync(element, hoveredCommit);
+    }
+
+    private async Task ShowMergeTooltipAsync(FrameworkElement element, CommitInfo commit)
+    {
+        if (DataContext is not GitGraphViewModel viewModel)
+            return;
+
+        if (viewModel.TryGetMergeTooltip(commit.Sha, out var cachedTooltip) && cachedTooltip != null)
+        {
+            element.ToolTip = BuildMergeTooltip(cachedTooltip);
+            return;
+        }
+
+        var toolTip = GetOrCreateTooltip(element);
+        toolTip.Content = BuildTooltipLoading();
+
+        var tooltipViewModel = await viewModel.GetMergeTooltipAsync(commit);
+        if (tooltipViewModel == null)
+        {
+            toolTip.Content = null;
+            return;
+        }
+
+        toolTip.Content = new MergeCommitTooltipView
+        {
+            DataContext = tooltipViewModel
+        };
+        toolTip.IsOpen = true;
+    }
+
+    private static MergeCommitTooltipView BuildMergeTooltip(MergeCommitTooltipViewModel tooltipViewModel)
+    {
+        return new MergeCommitTooltipView
+        {
+            DataContext = tooltipViewModel
+        };
+    }
+
+    private static TextBlock BuildTooltipLoading()
+    {
+        var brush = Application.Current?.TryFindResource("TextFillColorSecondaryBrush") as Brush ?? Brushes.Gray;
+        return new TextBlock
+        {
+            Text = "Loading merged commits...",
+            Margin = new Thickness(8, 4, 8, 4),
+            Foreground = brush
+        };
+    }
+
+    private ToolTip GetOrCreateTooltip(FrameworkElement element)
+    {
+        if (element.ToolTip is ToolTip existing)
+            return existing;
+
+        var toolTip = new ToolTip
+        {
+            PlacementTarget = element,
+            StaysOpen = true
+        };
+        toolTip.MouseEnter += (_, _) =>
+        {
+            if (_tooltipCloseTimer.IsEnabled)
+            {
+                _tooltipCloseTimer.Stop();
+            }
+            _pendingTooltipClose = null;
+            _pendingTooltipTarget = null;
+        };
+        toolTip.MouseLeave += (_, _) =>
+        {
+            if (toolTip.PlacementTarget is FrameworkElement target)
+            {
+                ScheduleTooltipClose(target);
+            }
+        };
+        element.ToolTip = toolTip;
+        return toolTip;
+    }
+
+    private void OnTooltipCloseTimerTick(object? sender, EventArgs e)
+    {
+        if (_pendingTooltipClose == null)
+        {
+            _tooltipCloseTimer.Stop();
+            return;
+        }
+
+        bool targetHovered = _pendingTooltipTarget?.IsMouseOver ?? false;
+        if (!_pendingTooltipClose.IsMouseOver && !targetHovered)
+        {
+            _pendingTooltipClose.IsOpen = false;
+            _pendingTooltipClose = null;
+            _pendingTooltipTarget = null;
+            _tooltipCloseTimer.Stop();
+        }
+    }
+
+    private void ScheduleTooltipClose(FrameworkElement element)
+    {
+        if (element.ToolTip is not ToolTip toolTip)
+            return;
+
+        _pendingTooltipClose = toolTip;
+        _pendingTooltipTarget = element;
+        if (!_tooltipCloseTimer.IsEnabled)
+        {
+            _tooltipCloseTimer.Start();
+        }
+    }
+
+    private void GraphCanvas_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (sender is FrameworkElement element)
+        {
+            ScheduleTooltipClose(element);
+        }
+        _graphTooltipSha = null;
+    }
+
+    private async void GraphCanvas_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (sender is not FrameworkElement element)
+            return;
+
+        if (DataContext is not GitGraphViewModel viewModel)
+            return;
+
+        var commit = GetCommitAtMousePosition(viewModel);
+        if (commit == null || !commit.IsMerge)
+        {
+            CloseTooltip(element);
+            _graphTooltipSha = null;
+            return;
+        }
+
+        if (string.Equals(_graphTooltipSha, commit.Sha, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _graphTooltipSha = commit.Sha;
+        await ShowMergeTooltipAsync(element, commit);
+    }
+
+    private void CloseTooltip(FrameworkElement element)
+    {
+        if (element.ToolTip is not ToolTip toolTip)
+            return;
+
+        toolTip.IsOpen = false;
+        toolTip.Content = null;
+    }
+
+    private CommitInfo? GetCommitAtMousePosition(GitGraphViewModel viewModel)
+    {
+        if (GraphCanvas?.Nodes == null)
+            return null;
+
+        var pos = Mouse.GetPosition(GraphCanvas);
+        int row = (int)(pos.Y / RowHeight);
+        int rowOffset = (viewModel.HasWorkingChanges ? 1 : 0) + viewModel.Stashes.Count;
+        int nodeIndex = row - rowOffset;
+
+        if (nodeIndex < 0 || nodeIndex >= GraphCanvas.Nodes.Count)
+            return null;
+
+        var sha = GraphCanvas.Nodes[nodeIndex].Sha;
+        return viewModel.Commits.FirstOrDefault(c => c.Sha == sha);
     }
 
     private void GraphCanvas_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
@@ -418,6 +657,21 @@ public partial class GitGraphView : UserControl
         var menu = new ContextMenu();
         menu.Items.Add(menuItem);
         menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private void MainScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (MainScrollViewer == null)
+            return;
+
+        int lines = SystemParameters.WheelScrollLines;
+        if (lines <= 0)
+            lines = 3;
+
+        double multiplier = lines * 1.5;
+        double delta = -e.Delta / 120.0 * RowHeight * multiplier;
+        MainScrollViewer.ScrollToVerticalOffset(MainScrollViewer.VerticalOffset + delta);
         e.Handled = true;
     }
 

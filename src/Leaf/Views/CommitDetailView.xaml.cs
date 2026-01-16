@@ -59,4 +59,19 @@ public partial class CommitDetailView : UserControl
             vm.NavigateToParent();
         }
     }
+
+    private void FileItem_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not Models.FileChangeInfo file)
+            return;
+
+        if (DataContext is not CommitDetailViewModel commitVm || commitVm.Commit == null)
+            return;
+
+        // Get MainViewModel from Window
+        if (Window.GetWindow(this)?.DataContext is MainViewModel mainVm)
+        {
+            _ = mainVm.ShowFileDiffAsync(file, commitVm.Commit.Sha);
+        }
+    }
 }

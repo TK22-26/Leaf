@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text;
 using Leaf.Models;
 using LibGit2Sharp;
@@ -270,6 +271,92 @@ public class GitService : IGitService
             if (newEntry?.Target is Blob newBlob && !newBlob.IsBinary)
             {
                 newContent = newBlob.GetContentText();
+            }
+
+            return (oldContent, newContent);
+        });
+    }
+
+    public async Task<(string oldContent, string newContent)> GetUnstagedFileDiffAsync(string repoPath, string filePath)
+    {
+        return await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+
+            string oldContent = "";
+            string newContent = "";
+
+            // Get content from index (staged version)
+            var indexEntry = repo.Index[filePath];
+            if (indexEntry != null)
+            {
+                var blob = repo.Lookup<Blob>(indexEntry.Id);
+                if (blob != null && !blob.IsBinary)
+                {
+                    oldContent = blob.GetContentText();
+                }
+            }
+            else
+            {
+                // File not in index, check HEAD
+                var headCommit = repo.Head?.Tip;
+                if (headCommit != null)
+                {
+                    var headEntry = headCommit[filePath];
+                    if (headEntry?.Target is Blob headBlob && !headBlob.IsBinary)
+                    {
+                        oldContent = headBlob.GetContentText();
+                    }
+                }
+            }
+
+            // Get content from working directory
+            var fullPath = Path.Combine(repoPath, filePath);
+            if (File.Exists(fullPath))
+            {
+                try
+                {
+                    newContent = File.ReadAllText(fullPath);
+                }
+                catch
+                {
+                    // File might be locked or binary
+                }
+            }
+
+            return (oldContent, newContent);
+        });
+    }
+
+    public async Task<(string oldContent, string newContent)> GetStagedFileDiffAsync(string repoPath, string filePath)
+    {
+        return await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+
+            string oldContent = "";
+            string newContent = "";
+
+            // Get content from HEAD
+            var headCommit = repo.Head?.Tip;
+            if (headCommit != null)
+            {
+                var headEntry = headCommit[filePath];
+                if (headEntry?.Target is Blob headBlob && !headBlob.IsBinary)
+                {
+                    oldContent = headBlob.GetContentText();
+                }
+            }
+
+            // Get content from index (staged version)
+            var indexEntry = repo.Index[filePath];
+            if (indexEntry != null)
+            {
+                var blob = repo.Lookup<Blob>(indexEntry.Id);
+                if (blob != null && !blob.IsBinary)
+                {
+                    newContent = blob.GetContentText();
+                }
             }
 
             return (oldContent, newContent);
@@ -644,6 +731,41 @@ public class GitService : IGitService
             }
 
             Commands.Checkout(repo, branch);
+        });
+    }
+
+    public async Task CheckoutCommitAsync(string repoPath, string commitSha)
+    {
+        await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+
+            // Check if there's a merge in progress with conflicts
+            if (repo.Index.Conflicts.Any())
+            {
+                throw new InvalidOperationException(
+                    "Cannot checkout commit: there are unresolved merge conflicts. " +
+                    "Please resolve the conflicts or abort the merge first.");
+            }
+
+            // Check if repo is in a merge state
+            var mergeHeadPath = System.IO.Path.Combine(repoPath, ".git", "MERGE_HEAD");
+            if (System.IO.File.Exists(mergeHeadPath))
+            {
+                throw new InvalidOperationException(
+                    "Cannot checkout commit: a merge is in progress. " +
+                    "Please complete or abort the merge first.");
+            }
+
+            // Find the commit
+            var commit = repo.Lookup<Commit>(commitSha);
+            if (commit == null)
+            {
+                throw new InvalidOperationException($"Commit '{commitSha}' not found");
+            }
+
+            // Checkout the commit (detached HEAD)
+            Commands.Checkout(repo, commit);
         });
     }
 
@@ -2522,6 +2644,53 @@ public class GitService : IGitService
     #endregion
 
     #region Commit Log
+
+    public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha)
+    {
+        return Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+            var mergeCommit = repo.Lookup<Commit>(mergeSha);
+            if (mergeCommit == null)
+            {
+                return new List<CommitInfo>();
+            }
+
+            var parents = mergeCommit.Parents.ToList();
+            if (parents.Count < 2)
+            {
+                return new List<CommitInfo>();
+            }
+
+            var mainParent = parents[0];
+            var mergedParent = parents[1];
+            var mergeBase = repo.ObjectDatabase.FindMergeBase(mainParent, mergedParent);
+            if (mergeBase == null)
+            {
+                return new List<CommitInfo>();
+            }
+
+            var filter = new CommitFilter
+            {
+                IncludeReachableFrom = mergedParent,
+                ExcludeReachableFrom = mergeBase,
+                SortBy = CommitSortStrategies.Topological | CommitSortStrategies.Time
+            };
+
+            return repo.Commits.QueryBy(filter)
+                .Select(commit => new CommitInfo
+                {
+                    Sha = commit.Sha,
+                    Message = commit.Message,
+                    MessageShort = commit.MessageShort,
+                    Author = commit.Author.Name,
+                    AuthorEmail = commit.Author.Email,
+                    Date = commit.Author.When,
+                    ParentShas = commit.Parents.Select(p => p.Sha).ToList()
+                })
+                .ToList();
+        });
+    }
 
     public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null)
     {

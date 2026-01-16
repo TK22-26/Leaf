@@ -14,6 +14,7 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
         <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+        <converters:ReservedFileNameToVisibilityConverter x:Key="ReservedFileNameToVisibilityConverter" />
 
         <!--  File status colors  -->
         <SolidColorBrush x:Key="StatusAddedBrush" Color="#28A745" />
@@ -166,9 +167,7 @@
                                                       CommandParameter="{Binding}"/>
                                             <MenuItem Header="Discard changes"
                                                       Command="{Binding PlacementTarget.Tag.DiscardFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"
-                                                      Foreground="#E81123"/>
-                                            <Separator/>
+                                                      CommandParameter="{Binding}"/>
                                             <MenuItem Header="Ignore">
                                                 <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                           CommandParameter="{Binding}">
@@ -196,10 +195,29 @@
                                                     </MenuItem.Header>
                                                 </MenuItem>
                                             </MenuItem>
-                                            <Separator/>
                                             <MenuItem Header="Stash file"
                                                       Command="{Binding PlacementTarget.Tag.StashFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       CommandParameter="{Binding}"/>
+                                            <Separator/>
+                                            <MenuItem Header="Open in Explorer"
+                                                      Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
+                                            <MenuItem Header="Copy file path"
+                                                      Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
+                                            <Separator/>
+                                            <MenuItem Header="Delete file"
+                                                      Command="{Binding PlacementTarget.Tag.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"
+                                                      Foreground="#E81123"/>
+                                            <!-- Admin delete for Windows reserved filenames (nul, con, prn, etc.) -->
+                                            <Separator Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}"/>
+                                            <MenuItem Header="Admin Delete (Reserved Name)"
+                                                      Command="{Binding PlacementTarget.Tag.AdminDeleteReservedFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"
+                                                      Foreground="#E81123"
+                                                      FontWeight="SemiBold"
+                                                      Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}"/>
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <Grid>
@@ -382,7 +400,9 @@
                                             <MenuItem Header="Unstage"
                                                       Command="{Binding PlacementTarget.Tag.UnstageFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       CommandParameter="{Binding}"/>
-                                            <Separator/>
+                                            <MenuItem Header="Discard changes"
+                                                      Command="{Binding PlacementTarget.Tag.DiscardFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
                                             <MenuItem Header="Ignore">
                                                 <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                           CommandParameter="{Binding}">
@@ -410,6 +430,21 @@
                                                     </MenuItem.Header>
                                                 </MenuItem>
                                             </MenuItem>
+                                            <MenuItem Header="Stash file"
+                                                      Command="{Binding PlacementTarget.Tag.StashFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
+                                            <Separator/>
+                                            <MenuItem Header="Open in Explorer"
+                                                      Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
+                                            <MenuItem Header="Copy file path"
+                                                      Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"/>
+                                            <Separator/>
+                                            <MenuItem Header="Delete file"
+                                                      Command="{Binding PlacementTarget.Tag.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}"
+                                                      Foreground="#E81123"/>
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <Grid>

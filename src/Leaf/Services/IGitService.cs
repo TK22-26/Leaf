@@ -20,6 +20,7 @@ public interface IGitService
     /// <param name="count">Maximum number of commits to retrieve</param>
     /// <param name="branchName">Optional branch name to filter by</param>
     Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null);
+    Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha);
 
     /// <summary>
     /// Get details for a specific commit.
@@ -35,6 +36,16 @@ public interface IGitService
     /// Get diff content for a specific file in a commit.
     /// </summary>
     Task<(string oldContent, string newContent)> GetFileDiffAsync(string repoPath, string sha, string filePath);
+
+    /// <summary>
+    /// Get diff content for an unstaged file (working directory vs index).
+    /// </summary>
+    Task<(string oldContent, string newContent)> GetUnstagedFileDiffAsync(string repoPath, string filePath);
+
+    /// <summary>
+    /// Get diff content for a staged file (index vs HEAD).
+    /// </summary>
+    Task<(string oldContent, string newContent)> GetStagedFileDiffAsync(string repoPath, string filePath);
 
     /// <summary>
     /// Get all branches in the repository.
@@ -75,6 +86,13 @@ public interface IGitService
     /// Checkout a branch.
     /// </summary>
     Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false);
+
+    /// <summary>
+    /// Checkout a specific commit (detached HEAD).
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="commitSha">SHA of the commit to checkout</param>
+    Task CheckoutCommitAsync(string repoPath, string commitSha);
 
     /// <summary>
     /// Create a new branch.

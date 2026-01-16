@@ -239,6 +239,27 @@ public class IntGreaterThanZeroConverter : IValueConverter
 }
 
 /// <summary>
+/// Formats a commit overflow count (e.g., "+ 1 commit", "+ 5 commits").
+/// </summary>
+public class OverflowCommitCountConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is int count)
+        {
+            return $"+ {count} commit" + (count == 1 ? string.Empty : "s");
+        }
+
+        return "+ 0 commits";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
 /// Converts an identicon key string into an ImageSource.
 /// </summary>
 public class IdenticonConverter : IValueConverter
@@ -370,6 +391,36 @@ public class GitFlowTypeToVisibilityConverter : IValueConverter
             return branchType != Models.GitFlowBranchType.None ? Visibility.Visible : Visibility.Collapsed;
         }
         return Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Converts a filename to Visibility based on whether it's a Windows reserved filename.
+/// Reserved names: CON, PRN, AUX, NUL, COM1-COM9, LPT1-LPT9
+/// Returns Visible for reserved names, Collapsed for normal files.
+/// </summary>
+public class ReservedFileNameToVisibilityConverter : IValueConverter
+{
+    private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+    };
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not string fileName)
+            return Visibility.Collapsed;
+
+        // Get filename without extension
+        var nameWithoutExt = System.IO.Path.GetFileNameWithoutExtension(fileName);
+        return ReservedNames.Contains(nameWithoutExt) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

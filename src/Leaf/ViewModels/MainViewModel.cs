@@ -20,6 +20,8 @@ public partial class MainViewModel : ObservableObject
     private readonly IGitFlowService _gitFlowService;
     private readonly CredentialService _credentialService;
     private readonly SettingsService _settingsService;
+    private readonly IRepositoryManagementService _repositoryService;
+    private readonly IAutoFetchService _autoFetchService;
     private readonly Window _ownerWindow;
     private readonly FileWatcherService _fileWatcherService;
 
@@ -28,13 +30,20 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private static readonly TimeSpan AutoFetchInterval = TimeSpan.FromMinutes(10);
 
-    private DispatcherTimer? _autoFetchTimer;
+    /// <summary>
+    /// Event raised when a repository should be visually selected in the TreeView.
+    /// </summary>
+    public event EventHandler<RepositoryInfo>? RequestRepositorySelection;
 
-    [ObservableProperty]
-    private DateTime? _lastFetchTime;
+    /// <summary>
+    /// Last fetch time - delegated to AutoFetchService.
+    /// </summary>
+    public DateTime? LastFetchTime => _autoFetchService.LastFetchTime;
 
-    [ObservableProperty]
-    private ObservableCollection<RepositoryGroup> _repositoryGroups = [];
+    /// <summary>
+    /// Repository groups - delegated to RepositoryManagementService.
+    /// </summary>
+    public ObservableCollection<RepositoryGroup> RepositoryGroups => _repositoryService.RepositoryGroups;
 
     [ObservableProperty]
     private RepositoryInfo? _selectedRepository;
@@ -49,6 +58,9 @@ public partial class MainViewModel : ObservableObject
     private WorkingChangesViewModel? _workingChangesViewModel;
 
     [ObservableProperty]
+    private DiffViewerViewModel? _diffViewerViewModel;
+
+    [ObservableProperty]
     private ConflictResolutionViewModel? _mergeConflictResolutionViewModel;
 
     [ObservableProperty]
@@ -56,6 +68,9 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isWorkingChangesSelected;
+
+    [ObservableProperty]
+    private bool _isDiffViewerVisible;
 
     [ObservableProperty]
     private bool _isRepoPaneCollapsed;
@@ -69,17 +84,20 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _commitSearchText = string.Empty;
 
-    [ObservableProperty]
-    private ObservableCollection<RepositoryInfo> _pinnedRepositories = [];
+    /// <summary>
+    /// Pinned repositories - delegated to RepositoryManagementService.
+    /// </summary>
+    public ObservableCollection<RepositoryInfo> PinnedRepositories => _repositoryService.PinnedRepositories;
 
-    [ObservableProperty]
-    private ObservableCollection<RepositoryInfo> _recentRepositories = [];
+    /// <summary>
+    /// Recent repositories - delegated to RepositoryManagementService.
+    /// </summary>
+    public ObservableCollection<RepositoryInfo> RecentRepositories => _repositoryService.RecentRepositories;
 
-    [ObservableProperty]
-    private ObservableCollection<object> _repositoryRootItems = [];
-
-    private readonly Models.RepositorySection _pinnedSection = new() { Name = "PINNED" };
-    private readonly Models.RepositorySection _recentSection = new() { Name = "MOST RECENT" };
+    /// <summary>
+    /// Repository root items for tree view - delegated to RepositoryManagementService.
+    /// </summary>
+    public ObservableCollection<object> RepositoryRootItems => _repositoryService.RepositoryRootItems;
 
     private string? _mergeConflictRepoPath;
 
@@ -104,24 +122,32 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _newBranchName = string.Empty;
 
-    public MainViewModel(IGitService gitService, CredentialService credentialService, SettingsService settingsService, IGitFlowService gitFlowService, Window ownerWindow)
+    public MainViewModel(
+        IGitService gitService,
+        CredentialService credentialService,
+        SettingsService settingsService,
+        IGitFlowService gitFlowService,
+        IRepositoryManagementService repositoryService,
+        IAutoFetchService autoFetchService,
+        Window ownerWindow)
     {
         _gitService = gitService;
         _gitFlowService = gitFlowService;
         _credentialService = credentialService;
         _settingsService = settingsService;
+        _repositoryService = repositoryService;
+        _autoFetchService = autoFetchService;
         _ownerWindow = ownerWindow;
         _fileWatcherService = new FileWatcherService();
+
+        // Subscribe to auto-fetch completion
+        _autoFetchService.FetchCompleted += OnAutoFetchCompleted;
 
         _gitGraphViewModel = new GitGraphViewModel(gitService);
         _commitDetailViewModel = new CommitDetailViewModel(gitService);
         _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService);
-
-        // Load UI state from settings
-        var settings = settingsService.LoadSettings();
-        _isRepoPaneCollapsed = settings.IsRepoPaneCollapsed;
-
-        RepositoryRootItems = new ObservableCollection<object>();
+        _diffViewerViewModel = new DiffViewerViewModel();
+        _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
 
         // Wire up file watcher events
         _fileWatcherService.WorkingDirectoryChanged += async (s, e) =>
@@ -238,12 +264,7 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void StartAutoFetchTimer()
     {
-        _autoFetchTimer = new DispatcherTimer
-        {
-            Interval = AutoFetchInterval
-        };
-        _autoFetchTimer.Tick += async (s, e) => await AutoFetchAsync();
-        _autoFetchTimer.Start();
+        _autoFetchService.Start(AutoFetchInterval, () => SelectedRepository?.Path);
     }
 
     /// <summary>
@@ -251,53 +272,28 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public void StopAutoFetchTimer()
     {
-        _autoFetchTimer?.Stop();
+        _autoFetchService.Stop();
     }
 
     /// <summary>
-    /// Silent auto-fetch from remote (no UI blocking).
+    /// Handle auto-fetch completion - update UI state.
     /// </summary>
-    private async Task AutoFetchAsync()
+    private void OnAutoFetchCompleted(object? sender, AutoFetchCompletedEventArgs e)
     {
         if (SelectedRepository == null)
             return;
 
-        try
-        {
-            // Try to get credentials from stored PAT
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
-            var originUrl = remotes.FirstOrDefault(r => r.Name == "origin")?.Url;
-            string? pat = null;
-            if (!string.IsNullOrEmpty(originUrl))
-            {
-                try
-                {
-                    var host = new Uri(originUrl).Host;
-                    pat = _credentialService.GetPat(host);
-                }
-                catch
-                {
-                    // Invalid URL, skip PAT
-                }
-            }
+        // Update ahead/behind counts
+        SelectedRepository.AheadBy = e.AheadBy;
+        SelectedRepository.BehindBy = e.BehindBy;
 
-            await _gitService.FetchAsync(SelectedRepository.Path, "origin", password: pat);
-            LastFetchTime = DateTime.Now;
+        // Update status
+        StatusMessage = $"Auto-fetched at {e.FetchTime:HH:mm}" +
+                       (e.AheadBy > 0 ? $" | ↑{e.AheadBy}" : "") +
+                       (e.BehindBy > 0 ? $" | ↓{e.BehindBy}" : "");
 
-            // Update ahead/behind counts
-            var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
-            SelectedRepository.AheadBy = info.AheadBy;
-            SelectedRepository.BehindBy = info.BehindBy;
-
-            // Update status
-            StatusMessage = $"Auto-fetched at {LastFetchTime:HH:mm}" +
-                           (SelectedRepository.AheadBy > 0 ? $" | {SelectedRepository.AheadBy}" : "") +
-                           (SelectedRepository.BehindBy > 0 ? $" | {SelectedRepository.BehindBy}" : "");
-        }
-        catch
-        {
-            // Silent failure for auto-fetch - don't disrupt the user
-        }
+        // Notify that LastFetchTime changed (property delegates to service)
+        OnPropertyChanged(nameof(LastFetchTime));
     }
 
     /// <summary>
@@ -305,64 +301,24 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private async void LoadSavedRepositories()
     {
-        var data = _settingsService.LoadRepositories();
+        // Load UI state from settings
+        var settings = _settingsService.LoadSettings();
+        IsRepoPaneCollapsed = settings.IsRepoPaneCollapsed;
 
-        foreach (var repo in data.Repositories)
-        {
-            // Only add if the repo still exists on disk
-            if (repo.Exists)
-            {
-                AddRepositoryToGroups(repo, save: false);
-            }
-        }
-
-        // Also load custom groups
-        foreach (var group in data.CustomGroups)
-        {
-            if (!RepositoryGroups.Any(g => g.Id == group.Id))
-            {
-                RepositoryGroups.Add(group);
-            }
-        }
+        // Load repositories via service
+        var lastSelectedPath = await _repositoryService.LoadRepositoriesAsync();
 
         // Restore last selected repository
-        var settings = _settingsService.LoadSettings();
-        if (!string.IsNullOrEmpty(settings.LastSelectedRepositoryPath))
+        if (!string.IsNullOrEmpty(lastSelectedPath))
         {
-            var lastRepo = RepositoryGroups
-                .SelectMany(g => g.Repositories)
-                .FirstOrDefault(r => r.Path == settings.LastSelectedRepositoryPath);
-
+            var lastRepo = _repositoryService.FindRepository(lastSelectedPath);
             if (lastRepo != null)
             {
                 await SelectRepositoryAsync(lastRepo);
+                // Request the View to visually select the repository in the TreeView
+                RequestRepositorySelection?.Invoke(this, lastRepo);
             }
         }
-
-        RefreshQuickAccessRepositories();
-    }
-
-    /// <summary>
-    /// Save repositories to persistent storage.
-    /// </summary>
-    private void SaveRepositories()
-    {
-        var allRepos = RepositoryGroups
-            .SelectMany(g => g.Repositories)
-            .DistinctBy(r => r.Path)
-            .ToList();
-
-        var customGroups = RepositoryGroups
-            .Where(g => g.Type == GroupType.Custom)
-            .ToList();
-
-        var data = new RepositoryData
-        {
-            Repositories = allRepos,
-            CustomGroups = customGroups
-        };
-
-        _settingsService.SaveRepositories(data);
     }
 
     /// <summary>
@@ -387,7 +343,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             var repoInfo = await _gitService.GetRepositoryInfoAsync(path);
-            AddRepositoryToGroups(repoInfo);
+            _repositoryService.AddRepository(repoInfo);
             await SelectRepositoryAsync(repoInfo);
         }
     }
@@ -422,13 +378,13 @@ public partial class MainViewModel : ObservableObject
                     if (repoPath == null) continue;
 
                     // Skip if already added
-                    if (RepositoryGroups.SelectMany(g => g.Repositories).Any(r => r.Path == repoPath))
+                    if (_repositoryService.ContainsRepository(repoPath))
                         continue;
 
                     if (await _gitService.IsValidRepositoryAsync(repoPath))
                     {
                         var repoInfo = await _gitService.GetRepositoryInfoAsync(repoPath);
-                        AddRepositoryToGroups(repoInfo);
+                        _repositoryService.AddRepository(repoInfo);
                         addedCount++;
                     }
                 }
@@ -464,7 +420,7 @@ public partial class MainViewModel : ObservableObject
         {
             // Add the cloned repo to the list
             var repoInfo = await _gitService.GetRepositoryInfoAsync(dialog.ClonedRepositoryPath);
-            AddRepositoryToGroups(repoInfo);
+            _repositoryService.AddRepository(repoInfo);
             await SelectRepositoryAsync(repoInfo);
             StatusMessage = $"Cloned {repoInfo.Name} successfully";
         }
@@ -478,16 +434,17 @@ public partial class MainViewModel : ObservableObject
     {
         if (repository == null) return;
 
+        // Close diff viewer when switching repositories
+        IsDiffViewerVisible = false;
+
         try
         {
             IsBusy = true;
             SelectedRepository = repository;
-            if (!RecentRepositories.Contains(repository))
-            {
-                repository.LastAccessed = DateTimeOffset.Now;
-                SaveRepositories();
-                RefreshQuickAccessRepositories();
-            }
+
+            // Mark as recently accessed (updates quick access sections)
+            _repositoryService.MarkAsRecentlyAccessed(repository);
+
             StatusMessage = $"Loading {repository.Name}...";
 
             // Start watching the new repository for live changes
@@ -502,6 +459,12 @@ public partial class MainViewModel : ObservableObject
             if (GitGraphViewModel != null)
             {
                 await GitGraphViewModel.LoadRepositoryAsync(repository.Path);
+
+                // Sync working changes to the staging view if it's currently selected
+                if (IsWorkingChangesSelected && WorkingChangesViewModel != null)
+                {
+                    WorkingChangesViewModel.SetWorkingChanges(repository.Path, GitGraphViewModel.WorkingChanges);
+                }
             }
 
             // Update status
@@ -1032,147 +995,118 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private void AddRepositoryToGroups(RepositoryInfo repo, bool save = true)
+    /// <summary>
+    /// Show the diff viewer for a file in a commit.
+    /// </summary>
+    public async Task ShowFileDiffAsync(Models.FileChangeInfo file, string commitSha)
     {
-        // Find or create folder-based group
-        var folderGroup = RepositoryGroups.FirstOrDefault(g =>
-            g.Type == GroupType.Folder && g.Name == repo.FolderGroup);
+        if (SelectedRepository == null || DiffViewerViewModel == null)
+            return;
 
-        if (folderGroup == null)
+        DiffViewerViewModel.IsLoading = true;
+        IsDiffViewerVisible = true;
+
+        try
         {
-            folderGroup = new RepositoryGroup
-            {
-                Name = repo.FolderGroup,
-                Type = GroupType.Folder
-            };
-            RepositoryGroups.Add(folderGroup);
-        }
+            // Get the file content from the commit
+            var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
+                SelectedRepository.Path, commitSha, file.Path);
 
-        // Add repo if not already present
-        if (!folderGroup.Repositories.Any(r => r.Path == repo.Path))
+            // Compute the diff
+            var diffService = new Services.DiffService();
+            var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
+
+            // Load into the view model
+            DiffViewerViewModel.LoadDiff(result);
+        }
+        catch (Exception ex)
         {
-            folderGroup.Repositories.Add(repo);
-
-            // Save to persistent storage
-            if (save)
-            {
-                SaveRepositories();
-            }
+            StatusMessage = $"Failed to load diff: {ex.Message}";
+            IsDiffViewerVisible = false;
         }
-
-        RefreshQuickAccessRepositories();
+        finally
+        {
+            DiffViewerViewModel.IsLoading = false;
+        }
     }
 
-    private void RemoveRepositoryFromGroups(RepositoryInfo repo)
+    /// <summary>
+    /// Close the diff viewer.
+    /// </summary>
+    public void CloseDiffViewer()
     {
-        var emptyGroups = new List<RepositoryGroup>();
-
-        foreach (var group in RepositoryGroups)
-        {
-            var existing = group.Repositories.FirstOrDefault(r => r.Path == repo.Path);
-            if (existing != null)
-            {
-                group.Repositories.Remove(existing);
-            }
-
-            if (group.Repositories.Count == 0)
-            {
-                emptyGroups.Add(group);
-            }
-        }
-
-        foreach (var group in emptyGroups)
-        {
-            RepositoryGroups.Remove(group);
-        }
-
-        RefreshQuickAccessRepositories();
-        SaveRepositories();
+        IsDiffViewerVisible = false;
+        DiffViewerViewModel?.Clear();
     }
 
-    private void RefreshQuickAccessRepositories()
+    /// <summary>
+    /// Show diff for an unstaged file (working directory vs index).
+    /// </summary>
+    public async Task ShowUnstagedFileDiffAsync(Models.FileStatusInfo file)
     {
-        var allRepos = RepositoryGroups
-            .SelectMany(g => g.Repositories)
-            .DistinctBy(r => r.Path)
-            .ToList();
+        if (SelectedRepository == null || DiffViewerViewModel == null)
+            return;
 
-        PinnedRepositories.Clear();
-        foreach (var repo in allRepos.Where(r => r.IsPinned))
-        {
-            PinnedRepositories.Add(repo);
-        }
+        DiffViewerViewModel.IsLoading = true;
+        IsDiffViewerVisible = true;
 
-        RecentRepositories.Clear();
-        foreach (var repo in allRepos
-                     .OrderByDescending(r => r.LastAccessed)
-                     .Take(5))
+        try
         {
-            RecentRepositories.Add(repo);
-        }
+            var (oldContent, newContent) = await _gitService.GetUnstagedFileDiffAsync(
+                SelectedRepository.Path, file.Path);
 
-        _pinnedSection.Repositories.Clear();
-        foreach (var repo in PinnedRepositories)
-        {
-            _pinnedSection.Repositories.Add(repo);
-        }
+            var diffService = new Services.DiffService();
+            var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
 
-        _recentSection.Repositories.Clear();
-        foreach (var repo in RecentRepositories)
-        {
-            _recentSection.Repositories.Add(repo);
+            DiffViewerViewModel.LoadDiff(result);
         }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to load diff: {ex.Message}";
+            IsDiffViewerVisible = false;
+        }
+        finally
+        {
+            DiffViewerViewModel.IsLoading = false;
+        }
+    }
 
-        int insertIndex = 0;
-        if (_pinnedSection.Repositories.Count > 0)
-        {
-            if (!RepositoryRootItems.Contains(_pinnedSection))
-            {
-                RepositoryRootItems.Insert(insertIndex, _pinnedSection);
-            }
-            insertIndex = RepositoryRootItems.IndexOf(_pinnedSection) + 1;
-        }
-        else if (RepositoryRootItems.Contains(_pinnedSection))
-        {
-            RepositoryRootItems.Remove(_pinnedSection);
-        }
+    /// <summary>
+    /// Show diff for a staged file (index vs HEAD).
+    /// </summary>
+    public async Task ShowStagedFileDiffAsync(Models.FileStatusInfo file)
+    {
+        if (SelectedRepository == null || DiffViewerViewModel == null)
+            return;
 
-        if (_recentSection.Repositories.Count > 0)
-        {
-            if (!RepositoryRootItems.Contains(_recentSection))
-            {
-                RepositoryRootItems.Insert(insertIndex, _recentSection);
-            }
-            insertIndex = RepositoryRootItems.IndexOf(_recentSection) + 1;
-        }
-        else if (RepositoryRootItems.Contains(_recentSection))
-        {
-            RepositoryRootItems.Remove(_recentSection);
-        }
+        DiffViewerViewModel.IsLoading = true;
+        IsDiffViewerVisible = true;
 
-        foreach (var group in RepositoryGroups)
+        try
         {
-            if (!RepositoryRootItems.Contains(group))
-            {
-                RepositoryRootItems.Add(group);
-            }
-        }
+            var (oldContent, newContent) = await _gitService.GetStagedFileDiffAsync(
+                SelectedRepository.Path, file.Path);
 
-        for (int i = RepositoryRootItems.Count - 1; i >= 0; i--)
+            var diffService = new Services.DiffService();
+            var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
+
+            DiffViewerViewModel.LoadDiff(result);
+        }
+        catch (Exception ex)
         {
-            if (RepositoryRootItems[i] is RepositoryGroup group && !RepositoryGroups.Contains(group))
-            {
-                RepositoryRootItems.RemoveAt(i);
-            }
+            StatusMessage = $"Failed to load diff: {ex.Message}";
+            IsDiffViewerVisible = false;
+        }
+        finally
+        {
+            DiffViewerViewModel.IsLoading = false;
         }
     }
 
     [RelayCommand]
     public void TogglePinRepository(RepositoryInfo repo)
     {
-        repo.IsPinned = !repo.IsPinned;
-        SaveRepositories();
-        RefreshQuickAccessRepositories();
+        _repositoryService.TogglePinRepository(repo);
     }
 
     [RelayCommand]
@@ -1186,7 +1120,7 @@ public partial class MainViewModel : ObservableObject
             _settingsService.SaveSettings(settings);
         }
 
-        RemoveRepositoryFromGroups(repo);
+        _repositoryService.RemoveRepository(repo);
     }
 
     /// <summary>
@@ -1499,6 +1433,31 @@ public partial class MainViewModel : ObservableObject
         };
 
         await MergeBranchAsync(branch);
+    }
+
+    [RelayCommand]
+    public async Task CheckoutCommitAsync(CommitInfo commit)
+    {
+        if (commit == null || SelectedRepository == null)
+            return;
+
+        IsBusy = true;
+        StatusMessage = $"Checking out commit {commit.ShortSha}...";
+
+        try
+        {
+            await _gitService.CheckoutCommitAsync(SelectedRepository.Path, commit.Sha);
+            StatusMessage = $"Checked out commit {commit.ShortSha} (detached HEAD)";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Checkout failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]

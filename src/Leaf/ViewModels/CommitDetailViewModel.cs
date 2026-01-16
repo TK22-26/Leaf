@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
@@ -259,6 +261,52 @@ public partial class CommitDetailViewModel : ObservableObject
         {
             System.Windows.Clipboard.SetText(Commit.Sha);
         }
+    }
+
+    /// <summary>
+    /// Open file in Windows Explorer.
+    /// </summary>
+    [RelayCommand]
+    public void OpenInExplorer(FileChangeInfo? file)
+    {
+        if (string.IsNullOrEmpty(RepositoryPath) || file == null)
+            return;
+
+        // Normalize path separators (Git uses forward slashes)
+        var normalizedFilePath = file.Path.Replace('/', '\\');
+        var fullPath = Path.Combine(RepositoryPath, normalizedFilePath);
+
+        if (File.Exists(fullPath))
+        {
+            Process.Start("explorer.exe", $"/select,\"{fullPath}\"");
+        }
+        else if (Directory.Exists(fullPath))
+        {
+            Process.Start("explorer.exe", $"\"{fullPath}\"");
+        }
+        else
+        {
+            // File doesn't exist (maybe deleted), open the containing directory
+            var directory = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            {
+                Process.Start("explorer.exe", $"\"{directory}\"");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Copy file path to clipboard.
+    /// </summary>
+    [RelayCommand]
+    public void CopyFilePath(FileChangeInfo? file)
+    {
+        if (string.IsNullOrEmpty(RepositoryPath) || file == null)
+            return;
+
+        var normalizedFilePath = file.Path.Replace('/', '\\');
+        var fullPath = Path.Combine(RepositoryPath, normalizedFilePath);
+        System.Windows.Clipboard.SetText(fullPath);
     }
 
     /// <summary>

@@ -2,6 +2,7 @@
     x:Class="Leaf.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="clr-namespace:Leaf.Controls"
     xmlns:converters="clr-namespace:Leaf.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
@@ -18,16 +19,18 @@
 
     <Window.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
         <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
         <converters:IntGreaterThanZeroConverter x:Key="IntGreaterThanZeroConverter" />
 
-        <!--  Action bar button style with green hover  -->
+        <!--  Action bar button style with green hover (stacked icon + text)  -->
         <Style x:Key="ActionBarButtonStyle" BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Margin" Value="2,0" />
-            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="1,0" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="MinWidth" Value="46" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
@@ -154,16 +157,15 @@
                         Command="{Binding UndoCommand}"
                         Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Undo last commit (before push)">
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel HorizontalAlignment="Center">
                             <TextBlock
-                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
                                 FontFamily="Segoe Fluent Icons"
-                                FontSize="14"
+                                FontSize="16"
                                 Text="&#xE7A7;" />
                             <TextBlock
-                                Margin="6,0,0,0"
-                                VerticalAlignment="Center"
-                                FontSize="12"
+                                HorizontalAlignment="Center"
+                                FontSize="10"
                                 Text="Undo" />
                         </StackPanel>
                     </Button>
@@ -172,16 +174,15 @@
                         Command="{Binding RedoCommand}"
                         Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Redo last undone commit">
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel HorizontalAlignment="Center">
                             <TextBlock
-                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
                                 FontFamily="Segoe Fluent Icons"
-                                FontSize="14"
+                                FontSize="16"
                                 Text="&#xE7A6;" />
                             <TextBlock
-                                Margin="6,0,0,0"
-                                VerticalAlignment="Center"
-                                FontSize="12"
+                                HorizontalAlignment="Center"
+                                FontSize="10"
                                 Text="Redo" />
                         </StackPanel>
                     </Button>
@@ -196,16 +197,15 @@
                         Command="{Binding PullCommand}"
                         Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Pull changes from remote">
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel HorizontalAlignment="Center">
                             <TextBlock
-                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
                                 FontFamily="Segoe Fluent Icons"
-                                FontSize="14"
+                                FontSize="16"
                                 Text="&#xE74B;" />
                             <TextBlock
-                                Margin="6,0,0,0"
-                                VerticalAlignment="Center"
-                                FontSize="12"
+                                HorizontalAlignment="Center"
+                                FontSize="10"
                                 Text="Pull" />
                         </StackPanel>
                     </Button>
@@ -214,16 +214,15 @@
                         Command="{Binding PushCommand}"
                         Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Push changes to remote">
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel HorizontalAlignment="Center">
                             <TextBlock
-                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
                                 FontFamily="Segoe Fluent Icons"
-                                FontSize="14"
+                                FontSize="16"
                                 Text="&#xE74A;" />
                             <TextBlock
-                                Margin="6,0,0,0"
-                                VerticalAlignment="Center"
-                                FontSize="12"
+                                HorizontalAlignment="Center"
+                                FontSize="10"
                                 Text="Push" />
                         </StackPanel>
                     </Button>
@@ -238,15 +237,14 @@
                         Command="{Binding CreateBranchCommand}"
                         Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Create new branch">
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel HorizontalAlignment="Center">
                             <ic:SymbolIcon
-                                VerticalAlignment="Center"
-                                FontSize="14"
+                                HorizontalAlignment="Center"
+                                FontSize="16"
                                 Symbol="BranchFork" />
                             <TextBlock
-                                Margin="6,0,0,0"
-                                VerticalAlignment="Center"
-                                FontSize="12"
+                                HorizontalAlignment="Center"
+                                FontSize="10"
                                 Text="Branch" />
                         </StackPanel>
                     </Button>
@@ -255,15 +253,14 @@
                         Command="{Binding InitializeGitFlowCommand}"
                         Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="GitFlow settings">
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel HorizontalAlignment="Center">
                             <ic:SymbolIcon
-                                VerticalAlignment="Center"
-                                FontSize="14"
+                                HorizontalAlignment="Center"
+                                FontSize="16"
                                 Symbol="Flow" />
                             <TextBlock
-                                Margin="6,0,0,0"
-                                VerticalAlignment="Center"
-                                FontSize="12"
+                                HorizontalAlignment="Center"
+                                FontSize="10"
                                 Text="GitFlow" />
                         </StackPanel>
                     </Button>
@@ -278,16 +275,15 @@
                         Command="{Binding StashCommand}"
                         Style="{StaticResource ActionBarButtonStyle}"
                         ToolTip="Stash changes">
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel HorizontalAlignment="Center">
                             <TextBlock
-                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
                                 FontFamily="Segoe Fluent Icons"
-                                FontSize="14"
+                                FontSize="16"
                                 Text="&#xE7B8;" />
                             <TextBlock
-                                Margin="6,0,0,0"
-                                VerticalAlignment="Center"
-                                FontSize="12"
+                                HorizontalAlignment="Center"
+                                FontSize="10"
                                 Text="Stash" />
                         </StackPanel>
                     </Button>
@@ -305,16 +301,15 @@
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel HorizontalAlignment="Center">
                             <TextBlock
-                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
                                 FontFamily="Segoe Fluent Icons"
-                                FontSize="14"
+                                FontSize="16"
                                 Text="&#xE7B7;" />
                             <TextBlock
-                                Margin="6,0,0,0"
-                                VerticalAlignment="Center"
-                                FontSize="12"
+                                HorizontalAlignment="Center"
+                                FontSize="10"
                                 Text="Pop" />
                         </StackPanel>
                     </Button>
@@ -352,11 +347,8 @@
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="250" MinWidth="200" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="350" MinWidth="0" />
             </Grid.ColumnDefinitions>
 
@@ -451,32 +443,18 @@
                 </Grid>
             </Border>
 
-            <GridSplitter
-                Grid.Column="1"
-                Width="4"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Stretch"
-                Background="Transparent"
-                Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}" />
-
             <!--  Second panel: Branches for selected repo  -->
             <Border
-                Grid.Column="2"
+                Grid.Column="1"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="0,0,1,0">
                 <views:BranchListView DataContext="{Binding}" />
             </Border>
 
-            <GridSplitter
-                Grid.Column="3"
-                Width="4"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Stretch"
-                Background="Transparent" />
-
             <!--  Center panel: Git graph + commit list  -->
-            <Grid Grid.Column="4">
-                <views:GitGraphView Margin="0,0,-5,0" DataContext="{Binding GitGraphViewModel}" />
+            <Grid Grid.Column="2">
+                <views:GitGraphView DataContext="{Binding GitGraphViewModel}"
+                                    Visibility="{Binding DataContext.IsDiffViewerVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
 
                 <!--  Click-outside overlay to cancel branch input  -->
                 <Border
@@ -547,6 +525,7 @@
                                         CaretBrush="#E0E0E0"
                                         FontSize="13"
                                         Foreground="#E0E0E0"
+                                        IsVisibleChanged="BranchNameInput_IsVisibleChanged"
                                         KeyDown="BranchNameInput_KeyDown"
                                         PreviewTextInput="BranchNameInput_PreviewTextInput"
                                         Text="{Binding NewBranchName, UpdateSourceTrigger=PropertyChanged}">
@@ -594,17 +573,9 @@
                 </Border>
             </Grid>
 
-            <GridSplitter
-                Grid.Column="5"
-                Width="4"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Stretch"
-                Background="Transparent"
-                Visibility="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
-
             <!--  Right panel: Commit details / Working changes / Merge Status  -->
             <Border
-                Grid.Column="6"
+                Grid.Column="3"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="1,0,0,0"
                 Visibility="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -673,6 +644,35 @@
                     </views:CommitDetailView>
                 </Grid>
             </Border>
+
+            <!--  Splitters (declared after content so they're on top for mouse events)  -->
+            <GridSplitter
+                Grid.Column="2"
+                Width="4"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Stretch"
+                Background="Transparent"
+                Cursor="SizeWE"
+                Focusable="False"
+                ResizeBehavior="PreviousAndCurrent"
+                ResizeDirection="Columns" />
+            <GridSplitter
+                Grid.Column="3"
+                Width="4"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Stretch"
+                Background="Transparent"
+                Cursor="SizeWE"
+                Focusable="False"
+                ResizeBehavior="PreviousAndCurrent"
+                ResizeDirection="Columns"
+                Visibility="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+            <!--  Diff Viewer Overlay (center panel only)  -->
+            <controls:DiffViewerControl
+                Grid.Column="2"
+                DataContext="{Binding DiffViewerViewModel}"
+                Visibility="{Binding DataContext.IsDiffViewerVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
         </Grid>
     </Grid>
 </Window>

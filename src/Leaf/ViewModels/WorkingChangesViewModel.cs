@@ -367,6 +367,173 @@ public partial class WorkingChangesViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Open the file's containing folder in Windows Explorer and select the file.
+    /// </summary>
+    [RelayCommand]
+    public void OpenInExplorer(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        // Normalize path separators (Git uses forward slashes)
+        var normalizedFilePath = file.Path.Replace('/', '\\');
+        var fullPath = Path.Combine(_repositoryPath, normalizedFilePath);
+
+        if (File.Exists(fullPath))
+        {
+            // Open Explorer and select the file
+            Process.Start("explorer.exe", $"/select,\"{fullPath}\"");
+        }
+        else if (Directory.Exists(fullPath))
+        {
+            // Open the directory
+            Process.Start("explorer.exe", $"\"{fullPath}\"");
+        }
+        else
+        {
+            // File doesn't exist (deleted), open the containing folder
+            var directory = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            {
+                Process.Start("explorer.exe", $"\"{directory}\"");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Copy the file's full path to the clipboard.
+    /// </summary>
+    [RelayCommand]
+    public void CopyFilePath(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        var normalizedFilePath = file.Path.Replace('/', '\\');
+        var fullPath = Path.Combine(_repositoryPath, normalizedFilePath);
+        Clipboard.SetText(fullPath);
+    }
+
+    /// <summary>
+    /// Delete a file from the filesystem.
+    /// </summary>
+    [RelayCommand]
+    public async Task DeleteFileAsync(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        var result = MessageBox.Show(
+            $"Are you sure you want to delete '{file.FileName}'?\n\nThis will permanently delete the file from disk and cannot be undone.",
+            "Delete File",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            var fullPath = Path.Combine(_repositoryPath, file.Path);
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+            }
+            else if (Directory.Exists(fullPath))
+            {
+                Directory.Delete(fullPath, recursive: true);
+            }
+
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            OnPropertyChanged(nameof(HasChanges));
+            OnPropertyChanged(nameof(FileChangesSummary));
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Delete failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Delete a Windows reserved filename (nul, con, prn, etc.) using admin privileges.
+    /// These files cannot be deleted normally due to Windows restrictions.
+    /// </summary>
+    [RelayCommand]
+    public async Task AdminDeleteReservedFileAsync(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        var result = MessageBox.Show(
+            $"Delete reserved file '{file.FileName}'?\n\nThis requires administrator privileges and will run a command to rename and delete the file.",
+            "Admin Delete",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            var fullPath = Path.Combine(_repositoryPath, file.Path);
+            var directory = Path.GetDirectoryName(fullPath) ?? _repositoryPath;
+            var fileName = Path.GetFileName(fullPath);
+            var tempName = $"_leaf_temp_{Guid.NewGuid():N}.tmp";
+
+            // Build the batch script to rename and delete the reserved file
+            // Uses \\?\ prefix to bypass Windows reserved name restrictions
+            var script = $@"
+@echo off
+cd /d ""{directory}""
+ren ""\\?\{fullPath}"" ""{tempName}""
+del ""{Path.Combine(directory, tempName)}""
+exit /b %errorlevel%
+";
+
+            var batchFile = Path.Combine(Path.GetTempPath(), $"leaf_admin_delete_{Guid.NewGuid():N}.bat");
+            await File.WriteAllTextAsync(batchFile, script);
+
+            // Run with admin privileges
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = batchFile,
+                Verb = "runas", // Request admin elevation
+                UseShellExecute = true,
+                CreateNoWindow = false
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process != null)
+            {
+                await process.WaitForExitAsync();
+
+                // Clean up batch file
+                try { File.Delete(batchFile); } catch { }
+
+                if (process.ExitCode == 0)
+                {
+                    WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+                    OnPropertyChanged(nameof(HasChanges));
+                    OnPropertyChanged(nameof(FileChangesSummary));
+                }
+                else
+                {
+                    ErrorMessage = $"Admin delete failed with exit code {process.ExitCode}";
+                }
+            }
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            // User cancelled UAC prompt
+            ErrorMessage = "Admin delete cancelled by user.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Admin delete failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
     /// Adds a pattern to the repository's .gitignore file.
     /// </summary>
     private async Task AddToGitignoreAsync(string pattern)

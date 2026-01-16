@@ -15,6 +15,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="THIRD_PARTY_LICENSES.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="DiffPlex" Version="1.9.0" />
     <PackageReference Include="FluentIcons.Wpf" Version="2.0.316" />
     <PackageReference Include="LibGit2Sharp" Version="0.31.0" />
