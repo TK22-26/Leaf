@@ -103,6 +103,14 @@
                             </TreeViewItem.Header>
                         </TreeViewItem>
                     </TreeViewItem>
+                    <TreeViewItem x:Name="NavTerminal" Tag="Terminal">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="Code" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Terminal" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
 
                     <!-- Authentication -->
                     <TreeViewItem x:Name="NavAuthentication" Tag="Authentication">
@@ -240,6 +248,62 @@
                                            TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
+                    </StackPanel>
+
+                    <!-- Terminal Content -->
+                    <StackPanel x:Name="ContentTerminal" Visibility="Collapsed">
+                        <TextBlock Text="Terminal"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="Configure the built-in command terminal"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,16" />
+
+                        <StackPanel Margin="0,0,0,14">
+                            <TextBlock Text="Shell executable"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Margin="0,0,0,6" />
+                            <TextBox x:Name="TerminalShellExecutableTextBox" />
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,14">
+                            <TextBlock Text="Shell arguments template"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Margin="0,0,0,6" />
+                            <TextBox x:Name="TerminalShellArgumentsTextBox" />
+                            <TextBlock Text="Use {command} as a placeholder for the entered command."
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       Margin="0,4,0,0" />
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,14">
+                            <TextBlock Text="Max output lines"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Margin="0,0,0,6" />
+                            <TextBox x:Name="TerminalMaxLinesTextBox" Width="120" />
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,14">
+                            <TextBlock Text="Font size"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Margin="0,0,0,6" />
+                            <TextBox x:Name="TerminalFontSizeTextBox" Width="120" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <CheckBox x:Name="TerminalAutoScrollCheckBox" Content="Auto-scroll output" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox x:Name="TerminalLogGitCommandsCheckBox" Content="Log Git commands from Leaf" />
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- Azure DevOps Content -->

@@ -23,6 +23,7 @@
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
         <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
         <converters:IntGreaterThanZeroConverter x:Key="IntGreaterThanZeroConverter" />
+        <converters:TerminalRowHeightConverter x:Key="TerminalRowHeightConverter" />
 
         <!--  Action bar button style with green hover (stacked icon + text)  -->
         <Style x:Key="ActionBarButtonStyle" BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
@@ -38,6 +39,10 @@
             </Style.Triggers>
         </Style>
     </Window.Resources>
+
+    <Window.InputBindings>
+        <KeyBinding Key="Oem3" Modifiers="Control" Command="{Binding ToggleTerminalCommand}" />
+    </Window.InputBindings>
 
     <Grid>
         <Grid.RowDefinitions>
@@ -90,6 +95,16 @@
                             </MenuItem.Icon>
                         </MenuItem>
                     </MenuItem>
+                </MenuItem>
+                <MenuItem Header="_View">
+                    <MenuItem Command="{Binding ToggleCommitDetailCommand}"
+                              Header="Commit Details"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsCommitDetailVisible}" />
+                    <MenuItem Header="Terminal"
+                              InputGestureText="Ctrl+`"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsTerminalVisible, Mode=TwoWay}" />
                 </MenuItem>
             </Menu>
         </Border>
@@ -343,8 +358,22 @@
             </Grid>
         </Border>
 
-        <!--  Main four-panel layout  -->
+        <!--  Main layout + terminal pane  -->
         <Grid Grid.Row="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition x:Name="TerminalRow" MinHeight="120">
+                    <RowDefinition.Height>
+                        <MultiBinding Converter="{StaticResource TerminalRowHeightConverter}">
+                            <Binding Path="DataContext.TerminalHeight" RelativeSource="{RelativeSource AncestorType=Window}" />
+                            <Binding Path="DataContext.IsTerminalVisible" RelativeSource="{RelativeSource AncestorType=Window}" />
+                        </MultiBinding>
+                    </RowDefinition.Height>
+                </RowDefinition>
+            </Grid.RowDefinitions>
+
+            <!--  Main four-panel layout  -->
+            <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="250" MinWidth="200" />
@@ -673,6 +702,32 @@
                 Grid.Column="2"
                 DataContext="{Binding DiffViewerViewModel}"
                 Visibility="{Binding DataContext.IsDiffViewerVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
+            </Grid>
+
+            <!-- Terminal splitter -->
+            <GridSplitter
+                x:Name="TerminalSplitter"
+                Grid.Row="1"
+                Height="4"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Top"
+                Background="Transparent"
+                Cursor="SizeNS"
+                Focusable="False"
+                Panel.ZIndex="2"
+                ResizeDirection="Rows"
+                ResizeBehavior="PreviousAndCurrent"
+                DragCompleted="TerminalSplitter_DragCompleted"
+                Visibility="{Binding DataContext.IsTerminalVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+            <!-- Terminal pane -->
+            <views:TerminalView
+                x:Name="TerminalPane"
+                Grid.Row="1"
+                MinHeight="120"
+                Margin="0,4,0,0"
+                DataContext="{Binding TerminalViewModel}"
+                Visibility="{Binding DataContext.IsTerminalVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
         </Grid>
     </Grid>
 </Window>

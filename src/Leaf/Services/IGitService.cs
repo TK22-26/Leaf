@@ -8,6 +8,8 @@ namespace Leaf.Services;
 /// </summary>
 public interface IGitService
 {
+    event EventHandler<GitCommandEventArgs>? GitCommandExecuted;
+
     /// <summary>
     /// Check if a path contains a valid Git repository.
     /// </summary>

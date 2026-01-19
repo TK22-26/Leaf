@@ -238,6 +238,44 @@ public class IntGreaterThanZeroConverter : IValueConverter
     }
 }
 
+public class IntGreaterThanZeroToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is int intValue && intValue > 0)
+        {
+            return Visibility.Visible;
+        }
+
+        return Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class TerminalRowHeightConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length < 2)
+        {
+            return new GridLength(0);
+        }
+
+        var height = values[0] is double d ? d : 0;
+        var isVisible = values[1] is bool b && b;
+        return isVisible && height > 0 ? new GridLength(height) : new GridLength(0);
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
 /// <summary>
 /// Formats a commit overflow count (e.g., "+ 1 commit", "+ 5 commits").
 /// </summary>

@@ -13,6 +13,8 @@ namespace Leaf.Services;
 /// </summary>
 public class GitService : IGitService
 {
+    public event EventHandler<GitCommandEventArgs>? GitCommandExecuted;
+
     public async Task<bool> IsValidRepositoryAsync(string path)
     {
         return await Task.Run(() =>
@@ -2885,7 +2887,7 @@ public class GitService : IGitService
 
     #region Git Command Helper
 
-    private static (int ExitCode, string Output, string Error) RunGitCommand(string repoPath, string arguments)
+    private (int ExitCode, string Output, string Error) RunGitCommand(string repoPath, string arguments)
     {
         var startInfo = new System.Diagnostics.ProcessStartInfo
         {
@@ -2901,23 +2903,32 @@ public class GitService : IGitService
         using var process = System.Diagnostics.Process.Start(startInfo);
         if (process == null)
         {
-            return (-1, "", "Failed to start git process");
+            var failed = (ExitCode: -1, Output: "", Error: "Failed to start git process");
+            OnGitCommandExecuted(repoPath, $"git {arguments}", failed.ExitCode, failed.Output, failed.Error);
+            return failed;
         }
 
         var output = process.StandardOutput.ReadToEnd();
         var error = process.StandardError.ReadToEnd();
         process.WaitForExit();
 
-        return (process.ExitCode, output, error);
+        var result = (ExitCode: process.ExitCode, Output: output, Error: error);
+        OnGitCommandExecuted(repoPath, $"git {arguments}", result.ExitCode, result.Output, result.Error);
+        return result;
     }
 
-    private static async Task<(int ExitCode, string Output, string Error)> RunGitCommandAsync(string repoPath, params string[] args)
+    private async Task<(int ExitCode, string Output, string Error)> RunGitCommandAsync(string repoPath, params string[] args)
     {
         return await Task.Run(() =>
         {
             var arguments = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
             return RunGitCommand(repoPath, arguments);
         });
+    }
+
+    private void OnGitCommandExecuted(string workingDirectory, string arguments, int exitCode, string output, string error)
+    {
+        GitCommandExecuted?.Invoke(this, new GitCommandEventArgs(workingDirectory, arguments, exitCode, output, error));
     }
 
     #endregion

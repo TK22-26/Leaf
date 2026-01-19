@@ -63,6 +63,9 @@ public partial class MainViewModel : ObservableObject
     private DiffViewerViewModel? _diffViewerViewModel;
 
     [ObservableProperty]
+    private TerminalViewModel? _terminalViewModel;
+
+    [ObservableProperty]
     private ConflictResolutionViewModel? _mergeConflictResolutionViewModel;
 
     [ObservableProperty]
@@ -76,6 +79,12 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isRepoPaneCollapsed;
+
+    [ObservableProperty]
+    private bool _isTerminalVisible;
+
+    [ObservableProperty]
+    private double _terminalHeight = 220;
 
     [ObservableProperty]
     private string _statusMessage = "Ready";
@@ -102,6 +111,18 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<object> RepositoryRootItems => _repositoryService.RepositoryRootItems;
 
     private string? _mergeConflictRepoPath;
+
+    partial void OnSelectedRepositoryChanged(RepositoryInfo? value)
+    {
+        TerminalViewModel?.SetWorkingDirectory(value?.Path);
+    }
+
+    partial void OnIsTerminalVisibleChanged(bool value)
+    {
+        var settings = _settingsService.LoadSettings();
+        settings.IsTerminalVisible = value;
+        _settingsService.SaveSettings(settings);
+    }
 
     partial void OnCommitSearchTextChanged(string value)
     {
@@ -150,6 +171,7 @@ public partial class MainViewModel : ObservableObject
         _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService);
         _diffViewerViewModel = new DiffViewerViewModel();
         _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
+        _terminalViewModel = new TerminalViewModel(gitService, settingsService);
 
         // Wire up file watcher events
         _fileWatcherService.WorkingDirectoryChanged += async (s, e) =>
@@ -306,6 +328,8 @@ public partial class MainViewModel : ObservableObject
         // Load UI state from settings
         var settings = _settingsService.LoadSettings();
         IsRepoPaneCollapsed = settings.IsRepoPaneCollapsed;
+        IsTerminalVisible = settings.IsTerminalVisible;
+        TerminalHeight = settings.TerminalHeight > 0 ? settings.TerminalHeight : 220;
 
         // Load repositories via service
         var lastSelectedPath = await _repositoryService.LoadRepositoriesAsync();
@@ -607,6 +631,15 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Toggle terminal pane visibility.
+    /// </summary>
+    [RelayCommand]
+    public void ToggleTerminal()
+    {
+        IsTerminalVisible = !IsTerminalVisible;
+    }
+
+    /// <summary>
     /// Toggle repo pane collapsed state.
     /// </summary>
     [RelayCommand]
@@ -633,6 +666,20 @@ public partial class MainViewModel : ObservableObject
             Height = 750
         };
         dialog.ShowDialog();
+        TerminalViewModel?.ReloadSettings();
+    }
+
+    public void UpdateTerminalHeight(double height)
+    {
+        if (height <= 0)
+        {
+            return;
+        }
+
+        TerminalHeight = height;
+        var settings = _settingsService.LoadSettings();
+        settings.TerminalHeight = height;
+        _settingsService.SaveSettings(settings);
     }
 
     /// <summary>
