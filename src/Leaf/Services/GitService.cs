@@ -692,6 +692,21 @@ public class GitService : IGitService
         }
     }
 
+    public async Task RevertMergeCommitAsync(string repoPath, string commitSha, int parentIndex)
+    {
+        var result = await RunGitCommandAsync(repoPath, "revert", "-m", parentIndex.ToString(), commitSha);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task<bool> RedoCommitAsync(string repoPath)
+    {
+        var result = await RunGitCommandAsync(repoPath, "reset", "--soft", "ORIG_HEAD");
+        return result.ExitCode == 0;
+    }
+
     public async Task ResetBranchToCommitAsync(string repoPath, string branchName, string commitSha, bool updateWorkingTree)
     {
         var result = updateWorkingTree

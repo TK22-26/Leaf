@@ -18,6 +18,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
     private readonly string _repoPath;
     private int _currentRegionIndex = -1;
 
+    public event EventHandler<int>? RequestScrollToRegion;
+
     [ObservableProperty]
     private string _sourceBranch = string.Empty;
 
@@ -297,7 +299,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         if (nextIndex >= 0)
         {
             _currentRegionIndex = nextIndex;
-            // TODO: Scroll to the region in the view
+            RequestScrollToRegion?.Invoke(this, nextIndex);
         }
     }
 
@@ -313,7 +315,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         if (prevIndex >= 0)
         {
             _currentRegionIndex = prevIndex;
-            // TODO: Scroll to the region in the view
+            RequestScrollToRegion?.Invoke(this, prevIndex);
         }
     }
 

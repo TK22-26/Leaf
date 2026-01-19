@@ -810,12 +810,37 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Redo (not implemented - would need reflog tracking).
+    /// Redo the last undone commit (soft reset to ORIG_HEAD).
     /// </summary>
     [RelayCommand]
-    public void Redo()
+    public async Task Redo()
     {
-        StatusMessage = "Redo not yet implemented";
+        if (SelectedRepository == null) return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "Redoing last undone commit...";
+
+            var success = await _gitService.RedoCommitAsync(SelectedRepository.Path);
+            if (success)
+            {
+                StatusMessage = "Commit redone";
+                await RefreshAsync();
+            }
+            else
+            {
+                StatusMessage = "Nothing to redo";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Redo failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     /// <summary>
@@ -1186,8 +1211,47 @@ public partial class MainViewModel : ObservableObject
 
         if (commit.IsMerge)
         {
-            MessageBox.Show("Reverting merge commits isn't supported yet.",
-                "Revert Commit", MessageBoxButton.OK, MessageBoxImage.Information);
+            var parentIndex = await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var result = MessageBox.Show(
+                    "This is a merge commit.\n\nRevert using the first parent (current branch)?\n" +
+                    "Yes = parent 1, No = parent 2.",
+                    "Revert Merge Commit",
+                    MessageBoxButton.YesNoCancel,
+                    MessageBoxImage.Warning);
+
+                return result switch
+                {
+                    MessageBoxResult.Yes => 1,
+                    MessageBoxResult.No => 2,
+                    _ => 0
+                };
+            });
+
+            if (parentIndex == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                IsBusy = true;
+                StatusMessage = $"Reverting {commit.ShortSha} (parent {parentIndex})...";
+
+                await _gitService.RevertMergeCommitAsync(SelectedRepository.Path, commit.Sha, parentIndex);
+
+                StatusMessage = $"Reverted {commit.ShortSha}";
+                await RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Revert failed: {ex.Message}";
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+
             return;
         }
 

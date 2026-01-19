@@ -110,6 +110,16 @@ public interface IGitService
     Task RevertCommitAsync(string repoPath, string commitSha);
 
     /// <summary>
+    /// Revert a merge commit using the specified parent index.
+    /// </summary>
+    Task RevertMergeCommitAsync(string repoPath, string commitSha, int parentIndex);
+
+    /// <summary>
+    /// Redo the last undone commit (if available).
+    /// </summary>
+    Task<bool> RedoCommitAsync(string repoPath);
+
+    /// <summary>
     /// Reset a branch to a specific commit.
     /// </summary>
     Task ResetBranchToCommitAsync(string repoPath, string branchName, string commitSha, bool updateWorkingTree);
