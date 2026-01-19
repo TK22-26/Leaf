@@ -85,6 +85,36 @@ public interface IGitService
     Task PushAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null);
 
     /// <summary>
+    /// Pull updates for a specific branch (fast-forward if possible).
+    /// </summary>
+    Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch);
+
+    /// <summary>
+    /// Push a specific branch to remote.
+    /// </summary>
+    Task PushBranchAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch);
+
+    /// <summary>
+    /// Set upstream tracking for a branch.
+    /// </summary>
+    Task SetUpstreamAsync(string repoPath, string branchName, string remoteName, string remoteBranchName);
+
+    /// <summary>
+    /// Rename a local branch.
+    /// </summary>
+    Task RenameBranchAsync(string repoPath, string oldName, string newName);
+
+    /// <summary>
+    /// Revert a commit (creates a new commit).
+    /// </summary>
+    Task RevertCommitAsync(string repoPath, string commitSha);
+
+    /// <summary>
+    /// Reset a branch to a specific commit.
+    /// </summary>
+    Task ResetBranchToCommitAsync(string repoPath, string branchName, string commitSha, bool updateWorkingTree);
+
+    /// <summary>
     /// Checkout a branch.
     /// </summary>
     Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false);

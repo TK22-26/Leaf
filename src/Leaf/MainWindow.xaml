@@ -540,7 +540,7 @@
                                         FontSize="13"
                                         Foreground="#666666"
                                         IsHitTestVisible="False"
-                                        Text="Branch name...">
+                                        Text="{Binding BranchInputPlaceholder}">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
                                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -586,7 +586,7 @@
                                 BorderBrush="#3D8A4E"
                                 BorderThickness="1"
                                 Command="{Binding ConfirmCreateBranchCommand}"
-                                Content="Create"
+                                Content="{Binding BranchInputActionText}"
                                 FontSize="13"
                                 Foreground="#C0E8CC">
                                 <Button.Style>

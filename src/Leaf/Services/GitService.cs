@@ -639,6 +639,71 @@ public class GitService : IGitService
         });
     }
 
+    public async Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch)
+    {
+        var args = isCurrentBranch
+            ? $"pull --ff-only \"{remoteName}\" \"{remoteBranchName}\""
+            : $"fetch \"{remoteName}\" \"{remoteBranchName}\":\"{branchName}\"";
+
+        var result = await RunGitCommandAsync(repoPath, args);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task PushBranchAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch)
+    {
+        var args = isCurrentBranch
+            ? $"push \"{remoteName}\" \"{branchName}\""
+            : $"push \"{remoteName}\" \"{branchName}\":\"{remoteBranchName}\"";
+
+        var result = await RunGitCommandAsync(repoPath, args);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task SetUpstreamAsync(string repoPath, string branchName, string remoteName, string remoteBranchName)
+    {
+        var result = await RunGitCommandAsync(repoPath, "branch", "--set-upstream-to", $"{remoteName}/{remoteBranchName}", branchName);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task RenameBranchAsync(string repoPath, string oldName, string newName)
+    {
+        var result = await RunGitCommandAsync(repoPath, "branch", "-m", oldName, newName);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task RevertCommitAsync(string repoPath, string commitSha)
+    {
+        var result = await RunGitCommandAsync(repoPath, "revert", commitSha);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task ResetBranchToCommitAsync(string repoPath, string branchName, string commitSha, bool updateWorkingTree)
+    {
+        var result = updateWorkingTree
+            ? await RunGitCommandAsync(repoPath, "reset", "--hard", commitSha)
+            : await RunGitCommandAsync(repoPath, "branch", "-f", branchName, commitSha);
+
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
     private static CredentialsHandler CreateCredentialsProvider(string url, string? username, string? password)
     {
         return (_, usernameFromUrl, types) =>

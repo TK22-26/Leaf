@@ -84,6 +84,15 @@ public partial class MainViewModel : ObservableObject
     private bool _isTerminalVisible;
 
     [ObservableProperty]
+    private bool _isBranchFilterActive;
+
+    [ObservableProperty]
+    private string _branchInputActionText = "Create";
+
+    [ObservableProperty]
+    private string _branchInputPlaceholder = "Branch name...";
+
+    [ObservableProperty]
     private double _terminalHeight = 220;
 
     [ObservableProperty]
@@ -111,6 +120,94 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<object> RepositoryRootItems => _repositoryService.RepositoryRootItems;
 
     private string? _mergeConflictRepoPath;
+
+    private void ApplyBranchFiltersForRepo(RepositoryInfo repo)
+    {
+        if (GitGraphViewModel == null)
+        {
+            return;
+        }
+
+        var branchTips = repo.LocalBranches
+            .Concat(repo.RemoteBranches)
+            .GroupBy(GetBranchFilterName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().TipSha, StringComparer.OrdinalIgnoreCase);
+
+        GitGraphViewModel.ApplyBranchFilters(repo.HiddenBranchNames, repo.SoloBranchNames, branchTips);
+        UpdateBranchFilterFlags(repo);
+        IsBranchFilterActive = repo.HiddenBranchNames.Count > 0 || repo.SoloBranchNames.Count > 0;
+    }
+
+    private static string GetBranchFilterName(BranchInfo branch)
+    {
+        if (branch.IsRemote && !string.IsNullOrWhiteSpace(branch.RemoteName))
+        {
+            if (branch.Name.StartsWith($"{branch.RemoteName}/", StringComparison.OrdinalIgnoreCase))
+            {
+                return branch.Name;
+            }
+
+            return $"{branch.RemoteName}/{branch.Name}";
+        }
+
+        return branch.Name;
+    }
+
+    private static IEnumerable<BranchInfo> GetAllBranchItems(RepositoryInfo repo)
+    {
+        var seen = new HashSet<BranchInfo>();
+
+        foreach (var branch in repo.LocalBranches)
+        {
+            if (seen.Add(branch))
+            {
+                yield return branch;
+            }
+        }
+
+        foreach (var branch in repo.RemoteBranches)
+        {
+            if (seen.Add(branch))
+            {
+                yield return branch;
+            }
+        }
+
+        foreach (var category in repo.BranchCategories)
+        {
+            foreach (var branch in category.Branches)
+            {
+                if (seen.Add(branch))
+                {
+                    yield return branch;
+                }
+            }
+
+            foreach (var group in category.RemoteGroups)
+            {
+                foreach (var branch in group.Branches)
+                {
+                    if (seen.Add(branch))
+                    {
+                        yield return branch;
+                    }
+                }
+            }
+        }
+    }
+
+    private void UpdateBranchFilterFlags(RepositoryInfo repo)
+    {
+        var hidden = new HashSet<string>(repo.HiddenBranchNames, StringComparer.OrdinalIgnoreCase);
+        var solo = new HashSet<string>(repo.SoloBranchNames, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var branch in GetAllBranchItems(repo))
+        {
+            var filterName = GetBranchFilterName(branch);
+            branch.IsHidden = hidden.Contains(filterName);
+            branch.IsSolo = solo.Contains(filterName);
+        }
+    }
 
     partial void OnSelectedRepositoryChanged(RepositoryInfo? value)
     {
@@ -144,6 +241,9 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private string _newBranchName = string.Empty;
+
+    private bool _isRenameBranchInput;
+    private string? _pendingRenameBranchName;
 
     public MainViewModel(
         IGitService gitService,
@@ -506,6 +606,7 @@ public partial class MainViewModel : ObservableObject
 
             // Load branches for the branch panel (force reload to pick up pruned branches)
             await LoadBranchesForRepoAsync(repository, forceReload: true);
+            ApplyBranchFiltersForRepo(repository);
 
             await RefreshMergeConflictResolutionAsync();
 
@@ -803,7 +904,11 @@ public partial class MainViewModel : ObservableObject
 
         // Show floating branch input
         _pendingBranchBaseSha = null;
+        _pendingRenameBranchName = null;
+        _isRenameBranchInput = false;
         NewBranchName = string.Empty;
+        BranchInputActionText = "Create";
+        BranchInputPlaceholder = "Branch name...";
         IsBranchInputVisible = true;
     }
 
@@ -814,7 +919,41 @@ public partial class MainViewModel : ObservableObject
             return;
 
         _pendingBranchBaseSha = commit.Sha;
+        _pendingRenameBranchName = null;
+        _isRenameBranchInput = false;
         NewBranchName = string.Empty;
+        BranchInputActionText = "Create";
+        BranchInputPlaceholder = "Branch name...";
+        IsBranchInputVisible = true;
+    }
+
+    [RelayCommand]
+    public void CreateBranchAtBranch(BranchInfo branch)
+    {
+        if (SelectedRepository == null || branch == null)
+            return;
+
+        _pendingBranchBaseSha = branch.TipSha;
+        _pendingRenameBranchName = null;
+        _isRenameBranchInput = false;
+        NewBranchName = string.Empty;
+        BranchInputActionText = "Create";
+        BranchInputPlaceholder = "Branch name...";
+        IsBranchInputVisible = true;
+    }
+
+    [RelayCommand]
+    public void RenameBranch(BranchInfo branch)
+    {
+        if (SelectedRepository == null || branch == null || branch.IsRemote)
+            return;
+
+        _pendingBranchBaseSha = null;
+        _pendingRenameBranchName = branch.Name;
+        _isRenameBranchInput = true;
+        NewBranchName = branch.Name;
+        BranchInputActionText = "Rename";
+        BranchInputPlaceholder = "New branch name...";
         IsBranchInputVisible = true;
     }
 
@@ -831,7 +970,20 @@ public partial class MainViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            if (!string.IsNullOrWhiteSpace(_pendingBranchBaseSha))
+            if (_isRenameBranchInput && !string.IsNullOrWhiteSpace(_pendingRenameBranchName))
+            {
+                if (string.Equals(branchName, _pendingRenameBranchName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                StatusMessage = $"Renaming branch '{_pendingRenameBranchName}'...";
+                await _gitService.RenameBranchAsync(SelectedRepository.Path, _pendingRenameBranchName, branchName);
+                StatusMessage = $"Renamed branch to '{branchName}'";
+                SelectedRepository.BranchesLoaded = false;
+                await RefreshAsync();
+            }
+            else if (!string.IsNullOrWhiteSpace(_pendingBranchBaseSha))
             {
                 StatusMessage = $"Creating branch '{branchName}' at {_pendingBranchBaseSha[..7]}...";
                 await _gitService.CreateBranchAtCommitAsync(SelectedRepository.Path, branchName, _pendingBranchBaseSha);
@@ -848,11 +1000,15 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Create branch failed: {ex.Message}";
+            StatusMessage = _isRenameBranchInput ? $"Rename branch failed: {ex.Message}" : $"Create branch failed: {ex.Message}";
         }
         finally
         {
             _pendingBranchBaseSha = null;
+            _pendingRenameBranchName = null;
+            _isRenameBranchInput = false;
+            BranchInputActionText = "Create";
+            BranchInputPlaceholder = "Branch name...";
             IsBusy = false;
         }
     }
@@ -863,6 +1019,10 @@ public partial class MainViewModel : ObservableObject
         IsBranchInputVisible = false;
         NewBranchName = string.Empty;
         _pendingBranchBaseSha = null;
+        _pendingRenameBranchName = null;
+        _isRenameBranchInput = false;
+        BranchInputActionText = "Create";
+        BranchInputPlaceholder = "Branch name...";
     }
 
     /// <summary>
@@ -923,12 +1083,211 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    public async Task PullBranchFastForwardAsync(BranchInfo branch)
+    {
+        if (SelectedRepository == null || branch == null || branch.IsRemote)
+            return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"Pulling {branch.Name}...";
+
+            var (remoteName, remoteBranchName) = await ResolveRemoteTargetAsync(branch);
+            await _gitService.PullBranchFastForwardAsync(
+                SelectedRepository.Path,
+                branch.Name,
+                remoteName,
+                remoteBranchName,
+                branch.IsCurrent);
+
+            StatusMessage = $"Pulled {branch.Name}";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Pull failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task PushBranchAsync(BranchInfo branch)
+    {
+        if (SelectedRepository == null || branch == null || branch.IsRemote)
+            return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"Pushing {branch.Name}...";
+
+            var (remoteName, remoteBranchName) = await ResolveRemoteTargetAsync(branch);
+            await _gitService.PushBranchAsync(
+                SelectedRepository.Path,
+                branch.Name,
+                remoteName,
+                remoteBranchName,
+                branch.IsCurrent);
+
+            StatusMessage = $"Pushed {branch.Name}";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Push failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task SetUpstreamAsync(BranchInfo branch)
+    {
+        if (SelectedRepository == null || branch == null || branch.IsRemote)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(branch.TrackingBranchName))
+            return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"Setting upstream for {branch.Name}...";
+
+            var (remoteName, remoteBranchName) = await ResolveRemoteTargetAsync(branch);
+            await _gitService.SetUpstreamAsync(SelectedRepository.Path, branch.Name, remoteName, remoteBranchName);
+
+            StatusMessage = $"Upstream set for {branch.Name}";
+            SelectedRepository.BranchesLoaded = false;
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Set upstream failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task RevertCommitAsync(CommitInfo commit)
+    {
+        if (SelectedRepository == null || commit == null)
+            return;
+
+        if (commit.IsMerge)
+        {
+            MessageBox.Show("Reverting merge commits isn't supported yet.",
+                "Revert Commit", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"Reverting {commit.ShortSha}...";
+
+            await _gitService.RevertCommitAsync(SelectedRepository.Path, commit.Sha);
+
+            StatusMessage = $"Reverted {commit.ShortSha}";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Revert failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task ResetCurrentBranchToCommitAsync(CommitInfo commit)
+    {
+        if (SelectedRepository == null || commit == null)
+            return;
+
+        var branchName = SelectedRepository.CurrentBranch;
+        if (string.IsNullOrWhiteSpace(branchName))
+        {
+            branchName = "HEAD";
+        }
+
+        var result = MessageBox.Show(
+            $"Reset {branchName} to {commit.ShortSha}?\n\nThis will discard uncommitted changes and move the branch pointer.",
+            "Force Reset Branch",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"Resetting {branchName} to {commit.ShortSha}...";
+
+            await _gitService.ResetBranchToCommitAsync(SelectedRepository.Path, branchName, commit.Sha, updateWorkingTree: true);
+
+            StatusMessage = $"Reset {branchName} to {commit.ShortSha}";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Reset failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private static string GetRemoteBranchShortName(string branchName, string remoteName)
     {
         var prefix = remoteName + "/";
         return branchName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
             ? branchName[prefix.Length..]
             : branchName;
+    }
+
+    private async Task<(string RemoteName, string RemoteBranchName)> ResolveRemoteTargetAsync(BranchInfo branch)
+    {
+        string? remoteName = null;
+        string? remoteBranchName = null;
+
+        if (!string.IsNullOrWhiteSpace(branch.TrackingBranchName))
+        {
+            var tracking = branch.TrackingBranchName;
+            var slashIndex = tracking.IndexOf('/');
+            if (slashIndex > 0 && slashIndex < tracking.Length - 1)
+            {
+                remoteName = tracking[..slashIndex];
+                remoteBranchName = tracking[(slashIndex + 1)..];
+            }
+        }
+
+        if (SelectedRepository != null && string.IsNullOrWhiteSpace(remoteName))
+        {
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            remoteName = remotes.FirstOrDefault(r => r.Name == "origin")?.Name
+                         ?? remotes.FirstOrDefault()?.Name
+                         ?? "origin";
+        }
+
+        remoteBranchName ??= GetRemoteBranchShortName(branch.Name, remoteName ?? "origin");
+        return (remoteName ?? "origin", remoteBranchName);
     }
 
     private Task<bool> ConfirmBranchDeletionAsync(BranchInfo branch)
@@ -1313,6 +1672,156 @@ public partial class MainViewModel : ObservableObject
         _repositoryService.RemoveRepository(repo);
     }
 
+    [RelayCommand]
+    public void HideSelectedBranches()
+    {
+        if (SelectedRepository == null || SelectedRepository.SelectedBranches.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var branch in SelectedRepository.SelectedBranches)
+        {
+            var filterName = GetBranchFilterName(branch);
+            if (!SelectedRepository.HiddenBranchNames.Contains(filterName, StringComparer.OrdinalIgnoreCase))
+            {
+                SelectedRepository.HiddenBranchNames.Add(filterName);
+            }
+            SelectedRepository.SoloBranchNames.RemoveAll(n => n.Equals(filterName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        _repositoryService.SaveRepositories();
+        ApplyBranchFiltersForRepo(SelectedRepository);
+    }
+
+    [RelayCommand]
+    public void SoloSelectedBranches()
+    {
+        if (SelectedRepository == null || SelectedRepository.SelectedBranches.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var branch in SelectedRepository.SelectedBranches)
+        {
+            var filterName = GetBranchFilterName(branch);
+            if (!SelectedRepository.SoloBranchNames.Contains(filterName, StringComparer.OrdinalIgnoreCase))
+            {
+                SelectedRepository.SoloBranchNames.Add(filterName);
+            }
+            SelectedRepository.HiddenBranchNames.RemoveAll(n => n.Equals(filterName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        _repositoryService.SaveRepositories();
+        ApplyBranchFiltersForRepo(SelectedRepository);
+    }
+
+    [RelayCommand]
+    public void ClearHiddenBranches()
+    {
+        if (SelectedRepository == null)
+        {
+            return;
+        }
+
+        SelectedRepository.HiddenBranchNames.Clear();
+        _repositoryService.SaveRepositories();
+        ApplyBranchFiltersForRepo(SelectedRepository);
+    }
+
+    [RelayCommand]
+    public void ClearSoloBranches()
+    {
+        if (SelectedRepository == null)
+        {
+            return;
+        }
+
+        SelectedRepository.SoloBranchNames.Clear();
+        _repositoryService.SaveRepositories();
+        ApplyBranchFiltersForRepo(SelectedRepository);
+    }
+
+    [RelayCommand]
+    public void ClearBranchFilters()
+    {
+        if (SelectedRepository == null)
+        {
+            return;
+        }
+
+        SelectedRepository.HiddenBranchNames.Clear();
+        SelectedRepository.SoloBranchNames.Clear();
+        _repositoryService.SaveRepositories();
+        ApplyBranchFiltersForRepo(SelectedRepository);
+    }
+
+    [RelayCommand]
+    public void ToggleHideBranch(BranchInfo branch)
+    {
+        if (SelectedRepository == null)
+        {
+            return;
+        }
+
+        var hidden = SelectedRepository.HiddenBranchNames;
+        var filterName = GetBranchFilterName(branch);
+        if (hidden.RemoveAll(n => n.Equals(filterName, StringComparison.OrdinalIgnoreCase)) == 0)
+        {
+            hidden.Add(filterName);
+            SelectedRepository.SoloBranchNames.RemoveAll(n => n.Equals(filterName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        _repositoryService.SaveRepositories();
+        ApplyBranchFiltersForRepo(SelectedRepository);
+    }
+
+    [RelayCommand]
+    public void ToggleSoloBranch(BranchInfo branch)
+    {
+        if (SelectedRepository == null)
+        {
+            return;
+        }
+
+        var solo = SelectedRepository.SoloBranchNames;
+        var filterName = GetBranchFilterName(branch);
+        if (solo.RemoveAll(n => n.Equals(filterName, StringComparison.OrdinalIgnoreCase)) == 0)
+        {
+            solo.Add(filterName);
+            SelectedRepository.HiddenBranchNames.RemoveAll(n => n.Equals(filterName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        _repositoryService.SaveRepositories();
+        ApplyBranchFiltersForRepo(SelectedRepository);
+    }
+
+    [RelayCommand]
+    public void RemoveAllRepositoriesInGroup(RepositoryGroup group)
+    {
+        if (group == null || group.Repositories.Count == 0)
+        {
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"Remove all repositories from '{group.Name}'?\n\nThis only removes them from Leaf. Files on disk are not deleted.",
+            "Remove All Repositories",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var repos = group.Repositories.ToList();
+        foreach (var repo in repos)
+        {
+            DeleteRepository(repo);
+        }
+    }
+
     /// <summary>
     /// Load branches for a repository.
     /// </summary>
@@ -1448,6 +1957,13 @@ public partial class MainViewModel : ObservableObject
             }
 
             repo.BranchesLoaded = true;
+            UpdateBranchFilterFlags(repo);
+
+            if (SelectedRepository != null &&
+                string.Equals(SelectedRepository.Path, repo.Path, StringComparison.OrdinalIgnoreCase))
+            {
+                ApplyBranchFiltersForRepo(repo);
+            }
         }
         catch (Exception ex)
         {

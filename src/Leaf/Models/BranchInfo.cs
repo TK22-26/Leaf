@@ -14,6 +14,12 @@ public partial class BranchInfo : ObservableObject
     [ObservableProperty]
     private bool _isSelected;
 
+    [ObservableProperty]
+    private bool _isHidden;
+
+    [ObservableProperty]
+    private bool _isSolo;
+
     /// <summary>
     /// Full name of the branch (e.g., "refs/heads/main").
     /// </summary>

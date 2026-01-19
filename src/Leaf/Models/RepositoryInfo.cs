@@ -26,6 +26,16 @@ public partial class RepositoryInfo : ObservableObject
     public List<string> Tags { get; set; } = [];
 
     /// <summary>
+    /// Branch names hidden from the graph.
+    /// </summary>
+    public List<string> HiddenBranchNames { get; set; } = [];
+
+    /// <summary>
+    /// Branch names soloed in the graph.
+    /// </summary>
+    public List<string> SoloBranchNames { get; set; } = [];
+
+    /// <summary>
     /// Last time this repository was accessed in the app.
     /// </summary>
     public DateTimeOffset LastAccessed { get; set; }

@@ -38,10 +38,8 @@ public partial class BranchListView : UserControl
             return;
         }
 
-        // Single click - select this branch
-        // For local branches, this also selects in GITFLOW since they share instances
-        // For remote branches, only that specific branch is selected
-        SelectBranch(viewModel.SelectedRepository, branch);
+        // Single click - select this branch (Ctrl toggles multi-select)
+        SelectBranch(viewModel.SelectedRepository, branch, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
         e.Handled = true;
     }
 
@@ -56,7 +54,7 @@ public partial class BranchListView : UserControl
         // If right-clicked branch is not selected, select it
         if (!branch.IsSelected)
         {
-            SelectBranch(viewModel.SelectedRepository, branch);
+            SelectBranch(viewModel.SelectedRepository, branch, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
         }
 
         // Don't mark handled - let context menu open
@@ -66,12 +64,24 @@ public partial class BranchListView : UserControl
     /// Selects the given branch. For local branches (which are shared between GITFLOW and LOCAL
     /// categories), this automatically shows selection in both places since they're the same instance.
     /// </summary>
-    private static void SelectBranch(RepositoryInfo repo, BranchInfo branch)
+    private static void SelectBranch(RepositoryInfo repo, BranchInfo branch, bool toggle)
     {
-        // Clear current selection
-        repo.ClearBranchSelection();
+        if (toggle)
+        {
+            if (branch.IsSelected)
+            {
+                branch.IsSelected = false;
+                repo.SelectedBranches.Remove(branch);
+            }
+            else
+            {
+                branch.IsSelected = true;
+                repo.SelectedBranches.Add(branch);
+            }
+            return;
+        }
 
-        // Select the clicked branch
+        repo.ClearBranchSelection();
         branch.IsSelected = true;
         repo.SelectedBranches.Add(branch);
     }

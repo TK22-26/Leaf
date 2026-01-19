@@ -420,6 +420,26 @@ public partial class GitGraphView : UserControl
         };
         menu.Items.Add(createBranchItem);
 
+        var currentBranchName = mainViewModel.SelectedRepository?.CurrentBranch;
+        if (!string.IsNullOrWhiteSpace(currentBranchName))
+        {
+            var resetItem = new MenuItem
+            {
+                Header = $"Reset {currentBranchName} to this commit...",
+                Command = mainViewModel.ResetCurrentBranchToCommitCommand,
+                CommandParameter = commit
+            };
+            menu.Items.Add(resetItem);
+        }
+
+        var revertItem = new MenuItem
+        {
+            Header = "Revert commit",
+            Command = mainViewModel.RevertCommitCommand,
+            CommandParameter = commit
+        };
+        menu.Items.Add(revertItem);
+
         // Cherry-pick commit
         var cherryPickItem = new MenuItem
         {
