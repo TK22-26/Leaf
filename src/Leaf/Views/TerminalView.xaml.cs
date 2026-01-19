@@ -24,6 +24,7 @@ public partial class TerminalView : UserControl
         if (DataContext is TerminalViewModel viewModel)
         {
             viewModel.Lines.CollectionChanged += Lines_CollectionChanged;
+            viewModel.CommandCompleted += OnCommandCompleted;
             InitializeDocument();
             RebuildDocument(viewModel);
         }
@@ -34,6 +35,7 @@ public partial class TerminalView : UserControl
         if (DataContext is TerminalViewModel viewModel)
         {
             viewModel.Lines.CollectionChanged -= Lines_CollectionChanged;
+            viewModel.CommandCompleted -= OnCommandCompleted;
         }
     }
 
@@ -89,7 +91,22 @@ public partial class TerminalView : UserControl
             viewModel.ExecuteCommandCommand.Execute(null);
             e.Handled = true;
         }
-        else if (e.Key == Key.Up)
+        else if (e.Key == Key.Escape)
+        {
+            viewModel.InputText = string.Empty;
+
+            e.Handled = true;
+        }
+    }
+
+    private void TerminalInput_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (DataContext is not TerminalViewModel viewModel)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Up)
         {
             viewModel.NavigateHistory(-1);
             MoveCaretToEnd();
@@ -101,17 +118,21 @@ public partial class TerminalView : UserControl
             MoveCaretToEnd();
             e.Handled = true;
         }
-        else if (e.Key == Key.Escape)
-        {
-            viewModel.InputText = string.Empty;
-
-            e.Handled = true;
-        }
     }
 
     private void MoveCaretToEnd()
     {
         TerminalInput.CaretIndex = TerminalInput.Text.Length;
+    }
+
+    private void OnCommandCompleted(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            TerminalInput.Focus();
+            Keyboard.Focus(TerminalInput);
+            MoveCaretToEnd();
+        });
     }
 
     private void InitializeDocument()

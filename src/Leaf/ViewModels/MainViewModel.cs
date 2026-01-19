@@ -172,6 +172,7 @@ public partial class MainViewModel : ObservableObject
         _diffViewerViewModel = new DiffViewerViewModel();
         _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
         _terminalViewModel = new TerminalViewModel(gitService, settingsService);
+        _terminalViewModel.CommandExecuted += OnTerminalCommandExecuted;
 
         // Wire up file watcher events
         _fileWatcherService.WorkingDirectoryChanged += async (s, e) =>
@@ -2011,6 +2012,20 @@ public partial class MainViewModel : ObservableObject
     {
         StatusMessage = success ? "Merge completed successfully" : "Merge aborted";
         await RefreshAsync();
+    }
+
+    private async void OnTerminalCommandExecuted(object? sender, TerminalCommandExecutedEventArgs e)
+    {
+        if (SelectedRepository == null)
+        {
+            return;
+        }
+
+        // Refresh after successful git commands to sync the graph.
+        if (e.ExitCode == 0)
+        {
+            await RefreshAsync();
+        }
     }
 
     #region GitFlow Commands

@@ -143,6 +143,7 @@
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                         IsEnabled="{Binding IsRunning, Converter={StaticResource InverseBoolConverter}}"
                         KeyDown="TerminalInput_KeyDown"
+                        PreviewKeyDown="TerminalInput_PreviewKeyDown"
                         Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}" />
                     <StackPanel
                         Grid.Row="1"
@@ -170,13 +171,17 @@
                             </StackPanel>
                         </Button>
                         <Button
+                            Height="28"
                             Padding="6,2"
                             Background="Transparent"
                             BorderThickness="0"
                             Command="{Binding CancelCommand}"
                             ToolTip="Stop running command"
                             Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <ic:SymbolIcon FontSize="14" Symbol="Stop" />
+                            <ic:SymbolIcon
+                                FontSize="14"
+                                Foreground="Crimson"
+                                Symbol="Stop" />
                         </Button>
                     </StackPanel>
                 </Grid>

@@ -281,8 +281,6 @@
                                           Command="{Binding PlacementTarget.Tag.MergeBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
                                           IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}"/>
-                                <Separator/>
-                                <!-- GitFlow Section (branch-specific actions only) -->
                                 <MenuItem Header="GitFlow"
                                           Visibility="{Binding GitFlowType, Converter={StaticResource GitFlowTypeToVisibilityConverter}, ConverterParameter=Finishable}">
                                     <MenuItem Header="Finish Branch"

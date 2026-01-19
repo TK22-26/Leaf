@@ -17,6 +17,8 @@ public sealed partial class TerminalViewModel : ObservableObject
     private int _historyIndex = -1;
     private CancellationTokenSource? _commandCts;
 
+    public event EventHandler<TerminalCommandExecutedEventArgs>? CommandExecuted;
+
     public TerminalViewModel(IGitService gitService, SettingsService settingsService)
     {
         _terminalService = new TerminalService();
@@ -61,6 +63,8 @@ public sealed partial class TerminalViewModel : ObservableObject
     [ObservableProperty]
     private string _shellArgumentsTemplate = "/c {command}";
 
+    public event EventHandler? CommandCompleted;
+
     public void ReloadSettings()
     {
         LoadSettings();
@@ -89,8 +93,34 @@ public sealed partial class TerminalViewModel : ObservableObject
             return;
         }
 
-        _historyIndex = Math.Clamp(_historyIndex + delta, 0, _history.Count - 1);
-        InputText = _history[_historyIndex];
+        if (_historyIndex < 0)
+        {
+            _historyIndex = _history.Count;
+        }
+
+        if (delta < 0)
+        {
+            if (_historyIndex > 0)
+            {
+                _historyIndex--;
+            }
+        }
+        else if (delta > 0)
+        {
+            if (_historyIndex < _history.Count)
+            {
+                _historyIndex++;
+            }
+        }
+
+        if (_historyIndex >= 0 && _historyIndex < _history.Count)
+        {
+            InputText = _history[_historyIndex];
+        }
+        else
+        {
+            InputText = string.Empty;
+        }
     }
 
     [RelayCommand]
@@ -150,6 +180,11 @@ public sealed partial class TerminalViewModel : ObservableObject
             {
                 AddLine(TerminalLineKind.Info, $"Exit code {exitCode}");
             }
+
+            if (IsGitCommand(command))
+            {
+                CommandExecuted?.Invoke(this, new TerminalCommandExecutedEventArgs(command, exitCode));
+            }
         }
         catch (Exception ex)
         {
@@ -160,6 +195,7 @@ public sealed partial class TerminalViewModel : ObservableObject
             IsRunning = false;
             _commandCts.Dispose();
             _commandCts = null;
+            CommandCompleted?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -246,6 +282,18 @@ public sealed partial class TerminalViewModel : ObservableObject
         }
 
         return false;
+    }
+
+    private static bool IsGitCommand(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return false;
+        }
+
+        var trimmed = command.TrimStart();
+        return trimmed.Equals("git", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.StartsWith("git ", StringComparison.OrdinalIgnoreCase);
     }
 
     private void AddLine(TerminalLineKind kind, string text)
