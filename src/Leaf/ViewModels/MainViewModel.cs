@@ -622,15 +622,6 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Toggle commit detail panel visibility.
-    /// </summary>
-    [RelayCommand]
-    public void ToggleCommitDetail()
-    {
-        IsCommitDetailVisible = !IsCommitDetailVisible;
-    }
-
-    /// <summary>
     /// Toggle terminal pane visibility.
     /// </summary>
     [RelayCommand]

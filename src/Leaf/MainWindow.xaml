@@ -97,10 +97,6 @@
                     </MenuItem>
                 </MenuItem>
                 <MenuItem Header="_View">
-                    <MenuItem Command="{Binding ToggleCommitDetailCommand}"
-                              Header="Commit Details"
-                              IsCheckable="True"
-                              IsChecked="{Binding IsCommitDetailVisible}" />
                     <MenuItem Header="Terminal"
                               InputGestureText="Ctrl+`"
                               IsCheckable="True"
@@ -362,13 +358,23 @@
         <Grid Grid.Row="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
-                <RowDefinition x:Name="TerminalRow" MinHeight="120">
+                <RowDefinition x:Name="TerminalRow">
                     <RowDefinition.Height>
                         <MultiBinding Converter="{StaticResource TerminalRowHeightConverter}">
                             <Binding Path="DataContext.TerminalHeight" RelativeSource="{RelativeSource AncestorType=Window}" />
                             <Binding Path="DataContext.IsTerminalVisible" RelativeSource="{RelativeSource AncestorType=Window}" />
                         </MultiBinding>
                     </RowDefinition.Height>
+                    <RowDefinition.Style>
+                        <Style TargetType="RowDefinition">
+                            <Setter Property="MinHeight" Value="120" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding DataContext.IsTerminalVisible, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+                                    <Setter Property="MinHeight" Value="0" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </RowDefinition.Style>
                 </RowDefinition>
             </Grid.RowDefinitions>
 

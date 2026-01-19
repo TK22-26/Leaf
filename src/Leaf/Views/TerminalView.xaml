@@ -22,7 +22,6 @@
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
-
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#28A745" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#1E7E34" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#2FB354" />
@@ -43,42 +42,29 @@
             </Grid.RowDefinitions>
 
             <!--  Output  -->
-            <ScrollViewer
-                x:Name="TerminalScrollViewer"
+            <Border
                 Grid.Row="0"
-                Margin="8"
-                CanContentScroll="True"
-                HorizontalScrollBarVisibility="Disabled"
-                VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding Lines}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <VirtualizingStackPanel IsVirtualizing="True" VirtualizationMode="Recycling" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding Text}">
-                                <TextBlock.Style>
-                                    <Style BasedOn="{StaticResource TerminalLineText}" TargetType="TextBlock">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Kind}" Value="Input">
-                                                <Setter Property="Foreground" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding Kind}" Value="Error">
-                                                <Setter Property="Foreground" Value="#E81123" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding Kind}" Value="Info">
-                                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+                Margin="8,8,8,0"
+                Padding="0"
+                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="4">
+                <RichTextBox
+                    x:Name="TerminalOutputTextBox"
+                    Padding="6,4"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="0"
+                    FontFamily="Cascadia Mono, Consolas"
+                    FontSize="{Binding FontSize}"
+                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                    HorizontalScrollBarVisibility="Disabled"
+                    IsDocumentEnabled="True"
+                    IsReadOnly="True"
+                    Style="{x:Null}"
+                    VerticalScrollBarVisibility="Auto" />
+            </Border>
 
             <!--  Input  -->
             <Border
@@ -87,7 +73,8 @@
                 Padding="6,4"
                 Background="{DynamicResource ControlFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="1">
+                BorderThickness="1"
+                CornerRadius="6">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -108,13 +95,14 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock
                             Grid.Column="0"
+                            VerticalAlignment="Center"
                             FontSize="10"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="{Binding WorkingDirectory}"
                             TextTrimming="CharacterEllipsis" />
                         <CheckBox
                             Grid.Column="1"
-                            Margin="8,0,-36,0"
+                            Margin="8,0,-35,0"
                             Padding="5,7,5,5"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center"
@@ -139,7 +127,7 @@
                         VerticalAlignment="Center"
                         FontFamily="Cascadia Mono, Consolas"
                         FontSize="{Binding FontSize}"
-                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Foreground="{DynamicResource AccentFillColorDefaultBrush}"
                         Text="{Binding Prompt}" />
                     <TextBox
                         x:Name="TerminalInput"
