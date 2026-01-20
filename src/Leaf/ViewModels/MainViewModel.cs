@@ -1111,13 +1111,32 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     public async Task PullBranchFastForwardAsync(BranchInfo branch)
     {
-        if (SelectedRepository == null || branch == null || branch.IsRemote)
+        if (SelectedRepository == null || branch == null)
             return;
 
         try
         {
             IsBusy = true;
             StatusMessage = $"Pulling {branch.Name}...";
+
+            if (branch.IsRemote)
+            {
+                var remoteName = branch.RemoteName ?? "origin";
+                var localName = branch.Name.StartsWith($"{remoteName}/", StringComparison.OrdinalIgnoreCase)
+                    ? branch.Name[(remoteName.Length + 1)..]
+                    : branch.Name;
+
+                await _gitService.PullBranchFastForwardAsync(
+                    SelectedRepository.Path,
+                    localName,
+                    remoteName,
+                    branch.Name,
+                    isCurrentBranch: false);
+
+                StatusMessage = $"Created local {localName} from {branch.Name}";
+                await RefreshAsync();
+                return;
+            }
 
             var (remoteName, remoteBranchName) = await ResolveRemoteTargetAsync(branch);
             await _gitService.PullBranchFastForwardAsync(

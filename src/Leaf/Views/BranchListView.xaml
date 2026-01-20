@@ -287,8 +287,7 @@
                                           CommandParameter="{Binding}"/>
                                 <MenuItem Header="Pull (fast-forward if possible)"
                                           Command="{Binding PlacementTarget.Tag.PullBranchFastForwardCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                          CommandParameter="{Binding}"
-                                          IsEnabled="{Binding IsRemote, Converter={StaticResource InverseBoolConverter}}"/>
+                                          CommandParameter="{Binding}"/>
                                 <MenuItem Header="Push"
                                           Command="{Binding PlacementTarget.Tag.PushBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
