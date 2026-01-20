@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.NetworkInformation;
 using System.Windows.Threading;
 
 namespace Leaf.Services;
@@ -51,6 +53,11 @@ public class AutoFetchService : IAutoFetchService
     {
         try
         {
+            if (!NetworkInterface.GetIsNetworkAvailable())
+            {
+                return;
+            }
+
             // Try to get credentials from stored PAT
             var remotes = await _gitService.GetRemotesAsync(repoPath);
             var originUrl = remotes.FirstOrDefault(r => r.Name == "origin")?.Url;
@@ -58,10 +65,23 @@ public class AutoFetchService : IAutoFetchService
 
             if (!string.IsNullOrEmpty(originUrl))
             {
+                if (TryGetRemoteHost(originUrl, out var host))
+                {
+                    try
+                    {
+                        await Dns.GetHostAddressesAsync(host);
+                    }
+                    catch
+                    {
+                        // Skip auto-fetch when host cannot be resolved.
+                        return;
+                    }
+                }
+
                 try
                 {
-                    var host = new Uri(originUrl).Host;
-                    pat = _credentialService.GetPat(host);
+                    var hostForPat = new Uri(originUrl).Host;
+                    pat = _credentialService.GetPat(hostForPat);
                 }
                 catch
                 {
@@ -86,5 +106,27 @@ public class AutoFetchService : IAutoFetchService
         {
             // Silent failure for auto-fetch - don't disrupt the user
         }
+    }
+
+    private static bool TryGetRemoteHost(string remoteUrl, out string host)
+    {
+        host = string.Empty;
+
+        if (Uri.TryCreate(remoteUrl, UriKind.Absolute, out var uri) && !string.IsNullOrWhiteSpace(uri.Host))
+        {
+            host = uri.Host;
+            return true;
+        }
+
+        // Handle scp-like syntax: git@github.com:owner/repo.git
+        var atIndex = remoteUrl.IndexOf('@');
+        var colonIndex = remoteUrl.IndexOf(':');
+        if (atIndex >= 0 && colonIndex > atIndex + 1)
+        {
+            host = remoteUrl[(atIndex + 1)..colonIndex];
+            return !string.IsNullOrWhiteSpace(host);
+        }
+
+        return false;
     }
 }
