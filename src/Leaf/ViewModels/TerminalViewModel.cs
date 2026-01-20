@@ -298,9 +298,15 @@ public sealed partial class TerminalViewModel : ObservableObject
 
     private void AddLine(TerminalLineKind kind, string text)
     {
-        if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
         {
-            Application.Current.Dispatcher.Invoke(() => AddLine(kind, text));
+            return;
+        }
+
+        if (!dispatcher.CheckAccess())
+        {
+            dispatcher.BeginInvoke(() => AddLine(kind, text));
             return;
         }
 

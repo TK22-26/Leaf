@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text;
 using Leaf.Models;
@@ -2963,6 +2964,126 @@ public class GitService : IGitService
         });
     }
 
+    public async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath)
+    {
+        var result = await RunGitCommandAsync(repoPath, "blame", "--line-porcelain", "--", filePath);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+
+        var lines = new List<FileBlameLine>();
+        string currentSha = string.Empty;
+        string currentAuthor = string.Empty;
+        DateTimeOffset currentDate = DateTimeOffset.MinValue;
+        int currentLineNumber = 0;
+
+        foreach (var rawLine in result.Output.Split('\n'))
+        {
+            var line = rawLine.TrimEnd('\r');
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            if (line[0] == '\t')
+            {
+                lines.Add(new FileBlameLine
+                {
+                    LineNumber = currentLineNumber,
+                    Sha = currentSha,
+                    Author = currentAuthor,
+                    Date = currentDate,
+                    Content = line[1..]
+                });
+                continue;
+            }
+
+            if (line.Length >= 40 && IsShaLine(line))
+            {
+                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                currentSha = parts[0];
+                if (parts.Length >= 3 && int.TryParse(parts[2], out var finalLine))
+                {
+                    currentLineNumber = finalLine;
+                }
+                continue;
+            }
+
+            if (line.StartsWith("author ", StringComparison.Ordinal))
+            {
+                currentAuthor = line["author ".Length..];
+                continue;
+            }
+
+            if (line.StartsWith("author-time ", StringComparison.Ordinal))
+            {
+                if (long.TryParse(line["author-time ".Length..], out var seconds))
+                {
+                    currentDate = DateTimeOffset.FromUnixTimeSeconds(seconds);
+                }
+                continue;
+            }
+        }
+
+        return lines;
+    }
+
+    public async Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200)
+    {
+        var result = await RunGitCommandAsync(
+            repoPath,
+            "log",
+            "--follow",
+            "--date=iso",
+            $"--max-count={maxCount}",
+            "--pretty=format:%H%x1f%an%x1f%ad%x1f%s",
+            "--",
+            filePath);
+
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+
+        var commits = new List<CommitInfo>();
+        foreach (var rawLine in result.Output.Split('\n'))
+        {
+            var line = rawLine.TrimEnd('\r');
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var parts = line.Split('\x1f');
+            if (parts.Length < 4)
+            {
+                continue;
+            }
+
+            var sha = parts[0];
+            var author = parts[1];
+            var dateText = parts[2];
+            var message = parts[3];
+
+            if (!DateTimeOffset.TryParse(dateText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var date))
+            {
+                date = DateTimeOffset.Now;
+            }
+
+            commits.Add(new CommitInfo
+            {
+                Sha = sha,
+                Message = message,
+                MessageShort = message,
+                Author = author,
+                Date = date
+            });
+        }
+
+        return commits;
+    }
+
     #endregion
 
     #region Git Command Helper
@@ -3004,6 +3125,19 @@ public class GitService : IGitService
             var arguments = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
             return RunGitCommand(repoPath, arguments);
         });
+    }
+
+    private static bool IsShaLine(string line)
+    {
+        for (int i = 0; i < 40 && i < line.Length; i++)
+        {
+            if (!char.IsAsciiHexDigit(line[i]))
+            {
+                return false;
+            }
+        }
+
+        return line.Length >= 40;
     }
 
     private void OnGitCommandExecuted(string workingDirectory, string arguments, int exitCode, string output, string error)

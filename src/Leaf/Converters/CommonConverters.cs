@@ -488,3 +488,96 @@ public class StringIsNullOrEmptyConverter : IValueConverter
         throw new NotImplementedException();
     }
 }
+
+/// <summary>
+/// Converts a SHA string to a stable brush from a fixed palette.
+/// </summary>
+public class ShaToBrushConverter : IValueConverter
+{
+    private static readonly System.Windows.Media.SolidColorBrush[] Palette =
+    [
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x22, 0xC5, 0x5E)),
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x60, 0xA5, 0xFA)),
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xF5, 0x9E, 0x0B)),
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xA7, 0x8B, 0xFA)),
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xEC, 0x48, 0x99)),
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x14, 0xB8, 0xA6)),
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xF9, 0x73, 0x16))
+    ];
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not string sha || string.IsNullOrWhiteSpace(sha))
+        {
+            return System.Windows.Media.Brushes.Transparent;
+        }
+
+        int hash = 0;
+        foreach (var c in sha)
+        {
+            hash = (hash * 31) + c;
+        }
+
+        var index = Math.Abs(hash) % Palette.Length;
+        return Palette[index];
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Multiplies an integer (or double) by a double parameter.
+/// </summary>
+public class MultiplyConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (parameter == null || !double.TryParse(parameter.ToString(), out var factor))
+        {
+            return value;
+        }
+
+        if (value is int intValue)
+        {
+            return intValue * factor;
+        }
+
+        if (value is double doubleValue)
+        {
+            return doubleValue * factor;
+        }
+
+        return value;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Converts blame line count and line height into a pixel height.
+/// </summary>
+public class BlameChunkHeightConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length < 2)
+        {
+            return 0d;
+        }
+
+        var count = values[0] is int i ? i : 0;
+        var lineHeight = values[1] is double d ? d : 0d;
+        return count * lineHeight;
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}

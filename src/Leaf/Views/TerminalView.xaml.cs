@@ -46,6 +46,12 @@ public partial class TerminalView : UserControl
             return;
         }
 
+        if (!IsVisible)
+        {
+            _lastLineCount = viewModel.Lines.Count;
+            return;
+        }
+
         if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add &&
             e.NewItems != null &&
             e.OldItems == null &&
@@ -65,7 +71,7 @@ public partial class TerminalView : UserControl
             RebuildDocument(viewModel);
         }
 
-        if (viewModel.AutoScroll)
+        if (viewModel.AutoScroll && TerminalOutputTextBox.IsVisible)
         {
             TerminalOutputTextBox.ScrollToEnd();
         }
@@ -75,6 +81,10 @@ public partial class TerminalView : UserControl
     {
         if (e.NewValue is true)
         {
+            if (DataContext is TerminalViewModel viewModel && viewModel.Lines.Count != _lastLineCount)
+            {
+                RebuildDocument(viewModel);
+            }
             Dispatcher.BeginInvoke(() => TerminalInput.Focus());
         }
     }

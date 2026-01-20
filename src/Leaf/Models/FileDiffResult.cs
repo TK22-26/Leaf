@@ -49,4 +49,9 @@ public class FileDiffResult
     /// Number of lines deleted.
     /// </summary>
     public int LinesDeletedCount { get; set; }
+
+    /// <summary>
+    /// True if this diff represents a real file path in the repo.
+    /// </summary>
+    public bool IsFileBacked { get; set; } = true;
 }

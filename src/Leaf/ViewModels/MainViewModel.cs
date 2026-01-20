@@ -269,7 +269,7 @@ public partial class MainViewModel : ObservableObject
         _gitGraphViewModel = new GitGraphViewModel(gitService);
         _commitDetailViewModel = new CommitDetailViewModel(gitService);
         _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService);
-        _diffViewerViewModel = new DiffViewerViewModel();
+        _diffViewerViewModel = new DiffViewerViewModel(gitService);
         _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
         _terminalViewModel = new TerminalViewModel(gitService, settingsService);
         _terminalViewModel.CommandExecuted += OnTerminalCommandExecuted;
@@ -1583,6 +1583,7 @@ public partial class MainViewModel : ObservableObject
             // Compute the diff
             var diffService = new Services.DiffService();
             var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
+            DiffViewerViewModel.RepositoryPath = SelectedRepository.Path;
 
             // Load into the view model
             DiffViewerViewModel.LoadDiff(result);
@@ -1613,7 +1614,8 @@ public partial class MainViewModel : ObservableObject
         {
             FileName = title,
             FilePath = title,
-            InlineContent = diffText
+            InlineContent = diffText,
+            IsFileBacked = false
         };
 
         int linesAdded = 0;
@@ -1670,6 +1672,7 @@ public partial class MainViewModel : ObservableObject
 
             var diffService = new Services.DiffService();
             var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
+            DiffViewerViewModel.RepositoryPath = SelectedRepository.Path;
 
             DiffViewerViewModel.LoadDiff(result);
         }
@@ -1702,6 +1705,7 @@ public partial class MainViewModel : ObservableObject
 
             var diffService = new Services.DiffService();
             var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
+            DiffViewerViewModel.RepositoryPath = SelectedRepository.Path;
 
             DiffViewerViewModel.LoadDiff(result);
         }
@@ -2297,6 +2301,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             var diffResult = BuildUnifiedDiffResult(diffText, $"Working Directory vs {commit.ShortSha}");
+            DiffViewerViewModel.RepositoryPath = SelectedRepository.Path;
             DiffViewerViewModel.LoadDiff(diffResult);
         }
         catch (Exception ex)

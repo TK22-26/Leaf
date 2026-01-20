@@ -437,5 +437,15 @@ public interface IGitService
     /// <param name="toRef">Ending reference (inclusive), defaults to HEAD</param>
     Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null);
 
+    /// <summary>
+    /// Get blame information for a file.
+    /// </summary>
+    Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath);
+
+    /// <summary>
+    /// Get history for a file.
+    /// </summary>
+    Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200);
+
     #endregion
 }
