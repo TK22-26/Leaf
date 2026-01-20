@@ -625,6 +625,22 @@ public class GitService : IGitService
             using var repo = new Repository(repoPath);
             var remote = repo.Network.Remotes["origin"];
 
+            if (repo.Head.IsDetached)
+            {
+                throw new InvalidOperationException("Cannot push while in detached HEAD state.");
+            }
+
+            if (repo.Head.TrackedBranch == null)
+            {
+                var branchName = repo.Head.FriendlyName;
+                var result = RunGitCommand(repoPath, $"push -u \"origin\" \"{branchName}\"");
+                if (result.ExitCode != 0)
+                {
+                    throw new InvalidOperationException(result.Error);
+                }
+                return;
+            }
+
             var options = new PushOptions
             {
                 OnPushTransferProgress = (current, total, bytes) =>
