@@ -1,46 +1,57 @@
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Branch Colors for Git Graph Visualization -->
-    <!-- 12+ distinct colors for branch lanes -->
+    <!--  Branch Colors for Git Graph Visualization  -->
+    <!--  12+ distinct colors for branch lanes  -->
 
-    <Color x:Key="BranchColor0">#0078D4</Color>  <!-- Blue - main/master -->
-    <Color x:Key="BranchColor1">#107C10</Color>  <!-- Green - develop -->
-    <Color x:Key="BranchColor2">#FF8C00</Color>  <!-- Orange -->
-    <Color x:Key="BranchColor3">#E81123</Color>  <!-- Red -->
-    <Color x:Key="BranchColor4">#881798</Color>  <!-- Purple -->
-    <Color x:Key="BranchColor5">#00B7C3</Color>  <!-- Teal -->
-    <Color x:Key="BranchColor6">#FFB900</Color>  <!-- Yellow -->
-    <Color x:Key="BranchColor7">#E74856</Color>  <!-- Pink/Coral -->
-    <Color x:Key="BranchColor8">#00CC6A</Color>  <!-- Light Green -->
-    <Color x:Key="BranchColor9">#8764B8</Color>  <!-- Light Purple -->
-    <Color x:Key="BranchColor10">#038387</Color> <!-- Dark Teal -->
-    <Color x:Key="BranchColor11">#CA5010</Color> <!-- Rust -->
+    <Color x:Key="BranchColor0">#0078D4</Color>  
+    <!--  Blue - main/master  -->
+    <Color x:Key="BranchColor1">#107C10</Color>  
+    <!--  Green - develop  -->
+    <Color x:Key="BranchColor2">#FF8C00</Color>  
+    <!--  Orange  -->
+    <Color x:Key="BranchColor3">#E81123</Color>  
+    <!--  Red  -->
+    <Color x:Key="BranchColor4">#881798</Color>  
+    <!--  Purple  -->
+    <Color x:Key="BranchColor5">#00B7C3</Color>  
+    <!--  Teal  -->
+    <Color x:Key="BranchColor6">#FFB900</Color>  
+    <!--  Yellow  -->
+    <Color x:Key="BranchColor7">#E74856</Color>  
+    <!--  Pink/Coral  -->
+    <Color x:Key="BranchColor8">#00CC6A</Color>  
+    <!--  Light Green  -->
+    <Color x:Key="BranchColor9">#8764B8</Color>  
+    <!--  Light Purple  -->
+    <Color x:Key="BranchColor10">#038387</Color> 
+    <!--  Dark Teal  -->
+    <Color x:Key="BranchColor11">#CA5010</Color> 
+    <!--  Rust  -->
 
-    <!-- Solid Color Brushes -->
-    <SolidColorBrush x:Key="BranchBrush0" Color="{StaticResource BranchColor0}"/>
-    <SolidColorBrush x:Key="BranchBrush1" Color="{StaticResource BranchColor1}"/>
-    <SolidColorBrush x:Key="BranchBrush2" Color="{StaticResource BranchColor2}"/>
-    <SolidColorBrush x:Key="BranchBrush3" Color="{StaticResource BranchColor3}"/>
-    <SolidColorBrush x:Key="BranchBrush4" Color="{StaticResource BranchColor4}"/>
-    <SolidColorBrush x:Key="BranchBrush5" Color="{StaticResource BranchColor5}"/>
-    <SolidColorBrush x:Key="BranchBrush6" Color="{StaticResource BranchColor6}"/>
-    <SolidColorBrush x:Key="BranchBrush7" Color="{StaticResource BranchColor7}"/>
-    <SolidColorBrush x:Key="BranchBrush8" Color="{StaticResource BranchColor8}"/>
-    <SolidColorBrush x:Key="BranchBrush9" Color="{StaticResource BranchColor9}"/>
-    <SolidColorBrush x:Key="BranchBrush10" Color="{StaticResource BranchColor10}"/>
-    <SolidColorBrush x:Key="BranchBrush11" Color="{StaticResource BranchColor11}"/>
+    <!--  Solid Color Brushes  -->
+    <SolidColorBrush x:Key="BranchBrush0" Color="{StaticResource BranchColor0}" />
+    <SolidColorBrush x:Key="BranchBrush1" Color="{StaticResource BranchColor1}" />
+    <SolidColorBrush x:Key="BranchBrush2" Color="{StaticResource BranchColor2}" />
+    <SolidColorBrush x:Key="BranchBrush3" Color="{StaticResource BranchColor3}" />
+    <SolidColorBrush x:Key="BranchBrush4" Color="{StaticResource BranchColor4}" />
+    <SolidColorBrush x:Key="BranchBrush5" Color="{StaticResource BranchColor5}" />
+    <SolidColorBrush x:Key="BranchBrush6" Color="{StaticResource BranchColor6}" />
+    <SolidColorBrush x:Key="BranchBrush7" Color="{StaticResource BranchColor7}" />
+    <SolidColorBrush x:Key="BranchBrush8" Color="{StaticResource BranchColor8}" />
+    <SolidColorBrush x:Key="BranchBrush9" Color="{StaticResource BranchColor9}" />
+    <SolidColorBrush x:Key="BranchBrush10" Color="{StaticResource BranchColor10}" />
+    <SolidColorBrush x:Key="BranchBrush11" Color="{StaticResource BranchColor11}" />
 
-    <!-- Git Status Colors -->
-    <SolidColorBrush x:Key="AddedBrush" Color="#107C10"/>
-    <SolidColorBrush x:Key="ModifiedBrush" Color="#FFB900"/>
-    <SolidColorBrush x:Key="DeletedBrush" Color="#E81123"/>
-    <SolidColorBrush x:Key="RenamedBrush" Color="#0078D4"/>
-    <SolidColorBrush x:Key="ConflictBrush" Color="#881798"/>
+    <!--  Git Status Colors  -->
+    <SolidColorBrush x:Key="AddedBrush" Color="#107C10" />
+    <SolidColorBrush x:Key="ModifiedBrush" Color="#FFB900" />
+    <SolidColorBrush x:Key="DeletedBrush" Color="#E81123" />
+    <SolidColorBrush x:Key="RenamedBrush" Color="#0078D4" />
+    <SolidColorBrush x:Key="ConflictBrush" Color="#881798" />
 
-    <!-- Graph Drawing Colors -->
-    <SolidColorBrush x:Key="GraphLineBrush" Color="#808080"/>
-    <SolidColorBrush x:Key="HeadIndicatorBrush" Color="#FFB900"/>
-    <SolidColorBrush x:Key="TagIndicatorBrush" Color="#107C10"/>
+    <!--  Graph Drawing Colors  -->
+    <SolidColorBrush x:Key="GraphLineBrush" Color="#808080" />
+    <SolidColorBrush x:Key="HeadIndicatorBrush" Color="#FFB900" />
+    <SolidColorBrush x:Key="TagIndicatorBrush" Color="#107C10" />
 
 </ResourceDictionary>

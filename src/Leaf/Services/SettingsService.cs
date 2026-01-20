@@ -125,6 +125,14 @@ public class AppSettings
     public bool IsCommitDetailVisible { get; set; } = true;
     public bool IsRepoPaneCollapsed { get; set; } = false;
     public string? LastSelectedRepositoryPath { get; set; }
+    public bool IsTerminalVisible { get; set; } = false;
+    public double TerminalHeight { get; set; } = 220;
+    public bool TerminalAutoScroll { get; set; } = true;
+    public bool TerminalLogGitCommands { get; set; } = true;
+    public int TerminalMaxLines { get; set; } = 2000;
+    public double TerminalFontSize { get; set; } = 12;
+    public string TerminalShellExecutable { get; set; } = "cmd.exe";
+    public string TerminalShellArguments { get; set; } = "/c {command}";
 
     // GitHub OAuth settings
     public GitHubAuthMethod GitHubAuthMethod { get; set; } = GitHubAuthMethod.PersonalAccessToken;

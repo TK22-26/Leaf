@@ -18,6 +18,7 @@
         <converters:BranchNameToGitFlowColorConverter x:Key="BranchNameToGitFlowColorConverter"/>
         <converters:BranchNameToGitFlowVisibilityConverter x:Key="BranchNameToGitFlowVisibilityConverter"/>
         <converters:GitFlowTypeToVisibilityConverter x:Key="GitFlowTypeToVisibilityConverter"/>
+        <converters:StringIsNullOrEmptyConverter x:Key="StringIsNullOrEmptyConverter"/>
 
         <!-- Multi-select TreeViewItem style for BranchInfo items -->
         <!-- NOTE: Does NOT use TreeViewItem.IsSelected triggers to avoid single-selection enforcement -->
@@ -154,6 +155,13 @@
                 <HierarchicalDataTemplate DataType="{x:Type models:BranchCategory}"
                                           ItemsSource="{Binding Converter={StaticResource BranchCategoryItemsConverter}}">
                     <Grid Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <Grid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Show all branches"
+                                          Command="{Binding PlacementTarget.Tag.ClearBranchFiltersCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          Visibility="{Binding PlacementTarget.Tag.IsBranchFilterActive, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            </ContextMenu>
+                        </Grid.ContextMenu>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
@@ -277,12 +285,42 @@
                                 <MenuItem Header="Checkout"
                                           Command="{Binding PlacementTarget.Tag.CheckoutBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"/>
+                                <MenuItem Header="Pull (fast-forward if possible)"
+                                          Command="{Binding PlacementTarget.Tag.PullBranchFastForwardCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"/>
+                                <MenuItem Header="Push"
+                                          Command="{Binding PlacementTarget.Tag.PushBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          IsEnabled="{Binding IsRemote, Converter={StaticResource InverseBoolConverter}}"/>
+                                <MenuItem Header="Set upstream"
+                                          Command="{Binding PlacementTarget.Tag.SetUpstreamCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}">
+                                    <MenuItem.Style>
+                                        <Style TargetType="MenuItem">
+                                            <Setter Property="IsEnabled" Value="True"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRemote}" Value="True">
+                                                    <Setter Property="IsEnabled" Value="False"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding TrackingBranchName, Converter={StaticResource StringIsNullOrEmptyConverter}}" Value="False">
+                                                    <Setter Property="IsEnabled" Value="False"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </MenuItem.Style>
+                                </MenuItem>
                                 <MenuItem Header="Merge into current branch"
                                           Command="{Binding PlacementTarget.Tag.MergeBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
                                           IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}"/>
                                 <Separator/>
-                                <!-- GitFlow Section (branch-specific actions only) -->
+                                <MenuItem Header="Create branch here..."
+                                          Command="{Binding PlacementTarget.Tag.CreateBranchAtBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"/>
+                                <MenuItem Header="Rename branch..."
+                                          Command="{Binding PlacementTarget.Tag.RenameBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          IsEnabled="{Binding IsRemote, Converter={StaticResource InverseBoolConverter}}"/>
                                 <MenuItem Header="GitFlow"
                                           Visibility="{Binding GitFlowType, Converter={StaticResource GitFlowTypeToVisibilityConverter}, ConverterParameter=Finishable}">
                                     <MenuItem Header="Finish Branch"
@@ -293,6 +331,33 @@
                                               CommandParameter="{Binding}"/>
                                 </MenuItem>
                                 <Separator/>
+                                <MenuItem Command="{Binding PlacementTarget.Tag.ToggleHideBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}">
+                                    <MenuItem.Style>
+                                        <Style TargetType="MenuItem">
+                                            <Setter Property="Header" Value="Hide from graph"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsHidden}" Value="True">
+                                                    <Setter Property="Header" Value="Show in graph"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </MenuItem.Style>
+                                </MenuItem>
+                                <MenuItem Command="{Binding PlacementTarget.Tag.ToggleSoloBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}">
+                                    <MenuItem.Style>
+                                        <Style TargetType="MenuItem">
+                                            <Setter Property="Header" Value="Solo in graph"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSolo}" Value="True">
+                                                    <Setter Property="Header" Value="Clear solo"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </MenuItem.Style>
+                                </MenuItem>
+                                <Separator/>
                                 <MenuItem Header="Delete"
                                           Command="{Binding PlacementTarget.Tag.DeleteBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
@@ -300,38 +365,72 @@
                                           Foreground="#DC2626"/>
                             </ContextMenu>
                         </Border.ContextMenu>
-                        <StackPanel Orientation="Horizontal">
-                            <!-- GitFlow type indicator (colored dot) -->
-                            <Border Width="6" Height="6"
-                                    CornerRadius="3"
-                                    Background="{Binding GitFlowColor}"
-                                    Visibility="{Binding GitFlowType, Converter={StaticResource GitFlowTypeToVisibilityConverter}}"
-                                    VerticalAlignment="Center"
-                                    Margin="0,0,4,0"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
 
-                            <!-- Branch icon -->
-                            <ic:SymbolIcon Symbol="Branch"
-                                           IconVariant="Regular"
+                            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                <!-- GitFlow type indicator (colored dot) -->
+                                <Border Width="6" Height="6"
+                                        CornerRadius="3"
+                                        Background="{Binding GitFlowColor}"
+                                        Visibility="{Binding GitFlowType, Converter={StaticResource GitFlowTypeToVisibilityConverter}}"
+                                        VerticalAlignment="Center"
+                                        Margin="0,0,4,0"/>
+
+                                <!-- Branch icon -->
+                                <ic:SymbolIcon Symbol="Branch"
+                                               IconVariant="Regular"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,6,0"/>
+
+                                <!-- Branch name -->
+                                <TextBlock Text="{Binding Name}"
                                            FontSize="11"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,6,0"/>
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
 
-                            <!-- Branch name -->
-                            <TextBlock Text="{Binding Name}"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                       VerticalAlignment="Center"/>
+                                <!-- Current branch indicator -->
+                                <ic:SymbolIcon Symbol="Checkmark"
+                                               IconVariant="Regular"
+                                               FontSize="10"
+                                               Foreground="#10B981"
+                                               Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVisibilityConverter}}"
+                                               VerticalAlignment="Center"
+                                               Margin="4,0,0,0"/>
+                            </StackPanel>
 
-                            <!-- Current branch indicator -->
-                            <ic:SymbolIcon Symbol="Checkmark"
-                                           IconVariant="Regular"
-                                           FontSize="10"
-                                           Foreground="#10B981"
-                                           Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVisibilityConverter}}"
-                                           VerticalAlignment="Center"
-                                           Margin="4,0,0,0"/>
-                        </StackPanel>
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center"
+                                        Margin="6,0,0,0">
+                                <Border Background="{DynamicResource LeafAccentSubtleBrush}"
+                                        CornerRadius="6"
+                                        Padding="4,1"
+                                        Margin="0,0,4,0"
+                                        Visibility="{Binding IsSolo, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        ToolTip="Soloed in graph">
+                                    <TextBlock Text="SOLO"
+                                               FontSize="9"
+                                               Foreground="#28A745"
+                                               FontWeight="SemiBold"/>
+                                </Border>
+                                <Border Background="#1A64748B"
+                                        CornerRadius="6"
+                                        Padding="4,1"
+                                        Visibility="{Binding IsHidden, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        ToolTip="Hidden in graph">
+                                    <TextBlock Text="HIDE"
+                                               FontSize="9"
+                                               Foreground="#64748B"
+                                               FontWeight="SemiBold"/>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
                     </Border>
                 </DataTemplate>
             </TreeView.Resources>

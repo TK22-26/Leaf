@@ -1,21 +1,22 @@
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:converters="clr-namespace:Leaf.Converters">
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="clr-namespace:Leaf.Converters">
 
-    <!-- Common Converters -->
-    <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-    <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
-    <converters:NullToVisibilityInverseConverter x:Key="NullToVisibilityInverseConverter"/>
-    <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
-    <converters:EmptyToVisibilityConverter x:Key="EmptyToVisibilityConverter"/>
-    <converters:FileStatusToBrushConverter x:Key="FileStatusToBrushConverter"/>
-    <converters:IdenticonConverter x:Key="IdenticonConverter"/>
+    <!--  Common Converters  -->
+    <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+    <converters:NullToVisibilityInverseConverter x:Key="NullToVisibilityInverseConverter" />
+    <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+    <converters:EmptyToVisibilityConverter x:Key="EmptyToVisibilityConverter" />
+    <converters:FileStatusToBrushConverter x:Key="FileStatusToBrushConverter" />
+    <converters:IdenticonConverter x:Key="IdenticonConverter" />
 
-    <!-- File Status Brushes -->
-    <SolidColorBrush x:Key="AddedBrush" Color="#00AA00"/>
-    <SolidColorBrush x:Key="DeletedBrush" Color="#DD3333"/>
-    <SolidColorBrush x:Key="ModifiedBrush" Color="#CCAA00"/>
-    <SolidColorBrush x:Key="RenamedBrush" Color="#6666DD"/>
-    <SolidColorBrush x:Key="ConflictBrush" Color="#FF6600"/>
+    <!--  File Status Brushes  -->
+    <SolidColorBrush x:Key="AddedBrush" Color="#00AA00" />
+    <SolidColorBrush x:Key="DeletedBrush" Color="#DD3333" />
+    <SolidColorBrush x:Key="ModifiedBrush" Color="#CCAA00" />
+    <SolidColorBrush x:Key="RenamedBrush" Color="#6666DD" />
+    <SolidColorBrush x:Key="ConflictBrush" Color="#FF6600" />
 
 </ResourceDictionary>

@@ -13,9 +13,54 @@
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
+        <converters:EmptyToVisibilityConverter x:Key="EmptyToVisibilityConverter" />
+        <converters:ShaToBrushConverter x:Key="ShaToBrushConverter" />
+        <converters:BlameChunkHeightConverter x:Key="BlameChunkHeightConverter" />
 
         <SolidColorBrush x:Key="AddedCountBrush" Color="#28A745" />
         <SolidColorBrush x:Key="DeletedCountBrush" Color="#E81123" />
+
+        <Style x:Key="HeaderToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Background" Value="#1D4A28"/>
+                                <Setter Property="BorderBrush" Value="#2D6A3E"/>
+                                <Setter Property="Foreground" Value="#C0E8CC"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BlameChunkBarStyle" TargetType="Border">
+            <Setter Property="CornerRadius" Value="3"/>
+        </Style>
     </UserControl.Resources>
 
     <Grid Background="#4D202020">
@@ -28,48 +73,96 @@
 
         <!-- Header bar -->
         <Border Grid.Row="0"
-                Padding="12,8"
-                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                Padding="12,10"
+                Background="#1C2024"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="0,0,0,1">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- File icon -->
-                <TextBlock Grid.Column="0"
-                           Margin="0,0,8,0"
-                           VerticalAlignment="Center"
-                           FontFamily="Segoe Fluent Icons"
-                           FontSize="16"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                           Text="&#xE7C3;" />
+                <!-- File summary -->
+                <StackPanel Grid.Row="0" Grid.Column="0"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <Border Width="30" Height="30"
+                            Background="#22342A"
+                            CornerRadius="6"
+                            Margin="0,0,10,0"
+                            VerticalAlignment="Center">
+                        <TextBlock HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontFamily="Segoe Fluent Icons"
+                                   FontSize="14"
+                                   Foreground="#8BC99A"
+                                   Text="&#xE7C3;" />
+                    </Border>
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Text="{Binding FileName}"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   Text="{Binding FilePath}"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </StackPanel>
 
-                <!-- File name and path -->
-                <StackPanel Grid.Column="1"
-                            VerticalAlignment="Center"
-                            Orientation="Vertical">
-                    <TextBlock FontSize="14"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                               Text="{Binding FileName}"
-                               TextTrimming="CharacterEllipsis" />
-                    <TextBlock FontSize="11"
-                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                               Text="{Binding FilePath}"
-                               TextTrimming="CharacterEllipsis" />
+                <!-- Close button -->
+                <Button Grid.Row="0" Grid.Column="1"
+                        Width="35"
+                        Height="35"
+                        Padding="0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Command="{Binding CloseCommand}"
+                        Cursor="Hand"
+                        ToolTip="Close (Esc)">
+                    <TextBlock FontFamily="Segoe Fluent Icons"
+                               FontSize="14"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Text="&#xE711;" />
+                </Button>
+
+                <!-- Mode toggles -->
+                <StackPanel Grid.Row="1" Grid.Column="0"
+                            Margin="0,10,0,0"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <ToggleButton Content="Diff"
+                                  Style="{StaticResource HeaderToggleStyle}"
+                                  IsChecked="{Binding IsDiffMode, Mode=OneWay}"
+                                  Command="{Binding ShowDiffCommand}" />
+                    <ToggleButton Content="Blame"
+                                  Margin="8,0,0,0"
+                                  Style="{StaticResource HeaderToggleStyle}"
+                                  IsChecked="{Binding IsBlameMode, Mode=OneWay}"
+                                  IsEnabled="{Binding CanShowFileInsights}"
+                                  Command="{Binding ShowBlameCommand}" />
+                    <ToggleButton Content="History"
+                                  Margin="8,0,0,0"
+                                  Style="{StaticResource HeaderToggleStyle}"
+                                  IsChecked="{Binding IsHistoryMode, Mode=OneWay}"
+                                  IsEnabled="{Binding CanShowFileInsights}"
+                                  Command="{Binding ShowHistoryCommand}" />
                 </StackPanel>
 
                 <!-- Stats -->
-                <StackPanel Grid.Column="2"
-                            Margin="16,0"
+                <StackPanel Grid.Row="1" Grid.Column="1"
+                            Margin="16,10,0,0"
                             VerticalAlignment="Center"
-                            Orientation="Horizontal">
-                    <!-- Added count -->
+                            Orientation="Horizontal"
+                            Visibility="{Binding IsDiffMode, Converter={StaticResource BoolToVisibilityConverter}}">
                     <StackPanel Margin="0,0,12,0"
                                 Orientation="Horizontal"
                                 Visibility="{Binding IsBinary, Converter={StaticResource InverseBoolToVisibilityConverter}}">
@@ -85,7 +178,6 @@
                                    Foreground="{StaticResource AddedCountBrush}"
                                    Text="{Binding LinesAdded}" />
                     </StackPanel>
-                    <!-- Deleted count -->
                     <StackPanel Orientation="Horizontal"
                                 Visibility="{Binding IsBinary, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                         <TextBlock Margin="0,0,4,0"
@@ -101,26 +193,25 @@
                                    Text="{Binding LinesDeleted}" />
                     </StackPanel>
                 </StackPanel>
-
-                <!-- Close button -->
-                <Button Grid.Column="3"
-                        Padding="8,4"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Command="{Binding CloseCommand}"
-                        Cursor="Hand"
-                        ToolTip="Close (Esc)">
-                    <TextBlock FontFamily="Segoe Fluent Icons"
-                               FontSize="14"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                               Text="&#xE711;" />
-                </Button>
             </Grid>
         </Border>
 
         <!-- Binary file message -->
-        <Border Grid.Row="1"
-                Visibility="{Binding IsBinary, Converter={StaticResource BoolToVisibilityConverter}}">
+        <Border Grid.Row="1">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding IsBinary}" Value="True"/>
+                                <Condition Binding="{Binding IsDiffMode}" Value="True"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </MultiDataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <TextBlock HorizontalAlignment="Center"
                        VerticalAlignment="Center"
                        FontSize="14"
@@ -143,18 +234,206 @@
             </StackPanel>
         </Border>
 
-        <!-- Inline diff view -->
-        <avalonedit:TextEditor x:Name="DiffEditor"
-                               Grid.Row="1"
-                               Background="Transparent"
-                               FontFamily="Consolas"
-                               FontSize="12"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                               HorizontalScrollBarVisibility="Auto"
-                               IsReadOnly="True"
-                               LineNumbersForeground="{DynamicResource TextFillColorTertiaryBrush}"
-                               ShowLineNumbers="True"
-                               VerticalScrollBarVisibility="Auto"
-                               Visibility="{Binding IsBinary, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+        <Grid Grid.Row="1">
+            <!-- Inline diff view -->
+            <avalonedit:TextEditor x:Name="DiffEditor"
+                                   Background="Transparent"
+                                   FontFamily="Consolas"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   HorizontalScrollBarVisibility="Auto"
+                                   IsReadOnly="True"
+                                   LineNumbersForeground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   ShowLineNumbers="True"
+                                   VerticalScrollBarVisibility="Auto">
+                <avalonedit:TextEditor.Style>
+                    <Style TargetType="avalonedit:TextEditor">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsDiffMode}" Value="True"/>
+                                    <Condition Binding="{Binding IsBinary}" Value="False"/>
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </avalonedit:TextEditor.Style>
+            </avalonedit:TextEditor>
+
+            <!-- Blame view -->
+            <Grid Visibility="{Binding IsBlameMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="260"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <ScrollViewer Grid.Column="0"
+                              x:Name="BlameScrollViewer"
+                              VerticalScrollBarVisibility="Hidden"
+                              HorizontalScrollBarVisibility="Disabled"
+                              IsHitTestVisible="False"
+                              Focusable="False"
+                              Padding="0,6,0,6">
+                    <ItemsControl x:Name="BlameListView"
+                          ItemsSource="{Binding BlameChunks}"
+                          Background="Transparent"
+                          BorderThickness="0">
+                        <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="8,0">
+                                <Border.Height>
+                                    <MultiBinding Converter="{StaticResource BlameChunkHeightConverter}">
+                                        <Binding Path="LineCount"/>
+                                        <Binding Path="DataContext.BlameLineHeight"
+                                                 RelativeSource="{RelativeSource AncestorType=UserControl}"/>
+                                    </MultiBinding>
+                                </Border.Height>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               Text="{Binding ShortSha, Mode=OneWay}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Margin="0,0,8,0"
+                                               ToolTip="{Binding Sha, Mode=OneWay}"/>
+                                    <TextBlock Grid.Column="1"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               Text="{Binding Author, Mode=OneWay}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Margin="0,0,8,0"
+                                               ToolTip="{Binding Author, Mode=OneWay}"/>
+                                    <TextBlock Grid.Column="2"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                               Text="{Binding DateDisplay, Mode=OneWay}"
+                                               VerticalAlignment="Top"
+                                               TextTrimming="CharacterEllipsis"
+                                               Margin="0,0,8,0"
+                                               ToolTip="{Binding DateDisplay, Mode=OneWay}"/>
+                                    <Border Grid.Column="3"
+                                            Width="6"
+                                            Background="{Binding Sha, Converter={StaticResource ShaToBrushConverter}}"
+                                            Style="{StaticResource BlameChunkBarStyle}"
+                                            VerticalAlignment="Stretch"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <avalonedit:TextEditor x:Name="BlameEditor"
+                                       Grid.Column="1"
+                                       Background="Transparent"
+                                       FontFamily="Consolas"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       HorizontalScrollBarVisibility="Auto"
+                                       IsReadOnly="True"
+                                       LineNumbersForeground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       ShowLineNumbers="True"
+                                       VerticalScrollBarVisibility="Auto"
+                                       Padding="0,6,0,6" />
+
+                <TextBlock HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="No blame data available.">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding BlameLines.Count}" Value="0"/>
+                                        <Condition Binding="{Binding IsLoading}" Value="False"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+
+            <!-- History view -->
+            <Grid Visibility="{Binding IsHistoryMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                <ListView ItemsSource="{Binding HistoryCommits}"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel/>
+                        </ItemsPanelTemplate>
+                    </ListView.ItemsPanel>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="0,0,0,1"
+                                    Padding="10,6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="70"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="120"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               Text="{Binding ShortSha}"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock FontSize="12"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                   Text="{Binding MessageShort}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                   Text="{Binding Author}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                               Text="{Binding DateDisplay}"
+                                               HorizontalAlignment="Right"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <TextBlock HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="No history found for this file.">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding HistoryCommits.Count}" Value="0"/>
+                                        <Condition Binding="{Binding IsLoading}" Value="False"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+        </Grid>
     </Grid>
 </UserControl>

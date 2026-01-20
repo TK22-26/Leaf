@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using Leaf.Services;
 using Leaf.ViewModels;
@@ -121,6 +122,14 @@ public partial class MainWindow : Window
                 textBox.Focus();
                 Keyboard.Focus(textBox);
             });
+        }
+    }
+
+    private void TerminalSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+        {
+            viewModel.UpdateTerminalHeight(TerminalRow.ActualHeight);
         }
     }
 

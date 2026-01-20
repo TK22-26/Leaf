@@ -149,7 +149,7 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </StackPanel.Style>
-                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="11"
+                                        <TextBlock Text="–" FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
                                                    Foreground="#E81123" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                         <TextBlock Text="{Binding WorkingChanges.DeletedCount}" FontSize="11"
                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>

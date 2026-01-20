@@ -22,6 +22,7 @@ public partial class ConflictResolutionView : Window
         if (_viewModel != null)
         {
             _viewModel.MergeCompleted -= ViewModel_MergeCompleted;
+            _viewModel.RequestScrollToRegion -= ViewModel_RequestScrollToRegion;
         }
 
         _viewModel = e.NewValue as ConflictResolutionViewModel;
@@ -29,6 +30,7 @@ public partial class ConflictResolutionView : Window
         if (_viewModel != null)
         {
             _viewModel.MergeCompleted += ViewModel_MergeCompleted;
+            _viewModel.RequestScrollToRegion += ViewModel_RequestScrollToRegion;
         }
     }
 
@@ -40,5 +42,35 @@ public partial class ConflictResolutionView : Window
     private void OnDoneClick(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    private void ViewModel_RequestScrollToRegion(object? sender, int regionIndex)
+    {
+        if (_viewModel?.CurrentMergeResult == null)
+        {
+            return;
+        }
+
+        if (regionIndex < 0 || regionIndex >= _viewModel.CurrentMergeResult.Regions.Count)
+        {
+            return;
+        }
+
+        var region = _viewModel.CurrentMergeResult.Regions[regionIndex];
+        Dispatcher.BeginInvoke(() =>
+        {
+            OursRegionList.UpdateLayout();
+            TheirsRegionList.UpdateLayout();
+
+            if (OursRegionList.ItemContainerGenerator.ContainerFromItem(region) is FrameworkElement oursContainer)
+            {
+                oursContainer.BringIntoView();
+            }
+
+            if (TheirsRegionList.ItemContainerGenerator.ContainerFromItem(region) is FrameworkElement theirsContainer)
+            {
+                theirsContainer.BringIntoView();
+            }
+        });
     }
 }

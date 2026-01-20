@@ -386,11 +386,13 @@
                                 <Border Grid.Row="0" Background="#1E3A5F" Padding="8,4">
                                     <TextBlock Text="OURS (current branch)" FontSize="11" Foreground="#BFDBFE"/>
                                 </Border>
-                                <ScrollViewer Grid.Row="1"
+                                <ScrollViewer x:Name="OursScrollViewer"
+                                              Grid.Row="1"
                                               VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Auto">
                                     <StackPanel>
-                                        <ItemsControl ItemsSource="{Binding CurrentMergeResult.Regions}">
+                                        <ItemsControl x:Name="OursRegionList"
+                                                      ItemsSource="{Binding CurrentMergeResult.Regions}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate DataType="{x:Type models:MergeRegion}">
                                                     <Border Margin="0,0,0,6">
@@ -477,11 +479,13 @@
                                 <Border Grid.Row="0" Background="#14532D" Padding="8,4">
                                     <TextBlock Text="THEIRS (incoming)" FontSize="11" Foreground="#BBF7D0"/>
                                 </Border>
-                                <ScrollViewer Grid.Row="1"
+                                <ScrollViewer x:Name="TheirsScrollViewer"
+                                              Grid.Row="1"
                                               VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Auto">
                                     <StackPanel>
-                                        <ItemsControl ItemsSource="{Binding CurrentMergeResult.Regions}">
+                                        <ItemsControl x:Name="TheirsRegionList"
+                                                      ItemsSource="{Binding CurrentMergeResult.Regions}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate DataType="{x:Type models:MergeRegion}">
                                                     <Border Margin="0,0,0,6">

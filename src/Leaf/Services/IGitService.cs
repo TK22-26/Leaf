@@ -8,6 +8,8 @@ namespace Leaf.Services;
 /// </summary>
 public interface IGitService
 {
+    event EventHandler<GitCommandEventArgs>? GitCommandExecuted;
+
     /// <summary>
     /// Check if a path contains a valid Git repository.
     /// </summary>
@@ -83,6 +85,46 @@ public interface IGitService
     Task PushAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null);
 
     /// <summary>
+    /// Pull updates for a specific branch (fast-forward if possible).
+    /// </summary>
+    Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch);
+
+    /// <summary>
+    /// Push a specific branch to remote.
+    /// </summary>
+    Task PushBranchAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch);
+
+    /// <summary>
+    /// Set upstream tracking for a branch.
+    /// </summary>
+    Task SetUpstreamAsync(string repoPath, string branchName, string remoteName, string remoteBranchName);
+
+    /// <summary>
+    /// Rename a local branch.
+    /// </summary>
+    Task RenameBranchAsync(string repoPath, string oldName, string newName);
+
+    /// <summary>
+    /// Revert a commit (creates a new commit).
+    /// </summary>
+    Task RevertCommitAsync(string repoPath, string commitSha);
+
+    /// <summary>
+    /// Revert a merge commit using the specified parent index.
+    /// </summary>
+    Task RevertMergeCommitAsync(string repoPath, string commitSha, int parentIndex);
+
+    /// <summary>
+    /// Redo the last undone commit (if available).
+    /// </summary>
+    Task<bool> RedoCommitAsync(string repoPath);
+
+    /// <summary>
+    /// Reset a branch to a specific commit.
+    /// </summary>
+    Task ResetBranchToCommitAsync(string repoPath, string branchName, string commitSha, bool updateWorkingTree);
+
+    /// <summary>
     /// Checkout a branch.
     /// </summary>
     Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false);
@@ -98,6 +140,21 @@ public interface IGitService
     /// Create a new branch.
     /// </summary>
     Task CreateBranchAsync(string repoPath, string branchName, bool checkout = true);
+
+    /// <summary>
+    /// Create a new branch at a specific commit.
+    /// </summary>
+    Task CreateBranchAtCommitAsync(string repoPath, string branchName, string commitSha, bool checkout = true);
+
+    /// <summary>
+    /// Cherry-pick a commit onto the current branch.
+    /// </summary>
+    Task<Models.MergeResult> CherryPickAsync(string repoPath, string commitSha);
+
+    /// <summary>
+    /// Get a unified diff between a commit and the working tree.
+    /// </summary>
+    Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha);
 
     /// <summary>
     /// Stash changes.
@@ -379,6 +436,16 @@ public interface IGitService
     /// <param name="fromRef">Starting reference (exclusive)</param>
     /// <param name="toRef">Ending reference (inclusive), defaults to HEAD</param>
     Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null);
+
+    /// <summary>
+    /// Get blame information for a file.
+    /// </summary>
+    Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath);
+
+    /// <summary>
+    /// Get history for a file.
+    /// </summary>
+    Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200);
 
     #endregion
 }

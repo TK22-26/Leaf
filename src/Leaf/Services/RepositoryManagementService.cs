@@ -281,6 +281,8 @@ public class RepositoryManagementService : IRepositoryManagementService
             Path = repo.Path,
             Name = repo.Name,
             Tags = repo.Tags.ToList(),
+            HiddenBranchNames = repo.HiddenBranchNames.ToList(),
+            SoloBranchNames = repo.SoloBranchNames.ToList(),
             LastAccessed = repo.LastAccessed,
             GroupId = repo.GroupId,
             IsPinned = repo.IsPinned

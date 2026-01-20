@@ -6,6 +6,7 @@ using System.Windows.Media;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Highlighting;
 using Leaf.ViewModels;
+using System.Linq;
 
 namespace Leaf.Controls;
 
@@ -16,6 +17,10 @@ public partial class DiffViewerControl : UserControl
 {
     private DiffViewerViewModel? _viewModel;
     private readonly DiffBackgroundRenderer _renderer = new();
+    private ScrollViewer? _blameScrollViewer;
+    private ScrollViewer? _blameEditorScrollViewer;
+    private bool _isSyncingBlameScroll;
+    private IHighlightingDefinition? _lastHighlighting;
 
     // Dark theme colors for syntax highlighting
     private static readonly Color KeywordColor = Color.FromRgb(0x56, 0x9C, 0xD6);      // Light blue
@@ -41,6 +46,13 @@ public partial class DiffViewerControl : UserControl
 
         // Configure editor
         ConfigureEditor(DiffEditor);
+        ConfigureEditor(BlameEditor);
+
+        Loaded += (_, _) =>
+        {
+            AttachBlameScrollSync();
+            UpdateBlameLineHeight();
+        };
     }
 
     private static void ConfigureEditor(TextEditor editor)
@@ -68,6 +80,7 @@ public partial class DiffViewerControl : UserControl
         if (_viewModel != null)
         {
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            Dispatcher.BeginInvoke(UpdateBlameLineHeight);
             UpdateFromViewModel();
         }
         else
@@ -81,8 +94,10 @@ public partial class DiffViewerControl : UserControl
         switch (e.PropertyName)
         {
             case nameof(DiffViewerViewModel.InlineContent):
+            case nameof(DiffViewerViewModel.BlameContent):
             case nameof(DiffViewerViewModel.Lines):
             case nameof(DiffViewerViewModel.SyntaxHighlighting):
+            case nameof(DiffViewerViewModel.Mode):
                 UpdateFromViewModel();
                 break;
         }
@@ -95,23 +110,34 @@ public partial class DiffViewerControl : UserControl
 
         // Apply dark theme colors to syntax highlighting
         var highlighting = _viewModel.SyntaxHighlighting;
-        if (highlighting != null)
+        if (highlighting != null && !ReferenceEquals(highlighting, _lastHighlighting))
         {
             ApplyDarkThemeColors(highlighting);
+            _lastHighlighting = highlighting;
         }
-        DiffEditor.SyntaxHighlighting = highlighting;
 
-        // Update content
-        DiffEditor.Text = _viewModel.InlineContent;
+        if (_viewModel.IsDiffMode)
+        {
+            DiffEditor.SyntaxHighlighting = highlighting;
+            DiffEditor.Text = _viewModel.InlineContent;
+            _renderer.SetLines(_viewModel.Lines);
+            DiffEditor.TextArea.TextView.InvalidateLayer(ICSharpCode.AvalonEdit.Rendering.KnownLayer.Background);
+            DiffEditor.ScrollToHome();
+        }
+        else
+        {
+            _renderer.SetLines(null);
+        }
 
-        // Update background renderer with diff lines
-        _renderer.SetLines(_viewModel.Lines);
-
-        // Force redraw
-        DiffEditor.TextArea.TextView.InvalidateLayer(ICSharpCode.AvalonEdit.Rendering.KnownLayer.Background);
-
-        // Scroll to top
-        DiffEditor.ScrollToHome();
+        if (_viewModel.IsBlameMode && BlameEditor != null)
+        {
+            BlameEditor.SyntaxHighlighting = highlighting;
+            if (!string.Equals(BlameEditor.Text, _viewModel.BlameContent, StringComparison.Ordinal))
+            {
+                BlameEditor.Text = _viewModel.BlameContent;
+            }
+            BlameEditor.ScrollToHome();
+        }
     }
 
     private static void ApplyDarkThemeColors(IHighlightingDefinition highlighting)
@@ -318,6 +344,11 @@ public partial class DiffViewerControl : UserControl
         DiffEditor.Text = string.Empty;
         DiffEditor.SyntaxHighlighting = null;
         _renderer.SetLines(null);
+        if (BlameEditor != null)
+        {
+            BlameEditor.Text = string.Empty;
+            BlameEditor.SyntaxHighlighting = null;
+        }
     }
 
     private void UserControl_KeyDown(object sender, KeyEventArgs e)
@@ -327,5 +358,78 @@ public partial class DiffViewerControl : UserControl
             _viewModel?.CloseCommand.Execute(null);
             e.Handled = true;
         }
+    }
+
+    private void AttachBlameScrollSync()
+    {
+        _blameScrollViewer = BlameScrollViewer;
+        _blameEditorScrollViewer = FindScrollViewer(BlameEditor);
+        if (BlameEditor != null)
+        {
+            BlameEditor.TextArea.TextView.ScrollOffsetChanged += (_, _) =>
+            {
+                if (_blameScrollViewer == null)
+                {
+                    return;
+                }
+
+                if (_isSyncingBlameScroll)
+                {
+                    return;
+                }
+
+                if (!BlameEditor.TextArea.TextView.VisualLinesValid)
+                {
+                    return;
+                }
+
+                _isSyncingBlameScroll = true;
+                var lineHeight = BlameEditor.TextArea.TextView.DefaultLineHeight;
+                var firstLine = BlameEditor.TextArea.TextView.VisualLines.FirstOrDefault()?.FirstDocumentLine?.LineNumber ?? 1;
+                var target = Math.Max(0, (firstLine - 1) * lineHeight);
+                _blameScrollViewer.ScrollToVerticalOffset(target);
+                _isSyncingBlameScroll = false;
+            };
+        }
+    }
+
+    private void UpdateBlameLineHeight()
+    {
+        if (_viewModel == null || BlameEditor == null)
+        {
+            return;
+        }
+
+        var height = BlameEditor.TextArea.TextView.DefaultLineHeight;
+        if (height > 0)
+        {
+            _viewModel.BlameLineHeight = height;
+        }
+
+    }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject? root)
+    {
+        if (root == null)
+        {
+            return null;
+        }
+
+        if (root is ScrollViewer viewer)
+        {
+            return viewer;
+        }
+
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            var found = FindScrollViewer(child);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 }

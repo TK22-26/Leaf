@@ -134,21 +134,35 @@
                 <!-- Group template (folder containing repos) -->
                 <HierarchicalDataTemplate DataType="{x:Type models:RepositoryGroup}"
                                           ItemsSource="{Binding Repositories}">
-                    <StackPanel Orientation="Horizontal" Margin="0,4">
-                        <TextBlock Text="&#xE8B7;"
-                                   FontFamily="Segoe Fluent Icons"
-                                   FontSize="14"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                   VerticalAlignment="Center"
-                                   Margin="0,0,8,0"/>
-                        <TextBlock Text="{Binding Name}"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding Repositories.Count, StringFormat=' ({0})'}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
+                    <Border Background="Transparent"
+                            Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Remove All"
+                                          Command="{Binding PlacementTarget.Tag.RemoveAllRepositoriesInGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#E81123"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <StackPanel Orientation="Horizontal" Margin="0,4">
+                            <TextBlock Text="&#xE8B7;"
+                                       FontFamily="Segoe Fluent Icons"
+                                       FontSize="14"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding Name}"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Repositories.Count, StringFormat=' ({0})'}"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
                 </HierarchicalDataTemplate>
 
                 <!-- QuickAccessItem template - uses same visual as RepositoryInfo but binds to Repository property -->

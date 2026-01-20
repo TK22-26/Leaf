@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text;
 using Leaf.Models;
@@ -13,6 +14,8 @@ namespace Leaf.Services;
 /// </summary>
 public class GitService : IGitService
 {
+    public event EventHandler<GitCommandEventArgs>? GitCommandExecuted;
+
     public async Task<bool> IsValidRepositoryAsync(string path)
     {
         return await Task.Run(() =>
@@ -54,10 +57,10 @@ public class GitService : IGitService
                 .GroupBy(b => b.Tip?.Sha)
                 .ToDictionary(g => g.Key ?? "", g => g.Select(b =>
                 {
-                    var remoteName = b.RemoteName ?? "origin";
-                    var remoteUrl = remoteUrls.GetValueOrDefault(remoteName, string.Empty);
+                    var remoteNameValue = b.RemoteName ?? "origin";
+                    var remoteUrl = remoteUrls.GetValueOrDefault(remoteNameValue, string.Empty);
                     var remoteType = RemoteBranchGroup.GetRemoteTypeFromUrl(remoteUrl);
-                    return new RemoteBranchRef(GetBranchNameWithoutRemote(b.FriendlyName), remoteName, remoteType);
+                    return new RemoteBranchRef(GetBranchNameWithoutRemote(b.FriendlyName), remoteNameValue, remoteType);
                 }).ToList());
 
             // Combined branch tips for display names
@@ -95,7 +98,7 @@ public class GitService : IGitService
                 });
             }
 
-            return commits
+            var commitList = commits
                 .Take(count)
                 .Select(c => new CommitInfo
                 {
@@ -112,7 +115,74 @@ public class GitService : IGitService
                     TagNames = tagTips.TryGetValue(c.Sha, out var tags) ? tags : []
                 })
                 .ToList();
+
+            var commitsBySha = commitList.ToDictionary(c => c.Sha, StringComparer.OrdinalIgnoreCase);
+            var visibleShas = new HashSet<string>(commitsBySha.Keys, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var tipSha in localBranchTips.Keys.Concat(remoteBranchTips.Keys))
+            {
+                if (string.IsNullOrWhiteSpace(tipSha) || visibleShas.Contains(tipSha))
+                    continue;
+
+                var nearestSha = FindNearestVisibleAncestor(repo, tipSha, visibleShas);
+                if (nearestSha == null || !commitsBySha.TryGetValue(nearestSha, out var targetCommit))
+                    continue;
+
+                var labels = BuildBranchLabels(tipSha, localBranchTips, remoteBranchTips, currentBranchName);
+                AddBranchLabels(targetCommit, labels);
+            }
+
+            return commitList;
         });
+    }
+
+    private static string? FindNearestVisibleAncestor(Repository repo, string tipSha, HashSet<string> visibleShas)
+    {
+        var start = repo.Lookup<Commit>(tipSha);
+        if (start == null)
+            return null;
+
+        var queue = new Queue<Commit>();
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        queue.Enqueue(start);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!visited.Add(current.Sha))
+                continue;
+
+            if (visibleShas.Contains(current.Sha))
+                return current.Sha;
+
+            foreach (var parent in current.Parents)
+            {
+                if (!visited.Contains(parent.Sha))
+                {
+                    queue.Enqueue(parent);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static void AddBranchLabels(CommitInfo commit, List<BranchLabel> labels)
+    {
+        foreach (var label in labels)
+        {
+            if (!commit.BranchLabels.Any(existing =>
+                    string.Equals(existing.FullName, label.FullName, StringComparison.OrdinalIgnoreCase)))
+            {
+                commit.BranchLabels.Add(label);
+            }
+
+            if (label.IsLocal && !commit.BranchNames.Any(name =>
+                    string.Equals(name, label.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                commit.BranchNames.Add(label.Name);
+            }
+        }
     }
 
     private static string GetBranchNameWithoutRemote(string fullName)
@@ -555,6 +625,22 @@ public class GitService : IGitService
             using var repo = new Repository(repoPath);
             var remote = repo.Network.Remotes["origin"];
 
+            if (repo.Info.IsHeadDetached)
+            {
+                throw new InvalidOperationException("Cannot push while in detached HEAD state.");
+            }
+
+            if (repo.Head.TrackedBranch == null)
+            {
+                var branchName = repo.Head.FriendlyName;
+                var result = RunGitCommand(repoPath, $"push -u \"origin\" \"{branchName}\"");
+                if (result.ExitCode != 0)
+                {
+                    throw new InvalidOperationException(result.Error);
+                }
+                return;
+            }
+
             var options = new PushOptions
             {
                 OnPushTransferProgress = (current, total, bytes) =>
@@ -568,6 +654,86 @@ public class GitService : IGitService
 
             repo.Network.Push(repo.Head, options);
         });
+    }
+
+    public async Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch)
+    {
+        var args = isCurrentBranch
+            ? $"pull --ff-only \"{remoteName}\" \"{remoteBranchName}\""
+            : $"fetch \"{remoteName}\" \"{remoteBranchName}\":\"{branchName}\"";
+
+        var result = await RunGitCommandAsync(repoPath, args);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task PushBranchAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch)
+    {
+        var args = isCurrentBranch
+            ? $"push \"{remoteName}\" \"{branchName}\""
+            : $"push \"{remoteName}\" \"{branchName}\":\"{remoteBranchName}\"";
+
+        var result = await RunGitCommandAsync(repoPath, args);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task SetUpstreamAsync(string repoPath, string branchName, string remoteName, string remoteBranchName)
+    {
+        var result = await RunGitCommandAsync(repoPath, "branch", "--set-upstream-to", $"{remoteName}/{remoteBranchName}", branchName);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task RenameBranchAsync(string repoPath, string oldName, string newName)
+    {
+        var result = await RunGitCommandAsync(repoPath, "branch", "-m", oldName, newName);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task RevertCommitAsync(string repoPath, string commitSha)
+    {
+        var result = await RunGitCommandAsync(repoPath, "revert", commitSha);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task RevertMergeCommitAsync(string repoPath, string commitSha, int parentIndex)
+    {
+        var result = await RunGitCommandAsync(repoPath, "revert", "-m", parentIndex.ToString(), commitSha);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    public async Task<bool> RedoCommitAsync(string repoPath)
+    {
+        var result = await RunGitCommandAsync(repoPath, "reset", "--soft", "ORIG_HEAD");
+        return result.ExitCode == 0;
+    }
+
+    public async Task ResetBranchToCommitAsync(string repoPath, string branchName, string commitSha, bool updateWorkingTree)
+    {
+        var result = updateWorkingTree
+            ? await RunGitCommandAsync(repoPath, "reset", "--hard", commitSha)
+            : await RunGitCommandAsync(repoPath, "branch", "-f", branchName, commitSha);
+
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
     }
 
     private static CredentialsHandler CreateCredentialsProvider(string url, string? username, string? password)
@@ -803,6 +969,54 @@ public class GitService : IGitService
                 Commands.Checkout(repo, branch);
             }
         });
+    }
+
+    public async Task CreateBranchAtCommitAsync(string repoPath, string branchName, string commitSha, bool checkout = true)
+    {
+        await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+            var commit = repo.Lookup<Commit>(commitSha);
+            if (commit == null)
+            {
+                throw new InvalidOperationException($"Commit '{commitSha}' not found.");
+            }
+
+            var branch = repo.CreateBranch(branchName, commit);
+            if (checkout)
+            {
+                Commands.Checkout(repo, branch);
+            }
+        });
+    }
+
+    public async Task<Models.MergeResult> CherryPickAsync(string repoPath, string commitSha)
+    {
+        var result = await RunGitCommandAsync(repoPath, "cherry-pick", commitSha);
+        if (result.ExitCode == 0)
+        {
+            return new Models.MergeResult { Success = true };
+        }
+
+        var conflicts = await GetConflictsAsync(repoPath);
+        return new Models.MergeResult
+        {
+            Success = false,
+            HasConflicts = conflicts.Count > 0,
+            ErrorMessage = string.IsNullOrWhiteSpace(result.Error) ? result.Output : result.Error
+        };
+    }
+
+    public async Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha)
+    {
+        var result = await RunGitCommandAsync(repoPath, "diff", commitSha);
+        if (result.ExitCode != 0)
+        {
+            var message = string.IsNullOrWhiteSpace(result.Error) ? result.Output : result.Error;
+            throw new InvalidOperationException(message);
+        }
+
+        return result.Output;
     }
 
     public async Task StashAsync(string repoPath, string? message = null)
@@ -2766,11 +2980,131 @@ public class GitService : IGitService
         });
     }
 
+    public async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath)
+    {
+        var result = await RunGitCommandAsync(repoPath, "blame", "--line-porcelain", "--", filePath);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+
+        var lines = new List<FileBlameLine>();
+        string currentSha = string.Empty;
+        string currentAuthor = string.Empty;
+        DateTimeOffset currentDate = DateTimeOffset.MinValue;
+        int currentLineNumber = 0;
+
+        foreach (var rawLine in result.Output.Split('\n'))
+        {
+            var line = rawLine.TrimEnd('\r');
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            if (line[0] == '\t')
+            {
+                lines.Add(new FileBlameLine
+                {
+                    LineNumber = currentLineNumber,
+                    Sha = currentSha,
+                    Author = currentAuthor,
+                    Date = currentDate,
+                    Content = line[1..]
+                });
+                continue;
+            }
+
+            if (line.Length >= 40 && IsShaLine(line))
+            {
+                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                currentSha = parts[0];
+                if (parts.Length >= 3 && int.TryParse(parts[2], out var finalLine))
+                {
+                    currentLineNumber = finalLine;
+                }
+                continue;
+            }
+
+            if (line.StartsWith("author ", StringComparison.Ordinal))
+            {
+                currentAuthor = line["author ".Length..];
+                continue;
+            }
+
+            if (line.StartsWith("author-time ", StringComparison.Ordinal))
+            {
+                if (long.TryParse(line["author-time ".Length..], out var seconds))
+                {
+                    currentDate = DateTimeOffset.FromUnixTimeSeconds(seconds);
+                }
+                continue;
+            }
+        }
+
+        return lines;
+    }
+
+    public async Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200)
+    {
+        var result = await RunGitCommandAsync(
+            repoPath,
+            "log",
+            "--follow",
+            "--date=iso",
+            $"--max-count={maxCount}",
+            "--pretty=format:%H%x1f%an%x1f%ad%x1f%s",
+            "--",
+            filePath);
+
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+
+        var commits = new List<CommitInfo>();
+        foreach (var rawLine in result.Output.Split('\n'))
+        {
+            var line = rawLine.TrimEnd('\r');
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var parts = line.Split('\x1f');
+            if (parts.Length < 4)
+            {
+                continue;
+            }
+
+            var sha = parts[0];
+            var author = parts[1];
+            var dateText = parts[2];
+            var message = parts[3];
+
+            if (!DateTimeOffset.TryParse(dateText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var date))
+            {
+                date = DateTimeOffset.Now;
+            }
+
+            commits.Add(new CommitInfo
+            {
+                Sha = sha,
+                Message = message,
+                MessageShort = message,
+                Author = author,
+                Date = date
+            });
+        }
+
+        return commits;
+    }
+
     #endregion
 
     #region Git Command Helper
 
-    private static (int ExitCode, string Output, string Error) RunGitCommand(string repoPath, string arguments)
+    private (int ExitCode, string Output, string Error) RunGitCommand(string repoPath, string arguments)
     {
         var startInfo = new System.Diagnostics.ProcessStartInfo
         {
@@ -2786,23 +3120,45 @@ public class GitService : IGitService
         using var process = System.Diagnostics.Process.Start(startInfo);
         if (process == null)
         {
-            return (-1, "", "Failed to start git process");
+            var failed = (ExitCode: -1, Output: "", Error: "Failed to start git process");
+            OnGitCommandExecuted(repoPath, $"git {arguments}", failed.ExitCode, failed.Output, failed.Error);
+            return failed;
         }
 
         var output = process.StandardOutput.ReadToEnd();
         var error = process.StandardError.ReadToEnd();
         process.WaitForExit();
 
-        return (process.ExitCode, output, error);
+        var result = (ExitCode: process.ExitCode, Output: output, Error: error);
+        OnGitCommandExecuted(repoPath, $"git {arguments}", result.ExitCode, result.Output, result.Error);
+        return result;
     }
 
-    private static async Task<(int ExitCode, string Output, string Error)> RunGitCommandAsync(string repoPath, params string[] args)
+    private async Task<(int ExitCode, string Output, string Error)> RunGitCommandAsync(string repoPath, params string[] args)
     {
         return await Task.Run(() =>
         {
             var arguments = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
             return RunGitCommand(repoPath, arguments);
         });
+    }
+
+    private static bool IsShaLine(string line)
+    {
+        for (int i = 0; i < 40 && i < line.Length; i++)
+        {
+            if (!char.IsAsciiHexDigit(line[i]))
+            {
+                return false;
+            }
+        }
+
+        return line.Length >= 40;
+    }
+
+    private void OnGitCommandExecuted(string workingDirectory, string arguments, int exitCode, string output, string error)
+    {
+        GitCommandExecuted?.Invoke(this, new GitCommandEventArgs(workingDirectory, arguments, exitCode, output, error));
     }
 
     #endregion

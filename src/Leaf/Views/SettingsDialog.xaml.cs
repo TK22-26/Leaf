@@ -56,6 +56,9 @@ public partial class SettingsDialog : Window
         {
             new("Clone Path", "Default directory for cloning repositories", "ClonePath", Symbol.Folder),
             new("Default Clone Directory", "Set where new repositories are cloned", "ClonePath", Symbol.Folder),
+            new("Terminal", "Configure the built-in command terminal", "Terminal", Symbol.Code),
+            new("Terminal Shell", "Select which shell to run commands with", "Terminal", Symbol.Code),
+            new("Terminal Output", "Control terminal output behavior", "Terminal", Symbol.Code),
             new("Azure DevOps", "Connect to Azure DevOps for private repositories", "AzureDevOps", Symbol.Cloud),
             new("Azure DevOps PAT", "Personal Access Token for Azure DevOps", "AzureDevOps", Symbol.Key),
             new("Azure DevOps Organization", "Your Azure DevOps organization name", "AzureDevOps", Symbol.Cloud),
@@ -90,6 +93,7 @@ public partial class SettingsDialog : Window
     {
         // Hide all content panels
         ContentClonePath.Visibility = Visibility.Collapsed;
+        ContentTerminal.Visibility = Visibility.Collapsed;
         ContentAzureDevOps.Visibility = Visibility.Collapsed;
         ContentGitHub.Visibility = Visibility.Collapsed;
         ContentAIGeneral.Visibility = Visibility.Collapsed;
@@ -107,6 +111,9 @@ public partial class SettingsDialog : Window
                 break;
             case "AzureDevOps":
                 ContentAzureDevOps.Visibility = Visibility.Visible;
+                break;
+            case "Terminal":
+                ContentTerminal.Visibility = Visibility.Visible;
                 break;
             case "GitHub":
                 ContentGitHub.Visibility = Visibility.Visible;
@@ -171,6 +178,7 @@ public partial class SettingsDialog : Window
 
         // Hide all content panels
         ContentClonePath.Visibility = Visibility.Collapsed;
+        ContentTerminal.Visibility = Visibility.Collapsed;
         ContentAzureDevOps.Visibility = Visibility.Collapsed;
         ContentGitHub.Visibility = Visibility.Collapsed;
         ContentAIGeneral.Visibility = Visibility.Collapsed;
@@ -207,6 +215,7 @@ public partial class SettingsDialog : Window
         TreeViewItem? itemToSelect = tag switch
         {
             "ClonePath" => NavClonePath,
+            "Terminal" => NavTerminal,
             "AzureDevOps" => NavAzureDevOps,
             "GitHub" => NavGitHub,
             "AIGeneral" => NavAIGeneral,
@@ -290,6 +299,12 @@ public partial class SettingsDialog : Window
     {
         // Load default clone path
         ClonePathTextBox.Text = _settings.DefaultClonePath;
+        TerminalShellExecutableTextBox.Text = _settings.TerminalShellExecutable;
+        TerminalShellArgumentsTextBox.Text = _settings.TerminalShellArguments;
+        TerminalMaxLinesTextBox.Text = _settings.TerminalMaxLines.ToString();
+        TerminalFontSizeTextBox.Text = _settings.TerminalFontSize.ToString("0");
+        TerminalAutoScrollCheckBox.IsChecked = _settings.TerminalAutoScroll;
+        TerminalLogGitCommandsCheckBox.IsChecked = _settings.TerminalLogGitCommands;
 
         // Load organization
         OrganizationTextBox.Text = _settings.AzureDevOpsOrganization;
@@ -1250,6 +1265,20 @@ public partial class SettingsDialog : Window
     {
         // Update settings from UI
         _settings.DefaultClonePath = ClonePathTextBox.Text;
+        var shellExecutable = TerminalShellExecutableTextBox.Text.Trim();
+        var shellArguments = TerminalShellArgumentsTextBox.Text.Trim();
+        _settings.TerminalShellExecutable = string.IsNullOrWhiteSpace(shellExecutable) ? "cmd.exe" : shellExecutable;
+        _settings.TerminalShellArguments = string.IsNullOrWhiteSpace(shellArguments) ? "/c {command}" : shellArguments;
+        if (int.TryParse(TerminalMaxLinesTextBox.Text, out var maxLines) && maxLines > 0)
+        {
+            _settings.TerminalMaxLines = maxLines;
+        }
+        if (double.TryParse(TerminalFontSizeTextBox.Text, out var fontSize) && fontSize > 6)
+        {
+            _settings.TerminalFontSize = fontSize;
+        }
+        _settings.TerminalAutoScroll = TerminalAutoScrollCheckBox.IsChecked == true;
+        _settings.TerminalLogGitCommands = TerminalLogGitCommandsCheckBox.IsChecked == true;
         _settings.AzureDevOpsOrganization = OrganizationTextBox.Text.Trim();
         _settings.DefaultAiProvider = AiDefaultComboBox.SelectedItem as string ?? string.Empty;
 

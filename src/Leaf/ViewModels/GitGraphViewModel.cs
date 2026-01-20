@@ -22,6 +22,13 @@ public partial class GitGraphViewModel : ObservableObject
     private readonly IGitService _gitService;
     private readonly GraphBuilder _graphBuilder = new();
     private readonly Dictionary<string, Task<MergeCommitTooltipViewModel?>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _branchTips = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _hiddenBranchNames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _soloBranchNames = new(StringComparer.OrdinalIgnoreCase);
+    private List<CommitInfo> _allCommits = [];
+    private string? _currentBranchName;
+    private GitFlowConfig? _gitFlowConfig;
+    private IReadOnlyCollection<string> _remoteNames = Array.Empty<string>();
 
     [ObservableProperty]
     private string? _repositoryPath;
@@ -103,6 +110,14 @@ public partial class GitGraphViewModel : ObservableObject
         _gitService = gitService;
     }
 
+    public void SetGitFlowContext(GitFlowConfig? config, IReadOnlyCollection<string> remoteNames)
+    {
+        _gitFlowConfig = config;
+        _remoteNames = remoteNames;
+        GraphBuilder.SetGitFlowContext(config, remoteNames);
+        RebuildGraphFromFilters();
+    }
+
     /// <summary>
     /// Load commits for a repository.
     /// </summary>
@@ -117,6 +132,9 @@ public partial class GitGraphViewModel : ObservableObject
             if (!string.Equals(RepositoryPath, path, StringComparison.OrdinalIgnoreCase))
             {
                 _mergeTooltipTasks.Clear();
+                _hiddenBranchNames.Clear();
+                _soloBranchNames.Clear();
+                _branchTips.Clear();
             }
 
             // Only show loading overlay on initial load (no existing data)
@@ -141,34 +159,19 @@ public partial class GitGraphViewModel : ObservableObject
             var commits = await commitsTask;
             var stashes = await stashesTask;
 
-            var currentBranchName = workingChanges?.BranchName;
-            if (string.IsNullOrWhiteSpace(currentBranchName))
+            _currentBranchName = workingChanges?.BranchName;
+            if (string.IsNullOrWhiteSpace(_currentBranchName))
             {
-                currentBranchName = commits
+                _currentBranchName = commits
                     .SelectMany(c => c.BranchLabels)
                     .FirstOrDefault(l => l.IsCurrent)?.Name;
             }
 
-            // Build graph
-            var nodes = _graphBuilder.BuildGraph(commits, currentBranchName);
-
-            // Atomically replace collections to avoid flashing
-            // (replacing triggers single property change vs many Add/Clear operations)
-            Nodes = new ObservableCollection<GitTreeNode>(nodes);
-            Commits = new ObservableCollection<CommitInfo>(commits);
+            _allCommits = commits.ToList();
             WorkingChanges = workingChanges;
             Stashes = new ObservableCollection<StashInfo>(stashes);
 
-            MaxLane = _graphBuilder.MaxLane;
-
-            // Calculate total height including working changes and stash rows
-            int rowCount = commits.Count;
-            if (HasWorkingChanges)
-            {
-                rowCount += 1; // Add one row for working changes
-            }
-            rowCount += stashes.Count; // Add row for each stash
-            TotalHeight = rowCount * RowHeight;
+            RebuildGraphFromFilters();
 
             // Preserve selection if it was selected, otherwise clear
             // This prevents losing selection when file watcher triggers reload during staging
@@ -181,6 +184,8 @@ public partial class GitGraphViewModel : ObservableObject
                 : null;
             SelectedSha = wasWorkingChangesSelected ? WorkingChangesSha : null;
             IsWorkingChangesSelected = wasWorkingChangesSelected && HasWorkingChanges;
+
+            ApplySearchFilter(SearchText);
         }
         catch (Exception ex)
         {
@@ -386,6 +391,159 @@ public partial class GitGraphViewModel : ObservableObject
         return text.Length >= 4 &&
                text.Length <= 40 &&
                text.All(c => char.IsAsciiHexDigit(c));
+    }
+
+    /// <summary>
+    /// Apply branch filters to the graph (hidden/solo branches).
+    /// </summary>
+    public void ApplyBranchFilters(
+        IEnumerable<string> hiddenBranchNames,
+        IEnumerable<string> soloBranchNames,
+        IDictionary<string, string> branchTips)
+    {
+        _hiddenBranchNames.Clear();
+        _soloBranchNames.Clear();
+        _branchTips.Clear();
+
+        if (hiddenBranchNames != null)
+        {
+            foreach (var name in hiddenBranchNames)
+            {
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    _hiddenBranchNames.Add(name);
+                }
+            }
+        }
+
+        if (soloBranchNames != null)
+        {
+            foreach (var name in soloBranchNames)
+            {
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    _soloBranchNames.Add(name);
+                }
+            }
+        }
+
+        if (branchTips != null)
+        {
+            foreach (var (name, sha) in branchTips)
+            {
+                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(sha))
+                {
+                    _branchTips[name] = sha;
+                }
+            }
+        }
+
+        RebuildGraphFromFilters();
+        ApplySearchFilter(SearchText);
+    }
+
+    private void RebuildGraphFromFilters()
+    {
+        if (_allCommits.Count == 0)
+        {
+            Nodes = [];
+            Commits = [];
+            MaxLane = 0;
+            TotalHeight = ((HasWorkingChanges ? 1 : 0) + Stashes.Count) * RowHeight;
+            return;
+        }
+
+        var visibleCommits = GetVisibleCommits();
+
+        var nodes = _graphBuilder.BuildGraph(visibleCommits, _currentBranchName);
+        Nodes = new ObservableCollection<GitTreeNode>(nodes);
+        Commits = new ObservableCollection<CommitInfo>(visibleCommits);
+        MaxLane = _graphBuilder.MaxLane;
+
+        // Calculate total height including working changes and stash rows
+        int rowCount = Commits.Count;
+        if (HasWorkingChanges)
+        {
+            rowCount += 1; // Add one row for working changes
+        }
+        rowCount += Stashes.Count; // Add row for each stash
+        TotalHeight = rowCount * RowHeight;
+
+        if (SelectedCommit != null && !Commits.Contains(SelectedCommit))
+        {
+            SelectedCommit.IsSelected = false;
+            SelectedCommit = null;
+            SelectedSha = null;
+        }
+    }
+
+    private List<CommitInfo> GetVisibleCommits()
+    {
+        bool hasFilters = _hiddenBranchNames.Count > 0 || _soloBranchNames.Count > 0;
+        if (!hasFilters || _branchTips.Count == 0)
+        {
+            return _allCommits;
+        }
+
+        var visibleTips = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (_soloBranchNames.Count > 0)
+        {
+            foreach (var name in _soloBranchNames)
+            {
+                if (_branchTips.TryGetValue(name, out var tipSha) && !string.IsNullOrWhiteSpace(tipSha))
+                {
+                    visibleTips.Add(tipSha);
+                }
+            }
+        }
+        else
+        {
+            foreach (var (name, tipSha) in _branchTips)
+            {
+                if (_hiddenBranchNames.Contains(name))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(tipSha))
+                {
+                    visibleTips.Add(tipSha);
+                }
+            }
+        }
+
+        if (visibleTips.Count == 0)
+        {
+            return hasFilters ? [] : _allCommits;
+        }
+
+        var commitsBySha = _allCommits.ToDictionary(c => c.Sha, StringComparer.OrdinalIgnoreCase);
+        var reachable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var stack = new Stack<string>(visibleTips);
+
+        while (stack.Count > 0)
+        {
+            var sha = stack.Pop();
+            if (!reachable.Add(sha))
+            {
+                continue;
+            }
+
+            if (!commitsBySha.TryGetValue(sha, out var commit))
+            {
+                continue;
+            }
+
+            foreach (var parent in commit.ParentShas)
+            {
+                if (!string.IsNullOrWhiteSpace(parent) && commitsBySha.ContainsKey(parent))
+                {
+                    stack.Push(parent);
+                }
+            }
+        }
+
+        return _allCommits.Where(c => reachable.Contains(c.Sha)).ToList();
     }
 
     /// <summary>

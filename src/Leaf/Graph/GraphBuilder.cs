@@ -11,6 +11,8 @@ public class GraphBuilder
 {
     // Cache for generated branch colors (consistent across the session)
     private static readonly Dictionary<string, Brush> BranchColorCache = new();
+    private static GitFlowConfig? _gitFlowConfig;
+    private static HashSet<string>? _remoteNames;
 
     // Fallback colors for lanes without a known branch name
     private static readonly Brush[] FallbackBrushes =
@@ -31,17 +33,43 @@ public class GraphBuilder
 
     #region Color Generation (same algorithm as GitGraphCanvas for consistency)
 
+    public static void SetGitFlowContext(GitFlowConfig? config, IEnumerable<string>? remoteNames)
+    {
+        _gitFlowConfig = config?.IsInitialized == true ? config : null;
+        _remoteNames = remoteNames != null
+            ? new HashSet<string>(remoteNames, StringComparer.OrdinalIgnoreCase)
+            : null;
+        ClearColorCache();
+    }
+
+    public static void ClearColorCache()
+    {
+        BranchColorCache.Clear();
+    }
+
     /// <summary>
     /// Generates a consistent color from a branch name using HSL color space.
     /// Same name always produces same color across instances.
     /// </summary>
     public static Brush GetBranchColor(string branchName)
     {
-        if (BranchColorCache.TryGetValue(branchName, out var cached))
+        var normalizedName = NormalizeBranchName(branchName);
+
+        if (BranchColorCache.TryGetValue(normalizedName, out var cached))
             return cached;
 
+        if (_gitFlowConfig != null)
+        {
+            var gitFlowBrush = BranchInfo.GetGitFlowColorForName(normalizedName, _gitFlowConfig);
+            if (gitFlowBrush != Brushes.Transparent)
+            {
+                BranchColorCache[normalizedName] = gitFlowBrush;
+                return gitFlowBrush;
+            }
+        }
+
         // Use a stable hash (not GetHashCode which can vary)
-        uint hash = StableHash(branchName);
+        uint hash = StableHash(normalizedName);
 
         // Generate HSL values from hash
         // Hue: full spectrum (0-360)
@@ -55,8 +83,23 @@ public class GraphBuilder
         var brush = new SolidColorBrush(color);
         brush.Freeze();
 
-        BranchColorCache[branchName] = brush;
+        BranchColorCache[normalizedName] = brush;
         return brush;
+    }
+
+    private static string NormalizeBranchName(string branchName)
+    {
+        if (_remoteNames == null || string.IsNullOrEmpty(branchName))
+            return branchName;
+
+        var slashIndex = branchName.IndexOf('/');
+        if (slashIndex <= 0)
+            return branchName;
+
+        var prefix = branchName[..slashIndex];
+        return _remoteNames.Contains(prefix)
+            ? branchName[(slashIndex + 1)..]
+            : branchName;
     }
 
     /// <summary>
