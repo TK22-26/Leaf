@@ -57,10 +57,10 @@ public class GitService : IGitService
                 .GroupBy(b => b.Tip?.Sha)
                 .ToDictionary(g => g.Key ?? "", g => g.Select(b =>
                 {
-                    var remoteName = b.RemoteName ?? "origin";
-                    var remoteUrl = remoteUrls.GetValueOrDefault(remoteName, string.Empty);
+                    var remoteNameValue = b.RemoteName ?? "origin";
+                    var remoteUrl = remoteUrls.GetValueOrDefault(remoteNameValue, string.Empty);
                     var remoteType = RemoteBranchGroup.GetRemoteTypeFromUrl(remoteUrl);
-                    return new RemoteBranchRef(GetBranchNameWithoutRemote(b.FriendlyName), remoteName, remoteType);
+                    return new RemoteBranchRef(GetBranchNameWithoutRemote(b.FriendlyName), remoteNameValue, remoteType);
                 }).ToList());
 
             // Combined branch tips for display names
@@ -625,7 +625,7 @@ public class GitService : IGitService
             using var repo = new Repository(repoPath);
             var remote = repo.Network.Remotes["origin"];
 
-            if (repo.Head.IsDetached)
+            if (repo.Info.IsHeadDetached)
             {
                 throw new InvalidOperationException("Cannot push while in detached HEAD state.");
             }

@@ -1121,15 +1121,15 @@ public partial class MainViewModel : ObservableObject
 
             if (branch.IsRemote)
             {
-                var remoteName = branch.RemoteName ?? "origin";
-                var localName = branch.Name.StartsWith($"{remoteName}/", StringComparison.OrdinalIgnoreCase)
-                    ? branch.Name[(remoteName.Length + 1)..]
+                var remoteNameValue = branch.RemoteName ?? "origin";
+                var localName = branch.Name.StartsWith($"{remoteNameValue}/", StringComparison.OrdinalIgnoreCase)
+                    ? branch.Name[(remoteNameValue.Length + 1)..]
                     : branch.Name;
 
                 await _gitService.PullBranchFastForwardAsync(
                     SelectedRepository.Path,
                     localName,
-                    remoteName,
+                    remoteNameValue,
                     branch.Name,
                     isCurrentBranch: false);
 
@@ -1979,6 +1979,7 @@ public partial class MainViewModel : ObservableObject
 
             // GITFLOW category (if initialized - always show when GitFlow is active)
             var gitFlowConfig = await _gitFlowService.GetConfigAsync(repo.Path);
+            GitGraphViewModel?.SetGitFlowContext(gitFlowConfig, remotes.Select(r => r.Name).ToList());
             if (gitFlowConfig?.IsInitialized == true)
             {
                 // Classify all branches by GitFlow type for proper coloring

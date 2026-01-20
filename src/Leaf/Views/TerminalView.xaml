@@ -22,13 +22,6 @@
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#28A745" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#1E7E34" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#2FB354" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#239246" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#1F8F3C" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#1A7432" />
-
     </UserControl.Resources>
 
     <Border
@@ -100,25 +93,6 @@
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="{Binding WorkingDirectory}"
                             TextTrimming="CharacterEllipsis" />
-                        <CheckBox
-                            Grid.Column="1"
-                            Margin="8,0,-35,0"
-                            Padding="5,7,5,5"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Center"
-                            Content="Auto-scroll"
-                            FontSize="10"
-                            IsChecked="{Binding AutoScroll}">
-                            <CheckBox.Resources>
-                                <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#28A745" />
-                                <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#1E7E34" />
-                                <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#2FB354" />
-                                <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#239246" />
-                                <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#1F8F3C" />
-                                <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#1A7432" />
-                                <SolidColorBrush x:Key="CheckBoxCheckGlyphForeground" Color="#FFFFFF" />
-                            </CheckBox.Resources>
-                        </CheckBox>
                     </Grid>
                     <TextBlock
                         Grid.Row="1"

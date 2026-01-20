@@ -162,62 +162,68 @@
                                     ToolTip="{Binding Path}">
                                     <Border.ContextMenu>
                                         <ContextMenu>
-                                            <MenuItem Header="Stage"
-                                                      Command="{Binding PlacementTarget.Tag.StageFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
-                                            <MenuItem Header="Discard changes"
-                                                      Command="{Binding PlacementTarget.Tag.DiscardFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.StageFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Header="Stage" />
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.DiscardFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Header="Discard changes" />
                                             <MenuItem Header="Ignore">
-                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding}">
+                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}">
                                                     <MenuItem.Header>
                                                         <TextBlock>
-                                                            <Run Text="Ignore '"/><Run Text="{Binding FileName, Mode=OneWay}"/><Run Text="'"/>
+                                                            <Run Text="Ignore '" /><Run Text="{Binding FileName, Mode=OneWay}" /><Run Text="'" />
                                                         </TextBlock>
                                                     </MenuItem.Header>
                                                 </MenuItem>
-                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreExtensionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding}">
+                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreExtensionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}">
                                                     <MenuItem.Header>
                                                         <TextBlock>
-                                                            <Run Text="All files with extension '"/><Run Text="{Binding Extension, Mode=OneWay}"/><Run Text="'"/>
+                                                            <Run Text="All files with extension '" /><Run Text="{Binding Extension, Mode=OneWay}" /><Run Text="'" />
                                                         </TextBlock>
                                                     </MenuItem.Header>
                                                 </MenuItem>
-                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreDirectoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding}"
-                                                          Visibility="{Binding Directory, Converter={StaticResource NullToVisibilityConverter}}">
+                                                <MenuItem
+                                                    Command="{Binding PlacementTarget.Tag.IgnoreDirectoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                    CommandParameter="{Binding}"
+                                                    Visibility="{Binding Directory, Converter={StaticResource NullToVisibilityConverter}}">
                                                     <MenuItem.Header>
                                                         <TextBlock>
-                                                            <Run Text="All files in '"/><Run Text="{Binding Directory, Mode=OneWay}"/><Run Text="/'"/>
+                                                            <Run Text="All files in '" /><Run Text="{Binding Directory, Mode=OneWay}" /><Run Text="/'" />
                                                         </TextBlock>
                                                     </MenuItem.Header>
                                                 </MenuItem>
                                             </MenuItem>
-                                            <MenuItem Header="Stash file"
-                                                      Command="{Binding PlacementTarget.Tag.StashFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
-                                            <Separator/>
-                                            <MenuItem Header="Open in Explorer"
-                                                      Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
-                                            <MenuItem Header="Copy file path"
-                                                      Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
-                                            <Separator/>
-                                            <MenuItem Header="Delete file"
-                                                      Command="{Binding PlacementTarget.Tag.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"
-                                                      Foreground="#E81123"/>
-                                            <!-- Admin delete for Windows reserved filenames (nul, con, prn, etc.) -->
-                                            <Separator Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}"/>
-                                            <MenuItem Header="Admin Delete (Reserved Name)"
-                                                      Command="{Binding PlacementTarget.Tag.AdminDeleteReservedFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"
-                                                      Foreground="#E81123"
-                                                      FontWeight="SemiBold"
-                                                      Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}"/>
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.StashFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Header="Stash file" />
+                                            <Separator />
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Header="Open in Explorer" />
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Header="Copy file path" />
+                                            <Separator />
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Foreground="#E81123"
+                                                Header="Delete file" />
+                                            <!--  Admin delete for Windows reserved filenames (nul, con, prn, etc.)  -->
+                                            <Separator Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}" />
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.AdminDeleteReservedFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                FontWeight="SemiBold"
+                                                Foreground="#E81123"
+                                                Header="Admin Delete (Reserved Name)"
+                                                Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}" />
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <Grid>
@@ -237,8 +243,7 @@
                                             Grid.Column="0"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
-                                            FontFamily="Segoe Fluent Icons"
-                                            FontSize="12"
+                                            FontSize="13"
                                             Text="{Binding StatusIcon}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
@@ -246,15 +251,23 @@
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding Status}" Value="Added">
                                                             <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}" />
+                                                            <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                                                            <Setter Property="FontSize" Value="13" />
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding Status}" Value="Modified">
                                                             <Setter Property="Foreground" Value="{StaticResource StatusModifiedBrush}" />
+                                                            <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                                                            <Setter Property="FontSize" Value="13" />
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding Status}" Value="Deleted">
                                                             <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}" />
+                                                            <Setter Property="FontFamily" Value="Segoe UI" />
+                                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                                            <Setter Property="FontSize" Value="14" />
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding Status}" Value="Untracked">
                                                             <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}" />
+                                                            <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -266,7 +279,7 @@
                                             Grid.Row="0"
                                             Grid.Column="1"
                                             VerticalAlignment="Center"
-                                            FontSize="12"
+                                            FontSize="13"
                                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                             Text="{Binding FileName}"
                                             TextTrimming="CharacterEllipsis" />
@@ -397,54 +410,59 @@
                                     ToolTip="{Binding Path}">
                                     <Border.ContextMenu>
                                         <ContextMenu>
-                                            <MenuItem Header="Unstage"
-                                                      Command="{Binding PlacementTarget.Tag.UnstageFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
-                                            <MenuItem Header="Discard changes"
-                                                      Command="{Binding PlacementTarget.Tag.DiscardFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.UnstageFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Header="Unstage" />
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.DiscardFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Header="Discard changes" />
                                             <MenuItem Header="Ignore">
-                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding}">
+                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}">
                                                     <MenuItem.Header>
                                                         <TextBlock>
-                                                            <Run Text="Ignore '"/><Run Text="{Binding FileName, Mode=OneWay}"/><Run Text="'"/>
+                                                            <Run Text="Ignore '" /><Run Text="{Binding FileName, Mode=OneWay}" /><Run Text="'" />
                                                         </TextBlock>
                                                     </MenuItem.Header>
                                                 </MenuItem>
-                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreExtensionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding}">
+                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreExtensionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}">
                                                     <MenuItem.Header>
                                                         <TextBlock>
-                                                            <Run Text="All files with extension '"/><Run Text="{Binding Extension, Mode=OneWay}"/><Run Text="'"/>
+                                                            <Run Text="All files with extension '" /><Run Text="{Binding Extension, Mode=OneWay}" /><Run Text="'" />
                                                         </TextBlock>
                                                     </MenuItem.Header>
                                                 </MenuItem>
-                                                <MenuItem Command="{Binding PlacementTarget.Tag.IgnoreDirectoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding}"
-                                                          Visibility="{Binding Directory, Converter={StaticResource NullToVisibilityConverter}}">
+                                                <MenuItem
+                                                    Command="{Binding PlacementTarget.Tag.IgnoreDirectoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                    CommandParameter="{Binding}"
+                                                    Visibility="{Binding Directory, Converter={StaticResource NullToVisibilityConverter}}">
                                                     <MenuItem.Header>
                                                         <TextBlock>
-                                                            <Run Text="All files in '"/><Run Text="{Binding Directory, Mode=OneWay}"/><Run Text="/'"/>
+                                                            <Run Text="All files in '" /><Run Text="{Binding Directory, Mode=OneWay}" /><Run Text="/'" />
                                                         </TextBlock>
                                                     </MenuItem.Header>
                                                 </MenuItem>
                                             </MenuItem>
-                                            <MenuItem Header="Stash file"
-                                                      Command="{Binding PlacementTarget.Tag.StashFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
-                                            <Separator/>
-                                            <MenuItem Header="Open in Explorer"
-                                                      Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
-                                            <MenuItem Header="Copy file path"
-                                                      Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
-                                            <Separator/>
-                                            <MenuItem Header="Delete file"
-                                                      Command="{Binding PlacementTarget.Tag.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"
-                                                      Foreground="#E81123"/>
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.StashFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Header="Stash file" />
+                                            <Separator />
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Header="Open in Explorer" />
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Header="Copy file path" />
+                                            <Separator />
+                                            <MenuItem
+                                                Command="{Binding PlacementTarget.Tag.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                CommandParameter="{Binding}"
+                                                Foreground="#E81123"
+                                                Header="Delete file" />
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <Grid>
@@ -464,8 +482,7 @@
                                             Grid.Column="0"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
-                                            FontFamily="Segoe Fluent Icons"
-                                            FontSize="12"
+                                            FontSize="13"
                                             Text="{Binding StatusIcon}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
@@ -473,12 +490,19 @@
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding Status}" Value="Added">
                                                             <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}" />
+                                                            <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                                                            <Setter Property="FontSize" Value="13" />
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding Status}" Value="Modified">
                                                             <Setter Property="Foreground" Value="{StaticResource StatusModifiedBrush}" />
+                                                            <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                                                            <Setter Property="FontSize" Value="13" />
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding Status}" Value="Deleted">
                                                             <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}" />
+                                                            <Setter Property="FontFamily" Value="Segoe UI" />
+                                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                                            <Setter Property="FontSize" Value="14" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>

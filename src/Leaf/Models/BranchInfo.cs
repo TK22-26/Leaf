@@ -88,12 +88,12 @@ public partial class BranchInfo : ObservableObject
 
     #region GitFlow Colors
 
-    // Standard GitFlow colors (industry standard from nvie.com and GitKraken)
-    private static readonly SolidColorBrush MainColor = new(Color.FromRgb(0x6E, 0x40, 0xC9));     // Purple - royal color for main
+    // Standard GitFlow colors (aligned with UI converters)
+    private static readonly SolidColorBrush MainColor = new(Color.FromRgb(0x09, 0x69, 0xDA));     // Blue
     private static readonly SolidColorBrush DevelopColor = new(Color.FromRgb(0x1F, 0x88, 0x3D)); // Green
     private static readonly SolidColorBrush ReleaseColor = new(Color.FromRgb(0xBF, 0x87, 0x00)); // Yellow/Amber
     private static readonly SolidColorBrush HotfixColor = new(Color.FromRgb(0xCF, 0x22, 0x2E));  // Red
-    private static readonly SolidColorBrush SupportColor = new(Color.FromRgb(0xE6, 0x6C, 0x00)); // Orange
+    private static readonly SolidColorBrush SupportColor = new(Color.FromRgb(0x57, 0x60, 0x6A)); // Gray
 
     /// <summary>
     /// Gets the GitFlow color brush for this branch.
@@ -138,6 +138,28 @@ public partial class BranchInfo : ObservableObject
 
         var (r, g, b) = HslToRgb(hue / 360.0, saturation, lightness);
         return new SolidColorBrush(Color.FromRgb(r, g, b));
+    }
+
+    /// <summary>
+    /// Gets a GitFlow color for a branch name using the provided GitFlow configuration.
+    /// Returns Transparent if the branch does not match a GitFlow type.
+    /// </summary>
+    public static Brush GetGitFlowColorForName(string branchName, GitFlowConfig config)
+    {
+        if (branchName.Equals(config.MainBranch, StringComparison.OrdinalIgnoreCase))
+            return MainColor;
+        if (branchName.Equals(config.DevelopBranch, StringComparison.OrdinalIgnoreCase))
+            return DevelopColor;
+        if (branchName.StartsWith(config.FeaturePrefix, StringComparison.OrdinalIgnoreCase))
+            return GenerateFeatureColor(branchName);
+        if (branchName.StartsWith(config.ReleasePrefix, StringComparison.OrdinalIgnoreCase))
+            return ReleaseColor;
+        if (branchName.StartsWith(config.HotfixPrefix, StringComparison.OrdinalIgnoreCase))
+            return HotfixColor;
+        if (branchName.StartsWith(config.SupportPrefix, StringComparison.OrdinalIgnoreCase))
+            return SupportColor;
+
+        return Brushes.Transparent;
     }
 
     /// <summary>

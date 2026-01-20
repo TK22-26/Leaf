@@ -473,26 +473,72 @@ public class GitGraphCanvas : FrameworkElement
         // Clear and rebuild branch items
         _branchTooltipPanel!.Children.Clear();
 
+        // Measure to align icons to the right edge of the tooltip
+        var tooltipDpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        const double circleSize = 10;
+        const double circleRightMargin = 8;
+        const double nameRightMargin = 8;
+        double maxNameWidth = 0;
+        double maxIconWidth = 0;
+
+        foreach (var branch in branches)
+        {
+            var nameFormatted = new FormattedText(
+                branch.Name,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                LabelTypeface,
+                12,
+                Brushes.White,
+                tooltipDpi);
+            nameFormatted.SetFontWeight(branch.IsCurrent ? FontWeights.SemiBold : FontWeights.Normal);
+            maxNameWidth = Math.Max(maxNameWidth, nameFormatted.Width);
+
+            var iconTextMeasure = "";
+            if (branch.IsLocal) iconTextMeasure += ComputerIcon;
+            if (branch.IsLocal && branch.IsRemote) iconTextMeasure += " ";
+            if (branch.IsRemote) iconTextMeasure += CloudIcon;
+
+            if (!string.IsNullOrEmpty(iconTextMeasure))
+            {
+                var iconFormatted = new FormattedText(
+                    iconTextMeasure,
+                    CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    IconTypeface,
+                    11,
+                    Brushes.White,
+                    tooltipDpi);
+                maxIconWidth = Math.Max(maxIconWidth, iconFormatted.Width + nameRightMargin);
+            }
+        }
+
+        double rowWidth = circleSize + circleRightMargin + maxNameWidth + maxIconWidth;
+
         foreach (var branch in branches)
         {
             var branchBrush = GraphBuilder.GetBranchColor(branch.Name);
 
-            // Create a row: colored circle + name + icons
-            var row = new System.Windows.Controls.StackPanel
+            // Create a row: colored circle + name (left) + icons (right)
+            var row = new System.Windows.Controls.Grid
             {
-                Orientation = System.Windows.Controls.Orientation.Horizontal,
-                Margin = new Thickness(4, 3, 4, 3)
+                Margin = new Thickness(4, 3, 4, 3),
+                Width = rowWidth
             };
+            row.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
+            row.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
 
             // Colored circle
             var circle = new System.Windows.Shapes.Ellipse
             {
-                Width = 10,
-                Height = 10,
+                Width = circleSize,
+                Height = circleSize,
                 Fill = branchBrush,
                 Margin = new Thickness(0, 0, 8, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
+            System.Windows.Controls.Grid.SetColumn(circle, 0);
             row.Children.Add(circle);
 
             // Branch name
@@ -503,8 +549,12 @@ public class GitGraphCanvas : FrameworkElement
                 FontSize = 12,
                 FontFamily = new FontFamily("Segoe UI"),
                 FontWeight = branch.IsCurrent ? FontWeights.SemiBold : FontWeights.Normal,
-                VerticalAlignment = VerticalAlignment.Center
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                TextWrapping = TextWrapping.NoWrap,
+                Margin = new Thickness(0, 0, nameRightMargin, 0)
             };
+            System.Windows.Controls.Grid.SetColumn(nameText, 1);
             row.Children.Add(nameText);
 
             // Icons (local/remote)
@@ -521,9 +571,10 @@ public class GitGraphCanvas : FrameworkElement
                     Foreground = new SolidColorBrush(Color.FromRgb(160, 160, 160)),
                     FontSize = 11,
                     FontFamily = new FontFamily("Segoe Fluent Icons"),
-                    Margin = new Thickness(8, 0, 0, 0),
-                    VerticalAlignment = VerticalAlignment.Center
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Right
                 };
+                System.Windows.Controls.Grid.SetColumn(icons, 2);
                 row.Children.Add(icons);
             }
 
@@ -1475,21 +1526,23 @@ public class GitGraphCanvas : FrameworkElement
                 fontSize,
                 LabelTextBrush,
                 dpi);
+            nameFormatted.MaxLineCount = 1;
+            nameFormatted.Trimming = TextTrimming.CharacterEllipsis;
 
             // Calculate custom remote icon size (same as icon font size)
             double customIconSize = useCustomRemoteIcon ? iconFontSize : 0;
             double customIconSpace = useCustomRemoteIcon ? (iconFormatted.Width > 0 ? 2 : 0) : 0; // spacing if other icons exist
 
-            // Calculate label dimensions (name first, then icons)
+            // Calculate label dimensions (name on left, icons/suffix right-aligned)
             double iconWidth = iconFormatted.Width;
             double nameWidth = nameFormatted.Width;
             double hPadding = label.IsCurrent ? 8 : 6;
-            double totalWidth = hPadding + nameWidth + 4 + iconWidth + customIconSpace + customIconSize + hPadding;
 
             // Check if this is the last label that will fit - if more remain, add "+N" suffix
             int remainingAfterThis = node.BranchLabels.Count - drawnCount - 1;
             string overflowSuffix = "";
             double suffixWidth = 0;
+            FormattedText? suffixFormatted = null;
 
             if (remainingAfterThis > 0)
             {
@@ -1505,11 +1558,12 @@ public class GitGraphCanvas : FrameworkElement
                     dpi);
                 double nextEstWidth = (nextLabel.IsCurrent ? 8 : 6) * 2 + nextNameFormatted.Width + 20; // rough estimate
 
-                if (labelX + totalWidth + 4 + nextEstWidth > LabelAreaWidth - 8)
+                double estimateWidth = hPadding + nameWidth + 4 + iconWidth + customIconSpace + customIconSize + hPadding;
+                if (labelX + estimateWidth + 4 + nextEstWidth > LabelAreaWidth - 8)
                 {
                     // Next won't fit, so this is the last - add overflow suffix
                     overflowSuffix = $" +{remainingAfterThis}";
-                    var suffixFormatted = new FormattedText(
+                    suffixFormatted = new FormattedText(
                         overflowSuffix,
                         CultureInfo.CurrentCulture,
                         FlowDirection.LeftToRight,
@@ -1518,13 +1572,29 @@ public class GitGraphCanvas : FrameworkElement
                         LabelTextBrush,
                         dpi);
                     suffixWidth = suffixFormatted.Width;
-                    totalWidth += suffixWidth;
                 }
             }
 
-            // Check if label would overflow the label area
-            if (labelX + totalWidth > LabelAreaWidth - 8)
-                break; // Don't draw more labels if they won't fit
+            double iconBlockWidth = iconWidth + customIconSpace + customIconSize;
+            double gapBetweenIconAndSuffix = (suffixWidth > 0 && iconBlockWidth > 0) ? 6 : 0;
+            double rightSectionWidth = iconBlockWidth + gapBetweenIconAndSuffix + suffixWidth;
+            double gapBetweenNameAndRight = rightSectionWidth > 0 ? 6 : 0;
+
+            double availableWidth = LabelAreaWidth - 8 - labelX;
+            double minRequiredWidth = (hPadding * 2) + rightSectionWidth + gapBetweenNameAndRight;
+
+            if (availableWidth <= minRequiredWidth)
+                break; // Nothing fits
+
+            double nameMaxWidth = availableWidth - minRequiredWidth;
+            if (nameWidth > nameMaxWidth)
+            {
+                nameFormatted.MaxTextWidth = nameMaxWidth;
+                nameFormatted.Trimming = TextTrimming.CharacterEllipsis;
+                nameWidth = nameMaxWidth;
+            }
+
+            double totalWidth = (hPadding * 2) + gapBetweenNameAndRight + rightSectionWidth + nameWidth;
 
             // Draw rounded rectangle background
             var labelRect = new Rect(labelX, y - labelHeight / 2, totalWidth, labelHeight);
@@ -1533,9 +1603,17 @@ public class GitGraphCanvas : FrameworkElement
             // Draw branch name first
             dc.DrawText(nameFormatted, new Point(labelX + hPadding, y - nameFormatted.Height / 2));
 
-            // Draw icons after name
-            double iconX = labelX + hPadding + nameWidth + 4;
-            dc.DrawText(iconFormatted, new Point(iconX, y - iconFormatted.Height / 2));
+            // Right-align icons and suffix
+            double rightSectionX = labelRect.Right - hPadding - rightSectionWidth;
+            double suffixX = rightSectionX + rightSectionWidth - suffixWidth;
+            double iconX = suffixWidth > 0
+                ? suffixX - (iconBlockWidth > 0 ? gapBetweenIconAndSuffix + iconBlockWidth : 0)
+                : rightSectionX + rightSectionWidth - iconBlockWidth;
+
+            if (iconBlockWidth > 0)
+            {
+                dc.DrawText(iconFormatted, new Point(iconX, y - iconFormatted.Height / 2));
+            }
 
             // Draw custom remote icon (GitHub/Azure DevOps) if needed
             if (useCustomRemoteIcon)
@@ -1567,17 +1645,9 @@ public class GitGraphCanvas : FrameworkElement
             }
 
             // Draw overflow suffix if present
-            if (!string.IsNullOrEmpty(overflowSuffix))
+            if (!string.IsNullOrEmpty(overflowSuffix) && suffixFormatted != null)
             {
-                var suffixFormatted = new FormattedText(
-                    overflowSuffix,
-                    CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight,
-                    LabelTypeface,
-                    fontSize,
-                    LabelTextBrush,
-                    dpi);
-                dc.DrawText(suffixFormatted, new Point(iconX + iconWidth, y - suffixFormatted.Height / 2));
+                dc.DrawText(suffixFormatted, new Point(suffixX, y - suffixFormatted.Height / 2));
 
                 // Store overflow info - hit area is the entire tag, dropdown at left edge
                 var overflowLabels = node.BranchLabels.Skip(drawnCount + 1).ToList();
@@ -2015,6 +2085,8 @@ public class GitGraphCanvas : FrameworkElement
                     labelFontSize,
                     LabelTextBrush,
                     dpi);
+                nameFormatted.MaxLineCount = 1;
+                nameFormatted.Trimming = TextTrimming.CharacterEllipsis;
 
                 // Check if we need to draw a custom remote icon
                 bool useCustomRemoteIconExp = label.IsRemote &&
@@ -2037,6 +2109,12 @@ public class GitGraphCanvas : FrameworkElement
                 // Calculate custom icon size for expanded labels
                 double customIconSizeExp = useCustomRemoteIconExp ? labelFontSize : 0;
                 double customIconSpaceExp = useCustomRemoteIconExp ? (iconFormatted.Width > 0 ? 2 : 0) : 0;
+                double iconBlockWidthExp = iconFormatted.Width + customIconSpaceExp + customIconSizeExp;
+                double nameMaxWidthExp = tagWidth - (itemHPadding * 2) - (iconBlockWidthExp > 0 ? iconBlockWidthExp + 4 : 0);
+                if (nameMaxWidthExp > 0)
+                {
+                    nameFormatted.MaxTextWidth = nameMaxWidthExp;
+                }
 
                 // Calculate opacity based on how much of the item is visible during animation
                 double itemBottom = itemTop + currentItemHeight;

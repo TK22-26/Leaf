@@ -27,6 +27,8 @@ public partial class GitGraphViewModel : ObservableObject
     private readonly HashSet<string> _soloBranchNames = new(StringComparer.OrdinalIgnoreCase);
     private List<CommitInfo> _allCommits = [];
     private string? _currentBranchName;
+    private GitFlowConfig? _gitFlowConfig;
+    private IReadOnlyCollection<string> _remoteNames = Array.Empty<string>();
 
     [ObservableProperty]
     private string? _repositoryPath;
@@ -106,6 +108,14 @@ public partial class GitGraphViewModel : ObservableObject
     public GitGraphViewModel(IGitService gitService)
     {
         _gitService = gitService;
+    }
+
+    public void SetGitFlowContext(GitFlowConfig? config, IReadOnlyCollection<string> remoteNames)
+    {
+        _gitFlowConfig = config;
+        _remoteNames = remoteNames;
+        GraphBuilder.SetGitFlowContext(config, remoteNames);
+        RebuildGraphFromFilters();
     }
 
     /// <summary>

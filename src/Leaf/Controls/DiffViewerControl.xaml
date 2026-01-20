@@ -118,7 +118,11 @@
 
                 <!-- Close button -->
                 <Button Grid.Row="0" Grid.Column="1"
-                        Padding="8,4"
+                        Width="35"
+                        Height="35"
+                        Padding="0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
                         Background="Transparent"
                         BorderThickness="0"
                         Command="{Binding CloseCommand}"

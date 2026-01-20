@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Leaf.Models;
@@ -133,7 +133,7 @@ public partial class FileStatusInfo : ObservableObject
     {
         FileChangeStatus.Added => "\uE710",      // Add/Plus
         FileChangeStatus.Modified => "\uE70F",   // Edit
-        FileChangeStatus.Deleted => "\uE74D",    // Delete
+        FileChangeStatus.Deleted => "\u2013",    // En dash
         FileChangeStatus.Renamed => "\uE8AB",    // Rename
         FileChangeStatus.Untracked => "\uE710",  // Add/Plus (same as Added)
         FileChangeStatus.Conflicted => "\uE7BA", // Warning
@@ -168,3 +168,4 @@ public partial class FileStatusInfo : ObservableObject
         _ => " "
     };
 }
+
