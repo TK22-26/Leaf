@@ -287,9 +287,8 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await AddToGitignoreAsync(file.Path);
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await UntrackIfTrackedAsync(file);
+            await RefreshAsync();
         }
         catch (Exception ex)
         {
@@ -309,9 +308,8 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await AddToGitignoreAsync($"*{file.Extension}");
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await UntrackIfTrackedAsync(file);
+            await RefreshAsync();
         }
         catch (Exception ex)
         {
@@ -332,14 +330,24 @@ public partial class WorkingChangesViewModel : ObservableObject
         {
             // Add trailing slash for directory pattern
             await AddToGitignoreAsync($"{file.Directory}/");
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await UntrackIfTrackedAsync(file);
+            await RefreshAsync();
         }
         catch (Exception ex)
         {
             ErrorMessage = $"Ignore directory failed: {ex.Message}";
         }
+    }
+
+    private async Task UntrackIfTrackedAsync(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        if (file.Status == FileChangeStatus.Untracked)
+            return;
+
+        await _gitService.UntrackFileAsync(_repositoryPath, file.Path);
     }
 
     /// <summary>
@@ -951,13 +959,17 @@ Do not include any additional text or formatting outside the JSON.{contextBlock}
         // Looking for: {"session_id":"...","response":"...","stats":{...}}
         try
         {
-            using var doc = JsonDocument.Parse(jsonOutput);
+            var payload = ExtractJsonObject(jsonOutput) ?? jsonOutput;
+            using var doc = JsonDocument.Parse(payload);
             var root = doc.RootElement;
 
             if (root.TryGetProperty("response", out var responseEl))
             {
                 // Return the response text (may contain markdown code fences, existing parser handles that)
-                return responseEl.GetString() ?? jsonOutput;
+                if (responseEl.ValueKind == JsonValueKind.String)
+                    return responseEl.GetString() ?? jsonOutput;
+                if (responseEl.ValueKind == JsonValueKind.Object)
+                    return responseEl.GetRawText();
             }
         }
         catch
