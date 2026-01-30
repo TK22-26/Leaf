@@ -48,7 +48,7 @@ jobs:
     - name: Install WiX Toolset
       shell: pwsh
       run: |
-        choco install wixtoolset --version=3.11.2 -y
+        choco install wixtoolset -y
 
     - name: Create MSIX Package
       shell: pwsh
