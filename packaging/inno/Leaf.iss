@@ -11,7 +11,7 @@ SolidCompression=yes
 OutputDir={#OutputDir}
 OutputBaseFilename=Leaf-Setup-{#AppVersion}
 SetupIconFile={#SourceRoot}\src\Leaf\Assets\Leaf.ico
-UninstallDisplayIcon={app}\Leaf.ico
+UninstallDisplayIcon={app}\Leaf.exe
 PrivilegesRequired=lowest
 WizardStyle=modern
 
@@ -19,4 +19,4 @@ WizardStyle=modern
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{userprograms}\Leaf"; Filename: "{app}\Leaf.exe"; WorkingDir: "{app}"; IconFilename: "{app}\Leaf.ico"
+Name: "{userprograms}\Leaf"; Filename: "{app}\Leaf.exe"; WorkingDir: "{app}"; IconFilename: "{app}\Leaf.exe"
