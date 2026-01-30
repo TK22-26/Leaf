@@ -180,6 +180,9 @@ jobs:
 
         $sourceDir = (Resolve-Path ./publish-msix).Path
         $wixBin = Join-Path ${env:ProgramFiles(x86)} "WiX Toolset v3.11\\bin"
+        if (-not (Test-Path $wixBin)) {
+          $wixBin = Join-Path ${env:ProgramFiles(x86)} "WiX Toolset v3.14\\bin"
+        }
         if (-not (Test-Path $wixBin)) { throw "WiX bin not found at $wixBin" }
 
         $heat = Join-Path $wixBin "heat.exe"
