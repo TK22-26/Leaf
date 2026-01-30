@@ -7,7 +7,7 @@
     Language="1033"
     Version="$(var.MsiVersion)"
     UpgradeCode="e877b79c-a937-404b-98cd-5cfe3bae46fa">
-    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" InstallPrivileges="elevated" Platform="x64" />
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" InstallPrivileges="limited" Platform="x64" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
@@ -16,7 +16,7 @@
     <Property Id="ARPSYSTEMCOMPONENT" Value="0" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFilesFolder">
+      <Directory Id="LocalAppDataFolder">
         <Directory Id="INSTALLFOLDER" Name="Leaf" />
       </Directory>
       <Directory Id="ProgramMenuFolder">
@@ -34,7 +34,7 @@
           Icon="LeafIcon"
           Advertise="no" />
         <RemoveFolder Id="RemoveLeafStartMenuFolder" Directory="LeafStartMenuFolder" On="uninstall" />
-        <RegistryValue Root="HKLM" Key="Software\Leaf" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\Leaf" Name="installed" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </DirectoryRef>
 
