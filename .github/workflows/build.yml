@@ -74,6 +74,7 @@ jobs:
         }
 
         $version = "${{ steps.version.outputs.VERSION }}"
+        $msixVersion = ($version.Split('.') | ForEach-Object { [int]$_ }) -join '.'
         $identityName = if ($env:MSIX_IDENTITY_NAME) { $env:MSIX_IDENTITY_NAME } else { "Leaf" }
         $publisher = if ($env:MSIX_PUBLISHER) { $env:MSIX_PUBLISHER } else { "CN=Leaf" }
         $displayName = if ($env:MSIX_DISPLAY_NAME) { $env:MSIX_DISPLAY_NAME } else { "Leaf" }
@@ -90,7 +91,7 @@ jobs:
 
         $manifestPath = "$msixStaging\\AppxManifest.xml"
         $manifest = Get-Content $manifestPath -Raw
-        $manifest = $manifest.Replace("{{VERSION}}", $version)
+        $manifest = $manifest.Replace("{{VERSION}}", $msixVersion)
         $manifest = $manifest.Replace("{{IDENTITY_NAME}}", $identityName)
         $manifest = $manifest.Replace("{{PUBLISHER}}", $publisher)
         $manifest = $manifest.Replace("{{DISPLAY_NAME}}", $displayName)
