@@ -33,7 +33,7 @@
           Icon="LeafIcon"
           Advertise="no" />
         <RemoveFolder Id="RemoveLeafStartMenuFolder" Directory="LeafStartMenuFolder" On="uninstall" />
-        <RegistryValue Root="HKLM" Key="Software\\Leaf" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="Software\Leaf" Name="installed" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </DirectoryRef>
 
