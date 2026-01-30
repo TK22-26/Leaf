@@ -50,6 +50,29 @@ jobs:
       run: |
         $ErrorActionPreference = "Stop"
 
+        function Get-WindowsKitTool([string]$toolName) {
+          $roots = @(
+            (Join-Path $env:ProgramFiles(x86) "Windows Kits\\10\\bin"),
+            (Join-Path $env:ProgramFiles "Windows Kits\\10\\bin")
+          ) | Where-Object { $_ -and (Test-Path $_) }
+
+          foreach ($root in $roots) {
+            $versionDirs = Get-ChildItem $root -Directory -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match '^\d+\.' } |
+              Sort-Object { [version]$_.Name } -Descending
+
+            foreach ($dir in $versionDirs) {
+              $candidate = Join-Path $dir.FullName ("x64\\" + $toolName)
+              if (Test-Path $candidate) { return $candidate }
+            }
+
+            $fallback = Join-Path $root ("x64\\" + $toolName)
+            if (Test-Path $fallback) { return $fallback }
+          }
+
+          return $null
+        }
+
         $version = "${{ steps.version.outputs.VERSION }}"
         $identityName = if ($env:MSIX_IDENTITY_NAME) { $env:MSIX_IDENTITY_NAME } else { "Leaf" }
         $publisher = if ($env:MSIX_PUBLISHER) { $env:MSIX_PUBLISHER } else { "CN=Leaf" }
@@ -76,7 +99,8 @@ jobs:
 
         $msixPath = Join-Path $pwd "Leaf.msix"
         if (Test-Path $msixPath) { Remove-Item $msixPath -Force }
-        $makeAppx = (Get-Command makeappx.exe -ErrorAction Stop).Source
+        $makeAppx = Get-WindowsKitTool "makeappx.exe"
+        if (-not $makeAppx) { throw "makeappx.exe not found. Install Windows 10/11 SDK on the runner." }
         & $makeAppx pack /d $msixStaging /p $msixPath /o
 
     - name: Sign MSIX Package
@@ -84,13 +108,37 @@ jobs:
       run: |
         $ErrorActionPreference = "Stop"
 
+        function Get-WindowsKitTool([string]$toolName) {
+          $roots = @(
+            (Join-Path $env:ProgramFiles(x86) "Windows Kits\\10\\bin"),
+            (Join-Path $env:ProgramFiles "Windows Kits\\10\\bin")
+          ) | Where-Object { $_ -and (Test-Path $_) }
+
+          foreach ($root in $roots) {
+            $versionDirs = Get-ChildItem $root -Directory -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match '^\d+\.' } |
+              Sort-Object { [version]$_.Name } -Descending
+
+            foreach ($dir in $versionDirs) {
+              $candidate = Join-Path $dir.FullName ("x64\\" + $toolName)
+              if (Test-Path $candidate) { return $candidate }
+            }
+
+            $fallback = Join-Path $root ("x64\\" + $toolName)
+            if (Test-Path $fallback) { return $fallback }
+          }
+
+          return $null
+        }
+
         $msixPath = Join-Path $pwd "Leaf.msix"
         if (-not (Test-Path $msixPath)) {
           Write-Error "MSIX not found at $msixPath"
           exit 1
         }
 
-        $signTool = (Get-Command signtool.exe -ErrorAction Stop).Source
+        $signTool = Get-WindowsKitTool "signtool.exe"
+        if (-not $signTool) { throw "signtool.exe not found. Install Windows 10/11 SDK on the runner." }
 
         if ($env:MSIX_PFX_BASE64 -and $env:MSIX_PFX_PASSWORD) {
           $pfxPath = Join-Path $pwd "Leaf.pfx"
