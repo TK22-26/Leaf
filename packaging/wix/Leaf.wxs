@@ -7,18 +7,19 @@
     Language="1033"
     Version="$(var.MsiVersion)"
     UpgradeCode="e877b79c-a937-404b-98cd-5cfe3bae46fa">
-    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" InstallPrivileges="elevated" Platform="x64" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <Icon Id="LeafIcon" SourceFile="$(var.SourceRoot)\\src\\Leaf\\Assets\\Leaf.ico" />
     <Property Id="ARPPRODUCTICON" Value="LeafIcon" />
+    <Property Id="ARPSYSTEMCOMPONENT" Value="0" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFilesFolder">
         <Directory Id="INSTALLFOLDER" Name="Leaf" />
       </Directory>
-      <Directory Id="CommonProgramsFolder">
+      <Directory Id="ProgramMenuFolder">
         <Directory Id="LeafStartMenuFolder" Name="Leaf" />
       </Directory>
     </Directory>
