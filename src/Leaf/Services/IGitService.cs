@@ -233,6 +233,11 @@ public interface IGitService
     Task UnstageFileAsync(string repoPath, string filePath);
 
     /// <summary>
+    /// Remove a tracked file from the index (git rm --cached) without deleting it from disk.
+    /// </summary>
+    Task UntrackFileAsync(string repoPath, string filePath);
+
+    /// <summary>
     /// Stage all modified files for commit.
     /// </summary>
     Task StageAllAsync(string repoPath);

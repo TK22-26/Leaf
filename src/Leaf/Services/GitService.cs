@@ -1564,6 +1564,19 @@ public class GitService : IGitService
         });
     }
 
+    public async Task UntrackFileAsync(string repoPath, string filePath)
+    {
+        await Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+            if (repo.Index[filePath] == null)
+                return;
+
+            repo.Index.Remove(filePath);
+            repo.Index.Write();
+        });
+    }
+
     public async Task StageAllAsync(string repoPath)
     {
         await Task.Run(() =>

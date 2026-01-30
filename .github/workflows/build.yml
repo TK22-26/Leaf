@@ -42,6 +42,72 @@ jobs:
     - name: Publish
       run: dotnet publish src/Leaf/Leaf.csproj --configuration Release --no-build --output ./publish /p:Version=${{ steps.version.outputs.VERSION }}
 
+    - name: Publish (MSIX)
+      run: dotnet publish src/Leaf/Leaf.csproj --configuration Release -r win-x64 --self-contained true --output ./publish-msix /p:Version=${{ steps.version.outputs.VERSION }}
+
+    - name: Create MSIX Package
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+
+        $version = "${{ steps.version.outputs.VERSION }}"
+        $identityName = if ($env:MSIX_IDENTITY_NAME) { $env:MSIX_IDENTITY_NAME } else { "Leaf" }
+        $publisher = if ($env:MSIX_PUBLISHER) { $env:MSIX_PUBLISHER } else { "CN=Leaf" }
+        $displayName = if ($env:MSIX_DISPLAY_NAME) { $env:MSIX_DISPLAY_NAME } else { "Leaf" }
+        $publisherDisplayName = if ($env:MSIX_PUBLISHER_DISPLAY_NAME) { $env:MSIX_PUBLISHER_DISPLAY_NAME } else { $displayName }
+
+        $msixStaging = Join-Path $pwd "msix"
+        if (Test-Path $msixStaging) { Remove-Item $msixStaging -Recurse -Force }
+        New-Item -ItemType Directory -Path $msixStaging -Force | Out-Null
+
+        Copy-Item ./publish-msix/* $msixStaging -Recurse -Force
+        New-Item -ItemType Directory -Path "$msixStaging\\Assets" -Force | Out-Null
+        Copy-Item ./src/Leaf/Assets/Leaf.png "$msixStaging\\Assets\\Leaf.png" -Force
+        Copy-Item ./packaging/msix/AppxManifest.xml "$msixStaging\\AppxManifest.xml" -Force
+
+        $manifestPath = "$msixStaging\\AppxManifest.xml"
+        $manifest = Get-Content $manifestPath -Raw
+        $manifest = $manifest.Replace("{{VERSION}}", $version)
+        $manifest = $manifest.Replace("{{IDENTITY_NAME}}", $identityName)
+        $manifest = $manifest.Replace("{{PUBLISHER}}", $publisher)
+        $manifest = $manifest.Replace("{{DISPLAY_NAME}}", $displayName)
+        $manifest = $manifest.Replace("{{PUBLISHER_DISPLAY_NAME}}", $publisherDisplayName)
+        Set-Content -Path $manifestPath -Value $manifest -Encoding UTF8
+
+        $msixPath = Join-Path $pwd "Leaf.msix"
+        if (Test-Path $msixPath) { Remove-Item $msixPath -Force }
+        $makeAppx = (Get-Command makeappx.exe -ErrorAction Stop).Source
+        & $makeAppx pack /d $msixStaging /p $msixPath /o
+
+    - name: Sign MSIX Package
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+
+        $msixPath = Join-Path $pwd "Leaf.msix"
+        if (-not (Test-Path $msixPath)) {
+          Write-Error "MSIX not found at $msixPath"
+          exit 1
+        }
+
+        $signTool = (Get-Command signtool.exe -ErrorAction Stop).Source
+
+        if ($env:MSIX_PFX_BASE64 -and $env:MSIX_PFX_PASSWORD) {
+          $pfxPath = Join-Path $pwd "Leaf.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:MSIX_PFX_BASE64))
+          & $signTool sign /fd SHA256 /f $pfxPath /p $env:MSIX_PFX_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $msixPath
+        }
+        else {
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=Leaf" -CertStoreLocation "Cert:\\CurrentUser\\My"
+          $tempPassword = "Leaf-Temporary-Password-2026!"
+          $securePassword = ConvertTo-SecureString -String $tempPassword -AsPlainText -Force
+          $pfxPath = Join-Path $pwd "Leaf-Test.pfx"
+          $cerPath = Join-Path $pwd "Leaf-Test.cer"
+          Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $securePassword | Out-Null
+          Export-Certificate -Cert $cert -FilePath $cerPath | Out-Null
+          & $signTool sign /fd SHA256 /f $pfxPath /p $tempPassword /tr http://timestamp.digicert.com /td SHA256 $msixPath
+        }
+
     - name: Create Release Package
       shell: pwsh
       run: |
@@ -52,6 +118,8 @@ jobs:
         New-Item -ItemType Directory -Path ./release -Force
         Copy-Item ./Install-Leaf.ps1 ./release/
         Copy-Item ./Leaf.zip ./release/
+        Copy-Item ./Leaf.msix ./release/
+        if (Test-Path ./Leaf-Test.cer) { Copy-Item ./Leaf-Test.cer ./release/ }
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
@@ -65,6 +133,7 @@ jobs:
       with:
         tag_name: v${{ steps.version.outputs.VERSION }}
         name: Leaf v${{ steps.version.outputs.VERSION }}
+        fail_on_unmatched_files: false
         body: |
           Automated release from main branch.
 
@@ -74,8 +143,17 @@ jobs:
           3. Run `Install-Leaf.ps1` in PowerShell
 
           Or run: `powershell -ExecutionPolicy Bypass -File Install-Leaf.ps1`
+
+          ## MSIX Installation (recommended)
+          1. Download `Leaf.msix`
+          2. If `Leaf-Test.cer` is included, install it to the Current User (or Local Machine) "Trusted People" store
+          3. Double-click `Leaf.msix` to install
+
+          For production signing, set `MSIX_PFX_BASE64` and `MSIX_PFX_PASSWORD` repo secrets to sign with your code-signing cert.
         files: |
           ./release/Install-Leaf.ps1
           ./release/Leaf.zip
+          ./release/Leaf.msix
+          ./release/Leaf-Test.cer
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
