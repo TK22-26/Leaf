@@ -45,6 +45,12 @@ jobs:
     - name: Publish (MSIX)
       run: dotnet publish src/Leaf/Leaf.csproj --configuration Release -r win-x64 --self-contained true --output ./publish-msix /p:Version=${{ steps.version.outputs.VERSION }}
 
+    - name: Install WiX Toolset
+      shell: pwsh
+      run: |
+        dotnet tool install --global wix
+        echo "$env:USERPROFILE\\.dotnet\\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
     - name: Create MSIX Package
       shell: pwsh
       run: |
@@ -157,6 +163,25 @@ jobs:
           & $signTool sign /fd SHA256 /f $pfxPath /p $tempPassword /tr http://timestamp.digicert.com /td SHA256 $msixPath
         }
 
+    - name: Create MSI Package
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+
+        $version = "${{ steps.version.outputs.VERSION }}"
+        $parts = $version.Split('.')
+        $year = [int]$parts[0]
+        $month = [int]$parts[1]
+        $day = [int]$parts[2]
+        $minutes = [int]$parts[3]
+        $major = $year - 2000
+        $minor = $month
+        $build = ($day * 1000) + $minutes
+        $msiVersion = "$major.$minor.$build"
+
+        $sourceDir = (Resolve-Path ./publish-msix).Path
+        wix build packaging/wix/Leaf.wxs -arch x64 -d MsiVersion=$msiVersion -d SourceDir=$sourceDir -o Leaf.msi
+
     - name: Create Release Package
       shell: pwsh
       run: |
@@ -169,6 +194,7 @@ jobs:
         Copy-Item ./Leaf.zip ./release/
         Copy-Item ./Leaf.msix ./release/
         if (Test-Path ./Leaf-Test.cer) { Copy-Item ./Leaf-Test.cer ./release/ }
+        Copy-Item ./Leaf.msi ./release/
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
@@ -199,10 +225,15 @@ jobs:
           3. Double-click `Leaf.msix` to install
 
           For production signing, set `MSIX_PFX_BASE64` and `MSIX_PFX_PASSWORD` repo secrets to sign with your code-signing cert.
+
+          ## MSI Installation (no tile background)
+          1. Download `Leaf.msi`
+          2. Double-click to install (admin required for per-machine install)
         files: |
           ./release/Install-Leaf.ps1
           ./release/Leaf.zip
           ./release/Leaf.msix
           ./release/Leaf-Test.cer
+          ./release/Leaf.msi
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
