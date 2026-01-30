@@ -7,6 +7,7 @@
     ThemeMode="System">
     <Application.Resources>
         <ResourceDictionary>
+            <BitmapImage x:Key="AppIcon" UriSource="pack://application:,,,/Assets/Leaf.ico" />
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Resources/BranchColors.xaml" />
                 <ResourceDictionary Source="Resources/Converters.xaml" />
