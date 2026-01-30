@@ -52,7 +52,7 @@ jobs:
 
         function Get-WindowsKitTool([string]$toolName) {
           $roots = @(
-            (Join-Path $env:ProgramFiles(x86) "Windows Kits\\10\\bin"),
+            (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\\10\\bin"),
             (Join-Path $env:ProgramFiles "Windows Kits\\10\\bin")
           ) | Where-Object { $_ -and (Test-Path $_) }
 
@@ -110,7 +110,7 @@ jobs:
 
         function Get-WindowsKitTool([string]$toolName) {
           $roots = @(
-            (Join-Path $env:ProgramFiles(x86) "Windows Kits\\10\\bin"),
+            (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\\10\\bin"),
             (Join-Path $env:ProgramFiles "Windows Kits\\10\\bin")
           ) | Where-Object { $_ -and (Test-Path $_) }
 
