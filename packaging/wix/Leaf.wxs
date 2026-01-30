@@ -14,7 +14,6 @@
     <Icon Id="LeafIcon" SourceFile="$(var.SourceRoot)\\src\\Leaf\\Assets\\Leaf.ico" />
     <Property Id="ARPPRODUCTICON" Value="LeafIcon" />
     <Property Id="ARPSYSTEMCOMPONENT" Value="0" />
-    <Property Id="ALLUSERS" Value="1" />
     <Property Id="MSIINSTALLPERUSER" Value="0" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
