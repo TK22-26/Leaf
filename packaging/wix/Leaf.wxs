@@ -14,17 +14,14 @@
     <Icon Id="LeafIcon" SourceFile="..\\..\\src\\Leaf\\Assets\\Leaf.ico" />
     <Property Id="ARPPRODUCTICON" Value="LeafIcon" />
 
-    <Directory Id="ProgramFilesFolder">
-      <Directory Id="INSTALLFOLDER" Name="Leaf" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="Leaf" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="LeafStartMenuFolder" Name="Leaf" />
+      </Directory>
     </Directory>
-
-    <Directory Id="ProgramMenuFolder">
-      <Directory Id="LeafStartMenuFolder" Name="Leaf" />
-    </Directory>
-
-    <DirectoryRef Id="INSTALLFOLDER">
-      <ComponentGroupRef Id="AppFiles" />
-    </DirectoryRef>
 
     <DirectoryRef Id="LeafStartMenuFolder">
       <Component Id="AppShortcut" Guid="*">
