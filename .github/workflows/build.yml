@@ -194,7 +194,7 @@ jobs:
         New-Item -ItemType Directory -Path $wixObj -Force | Out-Null
 
         & $heat dir $sourceDir -cg AppFiles -dr INSTALLFOLDER -gg -scom -sreg -srd -var var.SourceDir -out "$wixObj\\HarvestedFiles.wxs"
-        & $candle -nologo -dMsiVersion=$msiVersion -dSourceDir=$sourceDir -out "$wixObj\\" packaging/wix/Leaf.wxs "$wixObj\\HarvestedFiles.wxs"
+        & $candle -nologo -dMsiVersion="$msiVersion" -dSourceDir="$sourceDir" -out "$wixObj\\" packaging/wix/Leaf.wxs "$wixObj\\HarvestedFiles.wxs"
         & $light -nologo -out Leaf.msi "$wixObj\\Leaf.wixobj" "$wixObj\\HarvestedFiles.wixobj"
 
     - name: Create Release Package
