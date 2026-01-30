@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <None Include="THIRD_PARTY_LICENSES.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Leaf.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
