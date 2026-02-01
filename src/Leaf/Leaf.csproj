@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <Resource Include="Assets\Leaf.png" />
+    <Resource Include="Assets\Leaf.ico" />
   </ItemGroup>
 
   <ItemGroup>

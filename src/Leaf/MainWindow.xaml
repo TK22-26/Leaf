@@ -13,7 +13,7 @@
     Height="700"
     MinWidth="900"
     MinHeight="500"
-    Icon="Assets/Leaf.png"
+    Icon="{StaticResource AppIcon}"
     WindowStartupLocation="CenterScreen"
     mc:Ignorable="d">
 

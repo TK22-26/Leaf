@@ -20,6 +20,8 @@
                 <ResourceDictionary Source="Resources/Icons.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
+            <BitmapImage x:Key="AppIcon" UriSource="pack://application:,,,/Assets/Leaf.ico" />
+
             <!--  Override accent color to green  -->
             <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#28A745" />
 

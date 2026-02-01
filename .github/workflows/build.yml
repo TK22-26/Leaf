@@ -42,166 +42,27 @@ jobs:
     - name: Publish
       run: dotnet publish src/Leaf/Leaf.csproj --configuration Release --no-build --output ./publish /p:Version=${{ steps.version.outputs.VERSION }}
 
-    - name: Publish (MSIX)
-      run: dotnet publish src/Leaf/Leaf.csproj --configuration Release -r win-x64 --self-contained true --output ./publish-msix /p:Version=${{ steps.version.outputs.VERSION }}
+    - name: Publish (Installer)
+      run: dotnet publish src/Leaf/Leaf.csproj --configuration Release -r win-x64 --self-contained true --output ./publish-installer /p:Version=${{ steps.version.outputs.VERSION }}
 
-    - name: Install WiX Toolset
+    - name: Install Inno Setup
       shell: pwsh
       run: |
-        choco install wixtoolset -y
+        choco install innosetup -y
 
-    - name: Create MSIX Package
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        function Get-WindowsKitTool([string]$toolName) {
-          $roots = @(
-            (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\\10\\bin"),
-            (Join-Path $env:ProgramFiles "Windows Kits\\10\\bin")
-          ) | Where-Object { $_ -and (Test-Path $_) }
-
-          foreach ($root in $roots) {
-            $versionDirs = Get-ChildItem $root -Directory -ErrorAction SilentlyContinue |
-              Where-Object { $_.Name -match '^\d+\.' } |
-              Sort-Object { [version]$_.Name } -Descending
-
-            foreach ($dir in $versionDirs) {
-              $candidate = Join-Path $dir.FullName ("x64\\" + $toolName)
-              if (Test-Path $candidate) { return $candidate }
-            }
-
-            $fallback = Join-Path $root ("x64\\" + $toolName)
-            if (Test-Path $fallback) { return $fallback }
-          }
-
-          return $null
-        }
-
-        $version = "${{ steps.version.outputs.VERSION }}"
-        $msixVersion = ($version.Split('.') | ForEach-Object { [int]$_ }) -join '.'
-        $identityName = if ($env:MSIX_IDENTITY_NAME) { $env:MSIX_IDENTITY_NAME } else { "Leaf" }
-        $publisher = if ($env:MSIX_PUBLISHER) { $env:MSIX_PUBLISHER } else { "CN=Leaf" }
-        $displayName = if ($env:MSIX_DISPLAY_NAME) { $env:MSIX_DISPLAY_NAME } else { "Leaf" }
-        $publisherDisplayName = if ($env:MSIX_PUBLISHER_DISPLAY_NAME) { $env:MSIX_PUBLISHER_DISPLAY_NAME } else { $displayName }
-
-        $msixStaging = Join-Path $pwd "msix"
-        if (Test-Path $msixStaging) { Remove-Item $msixStaging -Recurse -Force }
-        New-Item -ItemType Directory -Path $msixStaging -Force | Out-Null
-
-        Copy-Item ./publish-msix/* $msixStaging -Recurse -Force
-        New-Item -ItemType Directory -Path "$msixStaging\\Assets" -Force | Out-Null
-        Copy-Item ./src/Leaf/Assets/Leaf.png "$msixStaging\\Assets\\Leaf.png" -Force
-        Copy-Item ./packaging/msix/AppxManifest.xml "$msixStaging\\AppxManifest.xml" -Force
-
-        $manifestPath = "$msixStaging\\AppxManifest.xml"
-        $manifest = Get-Content $manifestPath -Raw
-        $manifest = $manifest.Replace("{{VERSION}}", $msixVersion)
-        $manifest = $manifest.Replace("{{IDENTITY_NAME}}", $identityName)
-        $manifest = $manifest.Replace("{{PUBLISHER}}", $publisher)
-        $manifest = $manifest.Replace("{{DISPLAY_NAME}}", $displayName)
-        $manifest = $manifest.Replace("{{PUBLISHER_DISPLAY_NAME}}", $publisherDisplayName)
-        Set-Content -Path $manifestPath -Value $manifest -Encoding UTF8
-
-        $msixPath = Join-Path $pwd "Leaf.msix"
-        if (Test-Path $msixPath) { Remove-Item $msixPath -Force }
-        $makeAppx = Get-WindowsKitTool "makeappx.exe"
-        if (-not $makeAppx) { throw "makeappx.exe not found. Install Windows 10/11 SDK on the runner." }
-        & $makeAppx pack /d $msixStaging /p $msixPath /o
-
-    - name: Sign MSIX Package
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        function Get-WindowsKitTool([string]$toolName) {
-          $roots = @(
-            (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\\10\\bin"),
-            (Join-Path $env:ProgramFiles "Windows Kits\\10\\bin")
-          ) | Where-Object { $_ -and (Test-Path $_) }
-
-          foreach ($root in $roots) {
-            $versionDirs = Get-ChildItem $root -Directory -ErrorAction SilentlyContinue |
-              Where-Object { $_.Name -match '^\d+\.' } |
-              Sort-Object { [version]$_.Name } -Descending
-
-            foreach ($dir in $versionDirs) {
-              $candidate = Join-Path $dir.FullName ("x64\\" + $toolName)
-              if (Test-Path $candidate) { return $candidate }
-            }
-
-            $fallback = Join-Path $root ("x64\\" + $toolName)
-            if (Test-Path $fallback) { return $fallback }
-          }
-
-          return $null
-        }
-
-        $msixPath = Join-Path $pwd "Leaf.msix"
-        if (-not (Test-Path $msixPath)) {
-          Write-Error "MSIX not found at $msixPath"
-          exit 1
-        }
-
-        $signTool = Get-WindowsKitTool "signtool.exe"
-        if (-not $signTool) { throw "signtool.exe not found. Install Windows 10/11 SDK on the runner." }
-
-        if ($env:MSIX_PFX_BASE64 -and $env:MSIX_PFX_PASSWORD) {
-          $pfxPath = Join-Path $pwd "Leaf.pfx"
-          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:MSIX_PFX_BASE64))
-          & $signTool sign /fd SHA256 /f $pfxPath /p $env:MSIX_PFX_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $msixPath
-        }
-        else {
-          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=Leaf" -CertStoreLocation "Cert:\\CurrentUser\\My"
-          $tempPassword = "Leaf-Temporary-Password-2026!"
-          $securePassword = ConvertTo-SecureString -String $tempPassword -AsPlainText -Force
-          $pfxPath = Join-Path $pwd "Leaf-Test.pfx"
-          $cerPath = Join-Path $pwd "Leaf-Test.cer"
-          Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $securePassword | Out-Null
-          Export-Certificate -Cert $cert -FilePath $cerPath | Out-Null
-          & $signTool sign /fd SHA256 /f $pfxPath /p $tempPassword /tr http://timestamp.digicert.com /td SHA256 $msixPath
-        }
-
-    - name: Create MSI Package
+    - name: Create EXE Installer
       shell: pwsh
       run: |
         $ErrorActionPreference = "Stop"
 
         $version = "${{ steps.version.outputs.VERSION }}"
-        $parts = $version.Split('.')
-        $year = [int]$parts[0]
-        $month = [int]$parts[1]
-        $day = [int]$parts[2]
-        $minutes = [int]$parts[3]
-        $major = $year - 2000
-        $minor = $month
-        $build = ($day * 1000) + $minutes
-        $msiVersion = "$major.$minor.$build"
-        Write-Host "MSI version: $msiVersion"
+        $sourceDir = (Resolve-Path ./publish-installer).Path
+        $outputDir = (Resolve-Path .).Path
 
-        $sourceDir = (Resolve-Path ./publish-msix).Path
-        $wixRoot = ${env:ProgramFiles(x86)}
-        $wixBin = $null
-        if ($wixRoot -and (Test-Path $wixRoot)) {
-          $wixBin = Get-ChildItem $wixRoot -Directory -Filter "WiX Toolset v3*" -ErrorAction SilentlyContinue |
-            Sort-Object Name -Descending |
-            ForEach-Object { Join-Path $_.FullName "bin" } |
-            Where-Object { Test-Path $_ } |
-            Select-Object -First 1
-        }
-        if (-not $wixBin) { throw "WiX bin not found under $wixRoot" }
+        $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\\ISCC.exe"
+        if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
 
-        $heat = Join-Path $wixBin "heat.exe"
-        $candle = Join-Path $wixBin "candle.exe"
-        $light = Join-Path $wixBin "light.exe"
-
-        $wixObj = Join-Path $pwd "wixobj"
-        if (Test-Path $wixObj) { Remove-Item $wixObj -Recurse -Force }
-        New-Item -ItemType Directory -Path $wixObj -Force | Out-Null
-
-        & $heat dir $sourceDir -cg AppFiles -dr INSTALLFOLDER -gg -scom -sreg -srd -var var.SourceDir -out "$wixObj\\HarvestedFiles.wxs"
-        & $candle -nologo -dMsiVersion="$msiVersion" -dSourceDir="$sourceDir" -dSourceRoot="$pwd" -out "$wixObj\\" packaging/wix/Leaf.wxs "$wixObj\\HarvestedFiles.wxs"
-        & $light -nologo -out Leaf.msi "$wixObj\\Leaf.wixobj" "$wixObj\\HarvestedFiles.wixobj"
+        & $iscc /DAppVersion=$version /DSourceDir=$sourceDir /DSourceRoot=$outputDir /DOutputDir=$outputDir packaging/inno/Leaf.iss
 
     - name: Create Release Package
       shell: pwsh
@@ -213,9 +74,7 @@ jobs:
         New-Item -ItemType Directory -Path ./release -Force
         Copy-Item ./Install-Leaf.ps1 ./release/
         Copy-Item ./Leaf.zip ./release/
-        Copy-Item ./Leaf.msix ./release/
-        if (Test-Path ./Leaf-Test.cer) { Copy-Item ./Leaf-Test.cer ./release/ }
-        Copy-Item ./Leaf.msi ./release/
+        Copy-Item ./Leaf-Setup-*.exe ./release/
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
@@ -239,22 +98,13 @@ jobs:
           3. Run `Install-Leaf.ps1` in PowerShell
 
           Or run: `powershell -ExecutionPolicy Bypass -File Install-Leaf.ps1`
-
-          ## MSIX Installation (recommended)
-          1. Download `Leaf.msix`
-          2. If `Leaf-Test.cer` is included, install it to the Current User (or Local Machine) "Trusted People" store
-          3. Double-click `Leaf.msix` to install
-
-          For production signing, set `MSIX_PFX_BASE64` and `MSIX_PFX_PASSWORD` repo secrets to sign with your code-signing cert.
-
-          ## MSI Installation (no tile background)
-          1. Download `Leaf.msi`
-          2. Double-click to install (admin required for per-machine install)
+          
+          ## EXE Installer (recommended)
+          1. Download `Leaf-Setup-<version>.exe`
+          2. Double-click to install (per-user, no admin required)
         files: |
           ./release/Install-Leaf.ps1
           ./release/Leaf.zip
-          ./release/Leaf.msix
-          ./release/Leaf-Test.cer
-          ./release/Leaf.msi
+          ./release/Leaf-Setup-*.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
