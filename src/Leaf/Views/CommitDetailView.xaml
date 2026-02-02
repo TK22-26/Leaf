@@ -104,11 +104,8 @@
                                             <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}" />
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding Status}" Value="Deleted">
-                                            <Setter Property="Text" Value="&#x2013;" />
+                                            <Setter Property="Text" Value="&#xE108;" />
                                             <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}" />
-                                            <Setter Property="FontFamily" Value="Segoe UI" />
-                                            <Setter Property="FontWeight" Value="SemiBold" />
-                                            <Setter Property="FontSize" Value="14" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -360,8 +357,8 @@
                         <RowDefinition Height="1" />
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
@@ -386,7 +383,8 @@
                     <!--  File counts (M/+/-)  -->
                     <StackPanel
                         Grid.Column="1"
-                        Margin="0,0,8,0"
+                        Margin="8,0,0,0"
+                        HorizontalAlignment="Left"
                         VerticalAlignment="Center"
                         Orientation="Horizontal">
                         <!--  Modified count  -->
@@ -430,13 +428,13 @@
                         <!--  Deleted count  -->
                         <StackPanel Orientation="Horizontal" Visibility="{Binding DeletedCount, Converter={StaticResource NullToVisibilityConverter}}">
                             <TextBlock
-                                Margin="0,0,4,0"
+                                Margin="0,0,4,3"
                                 VerticalAlignment="Center"
                                 FontFamily="Segoe UI"
                                 FontSize="14"
                                 FontWeight="SemiBold"
                                 Foreground="{StaticResource StatusDeletedBrush}"
-                                Text="&#x2013;" />
+                                Text="–" />
                             <TextBlock
                                 VerticalAlignment="Center"
                                 FontSize="11"
@@ -531,11 +529,8 @@
                                                                 <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}" />
                                                             </DataTrigger>
                                                             <DataTrigger Binding="{Binding Status}" Value="Deleted">
-                                                                <Setter Property="Text" Value="&#x2013;" />
+                                                                <Setter Property="Text" Value="&#xE108;" />
                                                                 <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}" />
-                                                                <Setter Property="FontFamily" Value="Segoe UI" />
-                                                                <Setter Property="FontWeight" Value="SemiBold" />
-                                                                <Setter Property="FontSize" Value="14" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
