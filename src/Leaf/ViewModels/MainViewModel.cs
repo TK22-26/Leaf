@@ -114,6 +114,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _commitSearchText = string.Empty;
 
+    [ObservableProperty]
+    private bool _isUpdateAvailable;
+
+    [ObservableProperty]
+    private UpdateInfo? _availableUpdate;
+
     /// <summary>
     /// Pinned repositories - delegated to RepositoryManagementService.
     /// </summary>
@@ -409,6 +415,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Start auto-fetch timer
         StartAutoFetchTimer();
+
+        // Check for updates silently on startup
+        _ = CheckForUpdatesSilentlyAsync();
+    }
+
+    /// <summary>
+    /// Check for updates silently on startup (no dialog if up to date).
+    /// </summary>
+    private async Task CheckForUpdatesSilentlyAsync()
+    {
+        try
+        {
+            var updateService = new UpdateService();
+            var updateInfo = await updateService.CheckForUpdatesAsync();
+
+            if (updateInfo != null)
+            {
+                AvailableUpdate = updateInfo;
+                IsUpdateAvailable = true;
+            }
+        }
+        catch
+        {
+            // Silently ignore errors during startup check
+        }
     }
 
     /// <summary>
@@ -787,6 +818,69 @@ public partial class MainViewModel : ObservableObject, IDisposable
         };
         dialog.ShowDialog();
         TerminalViewModel?.ReloadSettings();
+    }
+
+    /// <summary>
+    /// Check for updates from GitHub releases.
+    /// </summary>
+    [RelayCommand]
+    public async Task CheckForUpdatesAsync()
+    {
+        var updateService = new UpdateService();
+        var updateInfo = await updateService.CheckForUpdatesAsync();
+
+        // Update indicator state
+        AvailableUpdate = updateInfo;
+        IsUpdateAvailable = updateInfo != null;
+
+        if (updateInfo != null)
+        {
+            var result = MessageBox.Show(
+                _ownerWindow,
+                $"A new version of Leaf is available!\n\n" +
+                $"Current version: {UpdateService.CurrentVersionString}\n" +
+                $"Latest version: v{updateInfo.LatestVersion.Major}.{updateInfo.LatestVersion.Minor}.{updateInfo.LatestVersion.Build}\n\n" +
+                $"Would you like to open the download page?",
+                "Update Available",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                UpdateService.OpenDownloadPage(updateInfo.ReleaseUrl);
+            }
+        }
+        else
+        {
+            MessageBox.Show(
+                _ownerWindow,
+                $"You're running the latest version of Leaf ({UpdateService.CurrentVersionString}).",
+                "No Updates Available",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
+
+    /// <summary>
+    /// Open dialog to report a new issue via GitHub CLI.
+    /// </summary>
+    [RelayCommand]
+    public void ReportIssue()
+    {
+        var dialog = new ReportIssueDialog
+        {
+            Owner = _ownerWindow
+        };
+        dialog.ShowDialog();
+    }
+
+    /// <summary>
+    /// Open the releases page on GitHub.
+    /// </summary>
+    [RelayCommand]
+    public void OpenReleasesPage()
+    {
+        UpdateService.OpenReleasesPage();
     }
 
     public void UpdateTerminalHeight(double height)
