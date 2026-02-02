@@ -24,6 +24,7 @@ public partial class CommitDetailViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ModifiedCount))]
     [NotifyPropertyChangedFor(nameof(AddedCount))]
     [NotifyPropertyChangedFor(nameof(DeletedCount))]
+    [NotifyPropertyChangedFor(nameof(TotalFileCount))]
     private ObservableCollection<FileChangeInfo> _fileChanges = [];
 
     [ObservableProperty]
@@ -47,6 +48,12 @@ public partial class CommitDetailViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWorkingChanges))]
     private int _workingChangesCount;
+
+    [ObservableProperty]
+    private bool _showTreeView;
+
+    [ObservableProperty]
+    private ObservableCollection<FileChangeTreeNode> _fileChangesTreeItems = [];
 
     /// <summary>
     /// True if there are working changes to display in banner.
@@ -102,6 +109,11 @@ public partial class CommitDetailViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Total count of changed files.
+    /// </summary>
+    public int TotalFileCount => FileChanges.Count;
+
+    /// <summary>
     /// Event raised when user wants to navigate to parent commit.
     /// </summary>
     public event EventHandler<string>? NavigateToCommitRequested;
@@ -142,10 +154,12 @@ public partial class CommitDetailViewModel : ObservableObject
                 FileChanges.Add(change);
             }
 
-            // Notify counts changed
+            // Notify counts changed and rebuild tree
             OnPropertyChanged(nameof(ModifiedCount));
             OnPropertyChanged(nameof(AddedCount));
             OnPropertyChanged(nameof(DeletedCount));
+            OnPropertyChanged(nameof(TotalFileCount));
+            FileChangesTreeItems = BuildTree(FileChanges);
 
             // Auto-select first file
             if (FileChanges.Count > 0)
@@ -194,10 +208,12 @@ public partial class CommitDetailViewModel : ObservableObject
                 FileChanges.Add(change);
             }
 
-            // Notify counts changed
+            // Notify counts changed and rebuild tree
             OnPropertyChanged(nameof(ModifiedCount));
             OnPropertyChanged(nameof(AddedCount));
             OnPropertyChanged(nameof(DeletedCount));
+            OnPropertyChanged(nameof(TotalFileCount));
+            FileChangesTreeItems = BuildTree(FileChanges);
 
             // Auto-select first file
             if (FileChanges.Count > 0)
@@ -326,5 +342,87 @@ public partial class CommitDetailViewModel : ObservableObject
     public void SelectWorkingChanges()
     {
         SelectWorkingChangesRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    partial void OnFileChangesChanged(ObservableCollection<FileChangeInfo> value)
+    {
+        FileChangesTreeItems = BuildTree(value ?? []);
+    }
+
+    private static ObservableCollection<FileChangeTreeNode> BuildTree(IEnumerable<FileChangeInfo> files)
+    {
+        var roots = new ObservableCollection<FileChangeTreeNode>();
+        var dirLookup = new Dictionary<string, FileChangeTreeNode>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in files.OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase))
+        {
+            var normalized = file.Path.Replace('\\', '/');
+            var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                continue;
+
+            FileChangeTreeNode? parent = null;
+            var currentPath = string.Empty;
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                var part = parts[i];
+                currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
+                bool isFile = i == parts.Length - 1;
+
+                if (isFile)
+                {
+                    var fileNode = new FileChangeTreeNode(part, currentPath, isFile: true, file, isRoot: parent == null);
+                    if (parent == null)
+                    {
+                        roots.Add(fileNode);
+                    }
+                    else
+                    {
+                        parent.Children.Add(fileNode);
+                    }
+                }
+                else
+                {
+                    if (!dirLookup.TryGetValue(currentPath, out var dirNode))
+                    {
+                        dirNode = new FileChangeTreeNode(part, currentPath, isFile: false);
+                        dirLookup[currentPath] = dirNode;
+
+                        if (parent == null)
+                        {
+                            roots.Add(dirNode);
+                        }
+                        else
+                        {
+                            parent.Children.Add(dirNode);
+                        }
+                    }
+
+                    parent = dirNode;
+                }
+            }
+        }
+
+        SortNodes(roots);
+        return roots;
+    }
+
+    private static void SortNodes(ObservableCollection<FileChangeTreeNode> nodes)
+    {
+        var sorted = nodes
+            .OrderBy(n => n.IsFile)
+            .ThenBy(n => n.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        nodes.Clear();
+        foreach (var node in sorted)
+        {
+            nodes.Add(node);
+            if (!node.IsFile && node.Children.Count > 0)
+            {
+                SortNodes(node.Children);
+            }
+        }
     }
 }

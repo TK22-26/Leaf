@@ -20,6 +20,7 @@
         <converters:BoolToGridLengthConverter x:Key="BoolToGridLengthConverter" />
         <converters:BoolToSectionRowHeightConverter x:Key="BoolToSectionRowHeightConverter" />
         <converters:ReservedFileNameToVisibilityConverter x:Key="ReservedFileNameToVisibilityConverter" />
+        <converters:MultiplyConverter x:Key="MultiplyConverter" />
 
         <!--  File status colors  -->
         <SolidColorBrush x:Key="StatusAddedBrush" Color="#28A745" />
@@ -410,7 +411,7 @@
         </HierarchicalDataTemplate>
     </UserControl.Resources>
 
-    <Grid>
+    <Grid x:Name="WorkingChangesRoot">
         <Grid.RowDefinitions>
             <!--  Top Banner  -->
             <RowDefinition Height="35" />
@@ -419,7 +420,7 @@
             <!--  Staged files  -->
             <RowDefinition Height="{Binding IsStagedExpanded, Converter={StaticResource BoolToSectionRowHeightConverter}}" />
             <!--  Commit section  -->
-            <RowDefinition Height="200" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!--  Top Banner  -->
@@ -1064,15 +1065,18 @@
         </Grid>
 
         <!--  Commit Section  -->
-        <Grid Grid.Row="3" Margin="8">
+        <Grid
+            Grid.Row="3"
+            Margin="8">
             <Grid.RowDefinitions>
-                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <!--  Combined commit message control with Fluent styling  -->
             <Border
                 Grid.Row="0"
+                Height="140"
                 Background="{DynamicResource TextControlBackground}"
                 BorderBrush="{DynamicResource TextControlElevationBorderBrush}"
                 BorderThickness="{DynamicResource TextControlBorderThemeThickness}"
@@ -1097,7 +1101,9 @@
                             VerticalContentAlignment="Center"
                             Background="Transparent"
                             BorderThickness="0"
-                            FontSize="12"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                             MaxLength="72"
                             Style="{StaticResource NoClearButtonTextBox}"
                             Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}" />
@@ -1227,6 +1233,7 @@
                             Background="Transparent"
                             BorderThickness="0"
                             FontSize="12"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Style="{StaticResource NoClearButtonTextBox}"
                             Text="{Binding CommitDescription, UpdateSourceTrigger=PropertyChanged}"
                             TextWrapping="Wrap"
