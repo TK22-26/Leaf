@@ -17,11 +17,13 @@ public interface ICommitHistoryService
     /// <param name="session">Repository session.</param>
     /// <param name="count">Maximum number of commits to retrieve.</param>
     /// <param name="branchName">Optional branch name to get history for.</param>
+    /// <param name="skip">Number of commits to skip (for lazy loading).</param>
     /// <returns>List of commit information.</returns>
     Task<IReadOnlyList<CommitInfo>> GetCommitHistoryAsync(
         IRepositorySession session,
         int count = 500,
-        string? branchName = null);
+        string? branchName = null,
+        int skip = 0);
 
     /// <summary>
     /// Gets a specific commit by SHA.

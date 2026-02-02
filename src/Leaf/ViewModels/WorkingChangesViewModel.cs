@@ -19,6 +19,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 {
     private readonly IGitService _gitService;
     private readonly SettingsService _settingsService;
+    private readonly OllamaService _ollamaService = new();
     private string? _repositoryPath;
 
     [ObservableProperty]
@@ -810,7 +811,10 @@ exit /b %errorlevel%
                 summary = string.Empty;
             }
 
-            var prompt = BuildPrompt(_repositoryPath, summary, includeContext);
+            var isOllama = preferredProvider.Equals("Ollama", StringComparison.OrdinalIgnoreCase);
+            var prompt = isOllama
+                ? BuildOllamaPrompt(summary)
+                : BuildPrompt(_repositoryPath, summary, includeContext);
             var timeoutSeconds = Math.Max(1, settings.AiCliTimeoutSeconds);
 
             Debug.WriteLine($"[WorkingChanges] AutoFill prompt length: {prompt.Length}, summary={summary.Length}, timeout={timeoutSeconds}s, includeContext={includeContext}");
@@ -890,9 +894,49 @@ If there are no significant details, description may be an empty string.
 Do not include any additional text or formatting outside the JSON.{contextBlock}";
     }
 
+    private static string BuildOllamaPrompt(string summary)
+    {
+        return
+$@"Write a git commit message for these changes. Be concise and specific.
+
+RULES:
+- Describe WHAT changed and WHY, not which files changed
+- Do NOT list filenames
+- Use imperative mood (Fix, Add, Update, Remove, Refactor)
+- Keep the commit message under 72 characters
+
+BAD examples (do not do this):
+- ""Updated file1.cs, file2.cs, file3.cs""
+- ""Modified SettingsDialog.xaml""
+- ""Changes to multiple files""
+
+GOOD examples:
+- ""Fix tooltip not closing when mouse moves away""
+- ""Add Ollama integration for local AI commit messages""
+- ""Refactor service layer to use dependency injection""
+
+Changes:
+{summary}
+
+Respond with ONLY this format:
+Commit message: [your message here]
+Description:
+- [bullet point 1]
+- [bullet point 2]";
+    }
+
     private async Task<(bool success, string output, string detail)> RunAiPromptAsync(
         string provider, string prompt, int timeoutSeconds, string? repoPath = null)
     {
+        // Handle Ollama separately via HTTP API (not CLI)
+        if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
+        {
+            var settings = _settingsService.LoadSettings();
+            var (success, output, error) = await _ollamaService.GenerateAsync(
+                settings.OllamaBaseUrl, settings.OllamaSelectedModel, prompt, timeoutSeconds);
+            return (success, output, error ?? string.Empty);
+        }
+
         var (command, args, useStdin, workingDirectory) = BuildAiCommand(provider, prompt, repoPath);
         if (string.IsNullOrWhiteSpace(command))
         {
@@ -1189,6 +1233,8 @@ Do not include any additional text or formatting outside the JSON.{contextBlock}
             return settings.IsGeminiConnected;
         if (provider.Equals("Codex", StringComparison.OrdinalIgnoreCase))
             return settings.IsCodexConnected;
+        if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
+            return !string.IsNullOrEmpty(settings.OllamaSelectedModel);
 
         return false;
     }

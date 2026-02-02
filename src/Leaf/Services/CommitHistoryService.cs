@@ -19,10 +19,11 @@ public class CommitHistoryService : ICommitHistoryService
     public async Task<IReadOnlyList<CommitInfo>> GetCommitHistoryAsync(
         IRepositorySession session,
         int count = 500,
-        string? branchName = null)
+        string? branchName = null,
+        int skip = 0)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        return await _gitService.GetCommitHistoryAsync(session.RepositoryPath, count, branchName);
+        return await _gitService.GetCommitHistoryAsync(session.RepositoryPath, count, branchName, skip);
     }
 
     /// <inheritdoc />

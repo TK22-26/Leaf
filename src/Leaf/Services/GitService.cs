@@ -31,7 +31,7 @@ public class GitService : IGitService
         });
     }
 
-    public async Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null)
+    public async Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0)
     {
         return await Task.Run(() =>
         {
@@ -98,7 +98,10 @@ public class GitService : IGitService
                 });
             }
 
+            // Note: LibGit2Sharp's Skip() is O(n) - it walks through all skipped commits.
+            // Accept this cost but use larger batch sizes to minimize calls.
             var commitList = commits
+                .Skip(skip)
                 .Take(count)
                 .Select(c => new CommitInfo
                 {

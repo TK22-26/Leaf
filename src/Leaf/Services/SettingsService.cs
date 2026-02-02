@@ -155,6 +155,10 @@ public class AppSettings
     public string GitFlowDefaultVersionTagPrefix { get; set; } = "v";
     public bool GitFlowDefaultDeleteBranch { get; set; } = true;
     public bool GitFlowDefaultGenerateChangelog { get; set; } = true;
+
+    // Ollama settings (local LLM)
+    public string OllamaBaseUrl { get; set; } = "http://localhost:11434";
+    public string OllamaSelectedModel { get; set; } = string.Empty;
 }
 
 /// <summary>
