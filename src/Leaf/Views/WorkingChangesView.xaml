@@ -35,6 +35,162 @@
             BasedOn="{StaticResource {x:Type TextBox}}"
             TargetType="TextBox" />
 
+        <Style x:Key="SectionChevronToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid x:Name="ChevronRoot" Width="18" Height="18" RenderTransformOrigin="0.5,0.5">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CheckStates">
+                                    <VisualState x:Name="Checked">
+                                        <Storyboard>
+                                            <DoubleAnimation
+                                                Storyboard.TargetName="ChevronRotate"
+                                                Storyboard.TargetProperty="Angle"
+                                                To="90"
+                                                Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Unchecked">
+                                        <Storyboard>
+                                            <DoubleAnimation
+                                                Storyboard.TargetName="ChevronRotate"
+                                                Storyboard.TargetProperty="Angle"
+                                                To="0"
+                                                Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Grid.RenderTransform>
+                                <RotateTransform x:Name="ChevronRotate" Angle="0" />
+                            </Grid.RenderTransform>
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                FontFamily="{DynamicResource SymbolThemeFontFamily}"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="&#xE76C;" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ListTreePillToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="140" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Background" Value="#E9E9EC" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border
+                                    x:Name="PillDot"
+                                    Width="60"
+                                    Height="24"
+                                    Margin="2,3,2,3"
+                                    Background="#0A7CFF"
+                                    CornerRadius="12"
+                                    RenderTransformOrigin="0.5,0.5">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform X="0" />
+                                    </Border.RenderTransform>
+                                </Border>
+
+                                <TextBlock
+                                    x:Name="ListLabel"
+                                    Grid.Column="0"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    Foreground="#FFFFFF"
+                                    Text="List"
+                                    IsHitTestVisible="False" />
+                                <TextBlock
+                                    x:Name="TreeLabel"
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    Foreground="#4B4B52"
+                                    Text="Tree"
+                                    IsHitTestVisible="False" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ListLabel" Property="Foreground" Value="#4B4B52" />
+                                <Setter TargetName="TreeLabel" Property="Foreground" Value="#FFFFFF" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation
+                                                Storyboard.TargetName="PillDot"
+                                                Storyboard.TargetProperty="(Border.RenderTransform).(TranslateTransform.X)"
+                                                To="68"
+                                                Duration="0:0:0.22">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="False">
+                                <Setter TargetName="ListLabel" Property="Foreground" Value="#FFFFFF" />
+                                <Setter TargetName="TreeLabel" Property="Foreground" Value="#4B4B52" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation
+                                                Storyboard.TargetName="PillDot"
+                                                Storyboard.TargetProperty="(Border.RenderTransform).(TranslateTransform.X)"
+                                                To="0"
+                                                Duration="0:0:0.22">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <HierarchicalDataTemplate
             x:Key="UnstagedTreeNodeTemplate"
             DataType="{x:Type models:PathTreeNode}"
@@ -411,80 +567,73 @@
                 <RowDefinition Height="{Binding IsUnstagedExpanded, Converter={StaticResource BoolToGridLengthConverter}}" />
             </Grid.RowDefinitions>
 
-            <!--  Unstaged Header Bar  -->
-            <Border
-                Grid.Row="0"
-                Padding="8"
-                Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                BorderBrush="{DynamicResource LeafAccentSubtleBrush}"
-                BorderThickness="0,0,0,1"
-                CornerRadius="6,6,0,0">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+            <!--  Unstaged Header  -->
+            <Grid Grid.Row="0" Margin="8,4,8,6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="1" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            FontWeight="SemiBold"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="Unstaged" />
-                        <TextBlock
-                            Margin="6,0,0,0"
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
-                            <Run Text="(" />
-                            <Run Text="{Binding WorkingChanges.UnstagedFiles.Count, Mode=OneWay, FallbackValue=0}" />
-                            <Run Text=")" />
-                        </TextBlock>
-                    </StackPanel>
-
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                     <ToggleButton
-                        Grid.Column="1"
                         Margin="0,0,6,0"
-                        Padding="8,2"
                         VerticalAlignment="Center"
                         IsChecked="{Binding IsUnstagedExpanded}"
-                        Content="Collapse"
-                        FontSize="11"
-                        ToolTip="Collapse or expand" />
-
-                    <ToggleButton
-                        x:Name="UnstagedTreeToggle"
-                        Grid.Column="2"
-                        Margin="0,0,6,0"
-                        Padding="8,2"
+                        Style="{StaticResource SectionChevronToggleStyle}" />
+                    <TextBlock
                         VerticalAlignment="Center"
-                        IsChecked="{Binding ShowUnstagedTreeView}"
-                        Checked="UnstagedTreeToggle_Changed"
-                        Unchecked="UnstagedTreeToggle_Changed"
-                        Content="Tree"
-                        FontSize="11"
-                        ToolTip="Toggle tree view" />
-
-                    <Button
-                        Grid.Column="3"
-                        Padding="8,2"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        Text="Unstaged" />
+                    <TextBlock
+                        Margin="6,0,0,0"
                         VerticalAlignment="Center"
-                        Command="{Binding StageAllCommand}"
-                        Content="Stage All"
-                        FontSize="11" />
-                </Grid>
-            </Border>
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                        <Run Text="(" />
+                        <Run Text="{Binding WorkingChanges.UnstagedFiles.Count, Mode=OneWay, FallbackValue=0}" />
+                        <Run Text=")" />
+                    </TextBlock>
+                </StackPanel>
+
+                <ToggleButton
+                    x:Name="UnstagedTreeToggle"
+                    Grid.Column="2"
+                    Margin="0,0,8,0"
+                    VerticalAlignment="Center"
+                    IsChecked="{Binding ShowUnstagedTreeView}"
+                    Checked="UnstagedTreeToggle_Changed"
+                    Unchecked="UnstagedTreeToggle_Changed"
+                    Style="{StaticResource ListTreePillToggleStyle}"
+                    ToolTip="Toggle list/tree view" />
+
+                <Button
+                    Grid.Column="3"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    Command="{Binding StageAllCommand}"
+                    Content="Stage All"
+                    FontSize="11" />
+
+                <Border
+                    Grid.Row="1"
+                    Grid.ColumnSpan="4"
+                    Height="1"
+                    Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            </Grid>
 
             <!--  Unstaged File List  -->
-            <Border
+            <Grid
                 Grid.Row="1"
-                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="1,0,1,1"
-                CornerRadius="0,0,6,6"
+                Margin="8,0,8,8"
+                Background="Transparent"
                 Visibility="{Binding IsUnstagedExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Grid>
                 <ScrollViewer
@@ -705,7 +854,7 @@
                     </TreeView.ItemContainerStyle>
                 </TreeView>
                 </Grid>
-            </Border>
+            </Grid>
         </Grid>
 
         <!--  Staged Files Section  -->
@@ -715,80 +864,73 @@
                 <RowDefinition Height="{Binding IsStagedExpanded, Converter={StaticResource BoolToGridLengthConverter}}" />
             </Grid.RowDefinitions>
 
-            <!--  Staged Header Bar  -->
-            <Border
-                Grid.Row="0"
-                Padding="8"
-                Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                BorderBrush="{DynamicResource LeafAccentSubtleBrush}"
-                BorderThickness="0,0,0,1"
-                CornerRadius="6,6,0,0">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+            <!--  Staged Header  -->
+            <Grid Grid.Row="0" Margin="8,4,8,6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="1" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            FontWeight="SemiBold"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="Staged" />
-                        <TextBlock
-                            Margin="6,0,0,0"
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
-                            <Run Text="(" />
-                            <Run Text="{Binding WorkingChanges.StagedFiles.Count, Mode=OneWay, FallbackValue=0}" />
-                            <Run Text=")" />
-                        </TextBlock>
-                    </StackPanel>
-
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                     <ToggleButton
-                        Grid.Column="1"
                         Margin="0,0,6,0"
-                        Padding="8,2"
                         VerticalAlignment="Center"
                         IsChecked="{Binding IsStagedExpanded}"
-                        Content="Collapse"
-                        FontSize="11"
-                        ToolTip="Collapse or expand" />
-
-                    <ToggleButton
-                        x:Name="StagedTreeToggle"
-                        Grid.Column="2"
-                        Margin="0,0,6,0"
-                        Padding="8,2"
+                        Style="{StaticResource SectionChevronToggleStyle}" />
+                    <TextBlock
                         VerticalAlignment="Center"
-                        IsChecked="{Binding ShowStagedTreeView}"
-                        Checked="StagedTreeToggle_Changed"
-                        Unchecked="StagedTreeToggle_Changed"
-                        Content="Tree"
-                        FontSize="11"
-                        ToolTip="Toggle tree view" />
-
-                    <Button
-                        Grid.Column="3"
-                        Padding="8,2"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        Text="Staged" />
+                    <TextBlock
+                        Margin="6,0,0,0"
                         VerticalAlignment="Center"
-                        Command="{Binding UnstageAllCommand}"
-                        Content="Unstage All"
-                        FontSize="11" />
-                </Grid>
-            </Border>
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                        <Run Text="(" />
+                        <Run Text="{Binding WorkingChanges.StagedFiles.Count, Mode=OneWay, FallbackValue=0}" />
+                        <Run Text=")" />
+                    </TextBlock>
+                </StackPanel>
+
+                <ToggleButton
+                    x:Name="StagedTreeToggle"
+                    Grid.Column="2"
+                    Margin="0,0,8,0"
+                    VerticalAlignment="Center"
+                    IsChecked="{Binding ShowStagedTreeView}"
+                    Checked="StagedTreeToggle_Changed"
+                    Unchecked="StagedTreeToggle_Changed"
+                    Style="{StaticResource ListTreePillToggleStyle}"
+                    ToolTip="Toggle list/tree view" />
+
+                <Button
+                    Grid.Column="3"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    Command="{Binding UnstageAllCommand}"
+                    Content="Unstage All"
+                    FontSize="11" />
+
+                <Border
+                    Grid.Row="1"
+                    Grid.ColumnSpan="4"
+                    Height="1"
+                    Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            </Grid>
 
             <!--  Staged File List  -->
-            <Border
+            <Grid
                 Grid.Row="1"
-                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="1,0,1,1"
-                CornerRadius="0,0,6,6"
+                Margin="8,0,8,8"
+                Background="Transparent"
                 Visibility="{Binding IsStagedExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Grid>
                 <ScrollViewer
@@ -996,7 +1138,7 @@
                     </TreeView.ItemContainerStyle>
                 </TreeView>
                 </Grid>
-            </Border>
+            </Grid>
         </Grid>
 
         <!--  Commit Section  -->
