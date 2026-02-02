@@ -645,3 +645,24 @@ public class BlameChunkHeightConverter : IMultiValueConverter
         throw new NotImplementedException();
     }
 }
+
+/// <summary>
+/// Converts a height to a CornerRadius that is half the height.
+/// </summary>
+public class HalfValueToCornerRadiusConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double height)
+        {
+            return new CornerRadius(height / 2.0);
+        }
+
+        return new CornerRadius(0);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}

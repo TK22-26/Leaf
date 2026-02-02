@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using Leaf.Controls;
 using Leaf.Models;
 using Leaf.ViewModels;
 
@@ -66,15 +66,15 @@ public partial class WorkingChangesView : UserControl
         LogTreeState("Staged", StagedListScrollViewer, StagedTreeView, StagedTreeToggle);
     }
 
-    private static void LogTreeState(string label, ScrollViewer? list, TreeView? tree, ToggleButton? toggle)
+    private static void LogTreeState(string label, ScrollViewer? list, TreeView? tree, PillToggle? toggle)
     {
         var listVis = list?.Visibility.ToString() ?? "null";
         var treeVis = tree?.Visibility.ToString() ?? "null";
-        var toggleState = toggle?.IsChecked?.ToString() ?? "null";
+        var toggleState = toggle?.IsChecked.ToString() ?? "null";
         Debug.WriteLine($"[WorkingChanges] {label} Toggle={toggleState} List={listVis} Tree={treeVis}");
     }
 
-    private static void ApplyTreeVisibility(ToggleButton? toggle, ScrollViewer? list, TreeView? tree)
+    private static void ApplyTreeVisibility(PillToggle? toggle, ScrollViewer? list, TreeView? tree)
     {
         bool showTree = toggle?.IsChecked == true;
         if (list != null)

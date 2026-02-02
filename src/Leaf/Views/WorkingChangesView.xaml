@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="clr-namespace:Leaf.Converters"
+    xmlns:controls="clr-namespace:Leaf.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
     xmlns:models="clr-namespace:Leaf.Models"
@@ -87,105 +88,6 @@
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="&#xE76C;" />
                         </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="ListTreePillToggleStyle" TargetType="ToggleButton">
-            <Setter Property="Width" Value="140" />
-            <Setter Property="Height" Value="30" />
-            <Setter Property="Padding" Value="2" />
-            <Setter Property="Background" Value="#E9E9EC" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Focusable" Value="False" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border
-                            Background="{TemplateBinding Background}"
-                            CornerRadius="16">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-
-                                <Border
-                                    x:Name="PillDot"
-                                    Width="60"
-                                    Height="24"
-                                    Margin="2,3,2,3"
-                                    Background="#0A7CFF"
-                                    CornerRadius="12"
-                                    RenderTransformOrigin="0.5,0.5">
-                                    <Border.RenderTransform>
-                                        <TranslateTransform X="0" />
-                                    </Border.RenderTransform>
-                                </Border>
-
-                                <TextBlock
-                                    x:Name="ListLabel"
-                                    Grid.Column="0"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    FontSize="12"
-                                    FontWeight="SemiBold"
-                                    Foreground="#FFFFFF"
-                                    Text="List"
-                                    IsHitTestVisible="False" />
-                                <TextBlock
-                                    x:Name="TreeLabel"
-                                    Grid.Column="1"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    FontSize="12"
-                                    FontWeight="SemiBold"
-                                    Foreground="#4B4B52"
-                                    Text="Tree"
-                                    IsHitTestVisible="False" />
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="ListLabel" Property="Foreground" Value="#4B4B52" />
-                                <Setter TargetName="TreeLabel" Property="Foreground" Value="#FFFFFF" />
-                                <Trigger.EnterActions>
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation
-                                                Storyboard.TargetName="PillDot"
-                                                Storyboard.TargetProperty="(Border.RenderTransform).(TranslateTransform.X)"
-                                                To="68"
-                                                Duration="0:0:0.22">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </Trigger.EnterActions>
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="False">
-                                <Setter TargetName="ListLabel" Property="Foreground" Value="#FFFFFF" />
-                                <Setter TargetName="TreeLabel" Property="Foreground" Value="#4B4B52" />
-                                <Trigger.EnterActions>
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation
-                                                Storyboard.TargetName="PillDot"
-                                                Storyboard.TargetProperty="(Border.RenderTransform).(TranslateTransform.X)"
-                                                To="0"
-                                                Duration="0:0:0.22">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </Trigger.EnterActions>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -568,7 +470,7 @@
             </Grid.RowDefinitions>
 
             <!--  Unstaged Header  -->
-            <Grid Grid.Row="0" Margin="8,4,8,6">
+            <Grid Grid.Row="0" Margin="0,4,0,6">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="1" />
@@ -603,24 +505,34 @@
                     </TextBlock>
                 </StackPanel>
 
-                <ToggleButton
-                    x:Name="UnstagedTreeToggle"
-                    Grid.Column="2"
-                    Margin="0,0,8,0"
-                    VerticalAlignment="Center"
-                    IsChecked="{Binding ShowUnstagedTreeView}"
-                    Checked="UnstagedTreeToggle_Changed"
-                    Unchecked="UnstagedTreeToggle_Changed"
-                    Style="{StaticResource ListTreePillToggleStyle}"
-                    ToolTip="Toggle list/tree view" />
-
-                <Button
+                <StackPanel
                     Grid.Column="3"
-                    Padding="8,2"
-                    VerticalAlignment="Center"
-                    Command="{Binding StageAllCommand}"
-                    Content="Stage All"
-                    FontSize="11" />
+                    Margin="0,0,0,3"
+                    Orientation="Horizontal"
+                    VerticalAlignment="Center">
+                    <controls:PillToggle
+                        x:Name="UnstagedTreeToggle"
+                        Width="84"
+                        Height="22"
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        IsChecked="{Binding ShowUnstagedTreeView}"
+                        Checked="UnstagedTreeToggle_Changed"
+                        Unchecked="UnstagedTreeToggle_Changed"
+                        LeftText="List"
+                        RightText="Tree"
+                        LabelFontSize="12"
+                        ToolTip="Toggle list/tree view" />
+
+                    <Button
+                        Height="22"
+                        MinWidth="88"
+                        Padding="8,2"
+                        VerticalAlignment="Center"
+                        Command="{Binding StageAllCommand}"
+                        Content="Stage All"
+                        FontSize="11" />
+                </StackPanel>
 
                 <Border
                     Grid.Row="1"
@@ -632,7 +544,7 @@
             <!--  Unstaged File List  -->
             <Grid
                 Grid.Row="1"
-                Margin="8,0,8,8"
+                Margin="0,0,0,8"
                 Background="Transparent"
                 Visibility="{Binding IsUnstagedExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Grid>
@@ -865,7 +777,7 @@
             </Grid.RowDefinitions>
 
             <!--  Staged Header  -->
-            <Grid Grid.Row="0" Margin="8,4,8,6">
+            <Grid Grid.Row="0" Margin="0,4,0,6">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="1" />
@@ -900,24 +812,34 @@
                     </TextBlock>
                 </StackPanel>
 
-                <ToggleButton
-                    x:Name="StagedTreeToggle"
-                    Grid.Column="2"
-                    Margin="0,0,8,0"
-                    VerticalAlignment="Center"
-                    IsChecked="{Binding ShowStagedTreeView}"
-                    Checked="StagedTreeToggle_Changed"
-                    Unchecked="StagedTreeToggle_Changed"
-                    Style="{StaticResource ListTreePillToggleStyle}"
-                    ToolTip="Toggle list/tree view" />
-
-                <Button
+                <StackPanel
                     Grid.Column="3"
-                    Padding="8,2"
-                    VerticalAlignment="Center"
-                    Command="{Binding UnstageAllCommand}"
-                    Content="Unstage All"
-                    FontSize="11" />
+                    Margin="0,0,0,3"
+                    Orientation="Horizontal"
+                    VerticalAlignment="Center">
+                    <controls:PillToggle
+                        x:Name="StagedTreeToggle"
+                        Width="84"
+                        Height="22"
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        IsChecked="{Binding ShowStagedTreeView}"
+                        Checked="StagedTreeToggle_Changed"
+                        Unchecked="StagedTreeToggle_Changed"
+                        LeftText="List"
+                        RightText="Tree"
+                        LabelFontSize="12"
+                        ToolTip="Toggle list/tree view" />
+
+                    <Button
+                        Height="22"
+                        MinWidth="88"
+                        Padding="8,2"
+                        VerticalAlignment="Center"
+                        Command="{Binding UnstageAllCommand}"
+                        Content="Unstage All"
+                        FontSize="11" />
+                </StackPanel>
 
                 <Border
                     Grid.Row="1"
@@ -929,7 +851,7 @@
             <!--  Staged File List  -->
             <Grid
                 Grid.Row="1"
-                Margin="8,0,8,8"
+                Margin="0,0,0,8"
                 Background="Transparent"
                 Visibility="{Binding IsStagedExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Grid>
