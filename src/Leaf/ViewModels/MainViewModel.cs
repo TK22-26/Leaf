@@ -15,7 +15,7 @@ namespace Leaf.ViewModels;
 /// <summary>
 /// Main application ViewModel - manages navigation and overall app state.
 /// </summary>
-public partial class MainViewModel : ObservableObject
+public partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly IGitService _gitService;
     private readonly IGitFlowService _gitFlowService;
@@ -25,6 +25,16 @@ public partial class MainViewModel : ObservableObject
     private readonly IAutoFetchService _autoFetchService;
     private readonly Window _ownerWindow;
     private readonly FileWatcherService _fileWatcherService;
+
+    // Phase 0/1: Architecture Glue Services
+    private readonly IDispatcherService _dispatcherService;
+    private readonly IRepositoryEventHub _eventHub;
+    private readonly IDialogService _dialogService;
+    private readonly IRepositorySessionFactory _sessionFactory;
+    private readonly IGitCommandRunner _gitCommandRunner;
+    private IRepositorySession? _currentSession;
+    private bool _disposed;
+
     private string? _pendingBranchBaseSha;
 
     /// <summary>
@@ -252,7 +262,12 @@ public partial class MainViewModel : ObservableObject
         IGitFlowService gitFlowService,
         IRepositoryManagementService repositoryService,
         IAutoFetchService autoFetchService,
-        Window ownerWindow)
+        Window ownerWindow,
+        IDispatcherService dispatcherService,
+        IRepositoryEventHub eventHub,
+        IDialogService dialogService,
+        IRepositorySessionFactory sessionFactory,
+        IGitCommandRunner gitCommandRunner)
     {
         _gitService = gitService;
         _gitFlowService = gitFlowService;
@@ -261,6 +276,11 @@ public partial class MainViewModel : ObservableObject
         _repositoryService = repositoryService;
         _autoFetchService = autoFetchService;
         _ownerWindow = ownerWindow;
+        _dispatcherService = dispatcherService;
+        _eventHub = eventHub;
+        _dialogService = dialogService;
+        _sessionFactory = sessionFactory;
+        _gitCommandRunner = gitCommandRunner;
         _fileWatcherService = new FileWatcherService();
 
         // Subscribe to auto-fetch completion
@@ -2970,6 +2990,29 @@ public partial class MainViewModel : ObservableObject
             return GitFlowBranchType.Support;
 
         return GitFlowBranchType.None;
+    }
+
+    #endregion
+
+    #region IDisposable
+
+    /// <summary>
+    /// Disposes resources held by MainViewModel.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        // Unsubscribe from events to prevent memory leaks
+        _autoFetchService.FetchCompleted -= OnAutoFetchCompleted;
+
+        // Dispose current repository session
+        _currentSession?.Dispose();
+        _currentSession = null;
+
+        // Dispose file watcher
+        _fileWatcherService.Dispose();
     }
 
     #endregion
