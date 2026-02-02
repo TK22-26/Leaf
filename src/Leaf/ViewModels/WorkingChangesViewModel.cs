@@ -22,6 +22,18 @@ public partial class WorkingChangesViewModel : ObservableObject
     private string? _repositoryPath;
 
     [ObservableProperty]
+    private bool _showUnstagedTreeView;
+
+    [ObservableProperty]
+    private bool _showStagedTreeView;
+
+    [ObservableProperty]
+    private bool _isUnstagedExpanded = true;
+
+    [ObservableProperty]
+    private bool _isStagedExpanded = true;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasChanges))]
     [NotifyPropertyChangedFor(nameof(FileChangesSummary))]
     private WorkingChangesInfo? _workingChanges;
@@ -39,6 +51,12 @@ public partial class WorkingChangesViewModel : ObservableObject
 
     [ObservableProperty]
     private string? _errorMessage;
+
+    [ObservableProperty]
+    private ObservableCollection<PathTreeNode> _unstagedTreeItems = [];
+
+    [ObservableProperty]
+    private ObservableCollection<PathTreeNode> _stagedTreeItems = [];
 
     /// <summary>
     /// Maximum characters for commit message.
@@ -153,6 +171,12 @@ public partial class WorkingChangesViewModel : ObservableObject
         {
             IsLoading = false;
         }
+    }
+
+    partial void OnWorkingChangesChanged(WorkingChangesInfo? value)
+    {
+        UnstagedTreeItems = BuildTree(value?.UnstagedFiles ?? []);
+        StagedTreeItems = BuildTree(value?.StagedFiles ?? []);
     }
 
     /// <summary>
@@ -404,6 +428,100 @@ public partial class WorkingChangesViewModel : ObservableObject
             if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
             {
                 Process.Start("explorer.exe", $"\"{directory}\"");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Open the file using the default associated application.
+    /// </summary>
+    [RelayCommand]
+    public void OpenFile(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        var normalizedFilePath = file.Path.Replace('/', '\\');
+        var fullPath = Path.Combine(_repositoryPath, normalizedFilePath);
+        if (!File.Exists(fullPath))
+            return;
+
+        Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true });
+    }
+
+    private static ObservableCollection<PathTreeNode> BuildTree(IEnumerable<FileStatusInfo> files)
+    {
+        var roots = new ObservableCollection<PathTreeNode>();
+        var dirLookup = new Dictionary<string, PathTreeNode>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in files.OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase))
+        {
+            var normalized = file.Path.Replace('\\', '/');
+            var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                continue;
+
+            PathTreeNode? parent = null;
+            var currentPath = string.Empty;
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                var part = parts[i];
+                currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
+                bool isFile = i == parts.Length - 1;
+
+                if (isFile)
+                {
+                    var fileNode = new PathTreeNode(part, currentPath, isFile: true, file, isRoot: parent == null);
+                    if (parent == null)
+                    {
+                        roots.Add(fileNode);
+                    }
+                    else
+                    {
+                        parent.Children.Add(fileNode);
+                    }
+                }
+                else
+                {
+                    if (!dirLookup.TryGetValue(currentPath, out var dirNode))
+                    {
+                        dirNode = new PathTreeNode(part, currentPath, isFile: false);
+                        dirLookup[currentPath] = dirNode;
+
+                        if (parent == null)
+                        {
+                            roots.Add(dirNode);
+                        }
+                        else
+                        {
+                            parent.Children.Add(dirNode);
+                        }
+                    }
+
+                    parent = dirNode;
+                }
+            }
+        }
+
+        SortNodes(roots);
+        return roots;
+    }
+
+    private static void SortNodes(ObservableCollection<PathTreeNode> nodes)
+    {
+        var sorted = nodes
+            .OrderBy(n => n.IsFile)
+            .ThenBy(n => n.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        nodes.Clear();
+        foreach (var node in sorted)
+        {
+            nodes.Add(node);
+            if (!node.IsFile && node.Children.Count > 0)
+            {
+                SortNodes(node.Children);
             }
         }
     }

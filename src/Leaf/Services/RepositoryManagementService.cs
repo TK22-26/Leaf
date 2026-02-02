@@ -47,6 +47,7 @@ public class RepositoryManagementService : IRepositoryManagementService
             }
         }
 
+        SortAllRepositories();
         RefreshQuickAccess();
 
         // Return the last selected repository path
@@ -181,6 +182,7 @@ public class RepositoryManagementService : IRepositoryManagementService
         if (!folderGroup.Repositories.Any(r => r.Path == repo.Path))
         {
             folderGroup.Repositories.Add(repo);
+            SortRepositories(folderGroup);
 
             if (save)
             {
@@ -219,58 +221,61 @@ public class RepositoryManagementService : IRepositoryManagementService
             RepositoryGroups.Remove(group);
         }
 
+        SortAllRepositories();
         RefreshQuickAccess();
         SaveRepositories();
     }
 
     private void RebuildRootItems()
     {
-        int insertIndex = 0;
+        var desired = new List<object>();
 
-        // Handle pinned section
         if (_pinnedSection.Items.Count > 0)
         {
-            if (!RepositoryRootItems.Contains(_pinnedSection))
-            {
-                RepositoryRootItems.Insert(insertIndex, _pinnedSection);
-            }
-            insertIndex = RepositoryRootItems.IndexOf(_pinnedSection) + 1;
-        }
-        else if (RepositoryRootItems.Contains(_pinnedSection))
-        {
-            RepositoryRootItems.Remove(_pinnedSection);
+            desired.Add(_pinnedSection);
         }
 
-        // Handle recent section
         if (_recentSection.Items.Count > 0)
         {
-            if (!RepositoryRootItems.Contains(_recentSection))
-            {
-                RepositoryRootItems.Insert(insertIndex, _recentSection);
-            }
-            insertIndex = RepositoryRootItems.IndexOf(_recentSection) + 1;
-        }
-        else if (RepositoryRootItems.Contains(_recentSection))
-        {
-            RepositoryRootItems.Remove(_recentSection);
+            desired.Add(_recentSection);
         }
 
-        // Add repository groups
+        foreach (var group in RepositoryGroups.OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            desired.Add(group);
+        }
+
+        RepositoryRootItems.Clear();
+        foreach (var item in desired)
+        {
+            RepositoryRootItems.Add(item);
+        }
+    }
+
+    private void SortAllRepositories()
+    {
         foreach (var group in RepositoryGroups)
         {
-            if (!RepositoryRootItems.Contains(group))
-            {
-                RepositoryRootItems.Add(group);
-            }
+            SortRepositories(group);
+        }
+    }
+
+    private static void SortRepositories(RepositoryGroup group)
+    {
+        var sorted = group.Repositories
+            .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.Path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        group.Repositories.Clear();
+        foreach (var repo in sorted)
+        {
+            group.Repositories.Add(repo);
         }
 
-        // Remove stale groups
-        for (int i = RepositoryRootItems.Count - 1; i >= 0; i--)
+        foreach (var child in group.Children)
         {
-            if (RepositoryRootItems[i] is RepositoryGroup group && !RepositoryGroups.Contains(group))
-            {
-                RepositoryRootItems.RemoveAt(i);
-            }
+            SortRepositories(child);
         }
     }
 

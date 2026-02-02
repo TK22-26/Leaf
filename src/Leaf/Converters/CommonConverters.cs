@@ -98,6 +98,70 @@ public class InverseBoolToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
+/// Converts a bool to a GridLength. True = Star (default) or Auto, False = 0.
+/// Pass "Auto" as parameter to use Auto instead of Star.
+/// </summary>
+public class BoolToGridLengthConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool boolValue)
+        {
+            if (!boolValue)
+            {
+                return new GridLength(0);
+            }
+
+            if (parameter is string param && param.Equals("Auto", StringComparison.OrdinalIgnoreCase))
+            {
+                return GridLength.Auto;
+            }
+
+            return new GridLength(1, GridUnitType.Star);
+        }
+
+        return new GridLength(0);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is GridLength length)
+        {
+            return length.Value > 0 && length.GridUnitType != GridUnitType.Pixel;
+        }
+
+        return false;
+    }
+}
+
+/// <summary>
+/// Converts a bool to a row height for expandable sections.
+/// True = Star, False = Auto.
+/// </summary>
+public class BoolToSectionRowHeightConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool boolValue)
+        {
+            return boolValue ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        }
+
+        return GridLength.Auto;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is GridLength length)
+        {
+            return length.GridUnitType == GridUnitType.Star && length.Value > 0;
+        }
+
+        return false;
+    }
+}
+
+/// <summary>
 /// Inverts a boolean value.
 /// </summary>
 public class InverseBoolConverter : IValueConverter

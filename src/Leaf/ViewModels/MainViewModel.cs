@@ -305,6 +305,13 @@ public partial class MainViewModel : ObservableObject
                     await _gitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
                 }
 
+                if (_workingChangesViewModel != null && SelectedRepository != null && IsWorkingChangesSelected)
+                {
+                    _workingChangesViewModel.SetWorkingChanges(
+                        SelectedRepository.Path,
+                        _gitGraphViewModel?.WorkingChanges);
+                }
+
                 if (SelectedRepository != null)
                 {
                     var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
