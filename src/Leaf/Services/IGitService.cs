@@ -21,7 +21,8 @@ public interface IGitService
     /// <param name="repoPath">Path to the repository</param>
     /// <param name="count">Maximum number of commits to retrieve</param>
     /// <param name="branchName">Optional branch name to filter by</param>
-    Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null);
+    /// <param name="skip">Number of commits to skip (for lazy loading)</param>
+    Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0);
     Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha);
 
     /// <summary>

@@ -28,8 +28,10 @@ public partial class SettingsDialog : Window
     private bool _isClaudeConnected;
     private bool _isGeminiConnected;
     private bool _isCodexConnected;
+    private bool _isOllamaConnected;
     private bool _suppressAiSelectionSync;
     private bool _suppressNavSelection;
+    private readonly OllamaService _ollamaService = new();
 
     // GitHub OAuth
     private GitHubOAuthService? _gitHubOAuthService;
@@ -71,6 +73,8 @@ public partial class SettingsDialog : Window
             new("Claude", "Connect to Claude CLI for AI features", "Claude", Symbol.Bot),
             new("Gemini", "Connect to Gemini CLI for AI features", "Gemini", Symbol.Bot),
             new("Codex", "Connect to Codex CLI for AI features", "Codex", Symbol.Bot),
+            new("Ollama", "Connect to Ollama for local AI features", "Ollama", Symbol.Bot),
+            new("Local LLM", "Run AI locally with Ollama", "Ollama", Symbol.Bot),
         };
 
         LoadCurrentSettings();
@@ -100,6 +104,7 @@ public partial class SettingsDialog : Window
         ContentClaude.Visibility = Visibility.Collapsed;
         ContentGemini.Visibility = Visibility.Collapsed;
         ContentCodex.Visibility = Visibility.Collapsed;
+        ContentOllama.Visibility = Visibility.Collapsed;
         ContentGitFlow.Visibility = Visibility.Collapsed;
         ContentSearchResults.Visibility = Visibility.Collapsed;
 
@@ -129,6 +134,9 @@ public partial class SettingsDialog : Window
                 break;
             case "Codex":
                 ContentCodex.Visibility = Visibility.Visible;
+                break;
+            case "Ollama":
+                ContentOllama.Visibility = Visibility.Visible;
                 break;
             case "General":
                 // Show clone path for General category
@@ -185,6 +193,7 @@ public partial class SettingsDialog : Window
         ContentClaude.Visibility = Visibility.Collapsed;
         ContentGemini.Visibility = Visibility.Collapsed;
         ContentCodex.Visibility = Visibility.Collapsed;
+        ContentOllama.Visibility = Visibility.Collapsed;
 
         // Show search results
         ContentSearchResults.Visibility = Visibility.Visible;
@@ -222,6 +231,7 @@ public partial class SettingsDialog : Window
             "Claude" => NavClaude,
             "Gemini" => NavGemini,
             "Codex" => NavCodex,
+            "Ollama" => NavOllama,
             _ => null
         };
 
@@ -295,6 +305,130 @@ public partial class SettingsDialog : Window
         UpdateAiDefaults();
     }
 
+    private async void OllamaRefreshModels_Click(object sender, RoutedEventArgs e)
+    {
+        var baseUrl = OllamaBaseUrlTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            baseUrl = "http://localhost:11434";
+            OllamaBaseUrlTextBox.Text = baseUrl;
+        }
+
+        OllamaRefreshModelsButton.IsEnabled = false;
+        OllamaStatusText.Text = "Fetching models...";
+        OllamaStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+
+        var (success, models, error) = await _ollamaService.GetAvailableModelsAsync(baseUrl);
+
+        if (success && models.Count > 0)
+        {
+            OllamaModelComboBox.Items.Clear();
+            foreach (var model in models)
+            {
+                OllamaModelComboBox.Items.Add(model);
+            }
+
+            // Auto-select first model or restore previous selection
+            var savedModel = _settings.OllamaSelectedModel;
+            if (!string.IsNullOrEmpty(savedModel) && models.Contains(savedModel))
+            {
+                OllamaModelComboBox.SelectedItem = savedModel;
+            }
+            else if (models.Count > 0)
+            {
+                OllamaModelComboBox.SelectedIndex = 0;
+            }
+
+            OllamaStatusText.Text = $"Found {models.Count} model(s)";
+            OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+        }
+        else
+        {
+            OllamaModelComboBox.Items.Clear();
+            OllamaStatusText.Text = error ?? "Failed to connect";
+            OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+        }
+
+        OllamaRefreshModelsButton.IsEnabled = true;
+    }
+
+    private async void OllamaConnect_Click(object sender, RoutedEventArgs e)
+    {
+        var baseUrl = OllamaBaseUrlTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            baseUrl = "http://localhost:11434";
+            OllamaBaseUrlTextBox.Text = baseUrl;
+        }
+
+        var selectedModel = OllamaModelComboBox.SelectedItem as string;
+        if (string.IsNullOrWhiteSpace(selectedModel))
+        {
+            // Try to fetch models first
+            OllamaConnectButton.IsEnabled = false;
+            OllamaStatusText.Text = "Connecting...";
+            OllamaStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+
+            var (success, models, error) = await _ollamaService.GetAvailableModelsAsync(baseUrl);
+
+            if (!success || models.Count == 0)
+            {
+                OllamaStatusText.Text = error ?? "No models available";
+                OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                OllamaConnectButton.IsEnabled = true;
+                return;
+            }
+
+            OllamaModelComboBox.Items.Clear();
+            foreach (var model in models)
+            {
+                OllamaModelComboBox.Items.Add(model);
+            }
+            OllamaModelComboBox.SelectedIndex = 0;
+            selectedModel = models[0];
+        }
+
+        // Validate connection by fetching models
+        OllamaConnectButton.IsEnabled = false;
+        OllamaStatusText.Text = "Validating connection...";
+        OllamaStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+
+        var (validateSuccess, _, validateError) = await _ollamaService.GetAvailableModelsAsync(baseUrl);
+
+        if (validateSuccess)
+        {
+            _isOllamaConnected = true;
+            _settings.OllamaBaseUrl = baseUrl;
+            _settings.OllamaSelectedModel = selectedModel;
+            _settingsService.SaveSettings(_settings);
+
+            OllamaStatusText.Text = $"Connected - {selectedModel}";
+            OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            OllamaConnectButton.IsEnabled = false;
+            OllamaDisconnectButton.IsEnabled = true;
+            UpdateAiDefaults();
+        }
+        else
+        {
+            OllamaStatusText.Text = validateError ?? "Connection failed";
+            OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+            OllamaConnectButton.IsEnabled = true;
+        }
+    }
+
+    private void OllamaDisconnect_Click(object sender, RoutedEventArgs e)
+    {
+        _isOllamaConnected = false;
+        _settings.OllamaSelectedModel = string.Empty;
+        _settingsService.SaveSettings(_settings);
+
+        OllamaStatusText.Text = "Not connected";
+        OllamaStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+        OllamaConnectButton.IsEnabled = true;
+        OllamaDisconnectButton.IsEnabled = false;
+        UpdateAiDefaults();
+    }
+
     private void LoadCurrentSettings()
     {
         // Load default clone path
@@ -338,10 +472,24 @@ public partial class SettingsDialog : Window
         _isClaudeConnected = _settings.IsClaudeConnected;
         _isGeminiConnected = _settings.IsGeminiConnected;
         _isCodexConnected = _settings.IsCodexConnected;
+        _isOllamaConnected = !string.IsNullOrEmpty(_settings.OllamaSelectedModel);
 
         ApplyAiConnectionState(ClaudeStatusText, ClaudeConnectButton, ClaudeDisconnectButton, _isClaudeConnected);
         ApplyAiConnectionState(GeminiStatusText, GeminiConnectButton, GeminiDisconnectButton, _isGeminiConnected);
         ApplyAiConnectionState(CodexStatusText, CodexConnectButton, CodexDisconnectButton, _isCodexConnected);
+
+        // Load Ollama settings
+        OllamaBaseUrlTextBox.Text = _settings.OllamaBaseUrl;
+        if (!string.IsNullOrEmpty(_settings.OllamaSelectedModel))
+        {
+            OllamaModelComboBox.Items.Clear();
+            OllamaModelComboBox.Items.Add(_settings.OllamaSelectedModel);
+            OllamaModelComboBox.SelectedIndex = 0;
+            OllamaStatusText.Text = $"Connected - {_settings.OllamaSelectedModel}";
+            OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            OllamaConnectButton.IsEnabled = false;
+            OllamaDisconnectButton.IsEnabled = true;
+        }
 
         UpdateAiDefaults();
     }
@@ -554,6 +702,8 @@ public partial class SettingsDialog : Window
             AiDefaultComboBox.Items.Add("Gemini");
         if (_isCodexConnected)
             AiDefaultComboBox.Items.Add("Codex");
+        if (_isOllamaConnected)
+            AiDefaultComboBox.Items.Add("Ollama");
 
         if (AiDefaultComboBox.Items.Count == 0)
         {
@@ -1290,6 +1440,13 @@ public partial class SettingsDialog : Window
         _settings.IsClaudeConnected = _isClaudeConnected;
         _settings.IsGeminiConnected = _isGeminiConnected;
         _settings.IsCodexConnected = _isCodexConnected;
+
+        // Save Ollama settings
+        _settings.OllamaBaseUrl = OllamaBaseUrlTextBox.Text.Trim();
+        if (_isOllamaConnected && OllamaModelComboBox.SelectedItem is string selectedModel)
+        {
+            _settings.OllamaSelectedModel = selectedModel;
+        }
 
         // Save GitFlow defaults
         SaveGitFlowDefaults();

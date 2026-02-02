@@ -15,13 +15,27 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        // Set up services
+        // Phase 0: Architecture Glue (MUST be created first)
+        // NOTE: Dispatcher injected at composition root - NOT accessed inside services
+        var dispatcherService = new DispatcherService(Dispatcher);
+        var windowService = new WindowService();
+        var repositorySessionFactory = new RepositorySessionFactory();
+        var repositoryEventHub = new RepositoryEventHub(dispatcherService);
+
+        // Phase 1: Foundation services
+        var dialogService = new DialogService(dispatcherService, windowService);
+        var gitCommandRunner = new GitCommandRunner();
+
+        // Original services
         var gitService = new GitService();
         var credentialService = new CredentialService();
         var settingsService = new SettingsService();
         var gitFlowService = new GitFlowService(gitService);
         var repositoryService = new RepositoryManagementService(settingsService);
         var autoFetchService = new AutoFetchService(gitService, credentialService);
+
+        // ViewModelFactory for transient ViewModel creation
+        var viewModelFactory = new ViewModelFactory(gitService, dialogService, repositoryEventHub);
 
         // Create view model with all services
         var viewModel = new MainViewModel(
@@ -31,7 +45,12 @@ public partial class MainWindow : Window
             gitFlowService,
             repositoryService,
             autoFetchService,
-            this);
+            this,
+            dispatcherService,
+            repositoryEventHub,
+            dialogService,
+            repositorySessionFactory,
+            gitCommandRunner);
 
         DataContext = viewModel;
     }

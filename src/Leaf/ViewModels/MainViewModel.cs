@@ -15,7 +15,7 @@ namespace Leaf.ViewModels;
 /// <summary>
 /// Main application ViewModel - manages navigation and overall app state.
 /// </summary>
-public partial class MainViewModel : ObservableObject
+public partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly IGitService _gitService;
     private readonly IGitFlowService _gitFlowService;
@@ -25,6 +25,16 @@ public partial class MainViewModel : ObservableObject
     private readonly IAutoFetchService _autoFetchService;
     private readonly Window _ownerWindow;
     private readonly FileWatcherService _fileWatcherService;
+
+    // Phase 0/1: Architecture Glue Services
+    private readonly IDispatcherService _dispatcherService;
+    private readonly IRepositoryEventHub _eventHub;
+    private readonly IDialogService _dialogService;
+    private readonly IRepositorySessionFactory _sessionFactory;
+    private readonly IGitCommandRunner _gitCommandRunner;
+    private IRepositorySession? _currentSession;
+    private bool _disposed;
+
     private string? _pendingBranchBaseSha;
 
     /// <summary>
@@ -103,6 +113,12 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private string _commitSearchText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isUpdateAvailable;
+
+    [ObservableProperty]
+    private UpdateInfo? _availableUpdate;
 
     /// <summary>
     /// Pinned repositories - delegated to RepositoryManagementService.
@@ -252,7 +268,12 @@ public partial class MainViewModel : ObservableObject
         IGitFlowService gitFlowService,
         IRepositoryManagementService repositoryService,
         IAutoFetchService autoFetchService,
-        Window ownerWindow)
+        Window ownerWindow,
+        IDispatcherService dispatcherService,
+        IRepositoryEventHub eventHub,
+        IDialogService dialogService,
+        IRepositorySessionFactory sessionFactory,
+        IGitCommandRunner gitCommandRunner)
     {
         _gitService = gitService;
         _gitFlowService = gitFlowService;
@@ -261,6 +282,11 @@ public partial class MainViewModel : ObservableObject
         _repositoryService = repositoryService;
         _autoFetchService = autoFetchService;
         _ownerWindow = ownerWindow;
+        _dispatcherService = dispatcherService;
+        _eventHub = eventHub;
+        _dialogService = dialogService;
+        _sessionFactory = sessionFactory;
+        _gitCommandRunner = gitCommandRunner;
         _fileWatcherService = new FileWatcherService();
 
         // Subscribe to auto-fetch completion
@@ -303,6 +329,13 @@ public partial class MainViewModel : ObservableObject
                 if (_gitGraphViewModel != null && SelectedRepository != null)
                 {
                     await _gitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
+                }
+
+                if (_workingChangesViewModel != null && SelectedRepository != null && IsWorkingChangesSelected)
+                {
+                    _workingChangesViewModel.SetWorkingChanges(
+                        SelectedRepository.Path,
+                        _gitGraphViewModel?.WorkingChanges);
                 }
 
                 if (SelectedRepository != null)
@@ -382,6 +415,31 @@ public partial class MainViewModel : ObservableObject
 
         // Start auto-fetch timer
         StartAutoFetchTimer();
+
+        // Check for updates silently on startup
+        _ = CheckForUpdatesSilentlyAsync();
+    }
+
+    /// <summary>
+    /// Check for updates silently on startup (no dialog if up to date).
+    /// </summary>
+    private async Task CheckForUpdatesSilentlyAsync()
+    {
+        try
+        {
+            var updateService = new UpdateService();
+            var updateInfo = await updateService.CheckForUpdatesAsync();
+
+            if (updateInfo != null)
+            {
+                AvailableUpdate = updateInfo;
+                IsUpdateAvailable = true;
+            }
+        }
+        catch
+        {
+            // Silently ignore errors during startup check
+        }
     }
 
     /// <summary>
@@ -760,6 +818,69 @@ public partial class MainViewModel : ObservableObject
         };
         dialog.ShowDialog();
         TerminalViewModel?.ReloadSettings();
+    }
+
+    /// <summary>
+    /// Check for updates from GitHub releases.
+    /// </summary>
+    [RelayCommand]
+    public async Task CheckForUpdatesAsync()
+    {
+        var updateService = new UpdateService();
+        var updateInfo = await updateService.CheckForUpdatesAsync();
+
+        // Update indicator state
+        AvailableUpdate = updateInfo;
+        IsUpdateAvailable = updateInfo != null;
+
+        if (updateInfo != null)
+        {
+            var result = MessageBox.Show(
+                _ownerWindow,
+                $"A new version of Leaf is available!\n\n" +
+                $"Current version: {UpdateService.CurrentVersionString}\n" +
+                $"Latest version: v{updateInfo.LatestVersion.Major}.{updateInfo.LatestVersion.Minor}.{updateInfo.LatestVersion.Build}\n\n" +
+                $"Would you like to open the download page?",
+                "Update Available",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                UpdateService.OpenDownloadPage(updateInfo.ReleaseUrl);
+            }
+        }
+        else
+        {
+            MessageBox.Show(
+                _ownerWindow,
+                $"You're running the latest version of Leaf ({UpdateService.CurrentVersionString}).",
+                "No Updates Available",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
+
+    /// <summary>
+    /// Open dialog to report a new issue via GitHub CLI.
+    /// </summary>
+    [RelayCommand]
+    public void ReportIssue()
+    {
+        var dialog = new ReportIssueDialog
+        {
+            Owner = _ownerWindow
+        };
+        dialog.ShowDialog();
+    }
+
+    /// <summary>
+    /// Open the releases page on GitHub.
+    /// </summary>
+    [RelayCommand]
+    public void OpenReleasesPage()
+    {
+        UpdateService.OpenReleasesPage();
     }
 
     public void UpdateTerminalHeight(double height)
@@ -2963,6 +3084,29 @@ public partial class MainViewModel : ObservableObject
             return GitFlowBranchType.Support;
 
         return GitFlowBranchType.None;
+    }
+
+    #endregion
+
+    #region IDisposable
+
+    /// <summary>
+    /// Disposes resources held by MainViewModel.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        // Unsubscribe from events to prevent memory leaks
+        _autoFetchService.FetchCompleted -= OnAutoFetchCompleted;
+
+        // Dispose current repository session
+        _currentSession?.Dispose();
+        _currentSession = null;
+
+        // Dispose file watcher
+        _fileWatcherService.Dispose();
     }
 
     #endregion

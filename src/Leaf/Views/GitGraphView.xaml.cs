@@ -1,6 +1,4 @@
 using System.ComponentModel;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -19,8 +17,8 @@ public partial class GitGraphView : UserControl
 {
     private const double RowHeight = 28.0;
     private readonly DispatcherTimer _tooltipCloseTimer;
-    private ToolTip? _pendingTooltipClose;
-    private FrameworkElement? _pendingTooltipTarget;
+    private readonly DispatcherTimer _scrollDebounceTimer;
+    private readonly HashSet<ToolTip> _openTooltips = new();
     private string? _graphTooltipSha;
 
     public GitGraphView()
@@ -33,6 +31,12 @@ public partial class GitGraphView : UserControl
             Interval = TimeSpan.FromMilliseconds(200)
         };
         _tooltipCloseTimer.Tick += OnTooltipCloseTimerTick;
+
+        _scrollDebounceTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(150)
+        };
+        _scrollDebounceTimer.Tick += ScrollDebounceTimer_Tick;
 
         // Subscribe to expansion changes from the canvas
         if (GraphCanvas != null)
@@ -602,51 +606,47 @@ public partial class GitGraphView : UserControl
             PlacementTarget = element,
             StaysOpen = true
         };
+
+        toolTip.Opened += (_, _) => _openTooltips.Add(toolTip);
+        toolTip.Closed += (_, _) => _openTooltips.Remove(toolTip);
+
         toolTip.MouseEnter += (_, _) =>
         {
-            if (_tooltipCloseTimer.IsEnabled)
-            {
-                _tooltipCloseTimer.Stop();
-            }
-            _pendingTooltipClose = null;
-            _pendingTooltipTarget = null;
+            _tooltipCloseTimer.Stop();
         };
         toolTip.MouseLeave += (_, _) =>
         {
-            if (toolTip.PlacementTarget is FrameworkElement target)
-            {
-                ScheduleTooltipClose(target);
-            }
+            StartTooltipCloseTimer();
         };
+
         element.ToolTip = toolTip;
         return toolTip;
     }
 
     private void OnTooltipCloseTimerTick(object? sender, EventArgs e)
     {
-        if (_pendingTooltipClose == null)
-        {
-            _tooltipCloseTimer.Stop();
-            return;
-        }
+        _tooltipCloseTimer.Stop();
 
-        bool targetHovered = _pendingTooltipTarget?.IsMouseOver ?? false;
-        if (!_pendingTooltipClose.IsMouseOver && !targetHovered)
+        // Close all tooltips where neither tooltip nor target is hovered
+        var toClose = _openTooltips
+            .Where(tt => !tt.IsMouseOver &&
+                         tt.PlacementTarget is FrameworkElement target &&
+                         !target.IsMouseOver)
+            .ToList();
+
+        foreach (var tooltip in toClose)
         {
-            _pendingTooltipClose.IsOpen = false;
-            _pendingTooltipClose = null;
-            _pendingTooltipTarget = null;
-            _tooltipCloseTimer.Stop();
+            tooltip.IsOpen = false;
         }
     }
 
     private void ScheduleTooltipClose(FrameworkElement element)
     {
-        if (element.ToolTip is not ToolTip toolTip)
-            return;
+        StartTooltipCloseTimer();
+    }
 
-        _pendingTooltipClose = toolTip;
-        _pendingTooltipTarget = element;
+    private void StartTooltipCloseTimer()
+    {
         if (!_tooltipCloseTimer.IsEnabled)
         {
             _tooltipCloseTimer.Start();
@@ -749,6 +749,34 @@ public partial class GitGraphView : UserControl
         double delta = -e.Delta / 120.0 * RowHeight * multiplier;
         MainScrollViewer.ScrollToVerticalOffset(MainScrollViewer.VerticalOffset + delta);
         e.Handled = true;
+    }
+
+    private void ScrollDebounceTimer_Tick(object? sender, EventArgs e)
+    {
+        _scrollDebounceTimer.Stop();
+        if (DataContext is GitGraphViewModel viewModel &&
+            viewModel.LoadMoreCommitsCommand.CanExecute(null))
+        {
+            viewModel.LoadMoreCommitsCommand.Execute(null);
+        }
+    }
+
+    private void MainScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        // Don't trigger on horizontal scrolls or when viewport is larger than content
+        if (e.ExtentHeight <= e.ViewportHeight)
+            return;
+
+        double scrollPercent = e.VerticalOffset / (e.ExtentHeight - e.ViewportHeight);
+
+        // When scrolled past 65%, trigger load more (with debounce)
+        // Lower threshold prefetches earlier for smoother experience
+        if (scrollPercent > 0.65)
+        {
+            // Debounce: stop and restart timer on each scroll event
+            _scrollDebounceTimer.Stop();
+            _scrollDebounceTimer.Start();
+        }
     }
 
 }

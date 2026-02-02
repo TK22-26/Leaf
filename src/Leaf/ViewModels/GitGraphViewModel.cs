@@ -30,6 +30,14 @@ public partial class GitGraphViewModel : ObservableObject
     private GitFlowConfig? _gitFlowConfig;
     private IReadOnlyCollection<string> _remoteNames = Array.Empty<string>();
 
+    // Lazy loading state
+    private int _loadedCommitCount;
+    private bool _hasMoreCommits = true;
+    private HashSet<string> _loadedCommitShas = new(StringComparer.OrdinalIgnoreCase);
+    private CancellationTokenSource? _graphBuildCts;
+    private const int BatchSize = 1000;  // Large batch to minimize O(n) skip cost
+    private const int InitialBatchSize = 500;
+
     [ObservableProperty]
     private string? _repositoryPath;
 
@@ -56,6 +64,9 @@ public partial class GitGraphViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isLoading;
+
+    [ObservableProperty]
+    private bool _isLoadingMore;
 
     [ObservableProperty]
     private string? _errorMessage;
@@ -135,6 +146,12 @@ public partial class GitGraphViewModel : ObservableObject
                 _hiddenBranchNames.Clear();
                 _soloBranchNames.Clear();
                 _branchTips.Clear();
+
+                // Reset lazy loading state on repo change
+                _loadedCommitCount = 0;
+                _hasMoreCommits = true;
+                IsLoadingMore = false;
+                _loadedCommitShas.Clear();
             }
 
             // Only show loading overlay on initial load (no existing data)
@@ -150,7 +167,7 @@ public partial class GitGraphViewModel : ObservableObject
 
             // Load working changes, commits, and stashes in parallel
             var workingChangesTask = _gitService.GetWorkingChangesAsync(path);
-            var commitsTask = _gitService.GetCommitHistoryAsync(path, 500);
+            var commitsTask = _gitService.GetCommitHistoryAsync(path, InitialBatchSize);
             var stashesTask = _gitService.GetStashesAsync(path);
 
             await Task.WhenAll(workingChangesTask, commitsTask, stashesTask);
@@ -170,6 +187,12 @@ public partial class GitGraphViewModel : ObservableObject
             _allCommits = commits.ToList();
             WorkingChanges = workingChanges;
             Stashes = new ObservableCollection<StashInfo>(stashes);
+
+            // Initialize lazy loading state
+            _loadedCommitCount = commits.Count;
+            _loadedCommitShas = new HashSet<string>(commits.Select(c => c.Sha), StringComparer.OrdinalIgnoreCase);
+            _hasMoreCommits = commits.Count == InitialBatchSize;
+            IsLoadingMore = false;
 
             RebuildGraphFromFilters();
 
@@ -284,6 +307,102 @@ public partial class GitGraphViewModel : ObservableObject
     {
         await LoadRepositoryAsync(RepositoryPath);
     }
+
+    /// <summary>
+    /// Load more commits when scrolling near bottom.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanLoadMoreCommits))]
+    private async Task LoadMoreCommitsAsync()
+    {
+        if (IsLoadingMore || !_hasMoreCommits || string.IsNullOrEmpty(RepositoryPath))
+            return;
+
+        IsLoadingMore = true;
+
+        // Cancel any pending graph build
+        _graphBuildCts?.Cancel();
+        _graphBuildCts = new CancellationTokenSource();
+        var ct = _graphBuildCts.Token;
+
+        try
+        {
+            var moreCommits = await _gitService.GetCommitHistoryAsync(
+                RepositoryPath,
+                BatchSize,
+                skip: _loadedCommitCount);
+
+            // Check if we've reached the end
+            if (moreCommits.Count < BatchSize)
+            {
+                _hasMoreCommits = false;
+            }
+
+            if (moreCommits.Count == 0)
+            {
+                return;
+            }
+
+            // Dedupe by SHA - filter out already-loaded commits
+            var newCommits = moreCommits
+                .Where(c => !_loadedCommitShas.Contains(c.Sha))
+                .ToList();
+
+            // Append to collections (fast, no graph yet)
+            foreach (var commit in newCommits)
+            {
+                _allCommits.Add(commit);
+                _loadedCommitShas.Add(commit.Sha);
+            }
+
+            _loadedCommitCount += moreCommits.Count;
+
+            // Capture state for background work
+            var visibleCommits = GetVisibleCommits();
+            var currentBranch = _currentBranchName;
+
+            // Build graph on background thread with new GraphBuilder instance
+            // (avoids race on instance state like MaxLane)
+            var (nodes, maxLane) = await Task.Run(() =>
+            {
+                ct.ThrowIfCancellationRequested();
+                var tempBuilder = new GraphBuilder();
+                var graphNodes = tempBuilder.BuildGraph(visibleCommits, currentBranch);
+                return (graphNodes, tempBuilder.MaxLane);
+            }, ct);
+
+            ct.ThrowIfCancellationRequested();
+
+            // Fast UI update (pointer swaps only)
+            Nodes = new ObservableCollection<GitTreeNode>(nodes);
+            Commits = new ObservableCollection<CommitInfo>(visibleCommits);
+            MaxLane = maxLane;
+
+            // Recalculate height
+            int rowCount = Commits.Count + (HasWorkingChanges ? 1 : 0) + Stashes.Count;
+            TotalHeight = rowCount * RowHeight;
+
+            // Handle selection (use SHA comparison - new list has new instances)
+            if (SelectedCommit != null && !Commits.Any(c => c.Sha == SelectedCommit.Sha))
+            {
+                SelectedCommit.IsSelected = false;
+                SelectedCommit = null;
+                SelectedSha = null;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelled - another load started, ignore
+        }
+        finally
+        {
+            IsLoadingMore = false;
+        }
+    }
+
+    private bool CanLoadMoreCommits() =>
+        _hasMoreCommits &&
+        !IsLoadingMore &&
+        !IsSearchActive;  // Don't load during search - causes jarring reorders
 
     /// <summary>
     /// Select a commit by SHA.

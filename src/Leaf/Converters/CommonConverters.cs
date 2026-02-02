@@ -52,7 +52,7 @@ public class NullToVisibilityConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -69,7 +69,7 @@ public class NullToVisibilityInverseConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -94,6 +94,70 @@ public class InverseBoolToVisibilityConverter : IValueConverter
             return visibility != Visibility.Visible;
         }
         return true;
+    }
+}
+
+/// <summary>
+/// Converts a bool to a GridLength. True = Star (default) or Auto, False = 0.
+/// Pass "Auto" as parameter to use Auto instead of Star.
+/// </summary>
+public class BoolToGridLengthConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool boolValue)
+        {
+            if (!boolValue)
+            {
+                return new GridLength(0);
+            }
+
+            if (parameter is string param && param.Equals("Auto", StringComparison.OrdinalIgnoreCase))
+            {
+                return GridLength.Auto;
+            }
+
+            return new GridLength(1, GridUnitType.Star);
+        }
+
+        return new GridLength(0);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is GridLength length)
+        {
+            return length.Value > 0 && length.GridUnitType != GridUnitType.Pixel;
+        }
+
+        return false;
+    }
+}
+
+/// <summary>
+/// Converts a bool to a row height for expandable sections.
+/// True = Star, False = Auto.
+/// </summary>
+public class BoolToSectionRowHeightConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool boolValue)
+        {
+            return boolValue ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        }
+
+        return GridLength.Auto;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is GridLength length)
+        {
+            return length.GridUnitType == GridUnitType.Star && length.Value > 0;
+        }
+
+        return false;
     }
 }
 
@@ -141,7 +205,7 @@ public class EmptyToVisibilityConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -162,7 +226,7 @@ public class BoolToOpacityConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -190,7 +254,7 @@ public class FileStatusToBrushConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -214,7 +278,7 @@ public class SubtractConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -234,7 +298,7 @@ public class IntGreaterThanZeroConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -252,7 +316,7 @@ public class IntGreaterThanZeroToVisibilityConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -272,7 +336,8 @@ public class TerminalRowHeightConverter : IMultiValueConverter
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        // OneWay converter - return array of DoNothing for each target type
+        return targetTypes.Select(_ => Binding.DoNothing).ToArray();
     }
 }
 
@@ -293,7 +358,7 @@ public class OverflowCommitCountConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -317,7 +382,7 @@ public class IdenticonConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -366,7 +431,7 @@ public class BranchNameToGitFlowColorConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -399,7 +464,7 @@ public class BranchNameToGitFlowVisibilityConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -433,7 +498,7 @@ public class GitFlowTypeToVisibilityConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -463,7 +528,7 @@ public class ReservedFileNameToVisibilityConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -485,7 +550,7 @@ public class StringIsNullOrEmptyConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -524,7 +589,7 @@ public class ShaToBrushConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -555,7 +620,7 @@ public class MultiplyConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }
 
@@ -578,6 +643,28 @@ public class BlameChunkHeightConverter : IMultiValueConverter
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        // OneWay converter - return array of DoNothing for each target type
+        return targetTypes.Select(_ => Binding.DoNothing).ToArray();
+    }
+}
+
+/// <summary>
+/// Converts a height to a CornerRadius that is half the height.
+/// </summary>
+public class HalfValueToCornerRadiusConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double height)
+        {
+            return new CornerRadius(height / 2.0);
+        }
+
+        return new CornerRadius(0);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return Binding.DoNothing;
     }
 }

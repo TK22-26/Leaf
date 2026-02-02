@@ -19,7 +19,20 @@ public partial class WorkingChangesViewModel : ObservableObject
 {
     private readonly IGitService _gitService;
     private readonly SettingsService _settingsService;
+    private readonly OllamaService _ollamaService = new();
     private string? _repositoryPath;
+
+    [ObservableProperty]
+    private bool _showUnstagedTreeView;
+
+    [ObservableProperty]
+    private bool _showStagedTreeView;
+
+    [ObservableProperty]
+    private bool _isUnstagedExpanded = true;
+
+    [ObservableProperty]
+    private bool _isStagedExpanded = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasChanges))]
@@ -39,6 +52,12 @@ public partial class WorkingChangesViewModel : ObservableObject
 
     [ObservableProperty]
     private string? _errorMessage;
+
+    [ObservableProperty]
+    private ObservableCollection<PathTreeNode> _unstagedTreeItems = [];
+
+    [ObservableProperty]
+    private ObservableCollection<PathTreeNode> _stagedTreeItems = [];
 
     /// <summary>
     /// Maximum characters for commit message.
@@ -153,6 +172,12 @@ public partial class WorkingChangesViewModel : ObservableObject
         {
             IsLoading = false;
         }
+    }
+
+    partial void OnWorkingChangesChanged(WorkingChangesInfo? value)
+    {
+        UnstagedTreeItems = BuildTree(value?.UnstagedFiles ?? []);
+        StagedTreeItems = BuildTree(value?.StagedFiles ?? []);
     }
 
     /// <summary>
@@ -404,6 +429,100 @@ public partial class WorkingChangesViewModel : ObservableObject
             if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
             {
                 Process.Start("explorer.exe", $"\"{directory}\"");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Open the file using the default associated application.
+    /// </summary>
+    [RelayCommand]
+    public void OpenFile(FileStatusInfo file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        var normalizedFilePath = file.Path.Replace('/', '\\');
+        var fullPath = Path.Combine(_repositoryPath, normalizedFilePath);
+        if (!File.Exists(fullPath))
+            return;
+
+        Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true });
+    }
+
+    private static ObservableCollection<PathTreeNode> BuildTree(IEnumerable<FileStatusInfo> files)
+    {
+        var roots = new ObservableCollection<PathTreeNode>();
+        var dirLookup = new Dictionary<string, PathTreeNode>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in files.OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase))
+        {
+            var normalized = file.Path.Replace('\\', '/');
+            var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                continue;
+
+            PathTreeNode? parent = null;
+            var currentPath = string.Empty;
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                var part = parts[i];
+                currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
+                bool isFile = i == parts.Length - 1;
+
+                if (isFile)
+                {
+                    var fileNode = new PathTreeNode(part, currentPath, isFile: true, file, isRoot: parent == null);
+                    if (parent == null)
+                    {
+                        roots.Add(fileNode);
+                    }
+                    else
+                    {
+                        parent.Children.Add(fileNode);
+                    }
+                }
+                else
+                {
+                    if (!dirLookup.TryGetValue(currentPath, out var dirNode))
+                    {
+                        dirNode = new PathTreeNode(part, currentPath, isFile: false);
+                        dirLookup[currentPath] = dirNode;
+
+                        if (parent == null)
+                        {
+                            roots.Add(dirNode);
+                        }
+                        else
+                        {
+                            parent.Children.Add(dirNode);
+                        }
+                    }
+
+                    parent = dirNode;
+                }
+            }
+        }
+
+        SortNodes(roots);
+        return roots;
+    }
+
+    private static void SortNodes(ObservableCollection<PathTreeNode> nodes)
+    {
+        var sorted = nodes
+            .OrderBy(n => n.IsFile)
+            .ThenBy(n => n.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        nodes.Clear();
+        foreach (var node in sorted)
+        {
+            nodes.Add(node);
+            if (!node.IsFile && node.Children.Count > 0)
+            {
+                SortNodes(node.Children);
             }
         }
     }
@@ -692,7 +811,10 @@ exit /b %errorlevel%
                 summary = string.Empty;
             }
 
-            var prompt = BuildPrompt(_repositoryPath, summary, includeContext);
+            var isOllama = preferredProvider.Equals("Ollama", StringComparison.OrdinalIgnoreCase);
+            var prompt = isOllama
+                ? BuildOllamaPrompt(summary)
+                : BuildPrompt(_repositoryPath, summary, includeContext);
             var timeoutSeconds = Math.Max(1, settings.AiCliTimeoutSeconds);
 
             Debug.WriteLine($"[WorkingChanges] AutoFill prompt length: {prompt.Length}, summary={summary.Length}, timeout={timeoutSeconds}s, includeContext={includeContext}");
@@ -772,9 +894,49 @@ If there are no significant details, description may be an empty string.
 Do not include any additional text or formatting outside the JSON.{contextBlock}";
     }
 
+    private static string BuildOllamaPrompt(string summary)
+    {
+        return
+$@"Write a git commit message for these changes. Be concise and specific.
+
+RULES:
+- Describe WHAT changed and WHY, not which files changed
+- Do NOT list filenames
+- Use imperative mood (Fix, Add, Update, Remove, Refactor)
+- Keep the commit message under 72 characters
+
+BAD examples (do not do this):
+- ""Updated file1.cs, file2.cs, file3.cs""
+- ""Modified SettingsDialog.xaml""
+- ""Changes to multiple files""
+
+GOOD examples:
+- ""Fix tooltip not closing when mouse moves away""
+- ""Add Ollama integration for local AI commit messages""
+- ""Refactor service layer to use dependency injection""
+
+Changes:
+{summary}
+
+Respond with ONLY this format:
+Commit message: [your message here]
+Description:
+- [bullet point 1]
+- [bullet point 2]";
+    }
+
     private async Task<(bool success, string output, string detail)> RunAiPromptAsync(
         string provider, string prompt, int timeoutSeconds, string? repoPath = null)
     {
+        // Handle Ollama separately via HTTP API (not CLI)
+        if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
+        {
+            var settings = _settingsService.LoadSettings();
+            var (success, output, error) = await _ollamaService.GenerateAsync(
+                settings.OllamaBaseUrl, settings.OllamaSelectedModel, prompt, timeoutSeconds);
+            return (success, output, error ?? string.Empty);
+        }
+
         var (command, args, useStdin, workingDirectory) = BuildAiCommand(provider, prompt, repoPath);
         if (string.IsNullOrWhiteSpace(command))
         {
@@ -1071,6 +1233,8 @@ Do not include any additional text or formatting outside the JSON.{contextBlock}
             return settings.IsGeminiConnected;
         if (provider.Equals("Codex", StringComparison.OrdinalIgnoreCase))
             return settings.IsCodexConnected;
+        if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
+            return !string.IsNullOrEmpty(settings.OllamaSelectedModel);
 
         return false;
     }

@@ -26,7 +26,10 @@
         <converters:TerminalRowHeightConverter x:Key="TerminalRowHeightConverter" />
 
         <!--  Action bar button style with green hover (stacked icon + text)  -->
-        <Style x:Key="ActionBarButtonStyle" BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
+        <Style
+            x:Key="ActionBarButtonStyle"
+            BasedOn="{StaticResource {x:Type Button}}"
+            TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Margin" Value="1,0" />
@@ -41,7 +44,11 @@
     </Window.Resources>
 
     <Window.InputBindings>
-        <KeyBinding Key="Oem3" Modifiers="Control" Command="{Binding ToggleTerminalCommand}" />
+        <KeyBinding
+            Key="Oem3"
+            Command="{Binding ToggleTerminalCommand}"
+            Modifiers="Control" />
+        <KeyBinding Key="F1" Command="{Binding ReportIssueCommand}" />
     </Window.InputBindings>
 
     <Grid>
@@ -56,53 +63,121 @@
             Grid.Row="0"
             BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
             BorderThickness="0,0,0,1">
-            <Menu>
-                <MenuItem Header="_File">
-                    <MenuItem Command="{Binding AddRepositoryCommand}" Header="_Add Repository..." />
-                    <MenuItem Command="{Binding AddAllReposInFolderCommand}" Header="Add All Repos in _Folder..." />
-                    <Separator />
-                    <MenuItem Command="{Binding OpenSettingsCommand}" Header="_Settings" />
-                </MenuItem>
-                <MenuItem Header="_Repository">
-                    <MenuItem Command="{Binding CloneRepositoryCommand}" Header="_Clone..." />
-                    <Separator />
-                    <MenuItem Command="{Binding FetchAllCommand}" Header="_Fetch All" />
-                    <MenuItem Command="{Binding RefreshCommand}" Header="_Refresh" />
-                    <Separator />
-                    <MenuItem Header="_GitFlow">
-                        <MenuItem.Icon>
-                            <ic:SymbolIcon Symbol="BranchFork" FontSize="14"/>
-                        </MenuItem.Icon>
-                        <MenuItem Header="Initialize GitFlow..." Command="{Binding InitializeGitFlowCommand}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Menu Grid.Column="0">
+                    <MenuItem Header="_File">
+                        <MenuItem Command="{Binding AddRepositoryCommand}" Header="_Add Repository..." />
+                        <MenuItem Command="{Binding AddAllReposInFolderCommand}" Header="Add All Repos in _Folder..." />
+                        <Separator />
+                        <MenuItem Command="{Binding OpenSettingsCommand}" Header="_Settings" />
+                    </MenuItem>
+                    <MenuItem Header="_Repository">
+                        <MenuItem Command="{Binding CloneRepositoryCommand}" Header="_Clone..." />
+                        <Separator />
+                        <MenuItem Command="{Binding FetchAllCommand}" Header="_Fetch All" />
+                        <MenuItem Command="{Binding RefreshCommand}" Header="_Refresh" />
+                        <Separator />
+                        <MenuItem Header="_GitFlow">
                             <MenuItem.Icon>
-                                <ic:SymbolIcon Symbol="Settings" FontSize="14"/>
+                                <ic:SymbolIcon FontSize="14" Symbol="BranchFork" />
+                            </MenuItem.Icon>
+                            <MenuItem Command="{Binding InitializeGitFlowCommand}" Header="Initialize GitFlow...">
+                                <MenuItem.Icon>
+                                    <ic:SymbolIcon FontSize="14" Symbol="Settings" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <Separator />
+                            <MenuItem Command="{Binding StartFeatureCommand}" Header="Start Feature...">
+                                <MenuItem.Icon>
+                                    <Border
+                                        Width="14"
+                                        Height="14"
+                                        Background="#8250DF"
+                                        CornerRadius="7" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Command="{Binding StartReleaseCommand}" Header="Start Release...">
+                                <MenuItem.Icon>
+                                    <Border
+                                        Width="14"
+                                        Height="14"
+                                        Background="#BF8700"
+                                        CornerRadius="7" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Command="{Binding StartHotfixCommand}" Header="Start Hotfix...">
+                                <MenuItem.Icon>
+                                    <Border
+                                        Width="14"
+                                        Height="14"
+                                        Background="#CF222E"
+                                        CornerRadius="7" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                        </MenuItem>
+                    </MenuItem>
+                    <MenuItem Header="_View">
+                        <MenuItem
+                            Header="Terminal"
+                            InputGestureText="Ctrl+`"
+                            IsCheckable="True"
+                            IsChecked="{Binding IsTerminalVisible, Mode=TwoWay}" />
+                    </MenuItem>
+                    <MenuItem Header="_Help">
+                        <MenuItem Command="{Binding CheckForUpdatesCommand}" Header="Check for _Updates...">
+                            <MenuItem.Icon>
+                                <ic:SymbolIcon FontSize="14" Symbol="ArrowDownload" />
                             </MenuItem.Icon>
                         </MenuItem>
-                        <Separator/>
-                        <MenuItem Header="Start Feature..." Command="{Binding StartFeatureCommand}">
+                        <MenuItem Command="{Binding OpenReleasesPageCommand}" Header="View _Releases">
                             <MenuItem.Icon>
-                                <Border Width="14" Height="14" CornerRadius="7" Background="#8250DF"/>
+                                <ic:SymbolIcon FontSize="14" Symbol="Open" />
                             </MenuItem.Icon>
                         </MenuItem>
-                        <MenuItem Header="Start Release..." Command="{Binding StartReleaseCommand}">
+                        <Separator />
+                        <MenuItem
+                            Command="{Binding ReportIssueCommand}"
+                            Header="_Report an Issue..."
+                            InputGestureText="F1">
                             <MenuItem.Icon>
-                                <Border Width="14" Height="14" CornerRadius="7" Background="#BF8700"/>
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="Start Hotfix..." Command="{Binding StartHotfixCommand}">
-                            <MenuItem.Icon>
-                                <Border Width="14" Height="14" CornerRadius="7" Background="#CF222E"/>
+                                <ic:SymbolIcon FontSize="14" Symbol="Bug" />
                             </MenuItem.Icon>
                         </MenuItem>
                     </MenuItem>
-                </MenuItem>
-                <MenuItem Header="_View">
-                    <MenuItem Header="Terminal"
-                              InputGestureText="Ctrl+`"
-                              IsCheckable="True"
-                              IsChecked="{Binding IsTerminalVisible, Mode=TwoWay}" />
-                </MenuItem>
-            </Menu>
+                </Menu>
+
+                <!--  Update Available Indicator  -->
+                <Button
+                    Grid.Column="1"
+                    Margin="0,0,8,3"
+                    Padding="8,3"
+                    VerticalAlignment="Bottom"
+                    Background="#2D6A3E"
+                    BorderThickness="0"
+                    Command="{Binding CheckForUpdatesCommand}"
+                    Cursor="Hand"
+                    Visibility="{Binding IsUpdateAvailable, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontFamily="Segoe UI Emoji"
+                            FontSize="12"
+                            Text="🎉" />
+                        <TextBlock
+                            Margin="6,0,0,0"
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            FontWeight="SemiBold"
+                            Foreground="#C0E8CC"
+                            Text="Update Available" />
+                    </StackPanel>
+                </Button>
+            </Grid>
         </Border>
 
         <!--  Repository Action Bar  -->
@@ -299,9 +374,7 @@
                         </StackPanel>
                     </Button>
                     <!--  Pop  -->
-                    <Button
-                        Command="{Binding PopStashCommand}"
-                        ToolTip="Pop stashed changes (select a stash first)">
+                    <Button Command="{Binding PopStashCommand}" ToolTip="Pop stashed changes (select a stash first)">
                         <Button.Style>
                             <Style BasedOn="{StaticResource ActionBarButtonStyle}" TargetType="Button">
                                 <Setter Property="Opacity" Value="1" />
@@ -380,353 +453,352 @@
 
             <!--  Main four-panel layout  -->
             <Grid Grid.Row="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="250" MinWidth="200" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="350" MinWidth="0" />
-            </Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="250" MinWidth="200" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="350" MinWidth="0" />
+                </Grid.ColumnDefinitions>
 
-            <!--  Left panel: Repository list (collapsible)  -->
-            <Border
-                Grid.Column="0"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="0,0,1,0">
-                <Grid>
-                    <!--  Collapsed state: narrow clickable bar with chevron  -->
-                    <Border
-                        Width="16"
-                        HorizontalAlignment="Left"
-                        Background="{DynamicResource ControlFillColorDefaultBrush}"
-                        Cursor="Hand"
-                        MouseLeftButtonDown="RepoPane_MouseLeftButtonDown"
-                        Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <Border.ToolTip>Click to expand repositories</Border.ToolTip>
-                        <TextBlock
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            FontFamily="Segoe Fluent Icons"
-                            FontSize="10"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="&#xE76C;" />
-                    </Border>
-                    <!--  Expanded state: full repo list with collapse button  -->
-                    <Grid Width="220" Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <!--  Header with collapse button  -->
+                <!--  Left panel: Repository list (collapsible)  -->
+                <Border
+                    Grid.Column="0"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,1,0">
+                    <Grid>
+                        <!--  Collapsed state: narrow clickable bar with chevron  -->
                         <Border
-                            Grid.Row="0"
-                            Padding="8,4"
-                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                            BorderThickness="0,0,0,1">
-                            <Grid>
-                                <TextBlock
-                                    VerticalAlignment="Center"
-                                    FontWeight="SemiBold"
-                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                    Text="Repositories" />
-                                <StackPanel
-                                    Margin="0,0,0,0"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Center"
-                                    Orientation="Horizontal">
-                                    <Button
-                                        Padding="4,2"
-                                        Background="Transparent"
-                                        BorderThickness="0"
-                                        Command="{Binding CloneRepositoryCommand}"
-                                        Cursor="Hand"
-                                        ToolTip="Clone repository">
-                                        <ic:SymbolIcon
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                            Symbol="ArrowDownload" />
-                                    </Button>
-                                    <Button
-                                        Padding="4,2"
-                                        Background="Transparent"
-                                        BorderThickness="0"
-                                        Command="{Binding AddRepositoryCommand}"
-                                        Cursor="Hand"
-                                        ToolTip="Add repository">
-                                        <ic:SymbolIcon
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                            Symbol="Add" />
-                                    </Button>
-                                    <Button
-                                        Padding="4,2"
-                                        Background="Transparent"
-                                        BorderThickness="0"
-                                        Command="{Binding ToggleRepoPaneCommand}"
-                                        Cursor="Hand"
-                                        ToolTip="Collapse panel">
-                                        <TextBlock
-                                            FontFamily="Segoe Fluent Icons"
-                                            FontSize="10"
-                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                            Text="&#xE76B;" />
-                                    </Button>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-                        <views:RepositoryListView Grid.Row="1" DataContext="{Binding}" />
-                    </Grid>
-                </Grid>
-            </Border>
-
-            <!--  Second panel: Branches for selected repo  -->
-            <Border
-                Grid.Column="1"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="0,0,1,0">
-                <views:BranchListView DataContext="{Binding}" />
-            </Border>
-
-            <!--  Center panel: Git graph + commit list  -->
-            <Grid Grid.Column="2">
-                <views:GitGraphView DataContext="{Binding GitGraphViewModel}"
-                                    Visibility="{Binding DataContext.IsDiffViewerVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
-
-                <!--  Click-outside overlay to cancel branch input  -->
-                <Border
-                    Background="Transparent"
-                    MouseLeftButtonDown="BranchInputOverlay_MouseLeftButtonDown"
-                    Visibility="{Binding IsBranchInputVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
-
-                <!--  Floating Branch Input Overlay  -->
-                <Border
-                    Margin="0,8,15,0"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Top"
-                    Visibility="{Binding IsBranchInputVisible, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <Border
-                        Padding="3"
-                        Background="#1D4A28"
-                        BorderBrush="#2D6A3E"
-                        BorderThickness="1"
-                        CornerRadius="4">
-                        <Border.Effect>
-                            <DropShadowEffect
-                                BlurRadius="9"
-                                Opacity="0.4"
-                                ShadowDepth="2"
-                                Color="Black" />
-                        </Border.Effect>
-                        <StackPanel Orientation="Horizontal">
-                            <!--  Branch icon  -->
-                            <ic:SymbolIcon
-                                Margin="6,0,5,0"
+                            Width="16"
+                            HorizontalAlignment="Left"
+                            Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            Cursor="Hand"
+                            MouseLeftButtonDown="RepoPane_MouseLeftButtonDown"
+                            Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Border.ToolTip>Click to expand repositories</Border.ToolTip>
+                            <TextBlock
+                                HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
-                                FontSize="15"
-                                Foreground="#8BC99A"
-                                Symbol="BranchFork" />
-
-                            <!--  Branch name input  -->
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="10"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="&#xE76C;" />
+                        </Border>
+                        <!--  Expanded state: full repo list with collapse button  -->
+                        <Grid Width="220" Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <!--  Header with collapse button  -->
                             <Border
-                                Width="165"
-                                Height="27"
-                                Padding="4,0,0,0"
-                                Background="#2A2A2A"
-                                CornerRadius="2">
+                                Grid.Row="0"
+                                Padding="8,4"
+                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="0,0,0,1">
                                 <Grid>
                                     <TextBlock
-                                        Margin="0"
-                                        HorizontalAlignment="Left"
                                         VerticalAlignment="Center"
-                                        FontSize="13"
-                                        Foreground="#666666"
-                                        IsHitTestVisible="False"
-                                        Text="{Binding BranchInputPlaceholder}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Text, ElementName=BranchNameInput}" Value="">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <TextBox
-                                        x:Name="BranchNameInput"
-                                        HorizontalAlignment="Stretch"
+                                        FontWeight="SemiBold"
+                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                        Text="Repositories" />
+                                    <StackPanel
+                                        Margin="0,0,0,0"
+                                        HorizontalAlignment="Right"
                                         VerticalAlignment="Center"
-                                        BorderThickness="0"
-                                        CaretBrush="#E0E0E0"
-                                        FontSize="13"
-                                        Foreground="#E0E0E0"
-                                        IsVisibleChanged="BranchNameInput_IsVisibleChanged"
-                                        KeyDown="BranchNameInput_KeyDown"
-                                        PreviewTextInput="BranchNameInput_PreviewTextInput"
-                                        Text="{Binding NewBranchName, UpdateSourceTrigger=PropertyChanged}">
-                                        <TextBox.Template>
-                                            <ControlTemplate TargetType="TextBox">
-                                                <ScrollViewer
-                                                    x:Name="PART_ContentHost"
-                                                    Margin="-12,0,4,0"
-                                                    Padding="0"
-                                                    HorizontalAlignment="Stretch"
-                                                    VerticalAlignment="Center" />
-                                            </ControlTemplate>
-                                        </TextBox.Template>
-                                    </TextBox>
+                                        Orientation="Horizontal">
+                                        <Button
+                                            Padding="4,2"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Command="{Binding CloneRepositoryCommand}"
+                                            Cursor="Hand"
+                                            ToolTip="Clone repository">
+                                            <ic:SymbolIcon
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                Symbol="ArrowDownload" />
+                                        </Button>
+                                        <Button
+                                            Padding="4,2"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Command="{Binding AddRepositoryCommand}"
+                                            Cursor="Hand"
+                                            ToolTip="Add repository">
+                                            <ic:SymbolIcon
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                Symbol="Add" />
+                                        </Button>
+                                        <Button
+                                            Padding="4,2"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Command="{Binding ToggleRepoPaneCommand}"
+                                            Cursor="Hand"
+                                            ToolTip="Collapse panel">
+                                            <TextBlock
+                                                FontFamily="Segoe Fluent Icons"
+                                                FontSize="10"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                Text="&#xE76B;" />
+                                        </Button>
+                                    </StackPanel>
                                 </Grid>
                             </Border>
-
-                            <!--  Create button  -->
-                            <Button
-                                Margin="3,0,2,0"
-                                Padding="8,2"
-                                Background="#2D6A3E"
-                                BorderBrush="#3D8A4E"
-                                BorderThickness="1"
-                                Command="{Binding ConfirmCreateBranchCommand}"
-                                Content="{Binding BranchInputActionText}"
-                                FontSize="13"
-                                Foreground="#C0E8CC">
-                                <Button.Style>
-                                    <Style BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
-                                        <Setter Property="IsEnabled" Value="True" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding NewBranchName}" Value="">
-                                                <Setter Property="IsEnabled" Value="False" />
-                                            </DataTrigger>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter Property="Background" Value="#3D8A4E" />
-                                            </Trigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Button.Style>
-                            </Button>
-                        </StackPanel>
-                    </Border>
+                            <views:RepositoryListView Grid.Row="1" DataContext="{Binding}" />
+                        </Grid>
+                    </Grid>
                 </Border>
-            </Grid>
 
-            <!--  Right panel: Commit details / Working changes / Merge Status  -->
-            <Border
-                Grid.Column="3"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="1,0,0,0"
-                Visibility="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}">
-                <Grid>
-                    <!--  Priority 1: Merge Status View  -->
-                    <views:MergeStatusView DataContext="{Binding}">
-                        <views:MergeStatusView.Style>
-                            <Style TargetType="views:MergeStatusView">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <MultiDataTrigger>
-                                        <MultiDataTrigger.Conditions>
-                                            <Condition Binding="{Binding SelectedRepository.IsMergeInProgress}" Value="True" />
-                                            <Condition Binding="{Binding SelectedRepository.ConflictCount, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True" />
-                                        </MultiDataTrigger.Conditions>
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </MultiDataTrigger>
-                                    <MultiDataTrigger>
-                                        <MultiDataTrigger.Conditions>
-                                            <Condition Binding="{Binding SelectedRepository.IsMergeInProgress}" Value="True" />
-                                            <Condition Binding="{Binding MergeConflictResolutionViewModel.TotalCount, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True" />
-                                        </MultiDataTrigger.Conditions>
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </MultiDataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:MergeStatusView.Style>
-                    </views:MergeStatusView>
+                <!--  Second panel: Branches for selected repo  -->
+                <Border
+                    Grid.Column="1"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,1,0">
+                    <views:BranchListView DataContext="{Binding}" />
+                </Border>
 
-                    <!--  Priority 2: Working Changes View  -->
-                    <views:WorkingChangesView DataContext="{Binding WorkingChangesViewModel}">
-                        <views:WorkingChangesView.Style>
-                            <Style TargetType="views:WorkingChangesView">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <MultiDataTrigger>
-                                        <MultiDataTrigger.Conditions>
-                                            <!--  Show if WorkingChangesSelected AND NOT MergeInProgress  -->
-                                            <Condition Binding="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
-                                            <Condition Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="False" />
-                                        </MultiDataTrigger.Conditions>
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </MultiDataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:WorkingChangesView.Style>
-                    </views:WorkingChangesView>
+                <!--  Center panel: Git graph + commit list  -->
+                <Grid Grid.Column="2">
+                    <views:GitGraphView DataContext="{Binding GitGraphViewModel}" Visibility="{Binding DataContext.IsDiffViewerVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
 
-                    <!--  Priority 3: Commit Detail View (Default)  -->
-                    <views:CommitDetailView DataContext="{Binding CommitDetailViewModel}">
-                        <views:CommitDetailView.Style>
-                            <Style TargetType="views:CommitDetailView">
-                                <Setter Property="Visibility" Value="Visible" />
-                                <Style.Triggers>
-                                    <!--  Hide if WorkingChangesSelected  -->
-                                    <DataTrigger Binding="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                    <!--  Hide if MergeInProgress  -->
-                                    <DataTrigger Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:CommitDetailView.Style>
-                    </views:CommitDetailView>
+                    <!--  Click-outside overlay to cancel branch input  -->
+                    <Border
+                        Background="Transparent"
+                        MouseLeftButtonDown="BranchInputOverlay_MouseLeftButtonDown"
+                        Visibility="{Binding IsBranchInputVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <!--  Floating Branch Input Overlay  -->
+                    <Border
+                        Margin="0,8,15,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Visibility="{Binding IsBranchInputVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Border
+                            Padding="3"
+                            Background="#1D4A28"
+                            BorderBrush="#2D6A3E"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                            <Border.Effect>
+                                <DropShadowEffect
+                                    BlurRadius="9"
+                                    Opacity="0.4"
+                                    ShadowDepth="2"
+                                    Color="Black" />
+                            </Border.Effect>
+                            <StackPanel Orientation="Horizontal">
+                                <!--  Branch icon  -->
+                                <ic:SymbolIcon
+                                    Margin="6,0,5,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="15"
+                                    Foreground="#8BC99A"
+                                    Symbol="BranchFork" />
+
+                                <!--  Branch name input  -->
+                                <Border
+                                    Width="165"
+                                    Height="27"
+                                    Padding="4,0,0,0"
+                                    Background="#2A2A2A"
+                                    CornerRadius="2">
+                                    <Grid>
+                                        <TextBlock
+                                            Margin="0"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            FontSize="13"
+                                            Foreground="#666666"
+                                            IsHitTestVisible="False"
+                                            Text="{Binding BranchInputPlaceholder}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Text, ElementName=BranchNameInput}" Value="">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBox
+                                            x:Name="BranchNameInput"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Center"
+                                            BorderThickness="0"
+                                            CaretBrush="#E0E0E0"
+                                            FontSize="13"
+                                            Foreground="#E0E0E0"
+                                            IsVisibleChanged="BranchNameInput_IsVisibleChanged"
+                                            KeyDown="BranchNameInput_KeyDown"
+                                            PreviewTextInput="BranchNameInput_PreviewTextInput"
+                                            Text="{Binding NewBranchName, UpdateSourceTrigger=PropertyChanged}">
+                                            <TextBox.Template>
+                                                <ControlTemplate TargetType="TextBox">
+                                                    <ScrollViewer
+                                                        x:Name="PART_ContentHost"
+                                                        Margin="-12,0,4,0"
+                                                        Padding="0"
+                                                        HorizontalAlignment="Stretch"
+                                                        VerticalAlignment="Center" />
+                                                </ControlTemplate>
+                                            </TextBox.Template>
+                                        </TextBox>
+                                    </Grid>
+                                </Border>
+
+                                <!--  Create button  -->
+                                <Button
+                                    Margin="3,0,2,0"
+                                    Padding="8,2"
+                                    Background="#2D6A3E"
+                                    BorderBrush="#3D8A4E"
+                                    BorderThickness="1"
+                                    Command="{Binding ConfirmCreateBranchCommand}"
+                                    Content="{Binding BranchInputActionText}"
+                                    FontSize="13"
+                                    Foreground="#C0E8CC">
+                                    <Button.Style>
+                                        <Style BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
+                                            <Setter Property="IsEnabled" Value="True" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding NewBranchName}" Value="">
+                                                    <Setter Property="IsEnabled" Value="False" />
+                                                </DataTrigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#3D8A4E" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+                    </Border>
                 </Grid>
-            </Border>
 
-            <!--  Splitters (declared after content so they're on top for mouse events)  -->
-            <GridSplitter
-                Grid.Column="2"
-                Width="4"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Stretch"
-                Background="Transparent"
-                Cursor="SizeWE"
-                Focusable="False"
-                ResizeBehavior="PreviousAndCurrent"
-                ResizeDirection="Columns" />
-            <GridSplitter
-                Grid.Column="3"
-                Width="4"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Stretch"
-                Background="Transparent"
-                Cursor="SizeWE"
-                Focusable="False"
-                ResizeBehavior="PreviousAndCurrent"
-                ResizeDirection="Columns"
-                Visibility="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+                <!--  Right panel: Commit details / Working changes / Merge Status  -->
+                <Border
+                    Grid.Column="3"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1,0,0,0"
+                    Visibility="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid>
+                        <!--  Priority 1: Merge Status View  -->
+                        <views:MergeStatusView DataContext="{Binding}">
+                            <views:MergeStatusView.Style>
+                                <Style TargetType="views:MergeStatusView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding SelectedRepository.IsMergeInProgress}" Value="True" />
+                                                <Condition Binding="{Binding SelectedRepository.ConflictCount, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </MultiDataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding SelectedRepository.IsMergeInProgress}" Value="True" />
+                                                <Condition Binding="{Binding MergeConflictResolutionViewModel.TotalCount, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </views:MergeStatusView.Style>
+                        </views:MergeStatusView>
 
-            <!--  Diff Viewer Overlay (center panel only)  -->
-            <controls:DiffViewerControl
-                Grid.Column="2"
-                DataContext="{Binding DiffViewerViewModel}"
-                Visibility="{Binding DataContext.IsDiffViewerVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <!--  Priority 2: Working Changes View  -->
+                        <views:WorkingChangesView DataContext="{Binding WorkingChangesViewModel}">
+                            <views:WorkingChangesView.Style>
+                                <Style TargetType="views:WorkingChangesView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <!--  Show if WorkingChangesSelected AND NOT MergeInProgress  -->
+                                                <Condition Binding="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
+                                                <Condition Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="False" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </views:WorkingChangesView.Style>
+                        </views:WorkingChangesView>
+
+                        <!--  Priority 3: Commit Detail View (Default)  -->
+                        <views:CommitDetailView DataContext="{Binding CommitDetailViewModel}">
+                            <views:CommitDetailView.Style>
+                                <Style TargetType="views:CommitDetailView">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <!--  Hide if WorkingChangesSelected  -->
+                                        <DataTrigger Binding="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <!--  Hide if MergeInProgress  -->
+                                        <DataTrigger Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </views:CommitDetailView.Style>
+                        </views:CommitDetailView>
+                    </Grid>
+                </Border>
+
+                <!--  Splitters (declared after content so they're on top for mouse events)  -->
+                <GridSplitter
+                    Grid.Column="2"
+                    Width="4"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Stretch"
+                    Background="Transparent"
+                    Cursor="SizeWE"
+                    Focusable="False"
+                    ResizeBehavior="PreviousAndCurrent"
+                    ResizeDirection="Columns" />
+                <GridSplitter
+                    Grid.Column="3"
+                    Width="4"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Stretch"
+                    Background="Transparent"
+                    Cursor="SizeWE"
+                    Focusable="False"
+                    ResizeBehavior="PreviousAndCurrent"
+                    ResizeDirection="Columns"
+                    Visibility="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                <!--  Diff Viewer Overlay (center panel only)  -->
+                <controls:DiffViewerControl
+                    Grid.Column="2"
+                    DataContext="{Binding DiffViewerViewModel}"
+                    Visibility="{Binding DataContext.IsDiffViewerVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
             </Grid>
 
-            <!-- Terminal splitter -->
+            <!--  Terminal splitter  -->
             <GridSplitter
                 x:Name="TerminalSplitter"
                 Grid.Row="1"
                 Height="4"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Top"
+                Panel.ZIndex="2"
                 Background="Transparent"
                 Cursor="SizeNS"
-                Focusable="False"
-                Panel.ZIndex="2"
-                ResizeDirection="Rows"
-                ResizeBehavior="PreviousAndCurrent"
                 DragCompleted="TerminalSplitter_DragCompleted"
+                Focusable="False"
+                ResizeBehavior="PreviousAndCurrent"
+                ResizeDirection="Rows"
                 Visibility="{Binding DataContext.IsTerminalVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
 
-            <!-- Terminal pane -->
+            <!--  Terminal pane  -->
             <views:TerminalView
                 x:Name="TerminalPane"
                 Grid.Row="1"

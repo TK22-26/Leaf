@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using Leaf.Controls;
 using Leaf.ViewModels;
 
 namespace Leaf.Views;
@@ -16,6 +17,7 @@ public partial class CommitDetailView : UserControl
     public CommitDetailView()
     {
         InitializeComponent();
+        Loaded += (_, _) => ApplyTreeVisibility();
     }
 
     private void WorkingChangesBanner_Click(object sender, RoutedEventArgs e)
@@ -73,5 +75,17 @@ public partial class CommitDetailView : UserControl
         {
             _ = mainVm.ShowFileDiffAsync(file, commitVm.Commit.Sha);
         }
+    }
+
+    private void FileChangesTreeToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        ApplyTreeVisibility();
+    }
+
+    private void ApplyTreeVisibility()
+    {
+        bool showTree = FileChangesTreeToggle?.IsChecked == true;
+        FileListScrollViewer.Visibility = showTree ? Visibility.Collapsed : Visibility.Visible;
+        FileChangesTreeView.Visibility = showTree ? Visibility.Visible : Visibility.Collapsed;
     }
 }

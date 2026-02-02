@@ -296,8 +296,8 @@ public class GitGraphCanvas : FrameworkElement
     // Track animation progress for each expanded node (0.0 to 1.0)
     private readonly Dictionary<int, double> _expansionProgress = new();
     private System.Windows.Threading.DispatcherTimer? _animationTimer;
-    private const double AnimationDuration = 80; // milliseconds - snappy expand/collapse
-    private const double AnimationStep = 8; // ~120fps for smooth short animation
+    private const double AnimationDuration = 100; // milliseconds - snappy expand/collapse
+    private const double AnimationStep = 16.67; // ~60fps - standard refresh rate
 
     // Track hovered item in expanded dropdown: (nodeIndex, branchIndex)
     private (int NodeIndex, int BranchIndex) _hoveredExpandedItem = (-1, -1);
@@ -309,6 +309,66 @@ public class GitGraphCanvas : FrameworkElement
     // Popup for showing branch names tooltip
     private System.Windows.Controls.Primitives.Popup? _branchTooltipPopup;
     private System.Windows.Controls.StackPanel? _branchTooltipPanel;
+
+    #region Performance Caches
+
+    // Cache dictionary lookup - rebuilt only when Nodes collection changes
+    private Dictionary<string, GitTreeNode>? _nodesByShaCache;
+    private IReadOnlyList<GitTreeNode>? _cachedNodesForDict;
+
+    // Cache ScrollViewer reference - found once, reused
+    private ScrollViewer? _parentScrollViewer;
+    private bool _scrollViewerSearched;
+
+    // Geometry cache - stores geometries at origin, keyed by radius only
+    private sealed class GeometryCache
+    {
+        private readonly Dictionary<double, EllipseGeometry> _circlesByRadius = new();
+        private RectangleGeometry? _fullAreaGeometry;
+        private double _lastWidth, _lastHeight;
+
+        public EllipseGeometry GetCircleAtOrigin(double radius)
+        {
+            if (!_circlesByRadius.TryGetValue(radius, out var geom))
+            {
+                geom = new EllipseGeometry(new Point(0, 0), radius, radius);
+                geom.Freeze();
+                _circlesByRadius[radius] = geom;
+            }
+            return geom;
+        }
+
+        public RectangleGeometry GetFullArea(double width, double height)
+        {
+            if (_fullAreaGeometry == null || _lastWidth != width || _lastHeight != height)
+            {
+                _fullAreaGeometry = new RectangleGeometry(new Rect(0, 0, width, height));
+                _fullAreaGeometry.Freeze();
+                _lastWidth = width;
+                _lastHeight = height;
+            }
+            return _fullAreaGeometry;
+        }
+
+        public void Clear()
+        {
+            _circlesByRadius.Clear();
+            _fullAreaGeometry = null;
+        }
+    }
+
+    private readonly GeometryCache _geometryCache = new();
+    private readonly Dictionary<(double r, double w, double h), CombinedGeometry> _clipGeometryCache = new();
+
+    // FormattedText cache - limit size to avoid memory issues
+    private readonly Dictionary<string, FormattedText> _formattedTextCache = new();
+    private const int MaxFormattedTextCacheSize = 200;
+
+    // Pen cache - keyed by brush reference
+    private readonly Dictionary<Brush, Pen> _connectionPenCache = new();
+    private const double ConnectionPenWidth = 2.0;
+
+    #endregion
 
     /// <summary>
     /// Event raised when a row expansion state changes.
@@ -1025,7 +1085,7 @@ public class GitGraphCanvas : FrameworkElement
                 double targetRadius = targetNode.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
 
                 // Create clip geometry that excludes both the WIP circle and the target commit's circle
-                var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+                var fullArea = _geometryCache.GetFullArea(ActualWidth, ActualHeight);
                 var wipCircle = new EllipseGeometry(new Point(wipX, wipY), avatarRadius, avatarRadius);
                 var targetCircle = new EllipseGeometry(new Point(targetX, targetY), targetRadius, targetRadius);
 
@@ -1034,8 +1094,7 @@ public class GitGraphCanvas : FrameworkElement
                 clipGeometry.Freeze();
 
                 dc.PushClip(clipGeometry);
-                var linePen = new Pen(branchBrush, 2);
-                linePen.Freeze();
+                var linePen = GetConnectionPen(branchBrush);
                 DrawRailConnection(dc, linePen, wipX, wipY, targetX, targetY, false);
                 dc.Pop();
             }
@@ -1056,12 +1115,12 @@ public class GitGraphCanvas : FrameworkElement
         if (nodes == null || nodes.Count == 0)
             return;
 
-        // Draw all nodes (render culling was causing issues with commits not appearing)
-        int minNodeIndex = 0;
-        int maxNodeIndex = nodes.Count - 1;
+        // Calculate visible node range for render culling
+        // Note: rowOffset accounts for working changes and stash rows
+        var (minNodeIndex, maxNodeIndex) = GetVisibleNodeRange(nodes, rowOffset);
 
-        // Create a lookup for efficient parent finding
-        var nodesBySha = nodes.ToDictionary(n => n.Sha);
+        // Use cached dictionary for efficient parent finding
+        var nodesBySha = GetNodesBySha(nodes);
 
         // First pass: Draw gradient trails (behind everything)
         for (int i = minNodeIndex; i <= maxNodeIndex; i++)
@@ -1365,11 +1424,12 @@ public class GitGraphCanvas : FrameworkElement
             var lineBrush = isMergeConnection
                 ? (parentNode.NodeColor ?? Brushes.Gray)
                 : (node.NodeColor ?? Brushes.Gray);
-            var linePen = new Pen(lineBrush, 2);
-            linePen.Freeze();
+            var linePen = GetConnectionPen(lineBrush);
 
-            // Create clip geometry that excludes both node circles
-            var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+            // Draw connection line
+            // Note: Nodes are drawn AFTER connections, so they naturally cover line endpoints
+            // We use clip geometry only to avoid visual artifacts at the overlap
+            var fullArea = _geometryCache.GetFullArea(ActualWidth, ActualHeight);
             var nodeCircle = new EllipseGeometry(new Point(nodeX, nodeY), nodeRadius, nodeRadius);
             var parentCircle = new EllipseGeometry(new Point(parentX, parentY), parentRadius, parentRadius);
 
@@ -1688,7 +1748,7 @@ public class GitGraphCanvas : FrameworkElement
             if (node.IsMerge)
             {
                 double mergeRadius = NodeRadius * 0.875;
-                var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+                var fullArea = _geometryCache.GetFullArea(ActualWidth, ActualHeight);
                 var mergeCircle = new EllipseGeometry(new Point(nodeX, y), mergeRadius, mergeRadius);
                 var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, mergeCircle);
                 clipGeometry.Freeze();
@@ -1825,7 +1885,7 @@ public class GitGraphCanvas : FrameworkElement
             if (node.IsMerge)
             {
                 double mergeRadius = NodeRadius * 0.875;
-                var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+                var fullArea = _geometryCache.GetFullArea(ActualWidth, ActualHeight);
                 var mergeCircle = new EllipseGeometry(new Point(nodeX, y), mergeRadius, mergeRadius);
                 var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, mergeCircle);
                 clipGeometry.Freeze();
@@ -1938,7 +1998,7 @@ public class GitGraphCanvas : FrameworkElement
         if (node.IsMerge)
         {
             double mergeRadius = NodeRadius * 0.875;
-            var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+            var fullArea = _geometryCache.GetFullArea(ActualWidth, ActualHeight);
             var mergeCircle = new EllipseGeometry(new Point(nodeX, y), mergeRadius, mergeRadius);
             var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, mergeCircle);
             clipGeometry.Freeze();
@@ -2184,7 +2244,7 @@ public class GitGraphCanvas : FrameworkElement
         if (node.IsMerge)
         {
             double expandedMergeRadius = NodeRadius * 0.875;
-            var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+            var fullArea = _geometryCache.GetFullArea(ActualWidth, ActualHeight);
             var mergeCircle = new EllipseGeometry(new Point(nodeX, baseY), expandedMergeRadius, expandedMergeRadius);
             var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, mergeCircle);
             clipGeometry.Freeze();
@@ -2341,7 +2401,7 @@ public class GitGraphCanvas : FrameworkElement
         if (node.IsMerge)
         {
             double ghostMergeRadius = NodeRadius * 0.875;
-            var fullArea = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
+            var fullArea = _geometryCache.GetFullArea(ActualWidth, ActualHeight);
             var mergeCircle = new EllipseGeometry(new Point(nodeX, y), ghostMergeRadius, ghostMergeRadius);
             var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, mergeCircle);
             clipGeometry.Freeze();
@@ -2356,6 +2416,108 @@ public class GitGraphCanvas : FrameworkElement
             dc.DrawLine(linePen, new Point(labelX + totalWidth, y), new Point(lineEndX, y));
         }
     }
+
+    #region Performance Helper Methods
+
+    /// <summary>
+    /// Gets cached dictionary for node lookup by SHA.
+    /// Only rebuilt when Nodes collection reference changes.
+    /// </summary>
+    private Dictionary<string, GitTreeNode> GetNodesBySha(IReadOnlyList<GitTreeNode> nodes)
+    {
+        if (_cachedNodesForDict != nodes || _nodesByShaCache == null)
+        {
+            _cachedNodesForDict = nodes;
+            _nodesByShaCache = nodes.ToDictionary(n => n.Sha);
+        }
+        return _nodesByShaCache;
+    }
+
+    /// <summary>
+    /// Finds and caches the parent ScrollViewer for viewport calculations.
+    /// </summary>
+    private ScrollViewer? FindParentScrollViewer()
+    {
+        if (_scrollViewerSearched)
+            return _parentScrollViewer;
+
+        _scrollViewerSearched = true;
+        DependencyObject? parent = VisualTreeHelper.GetParent(this);
+        while (parent != null)
+        {
+            if (parent is ScrollViewer sv)
+            {
+                _parentScrollViewer = sv;
+                return sv;
+            }
+            parent = VisualTreeHelper.GetParent(parent);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Calculates the visible node index range based on scroll position.
+    /// Uses fixed row height assumption for O(1) calculation.
+    /// </summary>
+    private (int minIndex, int maxIndex) GetVisibleNodeRange(IReadOnlyList<GitTreeNode> nodes, int rowOffset)
+    {
+        if (nodes.Count == 0)
+            return (0, -1);
+
+        var scrollViewer = FindParentScrollViewer();
+        if (scrollViewer == null)
+            return (0, nodes.Count - 1); // Fallback to all nodes
+
+        double viewportTop = scrollViewer.VerticalOffset;
+        double viewportBottom = viewportTop + scrollViewer.ViewportHeight;
+
+        // CRITICAL: Large padding ABOVE for children that draw to visible parents
+        // A commit above viewport draws DOWN to its parent which may be visible
+        // Merge commits can have parents many rows apart (long-running feature branches)
+        double paddingAbove = RowHeight * 100;  // ~100 rows lookback for merge branches
+        double paddingBelow = RowHeight * 5;    // Small padding below
+
+        viewportTop = Math.Max(0, viewportTop - paddingAbove);
+        viewportBottom += paddingBelow;
+
+        // Convert viewport coordinates to node indices
+        // Account for rowOffset (working changes row + stash rows)
+        int minRow = Math.Max(0, (int)(viewportTop / RowHeight) - rowOffset);
+        int maxRow = (int)(viewportBottom / RowHeight) - rowOffset;
+
+        int minIndex = Math.Max(0, minRow);
+        int maxIndex = Math.Min(nodes.Count - 1, maxRow);
+
+        return (minIndex, maxIndex);
+    }
+
+    /// <summary>
+    /// Clears all performance caches. Call when Nodes collection changes.
+    /// </summary>
+    private void ClearCaches()
+    {
+        _nodesByShaCache = null;
+        _cachedNodesForDict = null;
+        _formattedTextCache.Clear();
+        _connectionPenCache.Clear();
+        // Note: Geometry cache uses radius-only keys, so doesn't need clearing on node change
+    }
+
+    /// <summary>
+    /// Gets a cached Pen for the given brush. Creates and freezes if not cached.
+    /// </summary>
+    private Pen GetConnectionPen(Brush brush)
+    {
+        if (!_connectionPenCache.TryGetValue(brush, out var pen))
+        {
+            pen = new Pen(brush, ConnectionPenWidth);
+            pen.Freeze();
+            _connectionPenCache[brush] = pen;
+        }
+        return pen;
+    }
+
+    #endregion
 
     private double GetXForColumn(int column)
     {

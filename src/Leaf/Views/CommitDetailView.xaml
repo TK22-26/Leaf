@@ -2,9 +2,11 @@
     x:Class="Leaf.Views.CommitDetailView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="clr-namespace:Leaf.Controls"
     xmlns:converters="clr-namespace:Leaf.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="clr-namespace:Leaf.Models"
     d:DesignHeight="600"
     d:DesignWidth="400"
     mc:Ignorable="d">
@@ -22,6 +24,108 @@
 
         <!--  Working changes banner - dark green for dark theme  -->
         <SolidColorBrush x:Key="WorkingChangesBannerBrush" Color="#2D5A3D" />
+
+        <HierarchicalDataTemplate
+            x:Key="FileChangeTreeNodeTemplate"
+            DataType="{x:Type models:FileChangeTreeNode}"
+            ItemsSource="{Binding Children}">
+            <Grid>
+                <StackPanel
+                    x:Name="FolderPanel"
+                    Margin="2,1"
+                    Orientation="Horizontal"
+                    Visibility="{Binding IsFile, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
+                    <TextBlock
+                        Margin="0,0,6,0"
+                        FontFamily="Segoe Fluent Icons"
+                        FontSize="14"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        Text="&#xE8B7;" />
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        Text="{Binding Name}" />
+                </StackPanel>
+
+                <Border
+                    x:Name="FilePanel"
+                    Margin="2,1"
+                    Padding="8,6"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="2,0,0,0"
+                    Cursor="Hand"
+                    DataContext="{Binding File}"
+                    MouseLeftButtonDown="FileItem_Click"
+                    Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    ToolTip="{Binding Path}"
+                    Visibility="{Binding DataContext.IsFile, RelativeSource={RelativeSource AncestorType=Grid}, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Margin" Value="2,1" />
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                                    <Setter Property="BorderBrush" Value="#28A745" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Border.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem
+                                Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                CommandParameter="{Binding}"
+                                Header="Open in Explorer" />
+                            <MenuItem
+                                Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                CommandParameter="{Binding}"
+                                Header="Copy file path" />
+                        </ContextMenu>
+                    </Border.ContextMenu>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Grid.Column="0"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontFamily="Segoe Fluent Icons"
+                            FontSize="13">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="&#xE70F;" />
+                                    <Setter Property="Foreground" Value="{StaticResource StatusModifiedBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Status}" Value="Added">
+                                            <Setter Property="Text" Value="&#xE710;" />
+                                            <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="Deleted">
+                                            <Setter Property="Text" Value="&#x2013;" />
+                                            <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}" />
+                                            <Setter Property="FontFamily" Value="Segoe UI" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                            <Setter Property="FontSize" Value="14" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontSize="13"
+                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                            Text="{Binding FileName}"
+                            TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </HierarchicalDataTemplate>
     </UserControl.Resources>
 
     <Grid>
@@ -50,13 +154,11 @@
                 <RowDefinition Height="Auto" />
                 <!--  Commit SHA Banner  -->
                 <RowDefinition Height="Auto" />
-                <!--  Commit Message Box  -->
+                <!--  Message Section  -->
                 <RowDefinition Height="Auto" />
                 <!--  Author/Parent Info  -->
                 <RowDefinition Height="Auto" />
-                <!--  File Summary Bar  -->
-                <RowDefinition Height="Auto" />
-                <!--  File List  -->
+                <!--  Changed Files Section  -->
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -140,49 +242,31 @@
                 </Grid>
             </Border>
 
-            <!--  Commit Message Box  -->
-            <Border
+            <!--  Message Section  -->
+            <ScrollViewer
                 Grid.Row="2"
-                Height="200"
-                Margin="8"
-                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="6">
-                <ScrollViewer
-                    Padding="16,14"
-                    HorizontalScrollBarVisibility="Disabled"
-                    VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
-                        <!--  Commit Subject (first line)  -->
-                        <TextBlock
-                            FontSize="14"
-                            FontWeight="SemiBold"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="{Binding Commit.MessageShort}"
-                            TextWrapping="Wrap" />
+                Height="240"
+                Margin="12,8,12,8"
+                HorizontalScrollBarVisibility="Disabled"
+                VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <!--  Commit Subject  -->
+                    <TextBlock
+                        FontSize="13"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        Text="{Binding Commit.MessageShort}"
+                        TextWrapping="Wrap" />
 
-                        <!--  Commit Description (body)  -->
-                        <TextBlock
-                            Margin="0,8,0,0"
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="{Binding Commit.Description}"
-                            TextWrapping="Wrap">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Commit.Description}" Value="">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </StackPanel>
-                </ScrollViewer>
-            </Border>
+                    <!--  Commit Description  -->
+                    <TextBlock
+                        Margin="0,6,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding Commit.Description}"
+                        TextWrapping="Wrap"
+                        Visibility="{Binding Commit.Description, Converter={StaticResource NullToVisibilityConverter}}" />
+                </StackPanel>
+            </ScrollViewer>
 
             <!--  Author/Parent Info Section  -->
             <Border
@@ -262,194 +346,269 @@
                 </Grid>
             </Border>
 
-            <!--  File Summary Bar  -->
-            <Border
-                Grid.Row="4"
-                Margin="8,0,8,0"
-                Padding="8"
-                Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                BorderBrush="{DynamicResource LeafAccentSubtleBrush}"
-                BorderThickness="0,0,0,1"
-                CornerRadius="6,6,0,0">
-                <StackPanel Orientation="Horizontal">
-                    <!--  Modified count  -->
+            <!--  Changed Files Section  -->
+            <Grid Grid.Row="4" Margin="8,0,8,8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!--  Changed Files Header  -->
+                <Grid Grid.Row="0" Margin="0,4,0,6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="1" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                            Text="Changed Files" />
+                        <TextBlock
+                            Margin="6,0,0,0"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            <Run Text="(" />
+                            <Run Text="{Binding TotalFileCount, Mode=OneWay, FallbackValue=0}" />
+                            <Run Text=")" />
+                        </TextBlock>
+                    </StackPanel>
+
+                    <!--  File counts (M/+/-)  -->
                     <StackPanel
-                        Margin="0,0,16,0"
-                        Orientation="Horizontal"
-                        Visibility="{Binding ModifiedCount, Converter={StaticResource NullToVisibilityConverter}}">
-                        <TextBlock
-                            Margin="0,0,6,0"
-                            VerticalAlignment="Center"
-                            FontFamily="Segoe Fluent Icons"
-                            FontSize="12"
-                            Foreground="{StaticResource StatusModifiedBrush}"
-                            Text="&#xE70F;" />
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="{Binding ModifiedCount}" />
+                        Grid.Column="1"
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal">
+                        <!--  Modified count  -->
+                        <StackPanel
+                            Margin="0,0,8,0"
+                            Orientation="Horizontal"
+                            Visibility="{Binding ModifiedCount, Converter={StaticResource NullToVisibilityConverter}}">
+                            <TextBlock
+                                Margin="0,0,4,0"
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="11"
+                                Foreground="{StaticResource StatusModifiedBrush}"
+                                Text="&#xE70F;" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding ModifiedCount}" />
+                        </StackPanel>
+
+                        <!--  Added count  -->
+                        <StackPanel
+                            Margin="0,0,8,0"
+                            Orientation="Horizontal"
+                            Visibility="{Binding AddedCount, Converter={StaticResource NullToVisibilityConverter}}">
+                            <TextBlock
+                                Margin="0,0,4,0"
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="11"
+                                Foreground="{StaticResource StatusAddedBrush}"
+                                Text="&#xE710;" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding AddedCount}" />
+                        </StackPanel>
+
+                        <!--  Deleted count  -->
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding DeletedCount, Converter={StaticResource NullToVisibilityConverter}}">
+                            <TextBlock
+                                Margin="0,0,4,0"
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe UI"
+                                FontSize="14"
+                                FontWeight="SemiBold"
+                                Foreground="{StaticResource StatusDeletedBrush}"
+                                Text="&#x2013;" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding DeletedCount}" />
+                        </StackPanel>
                     </StackPanel>
 
-                    <!--  Added count  -->
-                    <StackPanel
-                        Margin="0,0,16,0"
-                        Orientation="Horizontal"
-                        Visibility="{Binding AddedCount, Converter={StaticResource NullToVisibilityConverter}}">
-                        <TextBlock
-                            Margin="0,0,6,0"
-                            VerticalAlignment="Center"
-                            FontFamily="Consolas"
-                            FontSize="14"
-                            FontWeight="Bold"
-                            Foreground="{StaticResource StatusAddedBrush}"
-                            Text="+" />
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="{Binding AddedCount}" />
-                    </StackPanel>
+                    <!--  List/Tree Toggle  -->
+                    <controls:PillToggle
+                        x:Name="FileChangesTreeToggle"
+                        Grid.Column="2"
+                        Width="84"
+                        Height="22"
+                        Margin="0,0,0,3"
+                        VerticalAlignment="Center"
+                        Checked="FileChangesTreeToggle_Changed"
+                        IsChecked="{Binding ShowTreeView}"
+                        LabelFontSize="12"
+                        LeftText="List"
+                        RightText="Tree"
+                        ToolTip="Toggle list/tree view"
+                        Unchecked="FileChangesTreeToggle_Changed" />
 
-                    <!--  Deleted count  -->
-                    <StackPanel Orientation="Horizontal" Visibility="{Binding DeletedCount, Converter={StaticResource NullToVisibilityConverter}}">
-                        <TextBlock
-                            Margin="0,0,6,0"
-                            VerticalAlignment="Center"
-                            FontFamily="Consolas"
-                            FontSize="14"
-                            FontWeight="Bold"
-                            Foreground="{StaticResource StatusDeletedBrush}"
-                            Text="-" />
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="{Binding DeletedCount}" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+                    <Border
+                        Grid.Row="1"
+                        Grid.ColumnSpan="3"
+                        Height="1"
+                        Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
+                </Grid>
 
-            <!--  File changes list  -->
-            <Border
-                Grid.Row="5"
-                Margin="8,0,8,8"
-                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="1,0,1,1"
-                CornerRadius="0,0,6,6">
-                <ScrollViewer
-                    Padding="8"
-                    HorizontalScrollBarVisibility="Disabled"
-                    VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding FileChanges}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border
-                                    x:Name="ItemBorder"
-                                    Margin="4,2"
-                                    Padding="8,6"
-                                    Background="Transparent"
-                                    BorderBrush="Transparent"
-                                    BorderThickness="2,0,0,0"
-                                    CornerRadius="4"
-                                    Cursor="Hand"
-                                    MouseLeftButtonDown="FileItem_Click"
-                                    Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                    ToolTip="{Binding Path}">
-                                    <Border.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="Open in Explorer"
-                                                      Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
-                                            <MenuItem Header="Copy file path"
-                                                      Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}"/>
-                                        </ContextMenu>
-                                    </Border.ContextMenu>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="24" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
+                <!--  File List Content  -->
+                <Grid Grid.Row="1" Background="Transparent">
+                    <!--  List View  -->
+                    <ScrollViewer
+                        x:Name="FileListScrollViewer"
+                        Padding="4"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding FileChanges}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border
+                                        x:Name="ItemBorder"
+                                        Margin="4,2"
+                                        Padding="8,6"
+                                        Background="Transparent"
+                                        BorderBrush="Transparent"
+                                        BorderThickness="2,0,0,0"
+                                        CornerRadius="4"
+                                        Cursor="Hand"
+                                        MouseLeftButtonDown="FileItem_Click"
+                                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        ToolTip="{Binding Path}">
+                                        <Border.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem
+                                                    Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                    CommandParameter="{Binding}"
+                                                    Header="Open in Explorer" />
+                                                <MenuItem
+                                                    Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                    CommandParameter="{Binding}"
+                                                    Header="Copy file path" />
+                                            </ContextMenu>
+                                        </Border.ContextMenu>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="24" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
 
-                                        <!--  Status icon  -->
-                                        <TextBlock
-                                            Grid.RowSpan="2"
-                                            Grid.Column="0"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            FontSize="12">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Text" Value="&#xE70F;" />
-                                                    <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
-                                                    <Setter Property="Foreground" Value="{StaticResource StatusModifiedBrush}" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Status}" Value="Added">
-                                                            <Setter Property="Text" Value="+" />
-                                                            <Setter Property="FontFamily" Value="Consolas" />
-                                                            <Setter Property="FontWeight" Value="Bold" />
-                                                            <Setter Property="FontSize" Value="16" />
-                                                            <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}" />
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Status}" Value="Deleted">
-                                                            <Setter Property="Text" Value="-" />
-                                                            <Setter Property="FontFamily" Value="Consolas" />
-                                                            <Setter Property="FontWeight" Value="Bold" />
-                                                            <Setter Property="FontSize" Value="16" />
-                                                            <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
+                                            <!--  Status icon  -->
+                                            <TextBlock
+                                                Grid.RowSpan="2"
+                                                Grid.Column="0"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontFamily="Segoe Fluent Icons"
+                                                FontSize="13">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="&#xE70F;" />
+                                                        <Setter Property="Foreground" Value="{StaticResource StatusModifiedBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Added">
+                                                                <Setter Property="Text" Value="&#xE710;" />
+                                                                <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Deleted">
+                                                                <Setter Property="Text" Value="&#x2013;" />
+                                                                <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}" />
+                                                                <Setter Property="FontFamily" Value="Segoe UI" />
+                                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                                                <Setter Property="FontSize" Value="14" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
 
-                                        <!--  File name (prominent)  -->
-                                        <TextBlock
-                                            Grid.Row="0"
-                                            Grid.Column="1"
-                                            FontSize="13"
-                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                            Text="{Binding FileName}"
-                                            TextTrimming="CharacterEllipsis" />
+                                            <!--  File name (prominent)  -->
+                                            <TextBlock
+                                                Grid.Row="0"
+                                                Grid.Column="1"
+                                                FontSize="13"
+                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                Text="{Binding FileName}"
+                                                TextTrimming="CharacterEllipsis" />
 
-                                        <!--  Directory path (secondary, smaller)  -->
-                                        <TextBlock
-                                            Grid.Row="1"
-                                            Grid.Column="1"
-                                            FontSize="11"
-                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                            Text="{Binding Directory}"
-                                            TextTrimming="CharacterEllipsis">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Directory}" Value="">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                    </Grid>
-                                </Border>
-                                <DataTemplate.Triggers>
-                                    <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
-                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#28A745" />
-                                    </Trigger>
-                                </DataTemplate.Triggers>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
-            </Border>
+                                            <!--  Directory path (secondary, smaller)  -->
+                                            <TextBlock
+                                                Grid.Row="1"
+                                                Grid.Column="1"
+                                                FontSize="11"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                Text="{Binding Directory}"
+                                                TextTrimming="CharacterEllipsis">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Directory}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#28A745" />
+                                        </Trigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!--  Tree View  -->
+                    <TreeView
+                        x:Name="FileChangesTreeView"
+                        Padding="4"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ItemTemplate="{StaticResource FileChangeTreeNodeTemplate}"
+                        ItemsSource="{Binding FileChangesTreeItems}"
+                        Visibility="Collapsed">
+                        <TreeView.ItemContainerStyle>
+                            <Style BasedOn="{StaticResource {x:Type TreeViewItem}}" TargetType="TreeViewItem">
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=HasItems}" Value="False" />
+                                            <Condition Binding="{Binding IsRoot}" Value="True" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Margin" Value="-19,0,0,0" />
+                                        <Setter Property="Padding" Value="0,2" />
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TreeView.ItemContainerStyle>
+                    </TreeView>
+                </Grid>
+            </Grid>
         </Grid>
     </Grid>
 </UserControl>
