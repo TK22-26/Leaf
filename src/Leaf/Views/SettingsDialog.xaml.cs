@@ -58,6 +58,8 @@ public partial class SettingsDialog : Window
         {
             new("Clone Path", "Default directory for cloning repositories", "ClonePath", Symbol.Folder),
             new("Default Clone Directory", "Set where new repositories are cloned", "ClonePath", Symbol.Folder),
+            new("Watched Folders", "Auto-discover new Git repositories in monitored folders", "WatchedFolders", Symbol.Eye),
+            new("Repository Discovery", "Automatically detect new repositories", "WatchedFolders", Symbol.Eye),
             new("Terminal", "Configure the built-in command terminal", "Terminal", Symbol.Code),
             new("Terminal Shell", "Select which shell to run commands with", "Terminal", Symbol.Code),
             new("Terminal Output", "Control terminal output behavior", "Terminal", Symbol.Code),
@@ -97,6 +99,7 @@ public partial class SettingsDialog : Window
     {
         // Hide all content panels
         ContentClonePath.Visibility = Visibility.Collapsed;
+        ContentWatchedFolders.Visibility = Visibility.Collapsed;
         ContentTerminal.Visibility = Visibility.Collapsed;
         ContentAzureDevOps.Visibility = Visibility.Collapsed;
         ContentGitHub.Visibility = Visibility.Collapsed;
@@ -113,6 +116,10 @@ public partial class SettingsDialog : Window
         {
             case "ClonePath":
                 ContentClonePath.Visibility = Visibility.Visible;
+                break;
+            case "WatchedFolders":
+                ContentWatchedFolders.Visibility = Visibility.Visible;
+                LoadWatchedFolders();
                 break;
             case "AzureDevOps":
                 ContentAzureDevOps.Visibility = Visibility.Visible;
@@ -186,6 +193,7 @@ public partial class SettingsDialog : Window
 
         // Hide all content panels
         ContentClonePath.Visibility = Visibility.Collapsed;
+        ContentWatchedFolders.Visibility = Visibility.Collapsed;
         ContentTerminal.Visibility = Visibility.Collapsed;
         ContentAzureDevOps.Visibility = Visibility.Collapsed;
         ContentGitHub.Visibility = Visibility.Collapsed;
@@ -224,6 +232,7 @@ public partial class SettingsDialog : Window
         TreeViewItem? itemToSelect = tag switch
         {
             "ClonePath" => NavClonePath,
+            "WatchedFolders" => NavWatchedFolders,
             "Terminal" => NavTerminal,
             "AzureDevOps" => NavAzureDevOps,
             "GitHub" => NavGitHub,
@@ -1484,6 +1493,64 @@ public partial class SettingsDialog : Window
         _settings.GitFlowDefaultVersionTagPrefix = GitFlowDefaultVersionTagPrefix.Text;
         _settings.GitFlowDefaultDeleteBranch = GitFlowDefaultDeleteBranch.IsChecked == true;
         _settings.GitFlowDefaultGenerateChangelog = GitFlowDefaultGenerateChangelog.IsChecked == true;
+    }
+
+    #endregion
+
+    #region Watched Folders
+
+    private void LoadWatchedFolders()
+    {
+        WatchedFoldersListBox.ItemsSource = _settings.WatchedFolders;
+        WatchedFoldersListBox.SelectionChanged += WatchedFoldersListBox_SelectionChanged;
+    }
+
+    private void WatchedFoldersListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RemoveWatchedFolderButton.IsEnabled = WatchedFoldersListBox.SelectedItem != null;
+    }
+
+    private void AddWatchedFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Select Folder to Watch for Git Repositories"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            var folderPath = dialog.FolderName;
+
+            // Check if already watched
+            if (_settings.WatchedFolders.Contains(folderPath, StringComparer.OrdinalIgnoreCase))
+            {
+                MessageBox.Show("This folder is already being watched.", "Already Watched",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Add to settings
+            _settings.WatchedFolders.Add(folderPath);
+            _settingsService.SaveSettings(_settings);
+
+            // Refresh the list
+            WatchedFoldersListBox.ItemsSource = null;
+            WatchedFoldersListBox.ItemsSource = _settings.WatchedFolders;
+        }
+    }
+
+    private void RemoveWatchedFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (WatchedFoldersListBox.SelectedItem is string selectedFolder)
+        {
+            _settings.WatchedFolders.Remove(selectedFolder);
+            _settingsService.SaveSettings(_settings);
+
+            // Refresh the list
+            WatchedFoldersListBox.ItemsSource = null;
+            WatchedFoldersListBox.ItemsSource = _settings.WatchedFolders;
+            RemoveWatchedFolderButton.IsEnabled = false;
+        }
     }
 
     #endregion
