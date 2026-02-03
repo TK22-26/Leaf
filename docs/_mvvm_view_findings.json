@@ -1,0 +1,70 @@
+[
+    {
+        "File":  "src\\Leaf\\Views\\WorkingChangesView.xaml",
+        "Flags":  "Mouse handlers, Commands"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\TerminalView.xaml",
+        "Flags":  "Key handlers, Commands"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\StartBranchDialog.xaml",
+        "Flags":  "Click handlers"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\SettingsDialog.xaml",
+        "Flags":  "Click handlers, Mouse handlers"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\RepositoryListView.xaml",
+        "Flags":  "Commands"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\ReportIssueDialog.xaml",
+        "Flags":  "Click handlers"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\MergeStatusView.xaml",
+        "Flags":  "Mouse handlers, Commands"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\MergeDialog.xaml",
+        "Flags":  "Click handlers"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\MergeCommitTooltipView.xaml",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Views\\GitGraphView.xaml",
+        "Flags":  "Click handlers, Mouse handlers"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\GitFlowInitDialog.xaml",
+        "Flags":  "Click handlers"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\FinishBranchDialog.xaml",
+        "Flags":  "Click handlers"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\CreateTagDialog.xaml",
+        "Flags":  "Click handlers"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\ConflictResolutionView.xaml",
+        "Flags":  "Click handlers, Mouse handlers, Commands"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\CommitDetailView.xaml",
+        "Flags":  "Click handlers, Mouse handlers, Commands"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\CloneDialog.xaml",
+        "Flags":  "Click handlers"
+    },
+    {
+        "File":  "src\\Leaf\\Views\\BranchListView.xaml",
+        "Flags":  "Click handlers, Mouse handlers, Key handlers, Commands"
+    }
+]
