@@ -208,6 +208,20 @@ public partial class GitGraphViewModel : ObservableObject
             SelectedSha = wasWorkingChangesSelected ? WorkingChangesSha : null;
             IsWorkingChangesSelected = wasWorkingChangesSelected && HasWorkingChanges;
 
+            // Auto-select working changes or first commit when loading a new repository
+            // (only if nothing was preserved from previous selection)
+            if (!IsWorkingChangesSelected && SelectedStash == null)
+            {
+                if (HasWorkingChanges)
+                {
+                    IsWorkingChangesSelected = true;
+                }
+                else if (_allCommits.Count > 0)
+                {
+                    SelectedCommit = _allCommits[0];
+                }
+            }
+
             ApplySearchFilter(SearchText);
         }
         catch (Exception ex)

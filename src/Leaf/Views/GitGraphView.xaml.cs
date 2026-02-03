@@ -700,6 +700,11 @@ public partial class GitGraphView : UserControl
             return null;
 
         var pos = Mouse.GetPosition(GraphCanvas);
+
+        // Don't return commit if hovering over label area (for tooltip purposes)
+        if (pos.X < GraphCanvas.LabelAreaWidth)
+            return null;
+
         int row = (int)(pos.Y / RowHeight);
         int rowOffset = (viewModel.HasWorkingChanges ? 1 : 0) + viewModel.Stashes.Count;
         int nodeIndex = row - rowOffset;
@@ -723,15 +728,24 @@ public partial class GitGraphView : UserControl
         if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
             return;
 
-        var menuItem = new MenuItem
+        var mergeItem = new MenuItem
         {
             Header = $"Merge {label.FullName} into current",
             Command = mainViewModel.MergeBranchLabelCommand,
             CommandParameter = label
         };
 
+        var deleteItem = new MenuItem
+        {
+            Header = "Delete branch",
+            Command = mainViewModel.DeleteBranchLabelCommand,
+            CommandParameter = label
+        };
+
         var menu = new ContextMenu();
-        menu.Items.Add(menuItem);
+        menu.Items.Add(mergeItem);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(deleteItem);
         menu.IsOpen = true;
         e.Handled = true;
     }

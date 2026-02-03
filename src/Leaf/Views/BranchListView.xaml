@@ -296,7 +296,7 @@
                                           Command="{Binding PlacementTarget.Tag.SetUpstreamCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}">
                                     <MenuItem.Style>
-                                        <Style TargetType="MenuItem">
+                                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                                             <Setter Property="IsEnabled" Value="True"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsRemote}" Value="True">
@@ -334,7 +334,7 @@
                                 <MenuItem Command="{Binding PlacementTarget.Tag.ToggleHideBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}">
                                     <MenuItem.Style>
-                                        <Style TargetType="MenuItem">
+                                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                                             <Setter Property="Header" Value="Hide from graph"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsHidden}" Value="True">
@@ -347,7 +347,7 @@
                                 <MenuItem Command="{Binding PlacementTarget.Tag.ToggleSoloBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}">
                                     <MenuItem.Style>
-                                        <Style TargetType="MenuItem">
+                                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                                             <Setter Property="Header" Value="Solo in graph"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsSolo}" Value="True">
@@ -361,7 +361,6 @@
                                 <MenuItem Header="Delete"
                                           Command="{Binding PlacementTarget.Tag.DeleteBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
-                                          IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}"
                                           Foreground="#DC2626"/>
                             </ContextMenu>
                         </Border.ContextMenu>
