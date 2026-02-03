@@ -67,13 +67,7 @@ jobs:
     - name: Create Release Package
       shell: pwsh
       run: |
-        # Create Leaf.zip from published files
-        Compress-Archive -Path ./publish/* -DestinationPath ./Leaf.zip
-
-        # Create release folder with install script and zip
         New-Item -ItemType Directory -Path ./release -Force
-        Copy-Item ./Install-Leaf.ps1 ./release/
-        Copy-Item ./Leaf.zip ./release/
         Copy-Item ./Leaf-Setup-*.exe ./release/
 
     - name: Upload Build Artifact
@@ -93,18 +87,9 @@ jobs:
           Automated release from main branch.
 
           ## Installation
-          1. Download both files below
-          2. Place them in the same folder
-          3. Run `Install-Leaf.ps1` in PowerShell
-
-          Or run: `powershell -ExecutionPolicy Bypass -File Install-Leaf.ps1`
-          
-          ## EXE Installer (recommended)
           1. Download `Leaf-Setup-<version>.exe`
           2. Double-click to install (per-user, no admin required)
         files: |
-          ./release/Install-Leaf.ps1
-          ./release/Leaf.zip
           ./release/Leaf-Setup-*.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

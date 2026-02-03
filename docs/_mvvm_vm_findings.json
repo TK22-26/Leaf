@@ -1,0 +1,46 @@
+[
+    {
+        "File":  "src\\Leaf\\ViewModels\\MainViewModel.cs",
+        "Flags":  "MessageBox, Clipboard, Application.Current, Window, Dispatcher"
+    },
+    {
+        "File":  "src\\Leaf\\ViewModels\\IViewModelFactory.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\ViewModels\\GitGraphViewModel.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\ViewModels\\DiffViewerViewModel.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\ViewModels\\ConflictResolutionViewModel.cs",
+        "Flags":  "Clipboard, Application.Current, Dispatcher"
+    },
+    {
+        "File":  "src\\Leaf\\ViewModels\\CommitDetailViewModel.cs",
+        "Flags":  "Clipboard, Process"
+    },
+    {
+        "File":  "src\\Leaf\\ViewModels\\TerminalViewModel.cs",
+        "Flags":  "Application.Current, Dispatcher"
+    },
+    {
+        "File":  "src\\Leaf\\ViewModels\\MergeDialogViewModel.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\ViewModels\\MergeCommitTooltipViewModel.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\ViewModels\\WorkingChangesViewModel.cs",
+        "Flags":  "MessageBox, Clipboard, Process"
+    },
+    {
+        "File":  "src\\Leaf\\ViewModels\\ViewModelFactory.cs",
+        "Flags":  ""
+    }
+]

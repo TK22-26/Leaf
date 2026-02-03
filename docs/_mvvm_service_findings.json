@@ -1,0 +1,198 @@
+[
+    {
+        "File":  "src\\Leaf\\Services\\AutoCommitService.cs",
+        "Flags":  "Process"
+    },
+    {
+        "File":  "src\\Leaf\\Services\\AzureDevOpsService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\AzureDevOpsOAuthService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\AutoFetchService.cs",
+        "Flags":  "System.Windows, Dispatcher"
+    },
+    {
+        "File":  "src\\Leaf\\Services\\CommitHistoryService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\BranchService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\CommitOperationService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\ConflictResolutionService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\UpdateService.cs",
+        "Flags":  "Process"
+    },
+    {
+        "File":  "src\\Leaf\\Services\\ThreeWayMergeService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\TerminalService.cs",
+        "Flags":  "Process"
+    },
+    {
+        "File":  "src\\Leaf\\Services\\TagService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\StashService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\StagingService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\SettingsService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\RepositoryManagementService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\RemoteSyncService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\RebaseService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\OllamaService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\MergeService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IWindowService.cs",
+        "Flags":  "System.Windows, Application.Current"
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IThreeWayMergeService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\ITagService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IStashService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IStagingService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IRepositoryManagementService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IRemoteSyncService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IRebaseService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IMergeService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IGitService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IGitFlowService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IDispatcherService.cs",
+        "Flags":  "Dispatcher"
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IDiffService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IDialogService.cs",
+        "Flags":  "System.Windows, MessageBox, Dispatcher"
+    },
+    {
+        "File":  "src\\Leaf\\Services\\ICredentialService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IConflictResolutionService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\ICommitOperationService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\ICommitHistoryService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IBranchService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\IAutoFetchService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\GitService.cs",
+        "Flags":  "Process"
+    },
+    {
+        "File":  "src\\Leaf\\Services\\GitHubService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\GitHubOAuthService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\GitFlowService.cs",
+        "Flags":  "Process"
+    },
+    {
+        "File":  "src\\Leaf\\Services\\FileWatcherService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\DispatcherService.cs",
+        "Flags":  "System.Windows, Dispatcher, Application.Current"
+    },
+    {
+        "File":  "src\\Leaf\\Services\\DiffService.cs",
+        "Flags":  ""
+    },
+    {
+        "File":  "src\\Leaf\\Services\\DialogService.cs",
+        "Flags":  "System.Windows, MessageBox, Dispatcher"
+    },
+    {
+        "File":  "src\\Leaf\\Services\\CredentialService.cs",
+        "Flags":  ""
+    }
+]
