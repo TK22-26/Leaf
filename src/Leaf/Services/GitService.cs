@@ -1807,25 +1807,38 @@ public class GitService : IGitService
                 conflictInfo.TheirsContent = ReadConflictStage(repoPath, trimmedPath, 3);
 
                 // Try to get content from LibGit2Sharp index conflicts
+                // Only use LibGit2Sharp content if non-empty, otherwise keep the git stage content
                 var indexConflict = repo.Index.Conflicts[trimmedPath];
                 if (indexConflict != null)
                 {
                     if (indexConflict.Ours != null)
                     {
                         var blob = repo.Lookup<Blob>(indexConflict.Ours.Id);
-                        conflictInfo.OursContent = blob?.GetContentText() ?? "";
+                        var content = blob?.GetContentText();
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            conflictInfo.OursContent = content;
+                        }
                     }
 
                     if (indexConflict.Theirs != null)
                     {
                         var blob = repo.Lookup<Blob>(indexConflict.Theirs.Id);
-                        conflictInfo.TheirsContent = blob?.GetContentText() ?? "";
+                        var content = blob?.GetContentText();
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            conflictInfo.TheirsContent = content;
+                        }
                     }
 
                     if (indexConflict.Ancestor != null)
                     {
                         var blob = repo.Lookup<Blob>(indexConflict.Ancestor.Id);
-                        conflictInfo.BaseContent = blob?.GetContentText() ?? "";
+                        var content = blob?.GetContentText();
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            conflictInfo.BaseContent = content;
+                        }
                     }
                 }
                 else
