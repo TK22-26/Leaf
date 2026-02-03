@@ -4,7 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Leaf.Controls;
+using Leaf.Controls.GitGraph;
 using Leaf.Models;
 using Leaf.ViewModels;
 
