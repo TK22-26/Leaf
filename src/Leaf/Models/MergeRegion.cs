@@ -53,6 +53,16 @@ public partial class MergeRegion : ObservableObject
     public string Content { get; set; } = string.Empty;
 
     /// <summary>
+    /// Starting line number for "ours" display (1-based).
+    /// </summary>
+    public int OursStartLineNumber { get; set; } = 1;
+
+    /// <summary>
+    /// Starting line number for "theirs" display (1-based).
+    /// </summary>
+    public int TheirsStartLineNumber { get; set; } = 1;
+
+    /// <summary>
     /// For conflict regions: raw lines from "ours" version.
     /// </summary>
     public List<string> OursLines { get; set; } = [];
@@ -61,6 +71,16 @@ public partial class MergeRegion : ObservableObject
     /// For conflict regions: raw lines from "theirs" version.
     /// </summary>
     public List<string> TheirsLines { get; set; } = [];
+
+    /// <summary>
+    /// Display lines for "ours" side (populated by ViewModel).
+    /// </summary>
+    public ObservableCollection<ConflictDisplayLine> OursDisplayLines { get; } = [];
+
+    /// <summary>
+    /// Display lines for "theirs" side (populated by ViewModel).
+    /// </summary>
+    public ObservableCollection<ConflictDisplayLine> TheirsDisplayLines { get; } = [];
 
     /// <summary>
     /// Lazy-initialized selectable lines from "ours" (only for conflicts).

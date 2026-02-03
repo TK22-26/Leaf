@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Rendering;
@@ -18,6 +19,7 @@ public partial class MergedResultEditorControl : UserControl
     private bool _isUpdatingFromViewModel;
     private readonly HashSet<MergedLine> _trackedLines = [];
     private int _hoverLine = -1;
+    private bool _invalidatePending;
 
     public MergedResultEditorControl()
     {
@@ -86,7 +88,23 @@ public partial class MergedResultEditorControl : UserControl
     {
         BackgroundLayer.SetLines(_viewModel?.MergedLines);
         TrackLineChanges();
-        BackgroundLayer.InvalidateVisual();
+        ScheduleInvalidateVisual();
+    }
+
+    /// <summary>
+    /// Coalesce multiple InvalidateVisual() calls into a single call via Dispatcher.
+    /// </summary>
+    private void ScheduleInvalidateVisual()
+    {
+        if (_invalidatePending)
+            return;
+
+        _invalidatePending = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, () =>
+        {
+            _invalidatePending = false;
+            BackgroundLayer.InvalidateVisual();
+        });
     }
 
     private void SyncFromViewModel()
@@ -100,7 +118,7 @@ public partial class MergedResultEditorControl : UserControl
             Editor.Text = _viewModel.MergedContent ?? string.Empty;
             BackgroundLayer.SetLines(_viewModel.MergedLines);
             TrackLineChanges();
-            BackgroundLayer.InvalidateVisual();
+            ScheduleInvalidateVisual();
         }
         finally
         {
@@ -116,7 +134,7 @@ public partial class MergedResultEditorControl : UserControl
         _viewModel.UpdateMergedLinesFromText(Editor.Text);
         BackgroundLayer.SetLines(_viewModel.MergedLines);
         TrackLineChanges();
-        BackgroundLayer.InvalidateVisual();
+        ScheduleInvalidateVisual();
     }
 
     private void OnEditorMouseMove(object? sender, System.Windows.Input.MouseEventArgs e)
@@ -162,7 +180,7 @@ public partial class MergedResultEditorControl : UserControl
     {
         if (e.PropertyName == nameof(MergedLine.Source))
         {
-            BackgroundLayer.InvalidateVisual();
+            ScheduleInvalidateVisual();
         }
     }
 }

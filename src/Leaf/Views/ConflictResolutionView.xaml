@@ -390,12 +390,14 @@
                                               Grid.Row="1"
                                               VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Auto">
-                                    <StackPanel>
-                                        <ItemsControl x:Name="OursRegionList"
-                                                      ItemsSource="{Binding CurrentMergeResult.Regions}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate DataType="{x:Type models:MergeRegion}">
-                                                    <Border Margin="0,0,0,6">
+                                    <!-- Single ItemsControl showing regions with their lines inline -->
+                                    <ItemsControl x:Name="OursRegionList"
+                                                  ItemsSource="{Binding CurrentMergeResult.Regions}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type models:MergeRegion}">
+                                                <StackPanel>
+                                                    <!-- Conflict header (only visible for conflicts) -->
+                                                    <Border Margin="0,0,0,2">
                                                         <Border.Style>
                                                             <Style TargetType="Border">
                                                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -406,7 +408,7 @@
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </Border.Style>
-                                                        <Grid>
+                                                        <Grid Background="#331E3A5F" Margin="0,4,0,2">
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*"/>
                                                                 <ColumnDefinition Width="Auto"/>
@@ -414,52 +416,56 @@
                                                             <TextBlock Grid.Column="0"
                                                                        Text="{Binding Index, StringFormat='Conflict #{0}'}"
                                                                        FontSize="11"
-                                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="#BFDBFE"
+                                                                       Margin="8,4"/>
                                                             <Button Grid.Column="1"
                                                                     Command="{Binding DataContext.TakeOursHunkCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                     CommandParameter="{Binding}"
                                                                     Padding="6,2"
+                                                                    Margin="0,2,4,2"
                                                                     ToolTip="Take this hunk from ours">
                                                                 <TextBlock Text="Take hunk" FontSize="11"/>
                                                             </Button>
                                                         </Grid>
                                                     </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <ItemsControl ItemsSource="{Binding OursDisplayLines}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate DataType="{x:Type models:ConflictDisplayLine}">
-                                                    <Border Style="{StaticResource DisplayLineBorderStyleOurs}">
-                                                        <Grid>
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="36"/>
-                                                                <ColumnDefinition Width="22"/>
-                                                                <ColumnDefinition Width="*"/>
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Grid.Column="0"
-                                                                       Text="{Binding LineNumber}"
-                                                                       FontFamily="Consolas"
-                                                                       FontSize="11"
-                                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                       HorizontalAlignment="Right"
-                                                                       VerticalAlignment="Center"
-                                                                       Margin="0,0,6,0"/>
-                                                            <CheckBox Grid.Column="1"
-                                                                      Style="{StaticResource LineCheckBoxStyle}"
-                                                                      IsChecked="{Binding IsSelected}"/>
-                                                            <TextBlock Grid.Column="2"
-                                                                       Text="{Binding Content}"
-                                                                       FontFamily="Consolas"
-                                                                       FontSize="12"
-                                                                       TextWrapping="NoWrap"
-                                                                       VerticalAlignment="Center"/>
-                                                        </Grid>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
+                                                    <!-- Lines for this region only -->
+                                                    <ItemsControl ItemsSource="{Binding OursDisplayLines}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate DataType="{x:Type models:ConflictDisplayLine}">
+                                                                <Border Style="{StaticResource DisplayLineBorderStyleOurs}">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="36"/>
+                                                                            <ColumnDefinition Width="22"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <TextBlock Grid.Column="0"
+                                                                                   Text="{Binding LineNumber}"
+                                                                                   FontFamily="Consolas"
+                                                                                   FontSize="11"
+                                                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                                   HorizontalAlignment="Right"
+                                                                                   VerticalAlignment="Center"
+                                                                                   Margin="0,0,6,0"/>
+                                                                        <CheckBox Grid.Column="1"
+                                                                                  Style="{StaticResource LineCheckBoxStyle}"
+                                                                                  IsChecked="{Binding IsSelected}"/>
+                                                                        <TextBlock Grid.Column="2"
+                                                                                   Text="{Binding Content}"
+                                                                                   FontFamily="Consolas"
+                                                                                   FontSize="12"
+                                                                                   TextWrapping="NoWrap"
+                                                                                   VerticalAlignment="Center"/>
+                                                                    </Grid>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </ScrollViewer>
                             </Grid>
                         </Border>
@@ -483,12 +489,14 @@
                                               Grid.Row="1"
                                               VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Auto">
-                                    <StackPanel>
-                                        <ItemsControl x:Name="TheirsRegionList"
-                                                      ItemsSource="{Binding CurrentMergeResult.Regions}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate DataType="{x:Type models:MergeRegion}">
-                                                    <Border Margin="0,0,0,6">
+                                    <!-- Single ItemsControl showing regions with their lines inline -->
+                                    <ItemsControl x:Name="TheirsRegionList"
+                                                  ItemsSource="{Binding CurrentMergeResult.Regions}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type models:MergeRegion}">
+                                                <StackPanel>
+                                                    <!-- Conflict header (only visible for conflicts) -->
+                                                    <Border Margin="0,0,0,2">
                                                         <Border.Style>
                                                             <Style TargetType="Border">
                                                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -499,7 +507,7 @@
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </Border.Style>
-                                                        <Grid>
+                                                        <Grid Background="#3314532D" Margin="0,4,0,2">
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*"/>
                                                                 <ColumnDefinition Width="Auto"/>
@@ -507,52 +515,56 @@
                                                             <TextBlock Grid.Column="0"
                                                                        Text="{Binding Index, StringFormat='Conflict #{0}'}"
                                                                        FontSize="11"
-                                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="#BBF7D0"
+                                                                       Margin="8,4"/>
                                                             <Button Grid.Column="1"
                                                                     Command="{Binding DataContext.TakeTheirsHunkCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                     CommandParameter="{Binding}"
                                                                     Padding="6,2"
+                                                                    Margin="0,2,4,2"
                                                                     ToolTip="Take this hunk from theirs">
                                                                 <TextBlock Text="Take hunk" FontSize="11"/>
                                                             </Button>
                                                         </Grid>
                                                     </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <ItemsControl ItemsSource="{Binding TheirsDisplayLines}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate DataType="{x:Type models:ConflictDisplayLine}">
-                                                    <Border Style="{StaticResource DisplayLineBorderStyleTheirs}">
-                                                        <Grid>
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="36"/>
-                                                                <ColumnDefinition Width="22"/>
-                                                                <ColumnDefinition Width="*"/>
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Grid.Column="0"
-                                                                       Text="{Binding LineNumber}"
-                                                                       FontFamily="Consolas"
-                                                                       FontSize="11"
-                                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                       HorizontalAlignment="Right"
-                                                                       VerticalAlignment="Center"
-                                                                       Margin="0,0,6,0"/>
-                                                            <CheckBox Grid.Column="1"
-                                                                      Style="{StaticResource LineCheckBoxStyle}"
-                                                                      IsChecked="{Binding IsSelected}"/>
-                                                            <TextBlock Grid.Column="2"
-                                                                       Text="{Binding Content}"
-                                                                       FontFamily="Consolas"
-                                                                       FontSize="12"
-                                                                       TextWrapping="NoWrap"
-                                                                       VerticalAlignment="Center"/>
-                                                        </Grid>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
+                                                    <!-- Lines for this region only -->
+                                                    <ItemsControl ItemsSource="{Binding TheirsDisplayLines}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate DataType="{x:Type models:ConflictDisplayLine}">
+                                                                <Border Style="{StaticResource DisplayLineBorderStyleTheirs}">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="36"/>
+                                                                            <ColumnDefinition Width="22"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <TextBlock Grid.Column="0"
+                                                                                   Text="{Binding LineNumber}"
+                                                                                   FontFamily="Consolas"
+                                                                                   FontSize="11"
+                                                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                                   HorizontalAlignment="Right"
+                                                                                   VerticalAlignment="Center"
+                                                                                   Margin="0,0,6,0"/>
+                                                                        <CheckBox Grid.Column="1"
+                                                                                  Style="{StaticResource LineCheckBoxStyle}"
+                                                                                  IsChecked="{Binding IsSelected}"/>
+                                                                        <TextBlock Grid.Column="2"
+                                                                                   Text="{Binding Content}"
+                                                                                   FontFamily="Consolas"
+                                                                                   FontSize="12"
+                                                                                   TextWrapping="NoWrap"
+                                                                                   VerticalAlignment="Center"/>
+                                                                    </Grid>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </ScrollViewer>
                             </Grid>
                         </Border>

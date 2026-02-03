@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Leaf.Collections;
 using Leaf.Models;
 using Leaf.Services;
 
@@ -52,13 +54,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
     private string _mergedContent = string.Empty;
 
     [ObservableProperty]
-    private ObservableCollection<MergedLine> _mergedLines = [];
+    private BulkObservableCollection<MergedLine> _mergedLines = [];
 
     [ObservableProperty]
-    private ObservableCollection<ConflictDisplayLine> _oursDisplayLines = [];
+    private BulkObservableCollection<ConflictDisplayLine> _oursDisplayLines = [];
 
     [ObservableProperty]
-    private ObservableCollection<ConflictDisplayLine> _theirsDisplayLines = [];
+    private BulkObservableCollection<ConflictDisplayLine> _theirsDisplayLines = [];
+
+    private DispatcherTimer? _mergedContentDebounceTimer;
 
     private readonly HashSet<SelectableLine> _wiredSelectableLines = [];
     private readonly HashSet<MergedLine> _wiredMergedLines = [];
@@ -555,18 +559,23 @@ public partial class ConflictResolutionViewModel : ObservableObject
             return;
         }
 
-        MergedLines.Clear();
         _wiredMergedLines.Clear();
 
+        // Build all lines first, then replace in bulk (single notification)
+        var newLines = new List<MergedLine>();
         foreach (var region in CurrentMergeResult.Regions)
         {
             var lines = GetRegionLines(region);
             foreach (var (line, source) in lines)
             {
-                MergedLines.Add(new MergedLine { Content = line, Source = source });
+                newLines.Add(new MergedLine { Content = line, Source = source });
             }
         }
 
+        // Single ReplaceAll call fires ONE CollectionChanged notification
+        MergedLines.ReplaceAll(newLines);
+
+        // Wire events after collection is populated
         UpdateMergedContentFromLines();
     }
 
@@ -722,13 +731,29 @@ public partial class ConflictResolutionViewModel : ObservableObject
                         {
                             line.Source = MergedLineSource.Manual;
                         }
-                        MergedContent = string.Join("\n", MergedLines.Select(l => l.Content));
-                        OnPropertyChanged(nameof(CanMarkResolved));
+                        // Debounce merged content rebuild during rapid edits
+                        DebounceMergedContentUpdate();
                     }
                 };
             }
         }
 
+        MergedContent = string.Join("\n", MergedLines.Select(l => l.Content));
+        OnPropertyChanged(nameof(CanMarkResolved));
+    }
+
+    private void DebounceMergedContentUpdate()
+    {
+        _mergedContentDebounceTimer?.Stop();
+        _mergedContentDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        _mergedContentDebounceTimer.Tick -= OnMergedContentDebounceTimer;
+        _mergedContentDebounceTimer.Tick += OnMergedContentDebounceTimer;
+        _mergedContentDebounceTimer.Start();
+    }
+
+    private void OnMergedContentDebounceTimer(object? sender, EventArgs e)
+    {
+        _mergedContentDebounceTimer?.Stop();
         MergedContent = string.Join("\n", MergedLines.Select(l => l.Content));
         OnPropertyChanged(nameof(CanMarkResolved));
     }
@@ -775,13 +800,22 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
     private void BuildDisplayLines(FileMergeResult result)
     {
-        OursDisplayLines.Clear();
-        TheirsDisplayLines.Clear();
+        // Build all lines into lists first, then replace in bulk
+        var oursLines = new List<ConflictDisplayLine>();
+        var theirsLines = new List<ConflictDisplayLine>();
         var oursLineNumber = 1;
         var theirsLineNumber = 1;
 
         foreach (var region in result.Regions)
         {
+            // Clear per-region display lines before rebuilding
+            region.OursDisplayLines.Clear();
+            region.TheirsDisplayLines.Clear();
+
+            // Track starting line numbers for this region
+            region.OursStartLineNumber = oursLineNumber;
+            region.TheirsStartLineNumber = theirsLineNumber;
+
             if (!region.IsConflict)
             {
                 var lines = SplitLines(region.Content);
@@ -789,12 +823,14 @@ public partial class ConflictResolutionViewModel : ObservableObject
                 {
                     foreach (var line in lines)
                     {
-                        OursDisplayLines.Add(new ConflictDisplayLine
+                        var displayLine = new ConflictDisplayLine
                         {
                             Content = line,
                             IsSelectable = false,
                             LineNumber = oursLineNumber++
-                        });
+                        };
+                        oursLines.Add(displayLine);
+                        region.OursDisplayLines.Add(displayLine);
                     }
                 }
 
@@ -802,12 +838,14 @@ public partial class ConflictResolutionViewModel : ObservableObject
                 {
                     foreach (var line in lines)
                     {
-                        TheirsDisplayLines.Add(new ConflictDisplayLine
+                        var displayLine = new ConflictDisplayLine
                         {
                             Content = line,
                             IsSelectable = false,
                             LineNumber = theirsLineNumber++
-                        });
+                        };
+                        theirsLines.Add(displayLine);
+                        region.TheirsDisplayLines.Add(displayLine);
                     }
                 }
 
@@ -841,7 +879,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
                         };
                     }
 
-                    OursDisplayLines.Add(displayLine);
+                    oursLines.Add(displayLine);
+                    region.OursDisplayLines.Add(displayLine);
                 }
             }
 
@@ -870,10 +909,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
                         };
                     }
 
-                    TheirsDisplayLines.Add(displayLine);
+                    theirsLines.Add(displayLine);
+                    region.TheirsDisplayLines.Add(displayLine);
                 }
             }
         }
+
+        // Single ReplaceAll call fires ONE CollectionChanged notification each
+        OursDisplayLines.ReplaceAll(oursLines);
+        TheirsDisplayLines.ReplaceAll(theirsLines);
     }
 
     [RelayCommand]
