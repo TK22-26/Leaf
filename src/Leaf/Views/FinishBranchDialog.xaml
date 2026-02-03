@@ -82,6 +82,17 @@
                             </StackPanel>
                         </RadioButton>
 
+                        <RadioButton x:Name="MergeStrategySquashRebase" GroupName="MergeStrategy"
+                                     Margin="0,0,0,8"
+                                     Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Squash and Rebase" FontWeight="SemiBold"/>
+                                <TextBlock Text="Squashes commits and rebases for a clean linear history"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                            </StackPanel>
+                        </RadioButton>
+
                         <RadioButton x:Name="MergeStrategyRebase" GroupName="MergeStrategy"
                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}">
                             <StackPanel>
