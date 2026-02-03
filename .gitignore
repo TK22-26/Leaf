@@ -72,10 +72,13 @@ CLAUDE.md
 
 .hierarch/
 
-docs\
-
 publish-msix\de/
 
 publish-msix/
 
 CHANGELOG.md
+
+# Docs
+docs/
+
+scripts/Get-LargeFiles.ps1
