@@ -55,6 +55,11 @@ public class RepositoryGroup
     public bool IsExpanded { get; set; } = true;
 
     /// <summary>
+    /// True if this folder group is being watched for new repositories.
+    /// </summary>
+    public bool IsWatched { get; set; }
+
+    /// <summary>
     /// Total count of repositories including nested groups.
     /// </summary>
     public int TotalRepositoryCount

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Rendering;
@@ -18,6 +19,7 @@ public partial class MergedResultEditorControl : UserControl
     private bool _isUpdatingFromViewModel;
     private readonly HashSet<MergedLine> _trackedLines = [];
     private int _hoverLine = -1;
+    private bool _invalidatePending;
 
     public MergedResultEditorControl()
     {
@@ -86,7 +88,23 @@ public partial class MergedResultEditorControl : UserControl
     {
         BackgroundLayer.SetLines(_viewModel?.MergedLines);
         TrackLineChanges();
-        BackgroundLayer.InvalidateVisual();
+        ScheduleInvalidateVisual();
+    }
+
+    /// <summary>
+    /// Coalesce multiple InvalidateVisual() calls into a single call via Dispatcher.
+    /// </summary>
+    private void ScheduleInvalidateVisual()
+    {
+        if (_invalidatePending)
+            return;
+
+        _invalidatePending = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, () =>
+        {
+            _invalidatePending = false;
+            BackgroundLayer.InvalidateVisual();
+        });
     }
 
     private void SyncFromViewModel()
@@ -100,7 +118,7 @@ public partial class MergedResultEditorControl : UserControl
             Editor.Text = _viewModel.MergedContent ?? string.Empty;
             BackgroundLayer.SetLines(_viewModel.MergedLines);
             TrackLineChanges();
-            BackgroundLayer.InvalidateVisual();
+            ScheduleInvalidateVisual();
         }
         finally
         {
@@ -116,7 +134,7 @@ public partial class MergedResultEditorControl : UserControl
         _viewModel.UpdateMergedLinesFromText(Editor.Text);
         BackgroundLayer.SetLines(_viewModel.MergedLines);
         TrackLineChanges();
-        BackgroundLayer.InvalidateVisual();
+        ScheduleInvalidateVisual();
     }
 
     private void OnEditorMouseMove(object? sender, System.Windows.Input.MouseEventArgs e)
@@ -162,7 +180,7 @@ public partial class MergedResultEditorControl : UserControl
     {
         if (e.PropertyName == nameof(MergedLine.Source))
         {
-            BackgroundLayer.InvalidateVisual();
+            ScheduleInvalidateVisual();
         }
     }
 }
@@ -173,6 +191,8 @@ internal sealed class MergedResultBackground : FrameworkElement
     private IReadOnlyList<MergedLine>? _lines;
     private int _hoverLine;
     private bool _isAttached;
+    private bool _isRendering;
+    private static int _renderCount;
 
     public MergedResultBackground()
     {
@@ -196,42 +216,92 @@ internal sealed class MergedResultBackground : FrameworkElement
         _isAttached = true;
         _editor = editor;
         var textView = _editor.TextArea.TextView;
-        textView.VisualLinesChanged += (_, __) => InvalidateVisual();
-        textView.ScrollOffsetChanged += (_, __) => InvalidateVisual();
+        textView.VisualLinesChanged += (_, __) =>
+        {
+            if (!_isRendering)
+            {
+                InvalidateVisual();
+            }
+        };
+        textView.ScrollOffsetChanged += (_, __) =>
+        {
+            if (!_isRendering)
+            {
+                InvalidateVisual();
+            }
+        };
     }
 
     protected override void OnRender(DrawingContext drawingContext)
     {
+        _renderCount++;
+        if (_renderCount % 100 == 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MergedResultBackground] OnRender called {_renderCount} times");
+        }
+
         if (_lines == null || _editor == null)
             return;
 
-        var textView = _editor.TextArea.TextView;
-        textView.EnsureVisualLines();
-
-        if (!textView.VisualLinesValid)
-            return;
-
-        if (!IsLoaded || !textView.IsLoaded)
-            return;
-
-        var origin = textView.TransformToVisual(this).Transform(new Point(0, 0));
-        var width = ActualWidth;
-
-        foreach (var visualLine in textView.VisualLines)
+        // Guard against render loops
+        if (_isRendering)
         {
-            var lineNumber = visualLine.FirstDocumentLine.LineNumber;
-            if (lineNumber < 1 || lineNumber > _lines.Count)
-                continue;
-
-            var line = _lines[lineNumber - 1];
-            var brush = GetBrush(line.Source, lineNumber == _hoverLine);
-            if (brush == null)
-                continue;
-
-            var y = origin.Y + visualLine.VisualTop - textView.VerticalOffset;
-            var rect = new Rect(0, y, width, visualLine.Height);
-            drawingContext.DrawRectangle(brush, null, rect);
+            System.Diagnostics.Debug.WriteLine($"[MergedResultBackground] Prevented re-entrant render!");
+            return;
         }
+
+        _isRendering = true;
+        try
+        {
+            var textView = _editor.TextArea.TextView;
+
+            // Don't call EnsureVisualLines() as it can trigger VisualLinesChanged event
+            // which causes a render loop. Just check if lines are already valid.
+            if (!textView.VisualLinesValid)
+                return;
+
+            if (!IsLoaded || !textView.IsLoaded)
+                return;
+
+            var origin = textView.TransformToVisual(this).Transform(new Point(0, 0));
+            var width = ActualWidth;
+
+            foreach (var visualLine in textView.VisualLines)
+            {
+                var lineNumber = visualLine.FirstDocumentLine.LineNumber;
+                if (lineNumber < 1 || lineNumber > _lines.Count)
+                    continue;
+
+                var line = _lines[lineNumber - 1];
+                var brush = GetBrush(line.Source, lineNumber == _hoverLine);
+                if (brush == null)
+                    continue;
+
+                var y = origin.Y + visualLine.VisualTop - textView.VerticalOffset;
+                var rect = new Rect(0, y, width, visualLine.Height);
+                drawingContext.DrawRectangle(brush, null, rect);
+            }
+        }
+        finally
+        {
+            _isRendering = false;
+        }
+    }
+
+    // Cached brushes to avoid creating new ones every render call
+    private static readonly Brush OursBrush = CreateFrozenBrush(Color.FromArgb(0xB3, 0x1E, 0x3A, 0x5F));
+    private static readonly Brush TheirsBrush = CreateFrozenBrush(Color.FromArgb(0xB3, 0x14, 0x53, 0x2D));
+    private static readonly Brush ManualBrush = CreateFrozenBrush(Color.FromArgb(0xB3, 0x6D, 0x28, 0xD9));
+    private static readonly Brush OursHoverBrush = CreateFrozenBrush(Color.FromArgb(0xFF, 0x1E, 0x3A, 0x5F));
+    private static readonly Brush TheirsHoverBrush = CreateFrozenBrush(Color.FromArgb(0xFF, 0x14, 0x53, 0x2D));
+    private static readonly Brush ManualHoverBrush = CreateFrozenBrush(Color.FromArgb(0xFF, 0x6D, 0x28, 0xD9));
+    private static readonly Brush DefaultHoverBrush = CreateFrozenBrush(Color.FromArgb(0x80, 0xB4, 0x53, 0x09));
+
+    private static Brush CreateFrozenBrush(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
     }
 
     private static Brush? GetBrush(MergedLineSource source, bool isHover)
@@ -240,18 +310,18 @@ internal sealed class MergedResultBackground : FrameworkElement
         {
             return source switch
             {
-                MergedLineSource.Ours => new SolidColorBrush(Color.FromArgb(0xFF, 0x1E, 0x3A, 0x5F)),
-                MergedLineSource.Theirs => new SolidColorBrush(Color.FromArgb(0xFF, 0x14, 0x53, 0x2D)),
-                MergedLineSource.Manual => new SolidColorBrush(Color.FromArgb(0xFF, 0x6D, 0x28, 0xD9)),
-                _ => new SolidColorBrush(Color.FromArgb(0x80, 0xB4, 0x53, 0x09))
+                MergedLineSource.Ours => OursHoverBrush,
+                MergedLineSource.Theirs => TheirsHoverBrush,
+                MergedLineSource.Manual => ManualHoverBrush,
+                _ => DefaultHoverBrush
             };
         }
 
         return source switch
         {
-            MergedLineSource.Ours => new SolidColorBrush(Color.FromArgb(0xB3, 0x1E, 0x3A, 0x5F)),
-            MergedLineSource.Theirs => new SolidColorBrush(Color.FromArgb(0xB3, 0x14, 0x53, 0x2D)),
-            MergedLineSource.Manual => new SolidColorBrush(Color.FromArgb(0xB3, 0x6D, 0x28, 0xD9)),
+            MergedLineSource.Ours => OursBrush,
+            MergedLineSource.Theirs => TheirsBrush,
+            MergedLineSource.Manual => ManualBrush,
             _ => null
         };
     }

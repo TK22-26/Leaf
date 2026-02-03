@@ -159,6 +159,9 @@ public class AppSettings
     // Ollama settings (local LLM)
     public string OllamaBaseUrl { get; set; } = "http://localhost:11434";
     public string OllamaSelectedModel { get; set; } = string.Empty;
+
+    // Watched folders for auto-discovery of new repositories
+    public List<string> WatchedFolders { get; set; } = [];
 }
 
 /// <summary>

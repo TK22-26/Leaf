@@ -34,6 +34,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IGitCommandRunner _gitCommandRunner;
     private readonly IClipboardService _clipboardService;
     private readonly IFileSystemService _fileSystemService;
+    private readonly IFolderWatcherService _folderWatcherService;
     private IRepositorySession? _currentSession;
     private bool _disposed;
 
@@ -277,7 +278,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IRepositorySessionFactory sessionFactory,
         IGitCommandRunner gitCommandRunner,
         IClipboardService clipboardService,
-        IFileSystemService fileSystemService)
+        IFileSystemService fileSystemService,
+        IFolderWatcherService folderWatcherService)
     {
         _gitService = gitService;
         _gitFlowService = gitFlowService;
@@ -293,7 +295,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _gitCommandRunner = gitCommandRunner;
         _clipboardService = clipboardService;
         _fileSystemService = fileSystemService;
+        _folderWatcherService = folderWatcherService;
         _fileWatcherService = new FileWatcherService();
+
+        // Subscribe to folder watcher for new repository discovery
+        _folderWatcherService.RepositoryDiscovered += OnRepositoryDiscovered;
+
+        // Start watching saved folders and scan for missed repos
+        var watchedFolders = _settingsService.LoadSettings().WatchedFolders;
+        if (watchedFolders.Count > 0)
+        {
+            _folderWatcherService.StartWatching(watchedFolders);
+            _ = ScanWatchedFoldersAsync(watchedFolders);
+        }
 
         // Subscribe to auto-fetch completion
         _autoFetchService.FetchCompleted += OnAutoFetchCompleted;
@@ -593,6 +607,74 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 IsBusy = false;
             }
+        }
+    }
+
+    /// <summary>
+    /// Handles discovery of new repositories from watched folders.
+    /// </summary>
+    private async void OnRepositoryDiscovered(object? sender, string repoPath)
+    {
+        await _dispatcherService.InvokeAsync(async () =>
+        {
+            if (_repositoryService.ContainsRepository(repoPath))
+                return;
+
+            if (await _gitService.IsValidRepositoryAsync(repoPath))
+            {
+                var repoInfo = await _gitService.GetRepositoryInfoAsync(repoPath);
+                _repositoryService.AddRepository(repoInfo);
+
+                // Mark the parent folder group as watched
+                var parentFolder = Path.GetDirectoryName(repoPath);
+                foreach (var group in RepositoryGroups)
+                {
+                    if (group.Type == Models.GroupType.Folder &&
+                        repoPath.StartsWith(Path.GetDirectoryName(group.Repositories.FirstOrDefault()?.Path ?? "") ?? "", StringComparison.OrdinalIgnoreCase))
+                    {
+                        group.IsWatched = true;
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
+    /// <summary>
+    /// Scans watched folders for repositories that were added while the app was closed.
+    /// </summary>
+    private async Task ScanWatchedFoldersAsync(IEnumerable<string> watchedFolders)
+    {
+        foreach (var folder in watchedFolders)
+        {
+            var repos = await _folderWatcherService.ScanFolderAsync(folder);
+            foreach (var repoPath in repos)
+            {
+                if (_repositoryService.ContainsRepository(repoPath))
+                    continue;
+
+                if (await _gitService.IsValidRepositoryAsync(repoPath))
+                {
+                    var repoInfo = await _gitService.GetRepositoryInfoAsync(repoPath);
+                    await _dispatcherService.InvokeAsync(() => _repositoryService.AddRepository(repoInfo));
+                }
+            }
+
+            // Mark folder groups as watched
+            await _dispatcherService.InvokeAsync(() =>
+            {
+                foreach (var group in RepositoryGroups)
+                {
+                    if (group.Type == Models.GroupType.Folder)
+                    {
+                        var groupFolder = Path.GetDirectoryName(group.Repositories.FirstOrDefault()?.Path ?? "");
+                        if (!string.IsNullOrEmpty(groupFolder) && groupFolder.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
+                        {
+                            group.IsWatched = true;
+                        }
+                    }
+                }
+            });
         }
     }
 
@@ -2144,6 +2226,65 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Start watching a folder group for new repositories.
+    /// </summary>
+    [RelayCommand]
+    public void WatchFolderGroup(RepositoryGroup? group)
+    {
+        if (group == null || group.Repositories.Count == 0)
+            return;
+
+        // Get the parent folder path from the first repository
+        var firstRepoPath = group.Repositories.FirstOrDefault()?.Path;
+        if (string.IsNullOrEmpty(firstRepoPath))
+            return;
+
+        var folderPath = Path.GetDirectoryName(firstRepoPath);
+        if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
+            return;
+
+        // Add to watched folders
+        var settings = _settingsService.LoadSettings();
+        if (!settings.WatchedFolders.Contains(folderPath, StringComparer.OrdinalIgnoreCase))
+        {
+            settings.WatchedFolders.Add(folderPath);
+            _settingsService.SaveSettings(settings);
+            _folderWatcherService.AddWatchedFolder(folderPath);
+        }
+
+        group.IsWatched = true;
+        StatusMessage = $"Now watching {group.Name} for new repositories";
+    }
+
+    /// <summary>
+    /// Stop watching a folder group for new repositories.
+    /// </summary>
+    [RelayCommand]
+    public void UnwatchFolderGroup(RepositoryGroup? group)
+    {
+        if (group == null || group.Repositories.Count == 0)
+            return;
+
+        // Get the parent folder path from the first repository
+        var firstRepoPath = group.Repositories.FirstOrDefault()?.Path;
+        if (string.IsNullOrEmpty(firstRepoPath))
+            return;
+
+        var folderPath = Path.GetDirectoryName(firstRepoPath);
+        if (string.IsNullOrEmpty(folderPath))
+            return;
+
+        // Remove from watched folders
+        var settings = _settingsService.LoadSettings();
+        settings.WatchedFolders.RemoveAll(f => f.Equals(folderPath, StringComparison.OrdinalIgnoreCase));
+        _settingsService.SaveSettings(settings);
+        _folderWatcherService.RemoveWatchedFolder(folderPath);
+
+        group.IsWatched = false;
+        StatusMessage = $"Stopped watching {group.Name}";
+    }
+
+    /// <summary>
     /// Load branches for a repository.
     /// </summary>
     public async Task LoadBranchesForRepoAsync(RepositoryInfo repo, bool forceReload = false)
@@ -2860,6 +3001,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MergeConflictResolutionViewModel.TargetBranch = SelectedRepository.CurrentBranch ?? "HEAD";
 
         await MergeConflictResolutionViewModel.LoadConflictsAsync(showLoading: isNewViewModel);
+
+        // Force property change notification to update UI bindings
+        OnPropertyChanged(nameof(MergeConflictResolutionViewModel));
     }
 
     private async void OnMergeConflictResolutionCompleted(object? sender, bool success)
@@ -3024,10 +3168,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Owner = _ownerWindow
         };
 
-        if (dialog.ShowDialog() == true)
+        var result = dialog.ShowDialog();
+
+        // Always refresh to detect conflicts or other state changes
+        await RefreshAsync();
+
+        if (result == true)
         {
             StatusMessage = $"Finished {branchType.ToString().ToLower()} {flowName}";
-            await RefreshAsync();
         }
     }
 
@@ -3243,6 +3391,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Dispose file watcher
         _fileWatcherService.Dispose();
+
+        // Dispose folder watcher
+        _folderWatcherService.RepositoryDiscovered -= OnRepositoryDiscovered;
+        _folderWatcherService.Dispose();
     }
 
     #endregion

@@ -319,6 +319,7 @@ public class GitGraphCanvas : FrameworkElement
     // Cache ScrollViewer reference - found once, reused
     private ScrollViewer? _parentScrollViewer;
     private bool _scrollViewerSearched;
+    private bool _scrollViewerHooked;
 
     // Geometry cache - stores geometries at origin, keyed by radius only
     private sealed class GeometryCache
@@ -398,6 +399,16 @@ public class GitGraphCanvas : FrameworkElement
         MouseLeave += OnMouseLeave;
         MouseLeftButtonUp += OnMouseLeftButtonUp;
         MouseLeftButtonDown += OnMouseLeftButtonDown;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    protected override void OnVisualParentChanged(DependencyObject? oldParent)
+    {
+        base.OnVisualParentChanged(oldParent);
+        ResetScrollViewerCache();
+        if (IsLoaded)
+            AttachToScrollViewer();
     }
 
     private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1599,8 +1610,8 @@ public class GitGraphCanvas : FrameworkElement
             double hPadding = label.IsCurrent ? 8 : 6;
 
             // Check if this is the last label that will fit - if more remain, add "+N" suffix
-            // Include both remaining branches AND tags in the count
-            int remainingAfterThis = node.BranchLabels.Count + node.TagNames.Count - drawnCount - 1;
+            // Only count remaining branches (tags have their own separate overflow indicator)
+            int remainingAfterThis = node.BranchLabels.Count - drawnCount - 1;
             string overflowSuffix = "";
             double suffixWidth = 0;
             FormattedText? suffixFormatted = null;
@@ -2416,6 +2427,63 @@ public class GitGraphCanvas : FrameworkElement
             _nodesByShaCache = nodes.ToDictionary(n => n.Sha);
         }
         return _nodesByShaCache;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        ResetScrollViewerCache();
+        AttachToScrollViewer();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        DetachFromScrollViewer();
+    }
+
+    private void ResetScrollViewerCache()
+    {
+        DetachFromScrollViewer();
+        _parentScrollViewer = null;
+        _scrollViewerSearched = false;
+    }
+
+    private void AttachToScrollViewer()
+    {
+        var scrollViewer = FindParentScrollViewer();
+        if (scrollViewer == null)
+            return;
+
+        if (!ReferenceEquals(_parentScrollViewer, scrollViewer))
+            _parentScrollViewer = scrollViewer;
+
+        if (_scrollViewerHooked)
+            return;
+
+        _parentScrollViewer.ScrollChanged += ParentScrollViewer_ScrollChanged;
+        _parentScrollViewer.SizeChanged += ParentScrollViewer_SizeChanged;
+        _scrollViewerHooked = true;
+    }
+
+    private void DetachFromScrollViewer()
+    {
+        if (_parentScrollViewer != null && _scrollViewerHooked)
+        {
+            _parentScrollViewer.ScrollChanged -= ParentScrollViewer_ScrollChanged;
+            _parentScrollViewer.SizeChanged -= ParentScrollViewer_SizeChanged;
+        }
+        _scrollViewerHooked = false;
+    }
+
+    private void ParentScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        // Re-render visible range when scrolling to keep culling accurate.
+        InvalidateVisual();
+    }
+
+    private void ParentScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Re-render when viewport size changes (window resize/maximize).
+        InvalidateVisual();
     }
 
     /// <summary>
