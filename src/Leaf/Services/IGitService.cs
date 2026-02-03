@@ -454,4 +454,29 @@ public interface IGitService
     Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200);
 
     #endregion
+
+    #region Hunk Operations
+
+    /// <summary>
+    /// Revert a single hunk by applying a reverse patch.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository.</param>
+    /// <param name="patchContent">The unified diff patch content (will be applied with --reverse).</param>
+    Task RevertHunkAsync(string repoPath, string patchContent);
+
+    /// <summary>
+    /// Stage a single hunk by applying a patch to the index.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository.</param>
+    /// <param name="patchContent">The unified diff patch content.</param>
+    Task StageHunkAsync(string repoPath, string patchContent);
+
+    /// <summary>
+    /// Unstage a single hunk by applying a reverse patch to the index.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository.</param>
+    /// <param name="patchContent">The unified diff patch content (will be applied with --reverse to index).</param>
+    Task UnstageHunkAsync(string repoPath, string patchContent);
+
+    #endregion
 }

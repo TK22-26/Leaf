@@ -24,12 +24,19 @@ public partial class DiffViewerViewModel : ObservableObject
     }
 
     private readonly IGitService _gitService;
+    private readonly IHunkService _hunkService;
     private CancellationTokenSource? _loadCts;
     private int _loadSequence;
 
     public DiffViewerViewModel(IGitService gitService)
+        : this(gitService, new HunkService())
+    {
+    }
+
+    public DiffViewerViewModel(IGitService gitService, IHunkService hunkService)
     {
         _gitService = gitService;
+        _hunkService = hunkService;
     }
 
     [ObservableProperty]
@@ -89,9 +96,35 @@ public partial class DiffViewerViewModel : ObservableObject
     [ObservableProperty]
     private double _blameLineHeight = 18;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowFullDiff))]
+    [NotifyPropertyChangedFor(nameof(ShowHunkView))]
+    private bool _isHunkMode;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanShowHunks))]
+    private ObservableCollection<DiffHunk> _hunks = [];
+
     public bool IsDiffMode => Mode == ViewerMode.Diff;
     public bool IsBlameMode => Mode == ViewerMode.Blame;
     public bool IsHistoryMode => Mode == ViewerMode.History;
+
+    /// <summary>
+    /// True if hunk mode can be enabled (file has both old and new content - not a new or deleted file).
+    /// </summary>
+    public bool CanShowHunks => IsDiffMode && !IsBinary && DiffResult != null &&
+                                !string.IsNullOrEmpty(DiffResult.OldContent) &&
+                                !string.IsNullOrEmpty(DiffResult.NewContent);
+
+    /// <summary>
+    /// True when showing full inline diff (diff mode, not hunk mode).
+    /// </summary>
+    public bool ShowFullDiff => IsDiffMode && !IsHunkMode && !IsBinary;
+
+    /// <summary>
+    /// True when showing hunk-collapsed view.
+    /// </summary>
+    public bool ShowHunkView => IsDiffMode && IsHunkMode && !IsBinary;
 
     public bool CanShowFileInsights => !string.IsNullOrWhiteSpace(RepositoryPath) &&
                                        DiffResult?.IsFileBacked == true &&
@@ -101,6 +134,11 @@ public partial class DiffViewerViewModel : ObservableObject
     /// Event raised when the diff viewer should be closed.
     /// </summary>
     public event EventHandler? CloseRequested;
+
+    /// <summary>
+    /// Event raised when a hunk has been reverted.
+    /// </summary>
+    public event EventHandler<DiffHunk>? HunkReverted;
 
     /// <summary>
     /// Load a diff result into the viewer.
@@ -116,14 +154,31 @@ public partial class DiffViewerViewModel : ObservableObject
         LinesAdded = result.LinesAddedCount;
         LinesDeleted = result.LinesDeletedCount;
         Mode = ViewerMode.Diff;
+        IsHunkMode = false;
         BlameLines = [];
         BlameChunks = [];
         BlameContent = string.Empty;
         HistoryCommits = [];
 
+        // Parse hunks for the diff
+        if (!result.IsBinary && !string.IsNullOrEmpty(result.OldContent) && !string.IsNullOrEmpty(result.NewContent))
+        {
+            var parsedHunks = _hunkService.ParseHunks(result);
+            Hunks = new ObservableCollection<DiffHunk>(parsedHunks);
+        }
+        else
+        {
+            Hunks = [];
+        }
+
         // Set syntax highlighting based on file extension
         var extension = Path.GetExtension(result.FileName);
         SyntaxHighlighting = HighlightingManager.Instance.GetDefinitionByExtension(extension);
+
+        // Notify property changes for computed properties
+        OnPropertyChanged(nameof(CanShowHunks));
+        OnPropertyChanged(nameof(ShowFullDiff));
+        OnPropertyChanged(nameof(ShowHunkView));
     }
 
     /// <summary>
@@ -145,6 +200,8 @@ public partial class DiffViewerViewModel : ObservableObject
         BlameChunks = [];
         BlameContent = string.Empty;
         HistoryCommits = [];
+        Hunks = [];
+        IsHunkMode = false;
         Mode = ViewerMode.Diff;
     }
 
@@ -162,6 +219,42 @@ public partial class DiffViewerViewModel : ObservableObject
         IsLoading = false;
         Mode = ViewerMode.Diff;
         Debug.WriteLine("[DiffViewer] Mode=Diff (cancel active load).");
+    }
+
+    [RelayCommand]
+    private void ToggleHunkMode()
+    {
+        if (!CanShowHunks)
+            return;
+
+        IsHunkMode = !IsHunkMode;
+        Debug.WriteLine($"[DiffViewer] HunkMode={IsHunkMode}");
+    }
+
+    /// <summary>
+    /// Revert a specific hunk.
+    /// </summary>
+    [RelayCommand]
+    public async Task RevertHunkAsync(DiffHunk hunk)
+    {
+        if (string.IsNullOrEmpty(RepositoryPath) || string.IsNullOrEmpty(FilePath) || DiffResult == null)
+            return;
+
+        try
+        {
+            IsLoading = true;
+            var patch = _hunkService.GenerateHunkPatch(FilePath, hunk);
+            await _gitService.RevertHunkAsync(RepositoryPath, patch);
+            HunkReverted?.Invoke(this, hunk);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[DiffViewer] RevertHunk failed: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     [RelayCommand]

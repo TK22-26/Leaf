@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Highlighting;
+using Leaf.Models;
 using Leaf.ViewModels;
 using System.Linq;
 
@@ -357,6 +358,14 @@ public partial class DiffViewerControl : UserControl
         {
             _viewModel?.CloseCommand.Execute(null);
             e.Handled = true;
+        }
+    }
+
+    private async void HunkItem_RevertHunkRequested(object? sender, DiffHunk hunk)
+    {
+        if (_viewModel != null)
+        {
+            await _viewModel.RevertHunkAsync(hunk);
         }
     }
 

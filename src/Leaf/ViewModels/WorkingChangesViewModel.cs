@@ -19,6 +19,8 @@ public partial class WorkingChangesViewModel : ObservableObject
 {
     private readonly IGitService _gitService;
     private readonly SettingsService _settingsService;
+    private readonly IClipboardService _clipboardService;
+    private readonly IFileSystemService _fileSystemService;
     private readonly OllamaService _ollamaService = new();
     private string? _repositoryPath;
 
@@ -105,10 +107,16 @@ public partial class WorkingChangesViewModel : ObservableObject
         }
     }
 
-    public WorkingChangesViewModel(IGitService gitService, SettingsService settingsService)
+    public WorkingChangesViewModel(
+        IGitService gitService,
+        SettingsService settingsService,
+        IClipboardService clipboardService,
+        IFileSystemService fileSystemService)
     {
         _gitService = gitService;
         _settingsService = settingsService;
+        _clipboardService = clipboardService;
+        _fileSystemService = fileSystemService;
     }
 
     /// <summary>
@@ -415,12 +423,12 @@ public partial class WorkingChangesViewModel : ObservableObject
         if (File.Exists(fullPath))
         {
             // Open Explorer and select the file
-            Process.Start("explorer.exe", $"/select,\"{fullPath}\"");
+            _fileSystemService.OpenInExplorerAndSelect(fullPath);
         }
         else if (Directory.Exists(fullPath))
         {
             // Open the directory
-            Process.Start("explorer.exe", $"\"{fullPath}\"");
+            _fileSystemService.OpenInExplorer(fullPath);
         }
         else
         {
@@ -428,7 +436,7 @@ public partial class WorkingChangesViewModel : ObservableObject
             var directory = Path.GetDirectoryName(fullPath);
             if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
             {
-                Process.Start("explorer.exe", $"\"{directory}\"");
+                _fileSystemService.RevealInExplorer(directory);
             }
         }
     }
@@ -447,7 +455,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         if (!File.Exists(fullPath))
             return;
 
-        Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true });
+        _fileSystemService.OpenWithDefaultApp(fullPath);
     }
 
     private static ObservableCollection<PathTreeNode> BuildTree(IEnumerable<FileStatusInfo> files)
@@ -538,7 +546,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         var normalizedFilePath = file.Path.Replace('/', '\\');
         var fullPath = Path.Combine(_repositoryPath, normalizedFilePath);
-        Clipboard.SetText(fullPath);
+        _clipboardService.SetText(fullPath);
     }
 
     /// <summary>
@@ -790,26 +798,15 @@ exit /b %errorlevel%
 
             Debug.WriteLine($"[WorkingChanges] AutoFill start: repo={_repositoryPath}, provider={preferredProvider}");
 
-            // Codex can access git directly, so we don't need to include the full diff
-            var isCodex = preferredProvider.Equals("Codex", StringComparison.OrdinalIgnoreCase);
-            var includeContext = !isCodex;
-
-            string summary;
-            if (includeContext)
+            // Always include staged diff context - AI providers cannot run git commands in their sandbox
+            var summary = await _gitService.GetStagedSummaryAsync(_repositoryPath);
+            if (summary.Length > MaxSummaryChars)
             {
-                summary = await _gitService.GetStagedSummaryAsync(_repositoryPath);
-                if (summary.Length > MaxSummaryChars)
-                {
-                    ErrorMessage = $"Staged summary is too large to send ({summary.Length} chars).";
-                    Debug.WriteLine($"[WorkingChanges] AutoFill blocked: summary length {summary.Length} exceeds limit {MaxSummaryChars}.");
-                    return;
-                }
+                ErrorMessage = $"Staged summary is too large to send ({summary.Length} chars).";
+                Debug.WriteLine($"[WorkingChanges] AutoFill blocked: summary length {summary.Length} exceeds limit {MaxSummaryChars}.");
+                return;
             }
-            else
-            {
-                // For Codex, just get basic info (no diff content)
-                summary = string.Empty;
-            }
+            var includeContext = true;
 
             var isOllama = preferredProvider.Equals("Ollama", StringComparison.OrdinalIgnoreCase);
             var prompt = isOllama
@@ -944,12 +941,13 @@ Description:
         }
 
         var (resolvedPath, combinedPath) = ResolveCommandPath(command);
+        var executablePath = resolvedPath ?? command;
+        Debug.WriteLine($"[WorkingChanges] Command '{command}' resolved to: {executablePath}");
 
         try
         {
             var psi = new ProcessStartInfo
             {
-                FileName = resolvedPath ?? command,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -957,15 +955,33 @@ Description:
                 CreateNoWindow = true
             };
 
+            // On Windows, .cmd and .bat files must be run through cmd.exe /c with args as a single string
+            var isBatchFile = executablePath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
+                              executablePath.EndsWith(".bat", StringComparison.OrdinalIgnoreCase);
+            if (isBatchFile)
+            {
+                // Use full path to cmd.exe to ensure it's found
+                var cmdPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
+                psi.FileName = cmdPath;
+                // Build the full command line for cmd.exe /c
+                var escapedArgs = args.Select(a => a.Contains(' ') || a.Contains('"') ? $"\"{a.Replace("\"", "\\\"")}\"" : a);
+                psi.Arguments = $"/c \"{executablePath}\" {string.Join(" ", escapedArgs)}";
+                Debug.WriteLine($"[WorkingChanges] Batch file detected, using: {cmdPath}");
+                Debug.WriteLine($"[WorkingChanges] Full arguments: {psi.Arguments[..Math.Min(200, psi.Arguments.Length)]}...");
+            }
+            else
+            {
+                psi.FileName = executablePath;
+                foreach (var arg in args)
+                {
+                    psi.ArgumentList.Add(arg);
+                }
+            }
+
             // Set working directory if specified (allows AI to access git repo)
             if (!string.IsNullOrWhiteSpace(workingDirectory))
             {
                 psi.WorkingDirectory = workingDirectory;
-            }
-
-            foreach (var arg in args)
-            {
-                psi.ArgumentList.Add(arg);
             }
 
             // Debug: log the command (truncate long prompts in log)
@@ -1050,9 +1066,10 @@ Description:
 
             return (true, output, string.Empty);
         }
-        catch (System.ComponentModel.Win32Exception)
+        catch (System.ComponentModel.Win32Exception ex)
         {
-            return (false, string.Empty, "command not found on PATH");
+            Debug.WriteLine($"[WorkingChanges] Win32Exception: {ex.Message} (NativeErrorCode: {ex.NativeErrorCode})");
+            return (false, string.Empty, $"command error: {ex.Message}");
         }
         catch (Exception ex)
         {
@@ -1178,11 +1195,17 @@ Description:
 
         if (provider.Equals("Codex", StringComparison.OrdinalIgnoreCase))
         {
-            // Codex CLI uses: codex exec with --output-schema for guaranteed JSON format
-            // Run in repo directory so Codex can access git directly
-            // --full-auto enables non-interactive automatic execution
-            // --color never disables terminal detection to prevent TTY issues
-            // --json outputs structured JSONL for cleaner parsing
+            // Codex CLI: codex exec with --output-schema for guaranteed JSON format
+            // - Run in repo directory so Codex can access git directly
+            // - --full-auto enables non-interactive automatic execution
+            // - --color never disables terminal detection to prevent TTY issues
+            // - --json outputs structured JSONL for cleaner parsing
+            // - "-" reads prompt from stdin instead of command line args
+            //
+            // IMPORTANT: We pass the prompt via stdin (useStdin: true) because the prompt
+            // includes the full staged diff which can be 60KB+. Windows has a ~32KB command
+            // line length limit, so passing large prompts as args causes Win32Exception
+            // error 206 "filename or extension is too long".
             var schemaPath = GetOrCreateCodexSchemaFile();
             return ("codex", new List<string>
             {
@@ -1192,8 +1215,8 @@ Description:
                 "--color", "never",
                 "--output-schema", schemaPath,
                 "--json",
-                prompt  // Codex prompt is short since it reads git directly
-            }, useStdin: false, workingDirectory: repoPath);
+                "-"
+            }, useStdin: true, workingDirectory: repoPath);
         }
 
         return (string.Empty, [], false, null);

@@ -35,6 +35,8 @@ public class DiffService : IDiffService
         var contentBuilder = new System.Text.StringBuilder();
         int linesAdded = 0;
         int linesDeleted = 0;
+        int oldLineNumber = 1;
+        int newLineNumber = 1;
 
         foreach (var line in diffModel.Lines)
         {
@@ -44,13 +46,31 @@ public class DiffService : IDiffService
                 Type = MapChangeType(line.Type)
             };
 
+            // Assign line numbers based on change type
+            switch (line.Type)
+            {
+                case ChangeType.Unchanged:
+                    diffLine.OldLineNumber = oldLineNumber++;
+                    diffLine.NewLineNumber = newLineNumber++;
+                    break;
+                case ChangeType.Deleted:
+                    diffLine.OldLineNumber = oldLineNumber++;
+                    // No new line number for deleted lines
+                    linesDeleted++;
+                    break;
+                case ChangeType.Inserted:
+                    // No old line number for added lines
+                    diffLine.NewLineNumber = newLineNumber++;
+                    linesAdded++;
+                    break;
+                case ChangeType.Modified:
+                    diffLine.OldLineNumber = oldLineNumber++;
+                    diffLine.NewLineNumber = newLineNumber++;
+                    break;
+            }
+
             result.Lines.Add(diffLine);
             contentBuilder.AppendLine(line.Text ?? string.Empty);
-
-            if (line.Type == ChangeType.Inserted)
-                linesAdded++;
-            else if (line.Type == ChangeType.Deleted)
-                linesDeleted++;
         }
 
         result.InlineContent = contentBuilder.ToString();

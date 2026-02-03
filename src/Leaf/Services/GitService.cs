@@ -3177,5 +3177,91 @@ public class GitService : IGitService
         GitCommandExecuted?.Invoke(this, new GitCommandEventArgs(workingDirectory, arguments, exitCode, output, error));
     }
 
+    /// <summary>
+    /// Run a git command with stdin input support.
+    /// </summary>
+    private async Task<(int ExitCode, string Output, string Error)> RunGitCommandWithInputAsync(
+        string repoPath,
+        string arguments,
+        string? stdinInput = null)
+    {
+        return await Task.Run(() =>
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = arguments,
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = stdinInput != null,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            if (process == null)
+            {
+                var failed = (ExitCode: -1, Output: "", Error: "Failed to start git process");
+                OnGitCommandExecuted(repoPath, $"git {arguments}", failed.ExitCode, failed.Output, failed.Error);
+                return failed;
+            }
+
+            if (stdinInput != null)
+            {
+                process.StandardInput.Write(stdinInput);
+                process.StandardInput.Close();
+            }
+
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            var result = (ExitCode: process.ExitCode, Output: output, Error: error);
+            OnGitCommandExecuted(repoPath, $"git {arguments}", result.ExitCode, result.Output, result.Error);
+            return result;
+        });
+    }
+
+    #endregion
+
+    #region Hunk Operations
+
+    /// <inheritdoc />
+    public async Task RevertHunkAsync(string repoPath, string patchContent)
+    {
+        // Apply the patch in reverse to the working directory
+        var result = await RunGitCommandWithInputAsync(repoPath, "apply --reverse", patchContent);
+
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"Failed to revert hunk: {result.Error}");
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task StageHunkAsync(string repoPath, string patchContent)
+    {
+        // Apply the patch to the index (staging area) only
+        var result = await RunGitCommandWithInputAsync(repoPath, "apply --cached", patchContent);
+
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"Failed to stage hunk: {result.Error}");
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task UnstageHunkAsync(string repoPath, string patchContent)
+    {
+        // Apply the patch in reverse to the index (staging area) only
+        var result = await RunGitCommandWithInputAsync(repoPath, "apply --cached --reverse", patchContent);
+
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"Failed to unstage hunk: {result.Error}");
+        }
+    }
+
     #endregion
 }

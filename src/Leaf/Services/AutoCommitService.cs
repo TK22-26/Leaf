@@ -147,22 +147,14 @@ public class AutoCommitService
         try
         {
             var isOllama = provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase);
-            var isCodex = provider.Equals("Codex", StringComparison.OrdinalIgnoreCase);
-            var includeContext = !isCodex;
 
-            string summary;
-            if (includeContext)
+            // Always include staged diff context - AI providers cannot run git commands in their sandbox
+            var summary = await _gitService.GetStagedSummaryAsync(repoPath);
+            if (summary.Length > MaxSummaryChars)
             {
-                summary = await _gitService.GetStagedSummaryAsync(repoPath);
-                if (summary.Length > MaxSummaryChars)
-                {
-                    return (false, "", "", $"Staged changes too large ({summary.Length} chars). Max: {MaxSummaryChars}");
-                }
+                return (false, "", "", $"Staged changes too large ({summary.Length} chars). Max: {MaxSummaryChars}");
             }
-            else
-            {
-                summary = string.Empty;
-            }
+            var includeContext = true;
 
             var prompt = isOllama
                 ? BuildOllamaPrompt(summary)

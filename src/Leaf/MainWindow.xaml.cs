@@ -25,6 +25,8 @@ public partial class MainWindow : Window
         // Phase 1: Foundation services
         var dialogService = new DialogService(dispatcherService, windowService);
         var gitCommandRunner = new GitCommandRunner();
+        var clipboardService = new ClipboardService();
+        var fileSystemService = new FileSystemService();
 
         // Original services
         var gitService = new GitService();
@@ -35,7 +37,7 @@ public partial class MainWindow : Window
         var autoFetchService = new AutoFetchService(gitService, credentialService);
 
         // ViewModelFactory for transient ViewModel creation
-        var viewModelFactory = new ViewModelFactory(gitService, dialogService, repositoryEventHub);
+        var viewModelFactory = new ViewModelFactory(gitService, dialogService, repositoryEventHub, clipboardService, fileSystemService);
 
         // Create view model with all services
         var viewModel = new MainViewModel(
@@ -50,7 +52,9 @@ public partial class MainWindow : Window
             repositoryEventHub,
             dialogService,
             repositorySessionFactory,
-            gitCommandRunner);
+            gitCommandRunner,
+            clipboardService,
+            fileSystemService);
 
         DataContext = viewModel;
     }

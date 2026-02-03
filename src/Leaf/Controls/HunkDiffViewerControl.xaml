@@ -1,0 +1,217 @@
+<UserControl x:Class="Leaf.Controls.HunkDiffViewerControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:converters="clr-namespace:Leaf.Converters"
+             xmlns:controls="clr-namespace:Leaf.Controls"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="800"
+             KeyDown="UserControl_KeyDown"
+             Focusable="True">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
+
+        <SolidColorBrush x:Key="AddedCountBrush" Color="#28A745" />
+        <SolidColorBrush x:Key="DeletedCountBrush" Color="#E81123" />
+    </UserControl.Resources>
+
+    <Grid Background="#4D202020">
+        <Grid.RowDefinitions>
+            <!-- Header -->
+            <RowDefinition Height="Auto" />
+            <!-- Content -->
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header bar -->
+        <Border Grid.Row="0"
+                Padding="12,10"
+                Background="#1C2024"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- File summary -->
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <Border Width="30" Height="30"
+                            Background="#22342A"
+                            CornerRadius="6"
+                            Margin="0,0,10,0"
+                            VerticalAlignment="Center">
+                        <TextBlock HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontFamily="Segoe Fluent Icons"
+                                   FontSize="14"
+                                   Foreground="#8BC99A"
+                                   Text="&#xE7C3;" />
+                    </Border>
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Text="{Binding FileName}"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   Text="{Binding FilePath}"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Stats -->
+                <StackPanel Grid.Column="1"
+                            Margin="16,0"
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal"
+                            Visibility="{Binding IsBinary, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                    <StackPanel Margin="0,0,12,0" Orientation="Horizontal">
+                        <TextBlock Margin="0,0,4,0"
+                                   VerticalAlignment="Center"
+                                   FontFamily="Consolas"
+                                   FontSize="13"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource AddedCountBrush}"
+                                   Text="+" />
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="12"
+                                   Foreground="{StaticResource AddedCountBrush}"
+                                   Text="{Binding LinesAdded}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Margin="0,0,4,0"
+                                   VerticalAlignment="Center"
+                                   FontFamily="Consolas"
+                                   FontSize="13"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource DeletedCountBrush}"
+                                   Text="-" />
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="12"
+                                   Foreground="{StaticResource DeletedCountBrush}"
+                                   Text="{Binding LinesDeleted}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Close button -->
+                <Button Grid.Column="2"
+                        Width="35"
+                        Height="35"
+                        Padding="0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Command="{Binding CloseCommand}"
+                        Cursor="Hand"
+                        ToolTip="Close (Esc)">
+                    <TextBlock FontFamily="Segoe Fluent Icons"
+                               FontSize="14"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Text="&#xE711;" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Error message -->
+        <Border Grid.Row="1"
+                Background="#3D1F1F"
+                Padding="12,8"
+                Visibility="{Binding ErrorMessage, Converter={StaticResource BoolToVisibilityConverter}}">
+            <TextBlock Foreground="#F87171"
+                       FontSize="12"
+                       Text="{Binding ErrorMessage}"
+                       TextWrapping="Wrap"/>
+        </Border>
+
+        <!-- Binary file message -->
+        <Border Grid.Row="1"
+                Visibility="{Binding IsBinary, Converter={StaticResource BoolToVisibilityConverter}}">
+            <TextBlock HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       FontSize="14"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Text="Binary file - cannot display diff" />
+        </Border>
+
+        <!-- Loading indicator -->
+        <Border Grid.Row="1"
+                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibilityConverter}}">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                <ProgressBar Width="200"
+                             Height="4"
+                             IsIndeterminate="True" />
+                <TextBlock Margin="0,8,0,0"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="Processing..." />
+            </StackPanel>
+        </Border>
+
+        <!-- No changes message -->
+        <TextBlock Grid.Row="1"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   FontSize="14"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   Text="No changes to display">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding HasChanges}" Value="False"/>
+                                <Condition Binding="{Binding IsBinary}" Value="False"/>
+                                <Condition Binding="{Binding IsLoading}" Value="False"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </MultiDataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+
+        <!-- Hunks list -->
+        <ScrollViewer Grid.Row="1"
+                      Padding="12"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <ScrollViewer.Style>
+                <Style TargetType="ScrollViewer">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding HasChanges}" Value="True"/>
+                                <Condition Binding="{Binding IsBinary}" Value="False"/>
+                                <Condition Binding="{Binding IsLoading}" Value="False"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </MultiDataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ScrollViewer.Style>
+            <ItemsControl x:Name="HunksItemsControl" ItemsSource="{Binding Hunks}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <controls:HunkItemControl
+                            ShowStageButton="{Binding DataContext.ShowStageButtons, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            RevertHunkRequested="HunkItem_RevertHunkRequested"
+                            StageHunkRequested="HunkItem_StageHunkRequested"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>
