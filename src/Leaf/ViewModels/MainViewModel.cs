@@ -303,6 +303,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService, clipboardService, fileSystemService);
         _diffViewerViewModel = new DiffViewerViewModel(gitService);
         _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
+        _diffViewerViewModel.HunkReverted += OnDiffViewerHunkReverted;
         _terminalViewModel = new TerminalViewModel(gitService, settingsService);
         _terminalViewModel.CommandExecuted += OnTerminalCommandExecuted;
 
@@ -1752,6 +1753,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         IsDiffViewerVisible = false;
         DiffViewerViewModel?.Clear();
+    }
+
+    /// <summary>
+    /// Handle hunk reverted event from the diff viewer - refresh working changes.
+    /// </summary>
+    private async void OnDiffViewerHunkReverted(object? sender, Models.DiffHunk hunk)
+    {
+        // Refresh working changes after reverting a hunk
+        if (GitGraphViewModel != null && SelectedRepository != null)
+        {
+            await GitGraphViewModel.RefreshWorkingChangesAsync();
+
+            if (WorkingChangesViewModel != null && IsWorkingChangesSelected)
+            {
+                WorkingChangesViewModel.SetWorkingChanges(
+                    SelectedRepository.Path,
+                    GitGraphViewModel.WorkingChanges);
+            }
+        }
+
+        // Note: We don't close the diff viewer - the user can continue viewing/reverting other hunks
     }
 
     private static FileDiffResult BuildUnifiedDiffResult(string diffText, string title)

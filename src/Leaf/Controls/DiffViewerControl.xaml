@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
+             xmlns:controls="clr-namespace:Leaf.Controls"
              xmlns:converters="clr-namespace:Leaf.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -143,6 +144,13 @@
                                   Style="{StaticResource HeaderToggleStyle}"
                                   IsChecked="{Binding IsDiffMode, Mode=OneWay}"
                                   Command="{Binding ShowDiffCommand}" />
+                    <ToggleButton Content="Hunks"
+                                  Margin="8,0,0,0"
+                                  Style="{StaticResource HeaderToggleStyle}"
+                                  IsChecked="{Binding IsHunkMode, Mode=OneWay}"
+                                  IsEnabled="{Binding CanShowHunks}"
+                                  Command="{Binding ToggleHunkModeCommand}"
+                                  ToolTip="Show only changed sections (hunks)" />
                     <ToggleButton Content="Blame"
                                   Margin="8,0,0,0"
                                   Style="{StaticResource HeaderToggleStyle}"
@@ -235,7 +243,7 @@
         </Border>
 
         <Grid Grid.Row="1">
-            <!-- Inline diff view -->
+            <!-- Inline diff view (full file) -->
             <avalonedit:TextEditor x:Name="DiffEditor"
                                    Background="Transparent"
                                    FontFamily="Consolas"
@@ -245,22 +253,23 @@
                                    IsReadOnly="True"
                                    LineNumbersForeground="{DynamicResource TextFillColorTertiaryBrush}"
                                    ShowLineNumbers="True"
-                                   VerticalScrollBarVisibility="Auto">
-                <avalonedit:TextEditor.Style>
-                    <Style TargetType="avalonedit:TextEditor">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <MultiDataTrigger>
-                                <MultiDataTrigger.Conditions>
-                                    <Condition Binding="{Binding IsDiffMode}" Value="True"/>
-                                    <Condition Binding="{Binding IsBinary}" Value="False"/>
-                                </MultiDataTrigger.Conditions>
-                                <Setter Property="Visibility" Value="Visible"/>
-                            </MultiDataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </avalonedit:TextEditor.Style>
-            </avalonedit:TextEditor>
+                                   VerticalScrollBarVisibility="Auto"
+                                   Visibility="{Binding ShowFullDiff, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+            <!-- Hunk view (collapsed to changes only) -->
+            <ScrollViewer Padding="12"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Visibility="{Binding ShowHunkView, Converter={StaticResource BoolToVisibilityConverter}}">
+                <ItemsControl ItemsSource="{Binding Hunks}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <controls:HunkItemControl ShowStageButton="False"
+                                                      RevertHunkRequested="HunkItem_RevertHunkRequested" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
 
             <!-- Blame view -->
             <Grid Visibility="{Binding IsBlameMode, Converter={StaticResource BoolToVisibilityConverter}}">
