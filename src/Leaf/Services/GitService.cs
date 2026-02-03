@@ -821,6 +821,12 @@ public class GitService : IGitService
                 }
             }
 
+            // If still no credentials, return DefaultCredentials to let Git handle it
+            if (string.IsNullOrEmpty(effectiveUsername) || string.IsNullOrEmpty(effectivePassword))
+            {
+                return new DefaultCredentials();
+            }
+
             // Azure DevOps: use "git" as username with PAT as password
             if (IsAzureDevOpsUrl(url))
             {
