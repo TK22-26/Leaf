@@ -846,6 +846,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
         OnPropertyChanged(nameof(CanMarkResolved));
     }
 
+    private const int ContextLineCount = 5;
+
     private void BuildDisplayLines(FileMergeResult result)
     {
         // Build all lines into lists first, then replace in bulk
@@ -854,13 +856,17 @@ public partial class ConflictResolutionViewModel : ObservableObject
         var oursLineNumber = 1;
         var theirsLineNumber = 1;
 
+        // First pass: build all display lines and track line numbers
+        var regionOursLines = new Dictionary<MergeRegion, List<ConflictDisplayLine>>();
+        var regionTheirsLines = new Dictionary<MergeRegion, List<ConflictDisplayLine>>();
+
         foreach (var region in result.Regions)
         {
-            // Clear per-region display lines before rebuilding
             region.OursDisplayLines.Clear();
             region.TheirsDisplayLines.Clear();
+            regionOursLines[region] = [];
+            regionTheirsLines[region] = [];
 
-            // Track starting line numbers for this region
             region.OursStartLineNumber = oursLineNumber;
             region.TheirsStartLineNumber = theirsLineNumber;
 
@@ -875,10 +881,11 @@ public partial class ConflictResolutionViewModel : ObservableObject
                         {
                             Content = line,
                             IsSelectable = false,
-                            LineNumber = oursLineNumber++
+                            LineNumber = oursLineNumber++,
+                            IsContextLine = true // Non-conflict lines are context
                         };
                         oursLines.Add(displayLine);
-                        region.OursDisplayLines.Add(displayLine);
+                        regionOursLines[region].Add(displayLine);
                     }
                 }
 
@@ -890,10 +897,11 @@ public partial class ConflictResolutionViewModel : ObservableObject
                         {
                             Content = line,
                             IsSelectable = false,
-                            LineNumber = theirsLineNumber++
+                            LineNumber = theirsLineNumber++,
+                            IsContextLine = true
                         };
                         theirsLines.Add(displayLine);
-                        region.TheirsDisplayLines.Add(displayLine);
+                        regionTheirsLines[region].Add(displayLine);
                     }
                 }
 
@@ -912,7 +920,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
                         IsSelectable = true,
                         IsSelected = line.IsSelected,
                         SourceLine = line,
-                        LineNumber = oursLineNumber++
+                        LineNumber = oursLineNumber++,
+                        IsContextLine = false // Conflict lines are not context
                     };
 
                     if (_wiredDisplayLines.Add(line))
@@ -928,7 +937,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
                     }
 
                     oursLines.Add(displayLine);
-                    region.OursDisplayLines.Add(displayLine);
+                    regionOursLines[region].Add(displayLine);
                 }
             }
 
@@ -942,7 +951,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
                         IsSelectable = true,
                         IsSelected = line.IsSelected,
                         SourceLine = line,
-                        LineNumber = theirsLineNumber++
+                        LineNumber = theirsLineNumber++,
+                        IsContextLine = false
                     };
 
                     if (_wiredDisplayLines.Add(line))
@@ -958,8 +968,55 @@ public partial class ConflictResolutionViewModel : ObservableObject
                     }
 
                     theirsLines.Add(displayLine);
-                    region.TheirsDisplayLines.Add(displayLine);
+                    regionTheirsLines[region].Add(displayLine);
                 }
+            }
+        }
+
+        // Second pass: add context lines to each conflict region
+        for (int i = 0; i < result.Regions.Count; i++)
+        {
+            var region = result.Regions[i];
+            if (!region.IsConflict)
+                continue;
+
+            // Get context from preceding region (last N lines)
+            if (i > 0)
+            {
+                var prevRegion = result.Regions[i - 1];
+                var prevOursLines = regionOursLines[prevRegion];
+                var prevTheirsLines = regionTheirsLines[prevRegion];
+
+                var oursContext = prevOursLines.TakeLast(ContextLineCount).ToList();
+                var theirsContext = prevTheirsLines.TakeLast(ContextLineCount).ToList();
+
+                // Insert context at the beginning
+                for (int j = oursContext.Count - 1; j >= 0; j--)
+                    region.OursDisplayLines.Insert(0, oursContext[j]);
+                for (int j = theirsContext.Count - 1; j >= 0; j--)
+                    region.TheirsDisplayLines.Insert(0, theirsContext[j]);
+            }
+
+            // Add the conflict lines themselves
+            foreach (var line in regionOursLines[region])
+                region.OursDisplayLines.Add(line);
+            foreach (var line in regionTheirsLines[region])
+                region.TheirsDisplayLines.Add(line);
+
+            // Get context from following region (first N lines)
+            if (i < result.Regions.Count - 1)
+            {
+                var nextRegion = result.Regions[i + 1];
+                var nextOursLines = regionOursLines[nextRegion];
+                var nextTheirsLines = regionTheirsLines[nextRegion];
+
+                var oursContext = nextOursLines.Take(ContextLineCount).ToList();
+                var theirsContext = nextTheirsLines.Take(ContextLineCount).ToList();
+
+                foreach (var line in oursContext)
+                    region.OursDisplayLines.Add(line);
+                foreach (var line in theirsContext)
+                    region.TheirsDisplayLines.Add(line);
             }
         }
 

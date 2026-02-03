@@ -48,9 +48,14 @@
         <Style x:Key="DisplayLineBorderStyleOurs" TargetType="Border">
             <Setter Property="Padding" Value="0,1"/>
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Opacity" Value="1"/>
             <Style.Triggers>
+                <DataTrigger Binding="{Binding IsContextLine}" Value="True">
+                    <Setter Property="Opacity" Value="0.5"/>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsSelectable}" Value="True">
                     <Setter Property="Background" Value="#331E3A5F"/>
+                    <Setter Property="Opacity" Value="1"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsSelected}" Value="True">
                     <Setter Property="Background" Value="#B31E3A5F"/>
@@ -64,9 +69,14 @@
         <Style x:Key="DisplayLineBorderStyleTheirs" TargetType="Border">
             <Setter Property="Padding" Value="0,1"/>
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Opacity" Value="1"/>
             <Style.Triggers>
+                <DataTrigger Binding="{Binding IsContextLine}" Value="True">
+                    <Setter Property="Opacity" Value="0.5"/>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsSelectable}" Value="True">
                     <Setter Property="Background" Value="#3314532D"/>
+                    <Setter Property="Opacity" Value="1"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsSelected}" Value="True">
                     <Setter Property="Background" Value="#B314532D"/>
