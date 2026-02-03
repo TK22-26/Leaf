@@ -2860,6 +2860,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MergeConflictResolutionViewModel.TargetBranch = SelectedRepository.CurrentBranch ?? "HEAD";
 
         await MergeConflictResolutionViewModel.LoadConflictsAsync(showLoading: isNewViewModel);
+
+        // Force property change notification to update UI bindings
+        OnPropertyChanged(nameof(MergeConflictResolutionViewModel));
     }
 
     private async void OnMergeConflictResolutionCompleted(object? sender, bool success)
@@ -3024,10 +3027,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Owner = _ownerWindow
         };
 
-        if (dialog.ShowDialog() == true)
+        var result = dialog.ShowDialog();
+
+        // Always refresh to detect conflicts or other state changes
+        await RefreshAsync();
+
+        if (result == true)
         {
             StatusMessage = $"Finished {branchType.ToString().ToLower()} {flowName}";
-            await RefreshAsync();
         }
     }
 

@@ -707,6 +707,10 @@
                                             </MultiDataTrigger.Conditions>
                                             <Setter Property="Visibility" Value="Visible" />
                                         </MultiDataTrigger>
+                                        <!-- Show when conflicts exist (squash merge, etc.) even without MERGE_HEAD -->
+                                        <DataTrigger Binding="{Binding SelectedRepository.ConflictCount, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </views:MergeStatusView.Style>
@@ -720,9 +724,10 @@
                                     <Style.Triggers>
                                         <MultiDataTrigger>
                                             <MultiDataTrigger.Conditions>
-                                                <!--  Show if WorkingChangesSelected AND NOT MergeInProgress  -->
+                                                <!--  Show if WorkingChangesSelected AND NOT MergeInProgress AND no conflicts  -->
                                                 <Condition Binding="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
                                                 <Condition Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="False" />
+                                                <Condition Binding="{Binding DataContext.SelectedRepository.ConflictCount, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="False" />
                                             </MultiDataTrigger.Conditions>
                                             <Setter Property="Visibility" Value="Visible" />
                                         </MultiDataTrigger>
@@ -743,6 +748,10 @@
                                         </DataTrigger>
                                         <!--  Hide if MergeInProgress  -->
                                         <DataTrigger Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <!--  Hide if conflicts exist (e.g., squash merge conflicts)  -->
+                                        <DataTrigger Binding="{Binding DataContext.SelectedRepository.ConflictCount, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed" />
                                         </DataTrigger>
                                     </Style.Triggers>

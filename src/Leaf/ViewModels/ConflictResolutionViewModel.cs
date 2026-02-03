@@ -154,8 +154,6 @@ public partial class ConflictResolutionViewModel : ObservableObject
             }
 
             var resolvedFiles = await _gitService.GetResolvedMergeFilesAsync(_repoPath);
-            System.Diagnostics.Debug.WriteLine($"[ConflictVM] conflicts={latestConflicts.Count} resolved={resolvedFiles.Count}");
-
             var latestByPath = new Dictionary<string, ConflictInfo>(StringComparer.OrdinalIgnoreCase);
             foreach (var conflict in latestConflicts)
             {
@@ -200,13 +198,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
                 SelectedConflict = Conflicts.FirstOrDefault(c => !c.IsResolved) ?? Conflicts.FirstOrDefault();
             }
 
-            if (SelectedConflict != null)
-            {
-                await BuildMergeResultForSelectedConflict();
-            }
+            // Note: BuildMergeResultForSelectedConflict is called automatically via OnSelectedConflictChanged
+            // when SelectedConflict is set above, so we don't need to call it explicitly here.
 
             UpdateCounts();
             await _gitService.SaveStoredMergeConflictFilesAsync(_repoPath, latestByPath.Keys);
+
+            // Force property notifications for bindings
+            OnPropertyChanged(nameof(ConflictedConflicts));
+            OnPropertyChanged(nameof(ResolvedConflicts));
         }
         finally
         {
@@ -230,33 +230,31 @@ public partial class ConflictResolutionViewModel : ObservableObject
             return;
         }
 
-        await Task.Run(() =>
+        // Capture values before going to background thread
+        var filePath = SelectedConflict.FilePath;
+        var baseContent = SelectedConflict.BaseContent;
+        var oursContent = SelectedConflict.OursContent;
+        var theirsContent = SelectedConflict.TheirsContent;
+
+        // Do the heavy computation on a background thread
+        var result = await Task.Run(() => _mergeService.PerformMerge(filePath, baseContent, oursContent, theirsContent)).ConfigureAwait(true);
+
+        // Update UI on the dispatcher thread (already on UI thread after await)
+        CurrentMergeResult = result;
+        _currentRegionIndex = result.GetFirstUnresolvedConflictIndex();
+        UpdateResolutionProperties();
+        WireConflictLineEvents(result);
+        BuildDisplayLines(result);
+
+        if (SelectedConflict != null && SelectedConflict.IsResolved && !string.IsNullOrWhiteSpace(SelectedConflict.MergedContent))
         {
-            var result = _mergeService.PerformMerge(
-                SelectedConflict.FilePath,
-                SelectedConflict.BaseContent,
-                SelectedConflict.OursContent,
-                SelectedConflict.TheirsContent);
-
-            _dispatcherService.Invoke(() =>
-            {
-                CurrentMergeResult = result;
-                _currentRegionIndex = result.GetFirstUnresolvedConflictIndex();
-                UpdateResolutionProperties();
-                WireConflictLineEvents(result);
-                BuildDisplayLines(result);
-
-                if (SelectedConflict.IsResolved && !string.IsNullOrWhiteSpace(SelectedConflict.MergedContent))
-                {
-                    MergedLines.Clear();
-                    UpdateMergedLinesFromText(SelectedConflict.MergedContent);
-                }
-                else
-                {
-                    RefreshMergedLines();
-                }
-            });
-        });
+            MergedLines.Clear();
+            UpdateMergedLinesFromText(SelectedConflict.MergedContent);
+        }
+        else
+        {
+            RefreshMergedLines();
+        }
     }
 
     partial void OnSelectedConflictChanged(ConflictInfo? value)

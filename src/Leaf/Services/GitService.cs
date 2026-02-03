@@ -525,8 +525,11 @@ public class GitService : IGitService
                 }
             }
 
-            // Count conflicts
-            if (repo.Index.Conflicts.Any())
+            // Count conflicts using git command (more reliable than LibGit2Sharp for various conflict types)
+            conflictCount = GetConflictCountFromGit(repoPath);
+
+            // Fallback to LibGit2Sharp if git command returns 0
+            if (conflictCount == 0 && repo.Index.Conflicts.Any())
             {
                  conflictCount = repo.Index.Conflicts.Select(c => c.Ancestor?.Path ?? c.Ours?.Path ?? c.Theirs?.Path).Distinct().Count();
             }
@@ -545,6 +548,67 @@ public class GitService : IGitService
                 ConflictCount = conflictCount
             };
         });
+    }
+
+    /// <summary>
+    /// Gets the count of conflicted files using git command line (more reliable than LibGit2Sharp for various conflict types).
+    /// </summary>
+    private static int GetConflictCountFromGit(string repoPath)
+    {
+        try
+        {
+            // First try git diff --name-only --diff-filter=U
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "diff --name-only --diff-filter=U",
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            if (process == null) return 0;
+
+            string output = process.StandardOutput.ReadToEnd();
+            _ = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+            {
+                return output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
+            }
+
+            // Fallback: check git status --porcelain for 'U' markers
+            startInfo.Arguments = "status --porcelain";
+            using var process2 = System.Diagnostics.Process.Start(startInfo);
+            if (process2 == null) return 0;
+
+            output = process2.StandardOutput.ReadToEnd();
+            _ = process2.StandardError.ReadToEnd();
+            process2.WaitForExit();
+
+            if (process2.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+            {
+                int count = 0;
+                foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (line.Length >= 2 && (line[0] == 'U' || line[1] == 'U'))
+                    {
+                        count++;
+                    }
+                }
+                return count;
+            }
+        }
+        catch
+        {
+            // Ignore errors, will fall back to LibGit2Sharp
+        }
+
+        return 0;
     }
 
     public async Task<string> CloneAsync(string url, string localPath, string? username = null, string? password = null, IProgress<string>? progress = null)
