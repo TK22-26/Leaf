@@ -1599,23 +1599,24 @@ public class GitGraphCanvas : FrameworkElement
             double hPadding = label.IsCurrent ? 8 : 6;
 
             // Check if this is the last label that will fit - if more remain, add "+N" suffix
-            int remainingAfterThis = node.BranchLabels.Count - drawnCount - 1;
+            // Include both remaining branches AND tags in the count
+            int remainingAfterThis = node.BranchLabels.Count + node.TagNames.Count - drawnCount - 1;
             string overflowSuffix = "";
             double suffixWidth = 0;
             FormattedText? suffixFormatted = null;
 
-            // Always show overflow suffix when there are remaining branches (force stacking)
+            // Always show overflow suffix when there are remaining branches or tags (force stacking)
             if (remainingAfterThis > 0)
-            {
                 overflowSuffix = $" +{remainingAfterThis}";
                 suffixFormatted = new FormattedText(
                     overflowSuffix,
+                    overflowSuffix,
                     CultureInfo.CurrentCulture,
                     FlowDirection.LeftToRight,
-                    LabelTypeface,
+                    fontSize,
                     fontSize,
                     LabelTextBrush,
-                    dpi);
+                suffixWidth = suffixFormatted.Width;
                 suffixWidth = suffixFormatted.Width;
             }
 
