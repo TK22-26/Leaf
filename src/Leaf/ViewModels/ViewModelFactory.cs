@@ -16,17 +16,23 @@ public class ViewModelFactory : IViewModelFactory
     private readonly IGitService _gitService;
     private readonly IDialogService _dialogService;
     private readonly IRepositoryEventHub _eventHub;
+    private readonly IClipboardService _clipboardService;
+    private readonly IFileSystemService _fileSystemService;
 
     // Note: Additional services will be added as sub-ViewModels are extracted
 
     public ViewModelFactory(
         IGitService gitService,
         IDialogService dialogService,
-        IRepositoryEventHub eventHub)
+        IRepositoryEventHub eventHub,
+        IClipboardService clipboardService,
+        IFileSystemService fileSystemService)
     {
         _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
         _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
         _eventHub = eventHub ?? throw new ArgumentNullException(nameof(eventHub));
+        _clipboardService = clipboardService ?? throw new ArgumentNullException(nameof(clipboardService));
+        _fileSystemService = fileSystemService ?? throw new ArgumentNullException(nameof(fileSystemService));
     }
 
     // Phase 3 additions:

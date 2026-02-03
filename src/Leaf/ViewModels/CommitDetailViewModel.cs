@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -14,6 +13,8 @@ namespace Leaf.ViewModels;
 public partial class CommitDetailViewModel : ObservableObject
 {
     private readonly IGitService _gitService;
+    private readonly IClipboardService _clipboardService;
+    private readonly IFileSystemService _fileSystemService;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasParent))]
@@ -123,9 +124,14 @@ public partial class CommitDetailViewModel : ObservableObject
     /// </summary>
     public event EventHandler? SelectWorkingChangesRequested;
 
-    public CommitDetailViewModel(IGitService gitService)
+    public CommitDetailViewModel(
+        IGitService gitService,
+        IClipboardService clipboardService,
+        IFileSystemService fileSystemService)
     {
         _gitService = gitService;
+        _clipboardService = clipboardService;
+        _fileSystemService = fileSystemService;
     }
 
     /// <summary>
@@ -275,7 +281,7 @@ public partial class CommitDetailViewModel : ObservableObject
     {
         if (Commit != null)
         {
-            System.Windows.Clipboard.SetText(Commit.Sha);
+            _clipboardService.SetText(Commit.Sha);
         }
     }
 
@@ -294,11 +300,11 @@ public partial class CommitDetailViewModel : ObservableObject
 
         if (File.Exists(fullPath))
         {
-            Process.Start("explorer.exe", $"/select,\"{fullPath}\"");
+            _fileSystemService.OpenInExplorerAndSelect(fullPath);
         }
         else if (Directory.Exists(fullPath))
         {
-            Process.Start("explorer.exe", $"\"{fullPath}\"");
+            _fileSystemService.OpenInExplorer(fullPath);
         }
         else
         {
@@ -306,7 +312,7 @@ public partial class CommitDetailViewModel : ObservableObject
             var directory = Path.GetDirectoryName(fullPath);
             if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
             {
-                Process.Start("explorer.exe", $"\"{directory}\"");
+                _fileSystemService.RevealInExplorer(directory);
             }
         }
     }
@@ -322,7 +328,7 @@ public partial class CommitDetailViewModel : ObservableObject
 
         var normalizedFilePath = file.Path.Replace('/', '\\');
         var fullPath = Path.Combine(RepositoryPath, normalizedFilePath);
-        System.Windows.Clipboard.SetText(fullPath);
+        _clipboardService.SetText(fullPath);
     }
 
     /// <summary>

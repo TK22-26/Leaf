@@ -32,6 +32,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IDialogService _dialogService;
     private readonly IRepositorySessionFactory _sessionFactory;
     private readonly IGitCommandRunner _gitCommandRunner;
+    private readonly IClipboardService _clipboardService;
+    private readonly IFileSystemService _fileSystemService;
     private IRepositorySession? _currentSession;
     private bool _disposed;
 
@@ -273,7 +275,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IRepositoryEventHub eventHub,
         IDialogService dialogService,
         IRepositorySessionFactory sessionFactory,
-        IGitCommandRunner gitCommandRunner)
+        IGitCommandRunner gitCommandRunner,
+        IClipboardService clipboardService,
+        IFileSystemService fileSystemService)
     {
         _gitService = gitService;
         _gitFlowService = gitFlowService;
@@ -287,14 +291,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _dialogService = dialogService;
         _sessionFactory = sessionFactory;
         _gitCommandRunner = gitCommandRunner;
+        _clipboardService = clipboardService;
+        _fileSystemService = fileSystemService;
         _fileWatcherService = new FileWatcherService();
 
         // Subscribe to auto-fetch completion
         _autoFetchService.FetchCompleted += OnAutoFetchCompleted;
 
         _gitGraphViewModel = new GitGraphViewModel(gitService);
-        _commitDetailViewModel = new CommitDetailViewModel(gitService);
-        _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService);
+        _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService);
+        _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService, clipboardService, fileSystemService);
         _diffViewerViewModel = new DiffViewerViewModel(gitService);
         _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
         _terminalViewModel = new TerminalViewModel(gitService, settingsService);
@@ -1613,7 +1619,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     var stashName = !string.IsNullOrEmpty(selectedStash.MessageShort)
                         ? $"Stash: {selectedStash.MessageShort}"
                         : "Stashed changes";
-                    var conflictViewModel = new ConflictResolutionViewModel(_gitService, SelectedRepository.Path)
+                    var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, SelectedRepository.Path)
                     {
                         SourceBranch = stashName,
                         TargetBranch = SelectedRepository.CurrentBranch ?? "HEAD"
@@ -2381,7 +2387,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (commit == null)
             return;
 
-        Clipboard.SetText(commit.Sha);
+        _clipboardService.SetText(commit.Sha);
         StatusMessage = $"Copied {commit.ShortSha} to clipboard";
     }
 
@@ -2715,7 +2721,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 MergeConflictResolutionViewModel.MergeCompleted -= OnMergeConflictResolutionCompleted;
             }
 
-            var conflictViewModel = new ConflictResolutionViewModel(_gitService, SelectedRepository.Path);
+            var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, SelectedRepository.Path);
             conflictViewModel.MergeCompleted += OnMergeConflictResolutionCompleted;
             MergeConflictResolutionViewModel = conflictViewModel;
             _mergeConflictRepoPath = SelectedRepository.Path;

@@ -434,7 +434,7 @@
                                 FontSize="14"
                                 FontWeight="SemiBold"
                                 Foreground="{StaticResource StatusDeletedBrush}"
-                                Text="–" />
+                                Text="-" />
                             <TextBlock
                                 VerticalAlignment="Center"
                                 FontSize="11"

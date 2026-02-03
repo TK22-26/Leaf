@@ -19,6 +19,8 @@ public partial class WorkingChangesViewModel : ObservableObject
 {
     private readonly IGitService _gitService;
     private readonly SettingsService _settingsService;
+    private readonly IClipboardService _clipboardService;
+    private readonly IFileSystemService _fileSystemService;
     private readonly OllamaService _ollamaService = new();
     private string? _repositoryPath;
 
@@ -105,10 +107,16 @@ public partial class WorkingChangesViewModel : ObservableObject
         }
     }
 
-    public WorkingChangesViewModel(IGitService gitService, SettingsService settingsService)
+    public WorkingChangesViewModel(
+        IGitService gitService,
+        SettingsService settingsService,
+        IClipboardService clipboardService,
+        IFileSystemService fileSystemService)
     {
         _gitService = gitService;
         _settingsService = settingsService;
+        _clipboardService = clipboardService;
+        _fileSystemService = fileSystemService;
     }
 
     /// <summary>
@@ -415,12 +423,12 @@ public partial class WorkingChangesViewModel : ObservableObject
         if (File.Exists(fullPath))
         {
             // Open Explorer and select the file
-            Process.Start("explorer.exe", $"/select,\"{fullPath}\"");
+            _fileSystemService.OpenInExplorerAndSelect(fullPath);
         }
         else if (Directory.Exists(fullPath))
         {
             // Open the directory
-            Process.Start("explorer.exe", $"\"{fullPath}\"");
+            _fileSystemService.OpenInExplorer(fullPath);
         }
         else
         {
@@ -428,7 +436,7 @@ public partial class WorkingChangesViewModel : ObservableObject
             var directory = Path.GetDirectoryName(fullPath);
             if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
             {
-                Process.Start("explorer.exe", $"\"{directory}\"");
+                _fileSystemService.RevealInExplorer(directory);
             }
         }
     }
@@ -447,7 +455,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         if (!File.Exists(fullPath))
             return;
 
-        Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true });
+        _fileSystemService.OpenWithDefaultApp(fullPath);
     }
 
     private static ObservableCollection<PathTreeNode> BuildTree(IEnumerable<FileStatusInfo> files)
@@ -538,7 +546,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         var normalizedFilePath = file.Path.Replace('/', '\\');
         var fullPath = Path.Combine(_repositoryPath, normalizedFilePath);
-        Clipboard.SetText(fullPath);
+        _clipboardService.SetText(fullPath);
     }
 
     /// <summary>

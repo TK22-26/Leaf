@@ -14,6 +14,7 @@ namespace Leaf.ViewModels;
 public partial class ConflictResolutionViewModel : ObservableObject
 {
     private readonly IGitService _gitService;
+    private readonly IClipboardService _clipboardService;
     private readonly IThreeWayMergeService _mergeService;
     private readonly string _repoPath;
     private int _currentRegionIndex = -1;
@@ -111,14 +112,19 @@ public partial class ConflictResolutionViewModel : ObservableObject
     /// </summary>
     public event EventHandler<bool>? MergeCompleted;
 
-    public ConflictResolutionViewModel(IGitService gitService, string repoPath)
-        : this(gitService, new ThreeWayMergeService(), repoPath)
+    public ConflictResolutionViewModel(IGitService gitService, IClipboardService clipboardService, string repoPath)
+        : this(gitService, clipboardService, new ThreeWayMergeService(), repoPath)
     {
     }
 
-    public ConflictResolutionViewModel(IGitService gitService, IThreeWayMergeService mergeService, string repoPath)
+    public ConflictResolutionViewModel(
+        IGitService gitService,
+        IClipboardService clipboardService,
+        IThreeWayMergeService mergeService,
+        string repoPath)
     {
         _gitService = gitService;
+        _clipboardService = clipboardService;
         _mergeService = mergeService;
         _repoPath = repoPath;
     }
@@ -328,7 +334,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         if (CurrentMergeResult == null) return;
 
         var content = CurrentMergeResult.GetMergedContent();
-        Clipboard.SetText(content);
+        _clipboardService.SetText(content);
     }
 
     /// <summary>
