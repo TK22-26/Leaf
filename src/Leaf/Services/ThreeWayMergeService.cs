@@ -137,6 +137,12 @@ public class ThreeWayMergeService : IThreeWayMergeService
                 System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] BuildMergeRegions loop {loopCount}: baseIdx={baseIdx}/{baseLines.Length}, oursIdx={oursIdx}/{oursLines.Length}, theirsIdx={theirsIdx}/{theirsLines.Length}, regions={regions.Count}, elapsed={sw.ElapsedMilliseconds}ms");
             }
 
+            // If we've exhausted base lines but still have remaining lines in ours/theirs, break to handle them
+            if (baseIdx >= baseLines.Length)
+            {
+                break;
+            }
+
             // Check if either side has changes at this position
             var oursBlock = oursBlockMap.GetValueOrDefault(baseIdx);
             var theirsBlock = theirsBlockMap.GetValueOrDefault(baseIdx); // BUG FIX: was oursBlockMap
@@ -256,31 +262,52 @@ public class ThreeWayMergeService : IThreeWayMergeService
         }
 
         // Handle any remaining lines
-        if (oursIdx < oursLines.Length)
+        var oursRemaining = oursIdx < oursLines.Length ? oursLines.Skip(oursIdx).ToList() : [];
+        var theirsRemaining = theirsIdx < theirsLines.Length ? theirsLines.Skip(theirsIdx).ToList() : [];
+
+        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] Remaining lines: ours={oursRemaining.Count}, theirs={theirsRemaining.Count}");
+
+        if (oursRemaining.Count > 0 && theirsRemaining.Count > 0)
         {
-            var remaining = oursLines.Skip(oursIdx).ToList();
-            if (remaining.Count > 0)
+            // Both have remaining - check if they're the same
+            if (oursRemaining.SequenceEqual(theirsRemaining))
             {
                 regions.Add(new MergeRegion
                 {
                     Index = regionIndex++,
-                    Type = MergeRegionType.OursOnly,
-                    Content = string.Join("\n", remaining)
+                    Type = MergeRegionType.Unchanged,
+                    Content = string.Join("\n", oursRemaining)
+                });
+            }
+            else
+            {
+                // Different remaining content - conflict
+                regions.Add(new MergeRegion
+                {
+                    Index = regionIndex++,
+                    Type = MergeRegionType.Conflict,
+                    OursLines = oursRemaining,
+                    TheirsLines = theirsRemaining
                 });
             }
         }
-        else if (theirsIdx < theirsLines.Length)
+        else if (oursRemaining.Count > 0)
         {
-            var remaining = theirsLines.Skip(theirsIdx).ToList();
-            if (remaining.Count > 0)
+            regions.Add(new MergeRegion
             {
-                regions.Add(new MergeRegion
-                {
-                    Index = regionIndex++,
-                    Type = MergeRegionType.TheirsOnly,
-                    Content = string.Join("\n", remaining)
-                });
-            }
+                Index = regionIndex++,
+                Type = MergeRegionType.OursOnly,
+                Content = string.Join("\n", oursRemaining)
+            });
+        }
+        else if (theirsRemaining.Count > 0)
+        {
+            regions.Add(new MergeRegion
+            {
+                Index = regionIndex++,
+                Type = MergeRegionType.TheirsOnly,
+                Content = string.Join("\n", theirsRemaining)
+            });
         }
 
         return MergeConsecutiveRegions(regions);
