@@ -613,138 +613,63 @@ public class GitService : IGitService
 
     public async Task<string> CloneAsync(string url, string localPath, string? username = null, string? password = null, IProgress<string>? progress = null)
     {
-        return await Task.Run(() =>
+        // Always use git command line - it properly integrates with Git Credential Manager
+        // and handles all authentication scenarios (PAT, OAuth, SSH, etc.)
+        progress?.Report("Cloning repository...");
+        var result = await RunGitCommandAsync(Path.GetDirectoryName(localPath) ?? ".", "clone", "--progress", url, localPath);
+        if (result.ExitCode != 0)
         {
-            var options = new CloneOptions
-            {
-                OnCheckoutProgress = (path, completed, total) =>
-                {
-                    progress?.Report($"Checking out: {completed}/{total}");
-                }
-            };
-
-            // Set up credentials via FetchOptions
-            if (!string.IsNullOrEmpty(password))
-            {
-                options.FetchOptions.CredentialsProvider = CreateCredentialsProvider(url, username, password);
-            }
-
-            return Repository.Clone(url, localPath, options);
-        });
+            throw new InvalidOperationException(string.IsNullOrEmpty(result.Error) ? "Clone failed" : result.Error);
+        }
+        return localPath;
     }
 
     public async Task FetchAsync(string repoPath, string remoteName = "origin", string? username = null, string? password = null, IProgress<string>? progress = null)
     {
-        await Task.Run(() =>
+        // Always use git command line - it properly integrates with Git Credential Manager
+        // and handles all authentication scenarios (PAT, OAuth, SSH, etc.)
+        progress?.Report("Fetching...");
+        var result = await RunGitCommandAsync(repoPath, $"fetch --prune \"{remoteName}\"");
+        if (result.ExitCode != 0 && !string.IsNullOrEmpty(result.Error))
         {
-            using var repo = new Repository(repoPath);
-            var remote = repo.Network.Remotes[remoteName];
-            if (remote == null) return;
-
-            var options = new FetchOptions
-            {
-                Prune = true, // Remove remote-tracking branches that no longer exist on remote
-                OnTransferProgress = tp =>
-                {
-                    progress?.Report($"Receiving: {tp.ReceivedObjects}/{tp.TotalObjects}");
-                    return true;
-                },
-                // Always set credentials provider - it will try Git Credential Manager if no explicit creds
-                CredentialsProvider = CreateCredentialsProvider(remote.Url, username, password)
-            };
-
-            var refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
-            Commands.Fetch(repo, remoteName, refSpecs, options, "Fetch from " + remoteName);
-        });
+            throw new InvalidOperationException(result.Error);
+        }
     }
 
     public async Task PullAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null)
     {
-        await Task.Run(() =>
+        // Always use git command line - it properly integrates with Git Credential Manager
+        // and handles all authentication scenarios (PAT, OAuth, SSH, etc.)
+        progress?.Report("Pulling...");
+        var result = await RunGitCommandAsync(repoPath, "pull");
+        if (result.ExitCode != 0 && !string.IsNullOrEmpty(result.Error))
         {
-            using var repo = new Repository(repoPath);
-            var remote = repo.Network.Remotes["origin"];
-
-            var options = new PullOptions
-            {
-                FetchOptions = new FetchOptions
-                {
-                    Prune = true, // Remove remote-tracking branches that no longer exist on remote
-                    OnTransferProgress = tp =>
-                    {
-                        progress?.Report($"Receiving: {tp.ReceivedObjects}/{tp.TotalObjects}");
-                        return true;
-                    },
-                    // Always set credentials provider - it will try Git Credential Manager if no explicit creds
-                    CredentialsProvider = CreateCredentialsProvider(remote?.Url ?? "", username, password)
-                }
-            };
-
-            var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
-            Commands.Pull(repo, signature, options);
-        });
+            throw new InvalidOperationException(result.Error);
+        }
     }
 
     public async Task PushAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null)
     {
-        // If no explicit credentials provided, use git command line which integrates with Git Credential Manager
-        if (string.IsNullOrEmpty(username) && string.IsNullOrEmpty(password))
+        // Always use git command line - it properly integrates with Git Credential Manager
+        // and handles all authentication scenarios (PAT, OAuth, SSH, etc.)
+        using var repo = new Repository(repoPath);
+
+        if (repo.Info.IsHeadDetached)
         {
-            using var repo = new Repository(repoPath);
-
-            if (repo.Info.IsHeadDetached)
-            {
-                throw new InvalidOperationException("Cannot push while in detached HEAD state.");
-            }
-
-            var branchName = repo.Head.FriendlyName;
-            var args = repo.Head.TrackedBranch == null
-                ? $"push -u \"origin\" \"{branchName}\""
-                : "push";
-
-            progress?.Report("Pushing...");
-            var result = await RunGitCommandAsync(repoPath, args);
-            if (result.ExitCode != 0)
-            {
-                throw new InvalidOperationException(string.IsNullOrEmpty(result.Error) ? "Push failed" : result.Error);
-            }
-            return;
+            throw new InvalidOperationException("Cannot push while in detached HEAD state.");
         }
 
-        // Use LibGit2Sharp when explicit credentials are provided
-        await Task.Run(() =>
+        var branchName = repo.Head.FriendlyName;
+        var args = repo.Head.TrackedBranch == null
+            ? $"push -u \"origin\" \"{branchName}\""
+            : "push";
+
+        progress?.Report("Pushing...");
+        var result = await RunGitCommandAsync(repoPath, args);
+        if (result.ExitCode != 0)
         {
-            using var repo = new Repository(repoPath);
-            var remote = repo.Network.Remotes["origin"];
-
-            if (repo.Info.IsHeadDetached)
-            {
-                throw new InvalidOperationException("Cannot push while in detached HEAD state.");
-            }
-
-            if (repo.Head.TrackedBranch == null)
-            {
-                var branchName = repo.Head.FriendlyName;
-                var result = RunGitCommand(repoPath, $"push -u \"origin\" \"{branchName}\"");
-                if (result.ExitCode != 0)
-                {
-                    throw new InvalidOperationException(result.Error);
-                }
-                return;
-            }
-
-            var options = new PushOptions
-            {
-                OnPushTransferProgress = (current, total, bytes) =>
-                {
-                    progress?.Report($"Pushing: {current}/{total}");
-                    return true;
-                },
-                CredentialsProvider = CreateCredentialsProvider(remote?.Url ?? "", username, password)
-            };
-
-            repo.Network.Push(repo.Head, options);
-        });
+            throw new InvalidOperationException(string.IsNullOrEmpty(result.Error) ? "Push failed" : result.Error);
+        }
     }
 
     public async Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch)
@@ -824,102 +749,6 @@ public class GitService : IGitService
         if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(result.Error);
-        }
-    }
-
-    private static CredentialsHandler CreateCredentialsProvider(string url, string? username, string? password)
-    {
-        return (_, usernameFromUrl, types) =>
-        {
-            var effectiveUsername = username ?? usernameFromUrl;
-            var effectivePassword = password;
-
-            // If no credentials provided, try Git Credential Manager
-            if (string.IsNullOrEmpty(effectivePassword))
-            {
-                var (gcmUser, gcmPass) = GetCredentialsFromGitCredentialManager(url);
-                if (!string.IsNullOrEmpty(gcmPass))
-                {
-                    effectiveUsername = gcmUser ?? effectiveUsername;
-                    effectivePassword = gcmPass;
-                }
-            }
-
-            // If still no credentials, return DefaultCredentials to let Git handle it
-            if (string.IsNullOrEmpty(effectiveUsername) || string.IsNullOrEmpty(effectivePassword))
-            {
-                return new DefaultCredentials();
-            }
-
-            // Azure DevOps: use "git" as username with PAT as password
-            if (IsAzureDevOpsUrl(url))
-            {
-                return new UsernamePasswordCredentials
-                {
-                    Username = "git",
-                    Password = effectivePassword
-                };
-            }
-
-            return new UsernamePasswordCredentials
-            {
-                Username = effectiveUsername,
-                Password = effectivePassword
-            };
-        };
-    }
-
-    private static (string? username, string? password) GetCredentialsFromGitCredentialManager(string url)
-    {
-        try
-        {
-            if (string.IsNullOrEmpty(url)) return (null, null);
-
-            var uri = new Uri(url);
-            var input = $"protocol={uri.Scheme}\nhost={uri.Host}\n";
-
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = "credential fill",
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = System.Diagnostics.Process.Start(psi);
-            if (process == null) return (null, null);
-
-            process.StandardInput.Write(input);
-            process.StandardInput.Close();
-
-            if (!process.WaitForExit(5000)) // 5 second timeout
-            {
-                process.Kill();
-                return (null, null);
-            }
-
-            if (process.ExitCode != 0) return (null, null);
-
-            var output = process.StandardOutput.ReadToEnd();
-            string? username = null;
-            string? password = null;
-
-            foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            {
-                if (line.StartsWith("username="))
-                    username = line["username=".Length..];
-                else if (line.StartsWith("password="))
-                    password = line["password=".Length..];
-            }
-
-            return (username, password);
-        }
-        catch
-        {
-            return (null, null);
         }
     }
 
@@ -2802,34 +2631,18 @@ public class GitService : IGitService
         });
     }
 
-    public Task PushTagAsync(string repoPath, string tagName, string remoteName = "origin",
+    public async Task PushTagAsync(string repoPath, string tagName, string remoteName = "origin",
         string? username = null, string? password = null)
     {
-        return Task.Run(() =>
+        // Always use git command line - it properly integrates with Git Credential Manager
+        // and handles all authentication scenarios (PAT, OAuth, SSH, etc.)
+        // The username/password parameters are kept for API compatibility but ignored -
+        // git CLI will use the credential helper configured in the system.
+        var result = await RunGitCommandAsync(repoPath, "push", remoteName, $"refs/tags/{tagName}");
+        if (result.ExitCode != 0)
         {
-            using var repo = new Repository(repoPath);
-            var remote = repo.Network.Remotes[remoteName];
-            if (remote == null)
-            {
-                throw new InvalidOperationException($"Remote '{remoteName}' not found.");
-            }
-
-            var tag = repo.Tags[tagName];
-            if (tag == null)
-            {
-                throw new InvalidOperationException($"Tag '{tagName}' not found.");
-            }
-
-            var options = new PushOptions();
-            if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
-            {
-                options.CredentialsProvider = (_, _, _) =>
-                    new UsernamePasswordCredentials { Username = username, Password = password };
-            }
-
-            var refspec = $"refs/tags/{tagName}:refs/tags/{tagName}";
-            repo.Network.Push(remote, refspec, options);
-        });
+            throw new InvalidOperationException(string.IsNullOrEmpty(result.Error) ? "Push tag failed" : result.Error);
+        }
     }
 
     public async Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin",
