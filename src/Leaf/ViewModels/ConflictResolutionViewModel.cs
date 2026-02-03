@@ -47,6 +47,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasUnresolvedConflicts))]
     [NotifyPropertyChangedFor(nameof(CanMarkResolved))]
+    [NotifyPropertyChangedFor(nameof(ConflictRegions))]
     private FileMergeResult? _currentMergeResult;
 
     [ObservableProperty]
@@ -67,6 +68,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
     private readonly HashSet<SelectableLine> _wiredSelectableLines = [];
     private readonly HashSet<MergedLine> _wiredMergedLines = [];
     private readonly HashSet<SelectableLine> _wiredDisplayLines = [];
+    private CancellationTokenSource? _buildMergeCts;
+    private string? _lastBuiltFilePath;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -103,6 +106,12 @@ public partial class ConflictResolutionViewModel : ObservableObject
     /// True if there are unresolved conflict regions in the current file.
     /// </summary>
     public bool HasUnresolvedConflicts => CurrentMergeResult?.UnresolvedCount > 0;
+
+    /// <summary>
+    /// Only the conflict regions (not unchanged/auto-merged regions).
+    /// Binding to this instead of CurrentMergeResult.Regions avoids rendering thousands of unchanged lines.
+    /// </summary>
+    public IEnumerable<MergeRegion> ConflictRegions => CurrentMergeResult?.Regions.Where(r => r.IsConflict) ?? [];
 
     /// <summary>
     /// True if the current file can be marked as resolved.
@@ -231,6 +240,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
             CurrentMergeResult = null;
             MergedContent = string.Empty;
             MergedLines.Clear();
+            _lastBuiltFilePath = null;
             return;
         }
 
@@ -240,14 +250,43 @@ public partial class ConflictResolutionViewModel : ObservableObject
         var oursContent = SelectedConflict.OursContent;
         var theirsContent = SelectedConflict.TheirsContent;
 
+        // Skip if we already built this file and haven't changed selection
+        if (_lastBuiltFilePath == filePath && CurrentMergeResult != null)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConflictVM] Skipping redundant build for: {filePath}");
+            return;
+        }
+
+        // Cancel any previous build in progress
+        _buildMergeCts?.Cancel();
+        _buildMergeCts = new CancellationTokenSource();
+        var ct = _buildMergeCts.Token;
+
         System.Diagnostics.Debug.WriteLine($"[ConflictVM] BuildMergeResultForSelectedConflict: {filePath}");
         System.Diagnostics.Debug.WriteLine($"[ConflictVM]   baseContent: {baseContent?.Length ?? 0} chars, first 100: [{(baseContent != null ? baseContent.Substring(0, Math.Min(100, baseContent.Length)) : "null")}]");
         System.Diagnostics.Debug.WriteLine($"[ConflictVM]   oursContent: {oursContent?.Length ?? 0} chars, first 100: [{(oursContent != null ? oursContent.Substring(0, Math.Min(100, oursContent.Length)) : "null")}]");
         System.Diagnostics.Debug.WriteLine($"[ConflictVM]   theirsContent: {theirsContent?.Length ?? 0} chars, first 100: [{(theirsContent != null ? theirsContent.Substring(0, Math.Min(100, theirsContent.Length)) : "null")}]");
 
-        // Do the heavy computation on a background thread
-        var result = await Task.Run(() => _mergeService.PerformMerge(filePath, baseContent ?? string.Empty, oursContent ?? string.Empty, theirsContent ?? string.Empty)).ConfigureAwait(true);
+        FileMergeResult result;
+        try
+        {
+            // Do the heavy computation on a background thread
+            result = await Task.Run(() => _mergeService.PerformMerge(filePath, baseContent ?? string.Empty, oursContent ?? string.Empty, theirsContent ?? string.Empty), ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConflictVM] Build cancelled for: {filePath}");
+            return;
+        }
 
+        // Check if cancelled or selection changed while we were computing
+        if (ct.IsCancellationRequested || SelectedConflict?.FilePath != filePath)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConflictVM] Build result discarded (selection changed): {filePath}");
+            return;
+        }
+
+        _lastBuiltFilePath = filePath;
         System.Diagnostics.Debug.WriteLine($"[ConflictVM]   merge result: {result.Regions.Count} regions, unresolved: {result.UnresolvedCount}");
 
         // Update UI on the dispatcher thread (already on UI thread after await)
@@ -265,6 +304,12 @@ public partial class ConflictResolutionViewModel : ObservableObject
         else
         {
             RefreshMergedLines();
+        }
+
+        // Request scroll to first conflict region
+        if (_currentRegionIndex >= 0)
+        {
+            RequestScrollToRegion?.Invoke(this, _currentRegionIndex);
         }
     }
 
@@ -701,6 +746,9 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
             conflict.IsResolved = false;
             UpdateCounts();
+
+            // Force rebuild since content state changed
+            _lastBuiltFilePath = null;
 
             if (SelectedConflict != conflict)
             {
