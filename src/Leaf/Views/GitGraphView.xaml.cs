@@ -739,7 +739,8 @@ public partial class GitGraphView : UserControl
         {
             Header = "Delete branch",
             Command = mainViewModel.DeleteBranchLabelCommand,
-            CommandParameter = label
+            CommandParameter = label,
+            Foreground = new SolidColorBrush(Color.FromRgb(232, 89, 89))
         };
 
         var menu = new ContextMenu();

@@ -1610,8 +1610,8 @@ public class GitGraphCanvas : FrameworkElement
             double hPadding = label.IsCurrent ? 8 : 6;
 
             // Check if this is the last label that will fit - if more remain, add "+N" suffix
-            // Include both remaining branches AND tags in the count
-            int remainingAfterThis = node.BranchLabels.Count + node.TagNames.Count - drawnCount - 1;
+            // Only count remaining branches (tags have their own separate overflow indicator)
+            int remainingAfterThis = node.BranchLabels.Count - drawnCount - 1;
             string overflowSuffix = "";
             double suffixWidth = 0;
             FormattedText? suffixFormatted = null;
