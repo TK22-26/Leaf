@@ -23,29 +23,38 @@ public class ThreeWayMergeService : IThreeWayMergeService
     public FileMergeResult PerformMerge(string filePath, string baseContent, string oursContent,
         string theirsContent, bool ignoreWhitespace = false)
     {
+        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] PerformMerge starting for {filePath}");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
         var result = new FileMergeResult { FilePath = filePath };
 
         // Normalize line endings
         baseContent = NormalizeLineEndings(baseContent);
         oursContent = NormalizeLineEndings(oursContent);
         theirsContent = NormalizeLineEndings(theirsContent);
+        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] Normalized in {sw.ElapsedMilliseconds}ms");
 
         // Split into lines
         var baseLines = SplitLines(baseContent);
         var oursLines = SplitLines(oursContent);
         var theirsLines = SplitLines(theirsContent);
+        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] Split: base={baseLines.Length}, ours={oursLines.Length}, theirs={theirsLines.Length} in {sw.ElapsedMilliseconds}ms");
 
         // Get diffs using DiffPlex
         var differ = new Differ();
         var oursDiff = InlineDiffBuilder.Diff(baseContent, oursContent, ignoreWhitespace);
+        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] oursDiff in {sw.ElapsedMilliseconds}ms");
         var theirsDiff = InlineDiffBuilder.Diff(baseContent, theirsContent, ignoreWhitespace);
+        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] theirsDiff in {sw.ElapsedMilliseconds}ms");
 
         // Build change maps: baseLineIndex -> what happened
         var oursChanges = BuildChangeMap(oursDiff);
         var theirsChanges = BuildChangeMap(theirsDiff);
+        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] ChangeMaps in {sw.ElapsedMilliseconds}ms");
 
         // Walk through and build merge regions
         var regions = BuildMergeRegions(baseLines, oursLines, theirsLines, oursChanges, theirsChanges);
+        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] BuildMergeRegions returned {regions.Count} regions in {sw.ElapsedMilliseconds}ms");
 
         foreach (var region in regions)
         {
@@ -53,6 +62,7 @@ public class ThreeWayMergeService : IThreeWayMergeService
         }
 
         result.CalculateLineNumbers();
+        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] PerformMerge complete in {sw.ElapsedMilliseconds}ms, {result.Regions.Count} regions");
         return result;
     }
 
@@ -116,12 +126,20 @@ public class ThreeWayMergeService : IThreeWayMergeService
         int baseIdx = 0;
         int oursIdx = 0;
         int theirsIdx = 0;
+        int loopCount = 0;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         while (baseIdx < baseLines.Length || oursIdx < oursLines.Length || theirsIdx < theirsLines.Length)
         {
+            loopCount++;
+            if (loopCount % 1000 == 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] BuildMergeRegions loop {loopCount}: baseIdx={baseIdx}/{baseLines.Length}, oursIdx={oursIdx}/{oursLines.Length}, theirsIdx={theirsIdx}/{theirsLines.Length}, regions={regions.Count}, elapsed={sw.ElapsedMilliseconds}ms");
+            }
+
             // Check if either side has changes at this position
             var oursBlock = oursBlockMap.GetValueOrDefault(baseIdx);
-            var theirsBlock = oursBlockMap.GetValueOrDefault(baseIdx);
+            var theirsBlock = theirsBlockMap.GetValueOrDefault(baseIdx); // BUG FIX: was oursBlockMap
 
             bool oursChanged = oursIdx < oursLines.Length && oursBlockMap.ContainsKey(baseIdx);
             bool theirsChanged = theirsIdx < theirsLines.Length && theirsBlockMap.ContainsKey(baseIdx);
