@@ -1267,15 +1267,19 @@
                 Margin="0,8,0,0"
                 Padding="12,6"
                 HorizontalAlignment="Stretch"
-                Background="{StaticResource CommitButtonBrush}"
                 Command="{Binding CommitCommand}"
                 Content="Commit"
                 FontSize="12"
-                FontWeight="SemiBold"
-                Foreground="White">
+                FontWeight="SemiBold">
                 <Button.Style>
                     <Style BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
+                        <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}"/>
+                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
                         <Style.Triggers>
+                            <DataTrigger Binding="{Binding CanCommit}" Value="True">
+                                <Setter Property="Background" Value="{StaticResource CommitButtonBrush}"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </DataTrigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.5" />
                             </Trigger>

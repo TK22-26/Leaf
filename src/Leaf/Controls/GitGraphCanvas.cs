@@ -1607,16 +1607,16 @@ public class GitGraphCanvas : FrameworkElement
 
             // Always show overflow suffix when there are remaining branches or tags (force stacking)
             if (remainingAfterThis > 0)
+            {
                 overflowSuffix = $" +{remainingAfterThis}";
                 suffixFormatted = new FormattedText(
                     overflowSuffix,
-                    overflowSuffix,
                     CultureInfo.CurrentCulture,
                     FlowDirection.LeftToRight,
-                    fontSize,
+                    LabelTypeface,
                     fontSize,
                     LabelTextBrush,
-                suffixWidth = suffixFormatted.Width;
+                    dpi);
                 suffixWidth = suffixFormatted.Width;
             }
 
