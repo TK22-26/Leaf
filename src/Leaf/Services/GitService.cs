@@ -687,6 +687,31 @@ public class GitService : IGitService
 
     public async Task PushAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null)
     {
+        // If no explicit credentials provided, use git command line which integrates with Git Credential Manager
+        if (string.IsNullOrEmpty(username) && string.IsNullOrEmpty(password))
+        {
+            using var repo = new Repository(repoPath);
+
+            if (repo.Info.IsHeadDetached)
+            {
+                throw new InvalidOperationException("Cannot push while in detached HEAD state.");
+            }
+
+            var branchName = repo.Head.FriendlyName;
+            var args = repo.Head.TrackedBranch == null
+                ? $"push -u \"origin\" \"{branchName}\""
+                : "push";
+
+            progress?.Report("Pushing...");
+            var result = await RunGitCommandAsync(repoPath, args);
+            if (result.ExitCode != 0)
+            {
+                throw new InvalidOperationException(string.IsNullOrEmpty(result.Error) ? "Push failed" : result.Error);
+            }
+            return;
+        }
+
+        // Use LibGit2Sharp when explicit credentials are provided
         await Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
@@ -715,7 +740,6 @@ public class GitService : IGitService
                     progress?.Report($"Pushing: {current}/{total}");
                     return true;
                 },
-                // Always set credentials provider - it will try Git Credential Manager if no explicit creds
                 CredentialsProvider = CreateCredentialsProvider(remote?.Url ?? "", username, password)
             };
 
