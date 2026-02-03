@@ -1806,15 +1806,26 @@ public class GitService : IGitService
                 conflictInfo.OursContent = ReadConflictStage(repoPath, trimmedPath, 2);
                 conflictInfo.TheirsContent = ReadConflictStage(repoPath, trimmedPath, 3);
 
+                System.Diagnostics.Debug.WriteLine($"[GitService] File: {trimmedPath}");
+                System.Diagnostics.Debug.WriteLine($"[GitService]   git show :1: (base) => {conflictInfo.BaseContent?.Length ?? 0} chars");
+                System.Diagnostics.Debug.WriteLine($"[GitService]   git show :2: (ours) => {conflictInfo.OursContent?.Length ?? 0} chars");
+                System.Diagnostics.Debug.WriteLine($"[GitService]   git show :3: (theirs) => {conflictInfo.TheirsContent?.Length ?? 0} chars");
+
                 // Try to get content from LibGit2Sharp index conflicts
                 // Only use LibGit2Sharp content if non-empty, otherwise keep the git stage content
                 var indexConflict = repo.Index.Conflicts[trimmedPath];
+                System.Diagnostics.Debug.WriteLine($"[GitService]   LibGit2Sharp indexConflict => {(indexConflict != null ? "found" : "null")}");
                 if (indexConflict != null)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[GitService]   indexConflict.Ours => {(indexConflict.Ours != null ? indexConflict.Ours.Id.ToString() : "null")}");
+                    System.Diagnostics.Debug.WriteLine($"[GitService]   indexConflict.Theirs => {(indexConflict.Theirs != null ? indexConflict.Theirs.Id.ToString() : "null")}");
+                    System.Diagnostics.Debug.WriteLine($"[GitService]   indexConflict.Ancestor => {(indexConflict.Ancestor != null ? indexConflict.Ancestor.Id.ToString() : "null")}");
+
                     if (indexConflict.Ours != null)
                     {
                         var blob = repo.Lookup<Blob>(indexConflict.Ours.Id);
                         var content = blob?.GetContentText();
+                        System.Diagnostics.Debug.WriteLine($"[GitService]   LibGit2Sharp ours blob => {content?.Length ?? 0} chars");
                         if (!string.IsNullOrEmpty(content))
                         {
                             conflictInfo.OursContent = content;
@@ -1825,6 +1836,7 @@ public class GitService : IGitService
                     {
                         var blob = repo.Lookup<Blob>(indexConflict.Theirs.Id);
                         var content = blob?.GetContentText();
+                        System.Diagnostics.Debug.WriteLine($"[GitService]   LibGit2Sharp theirs blob => {content?.Length ?? 0} chars");
                         if (!string.IsNullOrEmpty(content))
                         {
                             conflictInfo.TheirsContent = content;
@@ -1835,11 +1847,14 @@ public class GitService : IGitService
                     {
                         var blob = repo.Lookup<Blob>(indexConflict.Ancestor.Id);
                         var content = blob?.GetContentText();
+                        System.Diagnostics.Debug.WriteLine($"[GitService]   LibGit2Sharp base blob => {content?.Length ?? 0} chars");
                         if (!string.IsNullOrEmpty(content))
                         {
                             conflictInfo.BaseContent = content;
                         }
                     }
+
+                    System.Diagnostics.Debug.WriteLine($"[GitService]   FINAL: base={conflictInfo.BaseContent?.Length ?? 0}, ours={conflictInfo.OursContent?.Length ?? 0}, theirs={conflictInfo.TheirsContent?.Length ?? 0}");
                 }
                 else
                 {

@@ -236,8 +236,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
         var oursContent = SelectedConflict.OursContent;
         var theirsContent = SelectedConflict.TheirsContent;
 
+        System.Diagnostics.Debug.WriteLine($"[ConflictVM] BuildMergeResultForSelectedConflict: {filePath}");
+        System.Diagnostics.Debug.WriteLine($"[ConflictVM]   baseContent: {baseContent?.Length ?? 0} chars, first 100: [{(baseContent != null ? baseContent.Substring(0, Math.Min(100, baseContent.Length)) : "null")}]");
+        System.Diagnostics.Debug.WriteLine($"[ConflictVM]   oursContent: {oursContent?.Length ?? 0} chars, first 100: [{(oursContent != null ? oursContent.Substring(0, Math.Min(100, oursContent.Length)) : "null")}]");
+        System.Diagnostics.Debug.WriteLine($"[ConflictVM]   theirsContent: {theirsContent?.Length ?? 0} chars, first 100: [{(theirsContent != null ? theirsContent.Substring(0, Math.Min(100, theirsContent.Length)) : "null")}]");
+
         // Do the heavy computation on a background thread
-        var result = await Task.Run(() => _mergeService.PerformMerge(filePath, baseContent, oursContent, theirsContent)).ConfigureAwait(true);
+        var result = await Task.Run(() => _mergeService.PerformMerge(filePath, baseContent ?? string.Empty, oursContent ?? string.Empty, theirsContent ?? string.Empty)).ConfigureAwait(true);
+
+        System.Diagnostics.Debug.WriteLine($"[ConflictVM]   merge result: {result.Regions.Count} regions, unresolved: {result.UnresolvedCount}");
 
         // Update UI on the dispatcher thread (already on UI thread after await)
         CurrentMergeResult = result;
