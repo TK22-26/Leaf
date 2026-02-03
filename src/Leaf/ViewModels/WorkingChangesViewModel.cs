@@ -21,6 +21,7 @@ public partial class WorkingChangesViewModel : ObservableObject
     private readonly SettingsService _settingsService;
     private readonly IClipboardService _clipboardService;
     private readonly IFileSystemService _fileSystemService;
+    private readonly IDialogService _dialogService;
     private readonly OllamaService _ollamaService = new();
     private string? _repositoryPath;
 
@@ -111,12 +112,14 @@ public partial class WorkingChangesViewModel : ObservableObject
         IGitService gitService,
         SettingsService settingsService,
         IClipboardService clipboardService,
-        IFileSystemService fileSystemService)
+        IFileSystemService fileSystemService,
+        IDialogService dialogService)
     {
         _gitService = gitService;
         _settingsService = settingsService;
         _clipboardService = clipboardService;
         _fileSystemService = fileSystemService;
+        _dialogService = dialogService;
     }
 
     /// <summary>
@@ -286,13 +289,11 @@ public partial class WorkingChangesViewModel : ObservableObject
         if (string.IsNullOrEmpty(_repositoryPath) || file == null)
             return;
 
-        var result = MessageBox.Show(
+        var confirmed = await _dialogService.ShowConfirmationAsync(
             $"Are you sure you want to discard changes to '{file.FileName}'?\n\nThis cannot be undone.",
-            "Discard Changes",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            "Discard Changes");
 
-        if (result != MessageBoxResult.Yes)
+        if (!confirmed)
             return;
 
         try
@@ -558,13 +559,11 @@ public partial class WorkingChangesViewModel : ObservableObject
         if (string.IsNullOrEmpty(_repositoryPath) || file == null)
             return;
 
-        var result = MessageBox.Show(
+        var confirmed = await _dialogService.ShowConfirmationAsync(
             $"Are you sure you want to delete '{file.FileName}'?\n\nThis will permanently delete the file from disk and cannot be undone.",
-            "Delete File",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            "Delete File");
 
-        if (result != MessageBoxResult.Yes)
+        if (!confirmed)
             return;
 
         try
@@ -599,13 +598,11 @@ public partial class WorkingChangesViewModel : ObservableObject
         if (string.IsNullOrEmpty(_repositoryPath) || file == null)
             return;
 
-        var result = MessageBox.Show(
+        var confirmed = await _dialogService.ShowConfirmationAsync(
             $"Delete reserved file '{file.FileName}'?\n\nThis requires administrator privileges and will run a command to rename and delete the file.",
-            "Admin Delete",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            "Admin Delete");
 
-        if (result != MessageBoxResult.Yes)
+        if (!confirmed)
             return;
 
         try
@@ -706,14 +703,11 @@ exit /b %errorlevel%
         if (string.IsNullOrEmpty(_repositoryPath))
             return;
 
-        // Show confirmation dialog
-        var result = MessageBox.Show(
+        var confirmed = await _dialogService.ShowConfirmationAsync(
             "Are you sure you want to discard all changes? This cannot be undone.",
-            "Discard All Changes",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            "Discard All Changes");
 
-        if (result != MessageBoxResult.Yes)
+        if (!confirmed)
             return;
 
         try

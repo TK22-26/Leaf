@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
@@ -16,6 +15,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
     private readonly IGitService _gitService;
     private readonly IClipboardService _clipboardService;
     private readonly IThreeWayMergeService _mergeService;
+    private readonly IDispatcherService _dispatcherService;
     private readonly string _repoPath;
     private int _currentRegionIndex = -1;
 
@@ -112,8 +112,12 @@ public partial class ConflictResolutionViewModel : ObservableObject
     /// </summary>
     public event EventHandler<bool>? MergeCompleted;
 
-    public ConflictResolutionViewModel(IGitService gitService, IClipboardService clipboardService, string repoPath)
-        : this(gitService, clipboardService, new ThreeWayMergeService(), repoPath)
+    public ConflictResolutionViewModel(
+        IGitService gitService,
+        IClipboardService clipboardService,
+        IDispatcherService dispatcherService,
+        string repoPath)
+        : this(gitService, clipboardService, new ThreeWayMergeService(), dispatcherService, repoPath)
     {
     }
 
@@ -121,11 +125,13 @@ public partial class ConflictResolutionViewModel : ObservableObject
         IGitService gitService,
         IClipboardService clipboardService,
         IThreeWayMergeService mergeService,
+        IDispatcherService dispatcherService,
         string repoPath)
     {
         _gitService = gitService;
         _clipboardService = clipboardService;
         _mergeService = mergeService;
+        _dispatcherService = dispatcherService;
         _repoPath = repoPath;
     }
 
@@ -232,7 +238,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
                 SelectedConflict.OursContent,
                 SelectedConflict.TheirsContent);
 
-            Application.Current.Dispatcher.Invoke(() =>
+            _dispatcherService.Invoke(() =>
             {
                 CurrentMergeResult = result;
                 _currentRegionIndex = result.GetFirstUnresolvedConflictIndex();

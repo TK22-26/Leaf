@@ -300,7 +300,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         _gitGraphViewModel = new GitGraphViewModel(gitService);
         _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService);
-        _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService, clipboardService, fileSystemService);
+        _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService, clipboardService, fileSystemService, dialogService);
         _diffViewerViewModel = new DiffViewerViewModel(gitService);
         _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
         _diffViewerViewModel.HunkReverted += OnDiffViewerHunkReverted;
@@ -310,7 +310,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Wire up file watcher events
         _fileWatcherService.WorkingDirectoryChanged += async (s, e) =>
         {
-            await Application.Current.Dispatcher.InvokeAsync(async () =>
+            await _dispatcherService.InvokeAsync(async () =>
             {
                 // Refresh working changes in graph view
                 if (_gitGraphViewModel != null)
@@ -330,7 +330,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         _fileWatcherService.GitDirectoryChanged += async (s, e) =>
         {
-            await Application.Current.Dispatcher.InvokeAsync(async () =>
+            await _dispatcherService.InvokeAsync(async () =>
             {
                 // Full refresh of git graph for commit changes
                 if (_gitGraphViewModel != null && SelectedRepository != null)
@@ -372,10 +372,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     // Defer to avoid reentrancy during PropertyChanged
                     var repoPath = SelectedRepository.Path;
                     var workingChanges = _gitGraphViewModel.WorkingChanges;
-                    Application.Current.Dispatcher.BeginInvoke(() =>
+                    _ = _dispatcherService.InvokeAsync(() =>
                     {
                         _workingChangesViewModel.SetWorkingChanges(repoPath, workingChanges);
-                    }, DispatcherPriority.Background);
+                    });
                 }
             }
             else if (e.PropertyName == nameof(GitGraphViewModel.WorkingChanges))
@@ -842,29 +842,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (updateInfo != null)
         {
-            var result = MessageBox.Show(
-                _ownerWindow,
+            var confirmed = await _dialogService.ShowConfirmationAsync(
                 $"A new version of Leaf is available!\n\n" +
                 $"Current version: {UpdateService.CurrentVersionString}\n" +
                 $"Latest version: v{updateInfo.LatestVersion.Major}.{updateInfo.LatestVersion.Minor}.{updateInfo.LatestVersion.Build}\n\n" +
                 $"Would you like to open the download page?",
-                "Update Available",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Information);
+                "Update Available");
 
-            if (result == MessageBoxResult.Yes)
+            if (confirmed)
             {
                 UpdateService.OpenDownloadPage(updateInfo.ReleaseUrl);
             }
         }
         else
         {
-            MessageBox.Show(
-                _ownerWindow,
+            await _dialogService.ShowInformationAsync(
                 $"You're running the latest version of Leaf ({UpdateService.CurrentVersionString}).",
-                "No Updates Available",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                "No Updates Available");
         }
     }
 
@@ -1358,22 +1352,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (commit.IsMerge)
         {
-            var parentIndex = await Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                var result = MessageBox.Show(
-                    "This is a merge commit.\n\nRevert using the first parent (current branch)?\n" +
-                    "Yes = parent 1, No = parent 2.",
-                    "Revert Merge Commit",
-                    MessageBoxButton.YesNoCancel,
-                    MessageBoxImage.Warning);
+            var result = await _dialogService.ShowMessageAsync(
+                "This is a merge commit.\n\nRevert using the first parent (current branch)?\n" +
+                "Yes = parent 1, No = parent 2.",
+                "Revert Merge Commit",
+                MessageBoxButton.YesNoCancel);
 
-                return result switch
-                {
-                    MessageBoxResult.Yes => 1,
-                    MessageBoxResult.No => 2,
-                    _ => 0
-                };
-            });
+            var parentIndex = result switch
+            {
+                MessageBoxResult.Yes => 1,
+                MessageBoxResult.No => 2,
+                _ => 0
+            };
 
             if (parentIndex == 0)
             {
@@ -1434,13 +1424,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             branchName = "HEAD";
         }
 
-        var result = MessageBox.Show(
+        var confirmed = await _dialogService.ShowConfirmationAsync(
             $"Reset {branchName} to {commit.ShortSha}?\n\nThis will discard uncommitted changes and move the branch pointer.",
-            "Force Reset Branch",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning);
+            "Force Reset Branch");
 
-        if (result != MessageBoxResult.OK)
+        if (!confirmed)
         {
             return;
         }
@@ -1501,38 +1489,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return (remoteName ?? "origin", remoteBranchName);
     }
 
-    private Task<bool> ConfirmBranchDeletionAsync(BranchInfo branch)
+    private async Task<bool> ConfirmBranchDeletionAsync(BranchInfo branch)
     {
-        return Application.Current.Dispatcher.InvokeAsync(() =>
+        if (branch.IsCurrent)
         {
-            if (branch.IsCurrent)
-            {
-                MessageBox.Show("Cannot delete the currently checked out branch.",
-                    "Delete Branch", MessageBoxButton.OK, MessageBoxImage.Information);
-                return false;
-            }
+            await _dialogService.ShowInformationAsync(
+                "Cannot delete the currently checked out branch.",
+                "Delete Branch");
+            return false;
+        }
 
-            var scope = branch.IsRemote ? "remote" : "local";
-            var result = MessageBox.Show(
-                $"Delete {scope} branch '{branch.Name}'?\n\nThis cannot be undone.",
-                "Delete Branch",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            return result == MessageBoxResult.Yes;
-        }).Task;
+        var scope = branch.IsRemote ? "remote" : "local";
+        return await _dialogService.ShowConfirmationAsync(
+            $"Delete {scope} branch '{branch.Name}'?\n\nThis cannot be undone.",
+            "Delete Branch");
     }
 
-    private Task<bool> ConfirmForceDeleteAsync(BranchInfo branch, string error)
+    private async Task<bool> ConfirmForceDeleteAsync(BranchInfo branch, string error)
     {
-        return Application.Current.Dispatcher.InvokeAsync(() =>
-        {
-            var result = MessageBox.Show(
-                $"Failed to delete branch '{branch.Name}'.\n\n{error}\n\nForce delete this branch?",
-                "Force Delete Branch",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            return result == MessageBoxResult.Yes;
-        }).Task;
+        return await _dialogService.ShowConfirmationAsync(
+            $"Failed to delete branch '{branch.Name}'.\n\n{error}\n\nForce delete this branch?",
+            "Force Delete Branch");
     }
 
     /// <summary>
@@ -1620,7 +1597,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     var stashName = !string.IsNullOrEmpty(selectedStash.MessageShort)
                         ? $"Stash: {selectedStash.MessageShort}"
                         : "Stashed changes";
-                    var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, SelectedRepository.Path)
+                    var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, _dispatcherService, SelectedRepository.Path)
                     {
                         SourceBranch = stashName,
                         TargetBranch = SelectedRepository.CurrentBranch ?? "HEAD"
@@ -2033,20 +2010,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    public void RemoveAllRepositoriesInGroup(RepositoryGroup group)
+    public async Task RemoveAllRepositoriesInGroupAsync(RepositoryGroup group)
     {
         if (group == null || group.Repositories.Count == 0)
         {
             return;
         }
 
-        var result = MessageBox.Show(
+        var confirmed = await _dialogService.ShowConfirmationAsync(
             $"Remove all repositories from '{group.Name}'?\n\nThis only removes them from Leaf. Files on disk are not deleted.",
-            "Remove All Repositories",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            "Remove All Repositories");
 
-        if (result != MessageBoxResult.Yes)
+        if (!confirmed)
         {
             return;
         }
@@ -2296,15 +2271,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Handle unrelated histories - prompt and retry
             if (!result.Success && result.HasUnrelatedHistories)
             {
-                var dialogResult = System.Windows.MessageBox.Show(
+                var confirmed = await _dialogService.ShowConfirmationAsync(
                     "The branches have unrelated histories (no common ancestor).\n\n" +
                     "This can happen when branches were created independently or the repository was recreated.\n\n" +
                     "Do you want to merge anyway? This will combine the histories and may result in merge conflicts.",
-                    "Unrelated Histories",
-                    System.Windows.MessageBoxButton.YesNo,
-                    System.Windows.MessageBoxImage.Question);
+                    "Unrelated Histories");
 
-                if (dialogResult != System.Windows.MessageBoxResult.Yes)
+                if (!confirmed)
                 {
                     StatusMessage = "Merge cancelled";
                     return;
@@ -2743,7 +2716,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 MergeConflictResolutionViewModel.MergeCompleted -= OnMergeConflictResolutionCompleted;
             }
 
-            var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, SelectedRepository.Path);
+            var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, _dispatcherService, SelectedRepository.Path);
             conflictViewModel.MergeCompleted += OnMergeConflictResolutionCompleted;
             MergeConflictResolutionViewModel = conflictViewModel;
             _mergeConflictRepoPath = SelectedRepository.Path;
@@ -2815,8 +2788,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var isInitialized = await _gitFlowService.IsInitializedAsync(SelectedRepository.Path);
         if (!isInitialized)
         {
-            MessageBox.Show("GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
-                "GitFlow Not Initialized", MessageBoxButton.OK, MessageBoxImage.Information);
+            await _dialogService.ShowInformationAsync(
+                "GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
+                "GitFlow Not Initialized");
             return;
         }
 
@@ -2843,8 +2817,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var isInitialized = await _gitFlowService.IsInitializedAsync(SelectedRepository.Path);
         if (!isInitialized)
         {
-            MessageBox.Show("GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
-                "GitFlow Not Initialized", MessageBoxButton.OK, MessageBoxImage.Information);
+            await _dialogService.ShowInformationAsync(
+                "GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
+                "GitFlow Not Initialized");
             return;
         }
 
@@ -2871,8 +2846,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var isInitialized = await _gitFlowService.IsInitializedAsync(SelectedRepository.Path);
         if (!isInitialized)
         {
-            MessageBox.Show("GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
-                "GitFlow Not Initialized", MessageBoxButton.OK, MessageBoxImage.Information);
+            await _dialogService.ShowInformationAsync(
+                "GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
+                "GitFlow Not Initialized");
             return;
         }
 
@@ -2899,8 +2875,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var config = await _gitFlowService.GetConfigAsync(SelectedRepository.Path);
         if (config == null)
         {
-            MessageBox.Show("GitFlow is not initialized in this repository.",
-                "GitFlow Not Initialized", MessageBoxButton.OK, MessageBoxImage.Information);
+            await _dialogService.ShowInformationAsync(
+                "GitFlow is not initialized in this repository.",
+                "GitFlow Not Initialized");
             return;
         }
 
@@ -2909,8 +2886,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (branchType == Models.GitFlowBranchType.None || string.IsNullOrEmpty(flowName))
         {
-            MessageBox.Show("This branch is not a GitFlow branch (feature, release, or hotfix).",
-                "Not a GitFlow Branch", MessageBoxButton.OK, MessageBoxImage.Information);
+            await _dialogService.ShowInformationAsync(
+                "This branch is not a GitFlow branch (feature, release, or hotfix).",
+                "Not a GitFlow Branch");
             return;
         }
 
@@ -2937,8 +2915,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var config = await _gitFlowService.GetConfigAsync(SelectedRepository.Path);
         if (config == null)
         {
-            MessageBox.Show("GitFlow is not initialized in this repository.",
-                "GitFlow Not Initialized", MessageBoxButton.OK, MessageBoxImage.Information);
+            await _dialogService.ShowInformationAsync(
+                "GitFlow is not initialized in this repository.",
+                "GitFlow Not Initialized");
             return;
         }
 
@@ -2947,8 +2926,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (branchType == Models.GitFlowBranchType.None || string.IsNullOrEmpty(flowName))
         {
-            MessageBox.Show("This branch is not a GitFlow branch.",
-                "Not a GitFlow Branch", MessageBoxButton.OK, MessageBoxImage.Information);
+            await _dialogService.ShowInformationAsync(
+                "This branch is not a GitFlow branch.",
+                "Not a GitFlow Branch");
             return;
         }
 
@@ -2978,8 +2958,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             StatusMessage = $"Publish failed: {ex.Message}";
-            MessageBox.Show($"Failed to publish branch:\n\n{ex.Message}",
-                "Publish Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            await _dialogService.ShowErrorAsync(
+                $"Failed to publish branch:\n\n{ex.Message}",
+                "Publish Failed");
         }
         finally
         {
