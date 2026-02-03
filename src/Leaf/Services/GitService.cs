@@ -2585,29 +2585,15 @@ public class GitService : IGitService
         });
     }
 
-    public Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName,
+    public async Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName,
         string? username = null, string? password = null)
     {
-        return Task.Run(() =>
+        // Use git CLI for remote branch deletion - more reliable with Git Credential Manager
+        var result = await RunGitCommandAsync(repoPath, "push", remoteName, "--delete", branchName);
+        if (result.ExitCode != 0)
         {
-            using var repo = new Repository(repoPath);
-            var remote = repo.Network.Remotes[remoteName];
-            if (remote == null)
-            {
-                throw new InvalidOperationException($"Remote '{remoteName}' not found.");
-            }
-
-            var options = new PushOptions();
-            if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
-            {
-                options.CredentialsProvider = (_, _, _) =>
-                    new UsernamePasswordCredentials { Username = username, Password = password };
-            }
-
-            // Push empty refspec to delete remote branch
-            var refspec = $":refs/heads/{branchName}";
-            repo.Network.Push(remote, refspec, options);
-        });
+            throw new InvalidOperationException(result.Error);
+        }
     }
 
     #endregion
@@ -2724,29 +2710,15 @@ public class GitService : IGitService
         });
     }
 
-    public Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin",
+    public async Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin",
         string? username = null, string? password = null)
     {
-        return Task.Run(() =>
+        // Use git CLI for remote tag deletion - more reliable with Git Credential Manager
+        var result = await RunGitCommandAsync(repoPath, "push", remoteName, "--delete", $"refs/tags/{tagName}");
+        if (result.ExitCode != 0)
         {
-            using var repo = new Repository(repoPath);
-            var remote = repo.Network.Remotes[remoteName];
-            if (remote == null)
-            {
-                throw new InvalidOperationException($"Remote '{remoteName}' not found.");
-            }
-
-            var options = new PushOptions();
-            if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
-            {
-                options.CredentialsProvider = (_, _, _) =>
-                    new UsernamePasswordCredentials { Username = username, Password = password };
-            }
-
-            // Push empty refspec to delete remote tag
-            var refspec = $":refs/tags/{tagName}";
-            repo.Network.Push(remote, refspec, options);
-        });
+            throw new InvalidOperationException(result.Error);
+        }
     }
 
     #endregion

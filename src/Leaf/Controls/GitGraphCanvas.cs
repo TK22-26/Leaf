@@ -1604,35 +1604,19 @@ public class GitGraphCanvas : FrameworkElement
             double suffixWidth = 0;
             FormattedText? suffixFormatted = null;
 
+            // Always show overflow suffix when there are remaining branches (force stacking)
             if (remainingAfterThis > 0)
             {
-                // Check if next label would fit
-                var nextLabel = node.BranchLabels[drawnCount + 1];
-                var nextNameFormatted = new FormattedText(
-                    nextLabel.Name,
+                overflowSuffix = $" +{remainingAfterThis}";
+                suffixFormatted = new FormattedText(
+                    overflowSuffix,
                     CultureInfo.CurrentCulture,
                     FlowDirection.LeftToRight,
                     LabelTypeface,
-                    nextLabel.IsCurrent ? 13 : 11,
+                    fontSize,
                     LabelTextBrush,
                     dpi);
-                double nextEstWidth = (nextLabel.IsCurrent ? 8 : 6) * 2 + nextNameFormatted.Width + 20; // rough estimate
-
-                double estimateWidth = hPadding + nameWidth + 4 + iconWidth + customIconSpace + customIconSize + hPadding;
-                if (labelX + estimateWidth + 4 + nextEstWidth > LabelAreaWidth - 8)
-                {
-                    // Next won't fit, so this is the last - add overflow suffix
-                    overflowSuffix = $" +{remainingAfterThis}";
-                    suffixFormatted = new FormattedText(
-                        overflowSuffix,
-                        CultureInfo.CurrentCulture,
-                        FlowDirection.LeftToRight,
-                        LabelTypeface,
-                        fontSize,
-                        LabelTextBrush,
-                        dpi);
-                    suffixWidth = suffixFormatted.Width;
-                }
+                suffixWidth = suffixFormatted.Width;
             }
 
             double iconBlockWidth = iconWidth + customIconSpace + customIconSize;

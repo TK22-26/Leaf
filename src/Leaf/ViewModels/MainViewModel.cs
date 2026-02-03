@@ -1224,10 +1224,43 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 var remoteName = branch.RemoteName ?? "origin";
                 var branchName = GetRemoteBranchShortName(branch.Name, remoteName);
-                await _gitService.DeleteRemoteBranchAsync(SelectedRepository.Path, remoteName, branchName);
+
+                // Get credentials for remote operations (same pattern as Push/Fetch)
+                string? pat = null;
+                var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+                var remoteUrl = remotes.FirstOrDefault(r => r.Name == remoteName)?.Url;
+                if (!string.IsNullOrEmpty(remoteUrl))
+                {
+                    try
+                    {
+                        var host = new Uri(remoteUrl).Host;
+                        var credentialKey = GetCredentialKeyForHost(host);
+                        if (!string.IsNullOrEmpty(credentialKey))
+                        {
+                            pat = _credentialService.GetCredential(credentialKey);
+                        }
+                    }
+                    catch
+                    {
+                        // Invalid URL, skip PAT
+                    }
+                }
+
+                await _gitService.DeleteRemoteBranchAsync(SelectedRepository.Path, remoteName, branchName, password: pat);
             }
             else
             {
+                // If deleting current branch, switch to another branch first
+                if (branch.IsCurrent)
+                {
+                    var switchTarget = await GetBranchToSwitchToAsync(branch.Name);
+                    if (switchTarget != null)
+                    {
+                        StatusMessage = $"Switching to {switchTarget}...";
+                        await _gitService.CheckoutAsync(SelectedRepository.Path, switchTarget);
+                    }
+                }
+
                 await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: false);
             }
 
@@ -1522,18 +1555,64 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task<bool> ConfirmBranchDeletionAsync(BranchInfo branch)
     {
+        var scope = branch.IsRemote ? "remote" : "local";
+
         if (branch.IsCurrent)
         {
-            await _dialogService.ShowInformationAsync(
-                "Cannot delete the currently checked out branch.",
+            var switchTarget = await GetBranchToSwitchToAsync(branch.Name);
+            if (switchTarget == null)
+            {
+                await _dialogService.ShowInformationAsync(
+                    "Cannot delete the only branch in the repository.",
+                    "Delete Branch");
+                return false;
+            }
+
+            return await _dialogService.ShowConfirmationAsync(
+                $"Delete {scope} branch '{branch.Name}'?\n\nThis will first switch to '{switchTarget}'.\n\nThis cannot be undone.",
                 "Delete Branch");
-            return false;
         }
 
-        var scope = branch.IsRemote ? "remote" : "local";
         return await _dialogService.ShowConfirmationAsync(
             $"Delete {scope} branch '{branch.Name}'?\n\nThis cannot be undone.",
             "Delete Branch");
+    }
+
+    private async Task<string?> GetBranchToSwitchToAsync(string excludeBranch)
+    {
+        if (SelectedRepository == null)
+            return null;
+
+        var branches = await _gitService.GetBranchesAsync(SelectedRepository.Path);
+        var localBranches = branches.Where(b => !b.IsRemote && !b.Name.Equals(excludeBranch, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (localBranches.Count == 0)
+            return null;
+
+        // Prefer GitFlow develop or main branch
+        var config = await GetGitFlowConfigAsync();
+        if (config != null)
+        {
+            var develop = localBranches.FirstOrDefault(b => b.Name.Equals(config.DevelopBranch, StringComparison.OrdinalIgnoreCase));
+            if (develop != null)
+                return develop.Name;
+
+            var main = localBranches.FirstOrDefault(b => b.Name.Equals(config.MainBranch, StringComparison.OrdinalIgnoreCase));
+            if (main != null)
+                return main.Name;
+        }
+
+        // Fallback to common branch names
+        var fallbackNames = new[] { "develop", "main", "master" };
+        foreach (var name in fallbackNames)
+        {
+            var fallback = localBranches.FirstOrDefault(b => b.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (fallback != null)
+                return fallback.Name;
+        }
+
+        // Last resort: first available branch
+        return localBranches.First().Name;
     }
 
     private async Task<bool> ConfirmForceDeleteAsync(BranchInfo branch, string error)
@@ -2380,6 +2459,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
         };
 
         await MergeBranchAsync(branch);
+    }
+
+    [RelayCommand]
+    public async Task DeleteBranchLabelAsync(BranchLabel label)
+    {
+        if (label == null)
+            return;
+
+        var branch = new BranchInfo
+        {
+            Name = label.Name,
+            IsRemote = label.IsRemote && !label.IsLocal,
+            RemoteName = label.RemoteName,
+            IsCurrent = label.IsCurrent
+        };
+
+        await DeleteBranchAsync(branch);
     }
 
     [RelayCommand]
