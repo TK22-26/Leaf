@@ -138,6 +138,23 @@
                             Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
                         <Border.ContextMenu>
                             <ContextMenu>
+                                <MenuItem Header="Watch Folder"
+                                          Command="{Binding PlacementTarget.Tag.WatchFolderGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          Visibility="{Binding IsWatched, Converter={StaticResource InverseBoolConverter}}">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon Symbol="Eye" FontSize="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Stop Watching"
+                                          Command="{Binding PlacementTarget.Tag.UnwatchFolderGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          Visibility="{Binding IsWatched, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon Symbol="EyeOff" FontSize="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator/>
                                 <MenuItem Header="Remove All"
                                           Command="{Binding PlacementTarget.Tag.RemoveAllRepositoriesInGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}">
@@ -161,6 +178,14 @@
                             <TextBlock Text="{Binding Repositories.Count, StringFormat=' ({0})'}"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                        VerticalAlignment="Center"/>
+                            <!-- Watched folder indicator -->
+                            <ic:SymbolIcon Symbol="Eye"
+                                           FontSize="10"
+                                           Opacity="0.6"
+                                           Margin="6,0,0,0"
+                                           VerticalAlignment="Center"
+                                           ToolTip="Watching for new repositories"
+                                           Visibility="{Binding IsWatched, Converter={StaticResource BoolToVisibilityConverter}}"/>
                         </StackPanel>
                     </Border>
                 </HierarchicalDataTemplate>

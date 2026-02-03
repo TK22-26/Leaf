@@ -35,6 +35,7 @@ public partial class MainWindow : Window
         var gitFlowService = new GitFlowService(gitService);
         var repositoryService = new RepositoryManagementService(settingsService);
         var autoFetchService = new AutoFetchService(gitService, credentialService);
+        var folderWatcherService = new FolderWatcherService();
 
         // ViewModelFactory for transient ViewModel creation
         var viewModelFactory = new ViewModelFactory(gitService, dialogService, repositoryEventHub, clipboardService, fileSystemService);
@@ -54,7 +55,8 @@ public partial class MainWindow : Window
             repositorySessionFactory,
             gitCommandRunner,
             clipboardService,
-            fileSystemService);
+            fileSystemService,
+            folderWatcherService);
 
         DataContext = viewModel;
     }
