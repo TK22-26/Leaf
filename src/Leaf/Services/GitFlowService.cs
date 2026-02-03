@@ -428,7 +428,8 @@ public partial class GitFlowService : IGitFlowService
     {
         var config = await GetConfigAsync(repoPath) ?? throw new InvalidOperationException("GitFlow not initialized.");
         var branchName = $"{config.ReleasePrefix}{version}";
-        var tagName = $"{config.VersionTagPrefix}{version}";
+        // Tag name is just the version (e.g., "1.2.0"), not prefixed
+        var tagName = version;
 
         progress?.Report($"Finishing release '{version}'...");
 
@@ -451,7 +452,8 @@ public partial class GitFlowService : IGitFlowService
         progress?.Report($"Merging into {config.DevelopBranch}...");
         await _gitService.CheckoutAsync(repoPath, config.DevelopBranch);
 
-        var developResult = await MergeWithStrategy(repoPath, branchName, strategy, progress);
+        // Merge main into develop (not the release branch) to sync develop with the tagged release
+        var developResult = await MergeWithStrategy(repoPath, config.MainBranch, strategy, progress);
         if (!developResult.Success)
         {
             throw new InvalidOperationException($"Failed to merge into {config.DevelopBranch}: {developResult.ErrorMessage}");
@@ -517,7 +519,8 @@ public partial class GitFlowService : IGitFlowService
     {
         var config = await GetConfigAsync(repoPath) ?? throw new InvalidOperationException("GitFlow not initialized.");
         var branchName = $"{config.HotfixPrefix}{version}";
-        var tagName = $"{config.VersionTagPrefix}{version}";
+        // Tag name is just the version (e.g., "1.2.1"), not prefixed
+        var tagName = version;
 
         progress?.Report($"Finishing hotfix '{version}'...");
 
@@ -540,7 +543,8 @@ public partial class GitFlowService : IGitFlowService
         progress?.Report($"Merging into {config.DevelopBranch}...");
         await _gitService.CheckoutAsync(repoPath, config.DevelopBranch);
 
-        var developResult = await MergeWithStrategy(repoPath, branchName, strategy, progress);
+        // Merge main into develop (not the hotfix branch) to sync develop with the tagged release
+        var developResult = await MergeWithStrategy(repoPath, config.MainBranch, strategy, progress);
         if (!developResult.Success)
         {
             throw new InvalidOperationException($"Failed to merge into {config.DevelopBranch}: {developResult.ErrorMessage}");
@@ -979,6 +983,7 @@ public partial class GitFlowService : IGitFlowService
         return strategy switch
         {
             MergeStrategy.Squash => await SquashMergeWithCommit(repoPath, branchName),
+            MergeStrategy.SquashRebase => await SquashRebaseMerge(repoPath, branchName, progress),
             MergeStrategy.Rebase => await RebaseMerge(repoPath, branchName, progress),
             _ => await _gitService.MergeBranchAsync(repoPath, branchName)
         };
@@ -992,6 +997,51 @@ public partial class GitFlowService : IGitFlowService
             await _gitService.CommitAsync(repoPath, $"Merge branch '{branchName}'");
         }
         return result;
+    }
+
+    /// <summary>
+    /// Squash and rebase: rebases the source branch onto target to incorporate latest changes,
+    /// then squashes all commits into one for a clean linear history.
+    /// </summary>
+    private async Task<MergeResult> SquashRebaseMerge(string repoPath, string branchName, IProgress<string>? progress)
+    {
+        // Get current branch (the target we're merging into)
+        var repoInfo = await _gitService.GetRepositoryInfoAsync(repoPath);
+        var targetBranch = repoInfo.CurrentBranch;
+
+        if (string.IsNullOrEmpty(targetBranch))
+        {
+            return new MergeResult { Success = false, ErrorMessage = "Cannot determine current branch" };
+        }
+
+        // Step 1: Checkout source branch and rebase onto target
+        progress?.Report($"Rebasing {branchName} onto {targetBranch}...");
+        await _gitService.CheckoutAsync(repoPath, branchName);
+
+        var rebaseResult = await _gitService.RebaseAsync(repoPath, targetBranch, progress);
+        if (!rebaseResult.Success)
+        {
+            // Rebase failed - abort and return to target branch
+            if (rebaseResult.HasConflicts)
+            {
+                await _gitService.AbortRebaseAsync(repoPath);
+            }
+            await _gitService.CheckoutAsync(repoPath, targetBranch);
+            return rebaseResult;
+        }
+
+        // Step 2: Go back to target branch
+        await _gitService.CheckoutAsync(repoPath, targetBranch);
+
+        // Step 3: Squash merge the rebased branch
+        progress?.Report("Squash merging...");
+        var squashResult = await _gitService.SquashMergeAsync(repoPath, branchName);
+        if (squashResult.Success)
+        {
+            // Commit the squashed changes
+            await _gitService.CommitAsync(repoPath, $"Squash merge branch '{branchName}'");
+        }
+        return squashResult;
     }
 
     private async Task<MergeResult> RebaseMerge(string repoPath, string branchName, IProgress<string>? progress)

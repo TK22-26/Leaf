@@ -455,7 +455,8 @@
                     BorderThickness="1"
                     CornerRadius="6"
                     Padding="12"
-                    MinWidth="240">
+                    MinWidth="240"
+                    MaxWidth="300">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.3"/>
                 </Border.Effect>

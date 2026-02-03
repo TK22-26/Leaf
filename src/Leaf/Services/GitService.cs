@@ -2834,40 +2834,34 @@ public class GitService : IGitService
 
     #region Squash Merge
 
+    /// <summary>
+    /// Performs a squash merge using git command-line.
+    /// LibGit2Sharp doesn't support true squash merges, so we use git merge --squash.
+    /// </summary>
     public Task<Models.MergeResult> SquashMergeAsync(string repoPath, string branchName)
     {
         return Task.Run(() =>
         {
-            using var repo = new Repository(repoPath);
+            // Use git merge --squash which properly combines all commits into staged changes
+            var result = RunGit(repoPath, $"merge --squash \"{branchName}\"");
 
-            var sourceBranch = repo.Branches[branchName];
-            if (sourceBranch == null)
+            if (result.ExitCode != 0)
             {
-                throw new InvalidOperationException($"Branch '{branchName}' not found.");
+                // Check for conflicts
+                if (result.Error.Contains("conflict", StringComparison.OrdinalIgnoreCase) ||
+                    result.Output.Contains("CONFLICT", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new Models.MergeResult { Success = false, HasConflicts = true };
+                }
+
+                return new Models.MergeResult
+                {
+                    Success = false,
+                    ErrorMessage = string.IsNullOrWhiteSpace(result.Error) ? result.Output : result.Error
+                };
             }
 
-            var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
-            var mergeOptions = new MergeOptions
-            {
-                FastForwardStrategy = FastForwardStrategy.NoFastForward,
-                CommitOnSuccess = false // Don't auto-commit for squash
-            };
-
-            var result = repo.Merge(sourceBranch, signature, mergeOptions);
-
-            if (result.Status == MergeStatus.Conflicts)
-            {
-                return new Models.MergeResult { Success = false, HasConflicts = true };
-            }
-
-            if (result.Status == MergeStatus.FastForward || result.Status == MergeStatus.NonFastForward)
-            {
-                // For squash, we need to reset the merge state but keep changes staged
-                // This is a simplified implementation - full squash would require additional handling
-                return new Models.MergeResult { Success = true };
-            }
-
-            return new Models.MergeResult { Success = result.Status == MergeStatus.UpToDate };
+            return new Models.MergeResult { Success = true };
         });
     }
 

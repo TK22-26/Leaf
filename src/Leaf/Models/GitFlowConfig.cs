@@ -18,7 +18,13 @@ public enum MergeStrategy
     /// <summary>
     /// Rebase commits onto target branch before merging.
     /// </summary>
-    Rebase
+    Rebase,
+
+    /// <summary>
+    /// Squash and rebase: combines all commits into one and rebases onto target.
+    /// Results in a clean, linear history with a single commit.
+    /// </summary>
+    SquashRebase
 }
 
 /// <summary>

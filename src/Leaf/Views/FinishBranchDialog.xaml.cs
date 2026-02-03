@@ -67,6 +67,9 @@ public partial class FinishBranchDialog : Window
             case MergeStrategy.Squash:
                 MergeStrategySquash.IsChecked = true;
                 break;
+            case MergeStrategy.SquashRebase:
+                MergeStrategySquashRebase.IsChecked = true;
+                break;
             case MergeStrategy.Rebase:
                 MergeStrategyRebase.IsChecked = true;
                 break;
@@ -91,7 +94,8 @@ public partial class FinishBranchDialog : Window
                 MergeInfoText.Text = $"This release will be merged into {_config.MainBranch} and {_config.DevelopBranch}, and a tag will be created.";
                 TagOptionsSection.Visibility = Visibility.Visible;
                 ChangelogSection.Visibility = Visibility.Visible;
-                TagNameTextBox.Text = $"{_config.VersionTagPrefix}{_flowName}";
+                // Tag name is just the version (no prefix)
+                TagNameTextBox.Text = _flowName;
                 TagMessageTextBox.Text = $"Release {_flowName}";
                 PushDescriptionText.Text = "Push merged changes and tag to origin";
                 break;
@@ -102,7 +106,8 @@ public partial class FinishBranchDialog : Window
                 MergeInfoText.Text = $"This hotfix will be merged into {_config.MainBranch} and {_config.DevelopBranch}, and a tag will be created.";
                 TagOptionsSection.Visibility = Visibility.Visible;
                 ChangelogSection.Visibility = Visibility.Visible;
-                TagNameTextBox.Text = $"{_config.VersionTagPrefix}{_flowName}";
+                // Tag name is just the version (no prefix)
+                TagNameTextBox.Text = _flowName;
                 TagMessageTextBox.Text = $"Hotfix {_flowName}";
                 PushDescriptionText.Text = "Push merged changes and tag to origin";
                 break;
@@ -163,6 +168,8 @@ public partial class FinishBranchDialog : Window
         MergeStrategy strategy;
         if (MergeStrategySquash.IsChecked == true)
             strategy = MergeStrategy.Squash;
+        else if (MergeStrategySquashRebase.IsChecked == true)
+            strategy = MergeStrategy.SquashRebase;
         else if (MergeStrategyRebase.IsChecked == true)
             strategy = MergeStrategy.Rebase;
         else

@@ -311,10 +311,11 @@ public partial class BranchListView : UserControl
             _currentPrefix = defaultPrefix;
         }
 
-        // Setup UI
+        // Setup UI - ensure textbox is enabled (may have been disabled from previous use)
         QuickCreateHeader.Text = header;
         QuickCreateTypeIndicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
         QuickCreateNameBox.Text = "";
+        QuickCreateNameBox.IsEnabled = true;
         QuickCreatePreview.Text = _currentPrefix + "...";
         QuickCreateStartButton.IsEnabled = false;
         QuickCreateProgress.Visibility = Visibility.Collapsed;
