@@ -744,7 +744,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = true;
             StatusMessage = $"Fetching from {remoteName}...";
 
-            // Get credentials for this remote
+            // Get credentials for this remote (map hostname to credential key)
             string? pat = null;
             var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
             var remoteUrl = remotes.FirstOrDefault(r => r.Name == remoteName)?.Url;
@@ -753,7 +753,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 try
                 {
                     var host = new Uri(remoteUrl).Host;
-                    pat = _credentialService.GetPat(host);
+                    var credentialKey = GetCredentialKeyForHost(host);
+                    if (!string.IsNullOrEmpty(credentialKey))
+                    {
+                        pat = _credentialService.GetCredential(credentialKey);
+                    }
                 }
                 catch
                 {
@@ -984,14 +988,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = true;
             StatusMessage = "Pulling changes...";
 
-            // Try to get credentials from stored PAT (uses remote URL hostname)
+            // Try to get credentials from stored PAT (map hostname to credential key)
             var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
             var originUrl = remotes.FirstOrDefault(r => r.Name == "origin")?.Url;
             string? pat = null;
             if (!string.IsNullOrEmpty(originUrl))
             {
                 var host = new Uri(originUrl).Host;
-                pat = _credentialService.GetPat(host);
+                var credentialKey = GetCredentialKeyForHost(host);
+                if (!string.IsNullOrEmpty(credentialKey))
+                {
+                    pat = _credentialService.GetCredential(credentialKey);
+                }
             }
 
             await _gitService.PullAsync(SelectedRepository.Path, null, pat);
@@ -1022,14 +1030,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = true;
             StatusMessage = "Pushing changes...";
 
-            // Try to get credentials from stored PAT (uses remote URL hostname)
+            // Try to get credentials from stored PAT (map hostname to credential key)
             var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
             var originUrl = remotes.FirstOrDefault(r => r.Name == "origin")?.Url;
             string? pat = null;
             if (!string.IsNullOrEmpty(originUrl))
             {
                 var host = new Uri(originUrl).Host;
-                pat = _credentialService.GetPat(host);
+                var credentialKey = GetCredentialKeyForHost(host);
+                if (!string.IsNullOrEmpty(credentialKey))
+                {
+                    pat = _credentialService.GetCredential(credentialKey);
+                }
             }
 
             await _gitService.PushAsync(SelectedRepository.Path, null, pat);
@@ -1045,6 +1057,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Maps a remote URL hostname to the credential storage key.
+    /// </summary>
+    private static string? GetCredentialKeyForHost(string host)
+    {
+        if (string.IsNullOrEmpty(host))
+            return null;
+
+        if (host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
+            return "GitHub";
+
+        if (host.Equals("dev.azure.com", StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith(".visualstudio.com", StringComparison.OrdinalIgnoreCase))
+            return "AzureDevOps";
+
+        // Return host as-is for other providers (may have stored by hostname)
+        return host;
     }
 
     /// <summary>
