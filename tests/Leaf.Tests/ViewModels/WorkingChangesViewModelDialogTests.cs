@@ -21,16 +21,18 @@ public class WorkingChangesViewModelDialogTests
         _dialogService = new FakeDialogService();
 
         // Create minimal fakes for other required services
-        var settingsService = new SettingsService();
         var clipboardService = new FakeClipboardService();
         var fileSystemService = new FakeFileSystemService();
+        var aiCommitService = new FakeAiCommitMessageService();
+        var gitignoreService = new FakeGitignoreService();
 
         _viewModel = new WorkingChangesViewModel(
             _gitService,
-            settingsService,
             clipboardService,
             fileSystemService,
-            _dialogService);
+            _dialogService,
+            aiCommitService,
+            gitignoreService);
     }
 
     [Fact]
@@ -161,4 +163,26 @@ internal class FakeFileSystemService : IFileSystemService
     public void RevealInExplorer(string path) { }
     public void OpenWithDefaultApp(string filePath) { }
     public void OpenInTerminal(string folderPath) { }
+}
+
+/// <summary>
+/// Minimal fake AI commit message service for testing.
+/// </summary>
+internal class FakeAiCommitMessageService : IAiCommitMessageService
+{
+    public Task<(string? message, string? description, string? error)> GenerateCommitMessageAsync(
+        string diffText, string? repoPath = null, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<(string?, string?, string?)>(("Test commit", "Test description", null));
+    }
+}
+
+/// <summary>
+/// Minimal fake gitignore service for testing.
+/// </summary>
+internal class FakeGitignoreService : IGitignoreService
+{
+    public Task IgnoreFileAsync(string repoPath, FileStatusInfo file) => Task.CompletedTask;
+    public Task IgnoreExtensionAsync(string repoPath, FileStatusInfo file) => Task.CompletedTask;
+    public Task IgnoreDirectoryAsync(string repoPath, FileStatusInfo file) => Task.CompletedTask;
 }

@@ -75,6 +75,21 @@ public partial class MainViewModel
         // Note: We don't close the diff viewer - the user can continue viewing/reverting other hunks
     }
 
+    /// <summary>
+    /// Handle file selected event from working changes view.
+    /// </summary>
+    private async void OnWorkingChangesFileSelected(object? sender, FileSelectedEventArgs e)
+    {
+        if (e.IsStaged)
+        {
+            await ShowStagedFileDiffAsync(e.File);
+        }
+        else
+        {
+            await ShowUnstagedFileDiffAsync(e.File);
+        }
+    }
+
     private static FileDiffResult BuildUnifiedDiffResult(string diffText, string title)
     {
         var result = new FileDiffResult

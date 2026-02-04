@@ -201,7 +201,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         _gitGraphViewModel = new GitGraphViewModel(gitService);
         _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService);
-        _workingChangesViewModel = new WorkingChangesViewModel(gitService, settingsService, clipboardService, fileSystemService, dialogService);
+
+        // Create AI and gitignore services for WorkingChangesViewModel
+        var commitMessageParser = new CommitMessageParser();
+        var ollamaService = new OllamaService();
+        var aiCommitService = new AiCommitMessageService(settingsService, ollamaService, commitMessageParser);
+        var gitignoreService = new GitignoreService(gitService);
+
+        _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService);
+        _workingChangesViewModel.FileSelected += OnWorkingChangesFileSelected;
         _diffViewerViewModel = new DiffViewerViewModel(gitService);
         _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
         _diffViewerViewModel.HunkReverted += OnDiffViewerHunkReverted;

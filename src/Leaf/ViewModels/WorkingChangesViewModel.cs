@@ -1,9 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
-using System.Text;
-using System.Text.Json;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
@@ -12,18 +9,34 @@ using Leaf.Services;
 namespace Leaf.ViewModels;
 
 /// <summary>
+/// Event arguments for file selection events.
+/// </summary>
+public class FileSelectedEventArgs : EventArgs
+{
+    public FileStatusInfo File { get; }
+    public bool IsStaged { get; }
+
+    public FileSelectedEventArgs(FileStatusInfo file, bool isStaged)
+    {
+        File = file;
+        IsStaged = isStaged;
+    }
+}
+
+/// <summary>
 /// ViewModel for the working changes staging area view.
 /// Handles staging, unstaging, discarding, and committing files.
 /// </summary>
 public partial class WorkingChangesViewModel : ObservableObject
 {
     private readonly IGitService _gitService;
-    private readonly SettingsService _settingsService;
     private readonly IClipboardService _clipboardService;
     private readonly IFileSystemService _fileSystemService;
     private readonly IDialogService _dialogService;
-    private readonly OllamaService _ollamaService = new();
+    private readonly IAiCommitMessageService _aiCommitService;
+    private readonly IGitignoreService _gitignoreService;
     private string? _repositoryPath;
+    private CancellationTokenSource? _aiCancellationTokenSource;
 
     [ObservableProperty]
     private bool _showUnstagedTreeView;
@@ -61,6 +74,17 @@ public partial class WorkingChangesViewModel : ObservableObject
 
     [ObservableProperty]
     private ObservableCollection<PathTreeNode> _stagedTreeItems = [];
+
+    [ObservableProperty]
+    private FileChangesSectionContext? _unstagedSectionContext;
+
+    [ObservableProperty]
+    private FileChangesSectionContext? _stagedSectionContext;
+
+    /// <summary>
+    /// Event raised when a file is selected for diff viewing.
+    /// </summary>
+    public event EventHandler<FileSelectedEventArgs>? FileSelected;
 
     /// <summary>
     /// Maximum characters for commit message.
@@ -110,16 +134,18 @@ public partial class WorkingChangesViewModel : ObservableObject
 
     public WorkingChangesViewModel(
         IGitService gitService,
-        SettingsService settingsService,
         IClipboardService clipboardService,
         IFileSystemService fileSystemService,
-        IDialogService dialogService)
+        IDialogService dialogService,
+        IAiCommitMessageService aiCommitService,
+        IGitignoreService gitignoreService)
     {
         _gitService = gitService;
-        _settingsService = settingsService;
         _clipboardService = clipboardService;
         _fileSystemService = fileSystemService;
         _dialogService = dialogService;
+        _aiCommitService = aiCommitService;
+        _gitignoreService = gitignoreService;
     }
 
     /// <summary>
@@ -189,6 +215,93 @@ public partial class WorkingChangesViewModel : ObservableObject
     {
         UnstagedTreeItems = BuildTree(value?.UnstagedFiles ?? []);
         StagedTreeItems = BuildTree(value?.StagedFiles ?? []);
+        BuildSectionContexts();
+    }
+
+    /// <summary>
+    /// Creates or updates the section context objects with current data and commands.
+    /// </summary>
+    private void BuildSectionContexts()
+    {
+        UnstagedSectionContext = new FileChangesSectionContext
+        {
+            SectionTitle = "Unstaged",
+            IsStagedSection = false,
+            FilesSource = WorkingChanges?.UnstagedFiles ?? [],
+            TreeItemsSource = UnstagedTreeItems,
+            PrimaryActionCommand = StageFileCommand,
+            PrimaryActionText = "Stage",
+            BulkActionCommand = StageAllCommand,
+            BulkActionText = "Stage All",
+            DiscardFileCommand = DiscardFileCommand,
+            IgnoreFileCommand = IgnoreFileCommand,
+            IgnoreExtensionCommand = IgnoreExtensionCommand,
+            IgnoreDirectoryCommand = IgnoreDirectoryCommand,
+            StashFileCommand = StashFileCommand,
+            OpenFileCommand = OpenFileCommand,
+            OpenInExplorerCommand = OpenInExplorerCommand,
+            CopyFilePathCommand = CopyFilePathCommand,
+            DeleteFileCommand = DeleteFileCommand,
+            AdminDeleteCommand = AdminDeleteReservedFileCommand,
+            FileSelectedCommand = SelectUnstagedFileCommand
+        };
+
+        StagedSectionContext = new FileChangesSectionContext
+        {
+            SectionTitle = "Staged",
+            IsStagedSection = true,
+            FilesSource = WorkingChanges?.StagedFiles ?? [],
+            TreeItemsSource = StagedTreeItems,
+            PrimaryActionCommand = UnstageFileCommand,
+            PrimaryActionText = "Unstage",
+            BulkActionCommand = UnstageAllCommand,
+            BulkActionText = "Unstage All",
+            DiscardFileCommand = DiscardFileCommand,
+            IgnoreFileCommand = IgnoreFileCommand,
+            IgnoreExtensionCommand = IgnoreExtensionCommand,
+            IgnoreDirectoryCommand = IgnoreDirectoryCommand,
+            StashFileCommand = StashFileCommand,
+            OpenFileCommand = OpenFileCommand,
+            OpenInExplorerCommand = OpenInExplorerCommand,
+            CopyFilePathCommand = CopyFilePathCommand,
+            DeleteFileCommand = DeleteFileCommand,
+            AdminDeleteCommand = null, // Not applicable for staged files
+            FileSelectedCommand = SelectStagedFileCommand
+        };
+    }
+
+    /// <summary>
+    /// Command to select an unstaged file for diff viewing.
+    /// </summary>
+    [RelayCommand]
+    private void SelectUnstagedFile(FileStatusInfo? file)
+    {
+        if (file != null)
+        {
+            FileSelected?.Invoke(this, new FileSelectedEventArgs(file, isStaged: false));
+        }
+    }
+
+    /// <summary>
+    /// Command to select a staged file for diff viewing.
+    /// </summary>
+    [RelayCommand]
+    private void SelectStagedFile(FileStatusInfo? file)
+    {
+        if (file != null)
+        {
+            FileSelected?.Invoke(this, new FileSelectedEventArgs(file, isStaged: true));
+        }
+    }
+
+    /// <summary>
+    /// Refreshes working changes and notifies dependent properties.
+    /// </summary>
+    private async Task RefreshAndNotifyAsync()
+    {
+        WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath!);
+        OnPropertyChanged(nameof(HasChanges));
+        OnPropertyChanged(nameof(FileChangesSummary));
     }
 
     /// <summary>
@@ -203,10 +316,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await _gitService.StageFileAsync(_repositoryPath, file.Path);
-            // Refresh and notify - don't use event to avoid triggering full graph reload
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
         {
@@ -226,9 +336,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await _gitService.UnstageFileAsync(_repositoryPath, file.Path);
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
         {
@@ -248,9 +356,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await _gitService.StageAllAsync(_repositoryPath);
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
         {
@@ -270,9 +376,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await _gitService.UnstageAllAsync(_repositoryPath);
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
         {
@@ -299,9 +403,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             await _gitService.DiscardFileChangesAsync(_repositoryPath, file.Path);
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
         {
@@ -320,8 +422,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         try
         {
-            await AddToGitignoreAsync(file.Path);
-            await UntrackIfTrackedAsync(file);
+            await _gitignoreService.IgnoreFileAsync(_repositoryPath, file);
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -341,8 +442,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         try
         {
-            await AddToGitignoreAsync($"*{file.Extension}");
-            await UntrackIfTrackedAsync(file);
+            await _gitignoreService.IgnoreExtensionAsync(_repositoryPath, file);
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -362,26 +462,13 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         try
         {
-            // Add trailing slash for directory pattern
-            await AddToGitignoreAsync($"{file.Directory}/");
-            await UntrackIfTrackedAsync(file);
+            await _gitignoreService.IgnoreDirectoryAsync(_repositoryPath, file);
             await RefreshAsync();
         }
         catch (Exception ex)
         {
             ErrorMessage = $"Ignore directory failed: {ex.Message}";
         }
-    }
-
-    private async Task UntrackIfTrackedAsync(FileStatusInfo file)
-    {
-        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
-            return;
-
-        if (file.Status == FileChangeStatus.Untracked)
-            return;
-
-        await _gitService.UntrackFileAsync(_repositoryPath, file.Path);
     }
 
     /// <summary>
@@ -398,9 +485,7 @@ public partial class WorkingChangesViewModel : ObservableObject
             // Stage the file first, then stash only staged changes
             await _gitService.StageFileAsync(_repositoryPath, file.Path);
             await _gitService.StashStagedAsync(_repositoryPath, $"Stash: {file.FileName}");
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
         {
@@ -578,9 +663,7 @@ public partial class WorkingChangesViewModel : ObservableObject
                 Directory.Delete(fullPath, recursive: true);
             }
 
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
         {
@@ -609,7 +692,6 @@ public partial class WorkingChangesViewModel : ObservableObject
         {
             var fullPath = Path.Combine(_repositoryPath, file.Path);
             var directory = Path.GetDirectoryName(fullPath) ?? _repositoryPath;
-            var fileName = Path.GetFileName(fullPath);
             var tempName = $"_leaf_temp_{Guid.NewGuid():N}.tmp";
 
             // Build the batch script to rename and delete the reserved file
@@ -644,9 +726,7 @@ exit /b %errorlevel%
 
                 if (process.ExitCode == 0)
                 {
-                    WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-                    OnPropertyChanged(nameof(HasChanges));
-                    OnPropertyChanged(nameof(FileChangesSummary));
+                    await RefreshAndNotifyAsync();
                 }
                 else
                 {
@@ -663,35 +743,6 @@ exit /b %errorlevel%
         {
             ErrorMessage = $"Admin delete failed: {ex.Message}";
         }
-    }
-
-    /// <summary>
-    /// Adds a pattern to the repository's .gitignore file.
-    /// </summary>
-    private async Task AddToGitignoreAsync(string pattern)
-    {
-        if (string.IsNullOrEmpty(_repositoryPath))
-            return;
-
-        var gitignorePath = Path.Combine(_repositoryPath, ".gitignore");
-
-        await Task.Run(() =>
-        {
-            var lines = File.Exists(gitignorePath)
-                ? File.ReadAllLines(gitignorePath).ToList()
-                : new List<string>();
-
-            // Check if pattern already exists
-            if (lines.Any(l => l.Trim().Equals(pattern, StringComparison.OrdinalIgnoreCase)))
-                return;
-
-            // Add blank line if file doesn't end with one
-            if (lines.Count > 0 && !string.IsNullOrWhiteSpace(lines[^1]))
-                lines.Add("");
-
-            lines.Add(pattern);
-            File.WriteAllLines(gitignorePath, lines);
-        });
     }
 
     /// <summary>
@@ -713,9 +764,7 @@ exit /b %errorlevel%
         try
         {
             await _gitService.DiscardAllChangesAsync(_repositoryPath);
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
         {
@@ -746,9 +795,7 @@ exit /b %errorlevel%
             CommitMessage = string.Empty;
             CommitDescription = string.Empty;
 
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
-            OnPropertyChanged(nameof(HasChanges));
-            OnPropertyChanged(nameof(FileChangesSummary));
+            await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
         {
@@ -769,30 +816,20 @@ exit /b %errorlevel%
             return;
         }
 
-        var settings = _settingsService.LoadSettings();
-        var preferredProvider = settings.DefaultAiProvider?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(preferredProvider))
-        {
-            ErrorMessage = "Select a preferred AI in Settings before using Auto Fill.";
-            Debug.WriteLine("[WorkingChanges] AutoFill blocked: no preferred AI.");
-            return;
-        }
-
-        if (!IsProviderConnected(preferredProvider, settings))
-        {
-            ErrorMessage = $"Preferred AI ({preferredProvider}) is not connected.";
-            Debug.WriteLine($"[WorkingChanges] AutoFill blocked: {preferredProvider} not connected.");
-            return;
-        }
-
         try
         {
             IsLoading = true;
             ErrorMessage = null;
 
-            Debug.WriteLine($"[WorkingChanges] AutoFill start: repo={_repositoryPath}, provider={preferredProvider}");
+            // Cancel any existing AI generation
+            _aiCancellationTokenSource?.Cancel();
+            _aiCancellationTokenSource?.Dispose();
+            _aiCancellationTokenSource = new CancellationTokenSource();
+            var cancellationToken = _aiCancellationTokenSource.Token;
 
-            // Always include staged diff context - AI providers cannot run git commands in their sandbox
+            Debug.WriteLine($"[WorkingChanges] AutoFill start: repo={_repositoryPath}");
+
+            // Get staged diff summary
             var summary = await _gitService.GetStagedSummaryAsync(_repositoryPath);
             if (summary.Length > MaxSummaryChars)
             {
@@ -800,32 +837,15 @@ exit /b %errorlevel%
                 Debug.WriteLine($"[WorkingChanges] AutoFill blocked: summary length {summary.Length} exceeds limit {MaxSummaryChars}.");
                 return;
             }
-            var includeContext = true;
 
-            var isOllama = preferredProvider.Equals("Ollama", StringComparison.OrdinalIgnoreCase);
-            var prompt = isOllama
-                ? BuildOllamaPrompt(summary)
-                : BuildPrompt(_repositoryPath, summary, includeContext);
-            var timeoutSeconds = Math.Max(1, settings.AiCliTimeoutSeconds);
+            Debug.WriteLine($"[WorkingChanges] AutoFill summary length: {summary.Length}");
 
-            Debug.WriteLine($"[WorkingChanges] AutoFill prompt length: {prompt.Length}, summary={summary.Length}, timeout={timeoutSeconds}s, includeContext={includeContext}");
-            Debug.WriteLine($"[WorkingChanges] AutoFill prompt:\n{prompt}");
+            var (message, description, error) = await _aiCommitService.GenerateCommitMessageAsync(
+                summary, _repositoryPath, cancellationToken);
 
-            var (success, output, detail) = await RunAiPromptAsync(preferredProvider, prompt, timeoutSeconds, _repositoryPath);
-            if (!success)
+            if (error != null)
             {
-                Debug.WriteLine($"[WorkingChanges] AutoFill failed: {detail}");
-                ErrorMessage = $"AI request failed: {detail}";
-                return;
-            }
-
-            Debug.WriteLine($"[WorkingChanges] AutoFill output length: {output.Length}");
-            Debug.WriteLine($"[WorkingChanges] AutoFill output:\n{output}");
-
-            if (!TryParseCommitResult(output, out var message, out var description, out var parseDetail))
-            {
-                Debug.WriteLine($"[WorkingChanges] AutoFill parse error: {parseDetail}");
-                ErrorMessage = $"AI response invalid: {parseDetail}";
+                ErrorMessage = error;
                 return;
             }
 
@@ -845,6 +865,10 @@ exit /b %errorlevel%
             CommitMessage = message;
             CommitDescription = description?.Trim() ?? string.Empty;
         }
+        catch (OperationCanceledException)
+        {
+            ErrorMessage = "AI generation cancelled.";
+        }
         catch (Exception ex)
         {
             ErrorMessage = $"AI commit failed: {ex.Message}";
@@ -852,637 +876,23 @@ exit /b %errorlevel%
         finally
         {
             IsLoading = false;
+            _aiCancellationTokenSource?.Dispose();
+            _aiCancellationTokenSource = null;
         }
+    }
+
+    /// <summary>
+    /// Cancels any in-progress AI commit message generation.
+    /// </summary>
+    [RelayCommand]
+    public void CancelAutoFill()
+    {
+        _aiCancellationTokenSource?.Cancel();
     }
 
     partial void OnCommitMessageChanged(string value)
     {
         // Notify CanCommit changed when message changes
         CommitCommand.NotifyCanExecuteChanged();
-    }
-
-    private static string BuildPrompt(string repoPath, string summary, bool includeContext)
-    {
-        var contextInstruction = includeContext
-            ? "Do not run any commands or tools. Use only the staged summary provided."
-            : "Run 'git diff --cached' to see the staged changes, then generate the commit message.";
-
-        var contextBlock = includeContext
-            ? $"\n\nStaged summary:\n{summary}"
-            : string.Empty;
-
-        return
-$@"You are creating a git commit message and description. You are in the repository '{repoPath}'.
-{contextInstruction}
-Do not include any tool output, analysis, or commentary.
-Only consider staged changes when forming the commit message and description.
-
-Return JSON with keys: commitMessage, description.
-The commitMessage must be 72 characters or fewer.
-The description should be a bullet-point list with each item on a new line, starting with '- '.
-Example description format: ""- Added feature X\n- Fixed bug Y\n- Updated Z""
-If there are no significant details, description may be an empty string.
-Do not include any additional text or formatting outside the JSON.{contextBlock}";
-    }
-
-    private static string BuildOllamaPrompt(string summary)
-    {
-        return
-$@"Write a git commit message for these changes. Be concise and specific.
-
-RULES:
-- Describe WHAT changed and WHY, not which files changed
-- Do NOT list filenames
-- Use imperative mood (Fix, Add, Update, Remove, Refactor)
-- Keep the commit message under 72 characters
-
-BAD examples (do not do this):
-- ""Updated file1.cs, file2.cs, file3.cs""
-- ""Modified SettingsDialog.xaml""
-- ""Changes to multiple files""
-
-GOOD examples:
-- ""Fix tooltip not closing when mouse moves away""
-- ""Add Ollama integration for local AI commit messages""
-- ""Refactor service layer to use dependency injection""
-
-Changes:
-{summary}
-
-Respond with ONLY this format:
-Commit message: [your message here]
-Description:
-- [bullet point 1]
-- [bullet point 2]";
-    }
-
-    private async Task<(bool success, string output, string detail)> RunAiPromptAsync(
-        string provider, string prompt, int timeoutSeconds, string? repoPath = null)
-    {
-        // Handle Ollama separately via HTTP API (not CLI)
-        if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
-        {
-            var settings = _settingsService.LoadSettings();
-            var (success, output, error) = await _ollamaService.GenerateAsync(
-                settings.OllamaBaseUrl, settings.OllamaSelectedModel, prompt, timeoutSeconds);
-            return (success, output, error ?? string.Empty);
-        }
-
-        var (command, args, useStdin, workingDirectory) = BuildAiCommand(provider, prompt, repoPath);
-        if (string.IsNullOrWhiteSpace(command))
-        {
-            return (false, string.Empty, "Unknown AI provider");
-        }
-
-        var (resolvedPath, combinedPath) = ResolveCommandPath(command);
-        var executablePath = resolvedPath ?? command;
-        Debug.WriteLine($"[WorkingChanges] Command '{command}' resolved to: {executablePath}");
-
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            // On Windows, .cmd and .bat files must be run through cmd.exe /c with args as a single string
-            var isBatchFile = executablePath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
-                              executablePath.EndsWith(".bat", StringComparison.OrdinalIgnoreCase);
-            if (isBatchFile)
-            {
-                // Use full path to cmd.exe to ensure it's found
-                var cmdPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
-                psi.FileName = cmdPath;
-                // Build the full command line for cmd.exe /c
-                var escapedArgs = args.Select(a => a.Contains(' ') || a.Contains('"') ? $"\"{a.Replace("\"", "\\\"")}\"" : a);
-                psi.Arguments = $"/c \"{executablePath}\" {string.Join(" ", escapedArgs)}";
-                Debug.WriteLine($"[WorkingChanges] Batch file detected, using: {cmdPath}");
-                Debug.WriteLine($"[WorkingChanges] Full arguments: {psi.Arguments[..Math.Min(200, psi.Arguments.Length)]}...");
-            }
-            else
-            {
-                psi.FileName = executablePath;
-                foreach (var arg in args)
-                {
-                    psi.ArgumentList.Add(arg);
-                }
-            }
-
-            // Set working directory if specified (allows AI to access git repo)
-            if (!string.IsNullOrWhiteSpace(workingDirectory))
-            {
-                psi.WorkingDirectory = workingDirectory;
-            }
-
-            // Debug: log the command (truncate long prompts in log)
-            var argsPreview = string.Join(" ", args.Select(a =>
-                a.Length > 100 ? $"\"{a[..100]}...\"" : (a.Contains(' ') ? $"\"{a}\"" : a)));
-            Debug.WriteLine($"[WorkingChanges] AI command: {psi.FileName} {argsPreview}");
-            if (!string.IsNullOrWhiteSpace(workingDirectory))
-            {
-                Debug.WriteLine($"[WorkingChanges] Working directory: {workingDirectory}");
-            }
-            if (useStdin)
-            {
-                Debug.WriteLine($"[WorkingChanges] Sending {prompt.Length} chars via stdin");
-            }
-
-            if (!string.IsNullOrWhiteSpace(combinedPath))
-            {
-                psi.Environment["PATH"] = combinedPath;
-            }
-
-            // Set environment variables for non-interactive mode
-            psi.Environment["CI"] = "true";
-            psi.Environment["NO_COLOR"] = "1";
-            psi.Environment["TERM"] = "dumb";
-
-            using var process = Process.Start(psi);
-            if (process == null)
-            {
-                return (false, string.Empty, "Failed to start AI process");
-            }
-
-            // Send prompt via stdin if needed, then close stdin
-            if (useStdin)
-            {
-                await process.StandardInput.WriteAsync(prompt);
-            }
-            process.StandardInput.Close();
-
-            var outputTask = process.StandardOutput.ReadToEndAsync();
-            var errorTask = process.StandardError.ReadToEndAsync();
-
-            var exitTask = process.WaitForExitAsync();
-            var timeoutTask = Task.Delay(Math.Max(1, timeoutSeconds) * 1000);
-            var completed = await Task.WhenAny(exitTask, timeoutTask);
-            if (completed == timeoutTask)
-            {
-                try { process.Kill(); } catch { }
-                return (false, string.Empty, $"timed out after {Math.Max(1, timeoutSeconds)}s");
-            }
-
-            var output = (await outputTask + await errorTask).Trim();
-            if (process.ExitCode != 0)
-            {
-                var detail = string.IsNullOrWhiteSpace(output)
-                    ? $"exit {process.ExitCode}"
-                    : $"exit {process.ExitCode}: {TrimDetail(output)}";
-                return (false, string.Empty, detail);
-            }
-
-            if (string.IsNullOrWhiteSpace(output))
-            {
-                return (false, string.Empty, "no output");
-            }
-
-            // For Codex with --json flag, extract the agent_message from JSONL output
-            if (provider.Equals("Codex", StringComparison.OrdinalIgnoreCase))
-            {
-                output = ExtractCodexJsonlMessage(output);
-            }
-
-            // For Claude with --output-format json, extract structured_output
-            if (provider.Equals("Claude", StringComparison.OrdinalIgnoreCase))
-            {
-                output = ExtractClaudeStructuredOutput(output);
-            }
-
-            // For Gemini with --output-format json, extract response field
-            if (provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
-            {
-                output = ExtractGeminiResponse(output);
-            }
-
-            return (true, output, string.Empty);
-        }
-        catch (System.ComponentModel.Win32Exception ex)
-        {
-            Debug.WriteLine($"[WorkingChanges] Win32Exception: {ex.Message} (NativeErrorCode: {ex.NativeErrorCode})");
-            return (false, string.Empty, $"command error: {ex.Message}");
-        }
-        catch (Exception ex)
-        {
-            return (false, string.Empty, ex.Message);
-        }
-    }
-
-    private static string ExtractCodexJsonlMessage(string jsonlOutput)
-    {
-        // Parse JSONL output from Codex --json flag
-        // Looking for: {"type":"item.completed","item":{"type":"agent_message","text":"..."}}
-        foreach (var line in jsonlOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(line);
-                var root = doc.RootElement;
-
-                if (root.TryGetProperty("type", out var typeEl) &&
-                    typeEl.GetString() == "item.completed" &&
-                    root.TryGetProperty("item", out var itemEl) &&
-                    itemEl.TryGetProperty("type", out var itemTypeEl) &&
-                    itemTypeEl.GetString() == "agent_message" &&
-                    itemEl.TryGetProperty("text", out var textEl))
-                {
-                    return textEl.GetString() ?? jsonlOutput;
-                }
-            }
-            catch
-            {
-                // Skip invalid JSON lines
-            }
-        }
-
-        // Fallback to original output if parsing fails
-        return jsonlOutput;
-    }
-
-    private static string ExtractClaudeStructuredOutput(string jsonOutput)
-    {
-        // Parse JSON output from Claude --output-format json
-        // Looking for: {"type":"result","structured_output":{"commitMessage":"...","description":"..."}}
-        try
-        {
-            using var doc = JsonDocument.Parse(jsonOutput);
-            var root = doc.RootElement;
-
-            if (root.TryGetProperty("structured_output", out var structuredEl))
-            {
-                // Return the structured_output as JSON string for our existing parser
-                return structuredEl.GetRawText();
-            }
-        }
-        catch
-        {
-            // Fall through to return original
-        }
-
-        // Fallback to original output if parsing fails
-        return jsonOutput;
-    }
-
-    private static string ExtractGeminiResponse(string jsonOutput)
-    {
-        // Parse JSON output from Gemini --output-format json
-        // Looking for: {"session_id":"...","response":"...","stats":{...}}
-        try
-        {
-            var payload = ExtractJsonObject(jsonOutput) ?? jsonOutput;
-            using var doc = JsonDocument.Parse(payload);
-            var root = doc.RootElement;
-
-            if (root.TryGetProperty("response", out var responseEl))
-            {
-                // Return the response text (may contain markdown code fences, existing parser handles that)
-                if (responseEl.ValueKind == JsonValueKind.String)
-                    return responseEl.GetString() ?? jsonOutput;
-                if (responseEl.ValueKind == JsonValueKind.Object)
-                    return responseEl.GetRawText();
-            }
-        }
-        catch
-        {
-            // Fall through to return original
-        }
-
-        // Fallback to original output if parsing fails
-        return jsonOutput;
-    }
-
-    /// <summary>
-    /// Builds the AI command with arguments.
-    /// Returns: (command, args, useStdin, workingDirectory)
-    /// - useStdin: if true, send prompt via stdin instead of command line
-    /// - workingDirectory: if set, run the command in this directory (allows AI to access git)
-    /// </summary>
-    private static (string command, List<string> args, bool useStdin, string? workingDirectory) BuildAiCommand(
-        string provider, string prompt, string? repoPath)
-    {
-        if (provider.Equals("Claude", StringComparison.OrdinalIgnoreCase))
-        {
-            // -p/--print is a FLAG for non-interactive mode, prompt is positional at end
-            // --output-format json returns structured JSON
-            // --json-schema takes the schema as a STRING (not a file path!)
-            // Use stdin to avoid command line too long errors
-            var schema = """{"type":"object","properties":{"commitMessage":{"type":"string"},"description":{"type":"string"}},"required":["commitMessage","description"],"additionalProperties":false}""";
-            return ("claude", new List<string>
-            {
-                "-p",
-                "--model", "sonnet",
-                "--output-format", "json",
-                "--json-schema", schema,
-                "-"  // Read prompt from stdin
-            }, useStdin: true, workingDirectory: null);
-        }
-
-        if (provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
-        {
-            // Use stdin to avoid command line too long errors
-            return ("gemini", new List<string> { "-p", "-", "--output-format", "json" },
-                useStdin: true, workingDirectory: null);
-        }
-
-        if (provider.Equals("Codex", StringComparison.OrdinalIgnoreCase))
-        {
-            // Codex CLI: codex exec with --output-schema for guaranteed JSON format
-            // - Run in repo directory so Codex can access git directly
-            // - --full-auto enables non-interactive automatic execution
-            // - --color never disables terminal detection to prevent TTY issues
-            // - --json outputs structured JSONL for cleaner parsing
-            // - "-" reads prompt from stdin instead of command line args
-            //
-            // IMPORTANT: We pass the prompt via stdin (useStdin: true) because the prompt
-            // includes the full staged diff which can be 60KB+. Windows has a ~32KB command
-            // line length limit, so passing large prompts as args causes Win32Exception
-            // error 206 "filename or extension is too long".
-            var schemaPath = GetOrCreateCodexSchemaFile();
-            return ("codex", new List<string>
-            {
-                "exec",
-                "-m", "gpt-5.1-codex-mini",
-                "--full-auto",
-                "--color", "never",
-                "--output-schema", schemaPath,
-                "--json",
-                "-"
-            }, useStdin: true, workingDirectory: repoPath);
-        }
-
-        return (string.Empty, [], false, null);
-    }
-
-    private static string? _codexSchemaPath;
-
-    private static string GetOrCreateCodexSchemaFile()
-    {
-        if (_codexSchemaPath != null && File.Exists(_codexSchemaPath))
-            return _codexSchemaPath;
-
-        var schema = """
-            {
-                "type": "object",
-                "properties": {
-                    "commitMessage": { "type": "string" },
-                    "description": { "type": "string" }
-                },
-                "required": ["commitMessage", "description"],
-                "additionalProperties": false
-            }
-            """;
-
-        var tempDir = Path.Combine(Path.GetTempPath(), "Leaf");
-        Directory.CreateDirectory(tempDir);
-        _codexSchemaPath = Path.Combine(tempDir, "commit-schema.json");
-        File.WriteAllText(_codexSchemaPath, schema);
-        return _codexSchemaPath;
-    }
-
-    private static bool IsProviderConnected(string provider, AppSettings settings)
-    {
-        if (provider.Equals("Claude", StringComparison.OrdinalIgnoreCase))
-            return settings.IsClaudeConnected;
-        if (provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
-            return settings.IsGeminiConnected;
-        if (provider.Equals("Codex", StringComparison.OrdinalIgnoreCase))
-            return settings.IsCodexConnected;
-        if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
-            return !string.IsNullOrEmpty(settings.OllamaSelectedModel);
-
-        return false;
-    }
-
-    private static string TrimDetail(string detail)
-    {
-        var compact = detail.Replace("\r", " ").Replace("\n", " ");
-        return compact.Length <= 140 ? compact : compact[..140] + "...";
-    }
-
-    private static bool TryParseCommitResult(string response, out string message, out string description, out string error)
-    {
-        if (TryParseCommitJson(response, out message, out description, out error))
-        {
-            return true;
-        }
-
-        if (TryParseLabeledOutput(response, out message, out description, out error))
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryParseCommitJson(string response, out string message, out string description, out string error)
-    {
-        message = string.Empty;
-        description = string.Empty;
-        error = string.Empty;
-
-        var json = ExtractJsonObject(response);
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            error = "no JSON object found";
-            return false;
-        }
-
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                error = "JSON root is not an object";
-                return false;
-            }
-
-            if (doc.RootElement.TryGetProperty("commitMessage", out var commitMessageProp))
-            {
-                message = commitMessageProp.GetString() ?? string.Empty;
-            }
-            else if (doc.RootElement.TryGetProperty("message", out var messageProp))
-            {
-                message = messageProp.GetString() ?? string.Empty;
-            }
-            else if (doc.RootElement.TryGetProperty("commit", out var commitProp))
-            {
-                message = commitProp.GetString() ?? string.Empty;
-            }
-
-            if (doc.RootElement.TryGetProperty("description", out var descriptionProp))
-            {
-                description = descriptionProp.GetString() ?? string.Empty;
-            }
-            else if (doc.RootElement.TryGetProperty("body", out var bodyProp))
-            {
-                description = bodyProp.GetString() ?? string.Empty;
-            }
-
-            return true;
-        }
-        catch (JsonException ex)
-        {
-            error = $"JSON parse error: {ex.Message}";
-            return false;
-        }
-    }
-
-    private static bool TryParseLabeledOutput(string response, out string message, out string description, out string error)
-    {
-        message = string.Empty;
-        description = string.Empty;
-        error = string.Empty;
-
-        var lines = response.Split('\n')
-            .Select(line => line.TrimEnd('\r'))
-            .ToList();
-
-        int commitIndex = lines.FindIndex(line => line.TrimStart().StartsWith("Commit message:", StringComparison.OrdinalIgnoreCase));
-        int descriptionIndex = lines.FindIndex(line => line.TrimStart().StartsWith("Description:", StringComparison.OrdinalIgnoreCase));
-
-        if (commitIndex == -1 && descriptionIndex == -1)
-        {
-            error = "no JSON or labeled output found";
-            return false;
-        }
-
-        if (commitIndex != -1)
-        {
-            var commitLine = lines[commitIndex];
-            var commitValue = commitLine[(commitLine.IndexOf(':') + 1)..].Trim();
-
-            if (!string.IsNullOrWhiteSpace(commitValue))
-            {
-                message = commitValue;
-            }
-            else
-            {
-                for (int i = commitIndex + 1; i < lines.Count; i++)
-                {
-                    if (string.IsNullOrWhiteSpace(lines[i]))
-                        continue;
-                    if (lines[i].TrimStart().StartsWith("Description:", StringComparison.OrdinalIgnoreCase))
-                        break;
-
-                    message = lines[i].Trim();
-                    break;
-                }
-            }
-        }
-
-        if (descriptionIndex != -1)
-        {
-            var descriptionLine = lines[descriptionIndex];
-            var descriptionValue = descriptionLine[(descriptionLine.IndexOf(':') + 1)..].Trim();
-
-            var descriptionLines = new List<string>();
-            if (!string.IsNullOrWhiteSpace(descriptionValue))
-            {
-                descriptionLines.Add(descriptionValue);
-            }
-
-            for (int i = descriptionIndex + 1; i < lines.Count; i++)
-            {
-                var line = lines[i];
-                if (IsMetadataLine(line))
-                {
-                    break;
-                }
-                descriptionLines.Add(line);
-            }
-
-            description = string.Join(Environment.NewLine, descriptionLines).TrimEnd();
-        }
-
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            error = "commit message missing in labeled output";
-            return false;
-        }
-
-        return true;
-    }
-
-    private static bool IsMetadataLine(string line)
-    {
-        if (string.IsNullOrWhiteSpace(line))
-            return false;
-
-        var trimmed = line.TrimStart();
-        return trimmed.StartsWith("OpenAI", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("codex", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("tokens", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("--------", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("workdir:", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("model:", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("provider:", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("approval:", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("sandbox:", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("session", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("user", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("assistant", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("thinking", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("exec", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("[WorkingChanges]", StringComparison.OrdinalIgnoreCase)
-               || trimmed.StartsWith("Exception", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? ExtractJsonObject(string response)
-    {
-        if (string.IsNullOrWhiteSpace(response))
-            return null;
-
-        var cleaned = response.Trim();
-        if (cleaned.StartsWith("```", StringComparison.Ordinal))
-        {
-            var lines = cleaned.Split('\n');
-            var filtered = lines.Where(line => !line.TrimStart().StartsWith("```", StringComparison.Ordinal));
-            cleaned = string.Join("\n", filtered);
-        }
-
-        var start = cleaned.IndexOf('{');
-        var end = cleaned.LastIndexOf('}');
-        if (start < 0 || end <= start)
-            return null;
-
-        return cleaned.Substring(start, end - start + 1);
-    }
-
-    private static (string? fullPath, string? combinedPath) ResolveCommandPath(string command)
-    {
-        var paths = new List<string>();
-        var processPath = Environment.GetEnvironmentVariable("PATH");
-        var userPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User);
-        var machinePath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine);
-
-        if (!string.IsNullOrWhiteSpace(processPath))
-            paths.Add(processPath);
-        if (!string.IsNullOrWhiteSpace(userPath))
-            paths.Add(userPath);
-        if (!string.IsNullOrWhiteSpace(machinePath))
-            paths.Add(machinePath);
-
-        var combinedPath = string.Join(";", paths);
-        var searchPaths = combinedPath.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var extensions = Path.HasExtension(command) ? new[] { string.Empty } : new[] { ".exe", ".cmd", ".bat" };
-        foreach (var dir in searchPaths)
-        {
-            foreach (var ext in extensions)
-            {
-                var candidate = Path.Combine(dir, command + ext);
-                if (File.Exists(candidate))
-                {
-                    return (candidate, combinedPath);
-                }
-            }
-        }
-
-        return (null, combinedPath);
     }
 }
