@@ -43,6 +43,11 @@ public class BranchCategory
     public ObservableCollection<TagInfo> Tags { get; set; } = [];
 
     /// <summary>
+    /// Whether this is the LOCAL category (for template selection).
+    /// </summary>
+    public bool IsLocalCategory => Name == "LOCAL";
+
+    /// <summary>
     /// Whether this is the REMOTE category (for template selection).
     /// </summary>
     public bool IsRemoteCategory => Name == "REMOTE";

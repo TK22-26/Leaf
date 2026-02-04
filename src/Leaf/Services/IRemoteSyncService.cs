@@ -56,14 +56,16 @@ public interface IRemoteSyncService
         IProgress<string>? progress = null);
 
     /// <summary>
-    /// Pushes to the tracking remote.
+    /// Pushes to a remote.
     /// </summary>
     /// <param name="session">Repository session.</param>
+    /// <param name="remoteName">Remote name (null uses tracking branch's remote or default).</param>
     /// <param name="username">Optional username for authentication.</param>
     /// <param name="password">Optional password/token for authentication.</param>
     /// <param name="progress">Optional progress reporter.</param>
     Task PushAsync(
         IRepositorySession session,
+        string? remoteName = null,
         string? username = null,
         string? password = null,
         IProgress<string>? progress = null);

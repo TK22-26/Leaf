@@ -1,6 +1,7 @@
 using System;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Services;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -72,7 +73,7 @@ public partial class MainViewModel
                 try
                 {
                     var host = new Uri(remoteUrl).Host;
-                    var credentialKey = GetCredentialKeyForHost(host);
+                    var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
                     if (!string.IsNullOrEmpty(credentialKey))
                     {
                         pat = _credentialService.GetCredential(credentialKey);
@@ -131,7 +132,7 @@ public partial class MainViewModel
             if (!string.IsNullOrEmpty(originUrl))
             {
                 var host = new Uri(originUrl).Host;
-                var credentialKey = GetCredentialKeyForHost(host);
+                var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
                 if (!string.IsNullOrEmpty(credentialKey))
                 {
                     pat = _credentialService.GetCredential(credentialKey);
@@ -173,14 +174,14 @@ public partial class MainViewModel
             if (!string.IsNullOrEmpty(originUrl))
             {
                 var host = new Uri(originUrl).Host;
-                var credentialKey = GetCredentialKeyForHost(host);
+                var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
                 if (!string.IsNullOrEmpty(credentialKey))
                 {
                     pat = _credentialService.GetCredential(credentialKey);
                 }
             }
 
-            await _gitService.PushAsync(SelectedRepository.Path, null, pat);
+            await _gitService.PushAsync(SelectedRepository.Path, null, null, pat);
 
             StatusMessage = "Push complete";
             await RefreshAsync();
@@ -193,25 +194,6 @@ public partial class MainViewModel
         {
             IsBusy = false;
         }
-    }
-
-    /// <summary>
-    /// Maps a remote URL hostname to the credential storage key.
-    /// </summary>
-    private static string? GetCredentialKeyForHost(string host)
-    {
-        if (string.IsNullOrEmpty(host))
-            return null;
-
-        if (host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
-            return "GitHub";
-
-        if (host.Equals("dev.azure.com", StringComparison.OrdinalIgnoreCase) ||
-            host.EndsWith(".visualstudio.com", StringComparison.OrdinalIgnoreCase))
-            return "AzureDevOps";
-
-        // Return host as-is for other providers (may have stored by hostname)
-        return host;
     }
 
     /// <summary>

@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -172,7 +173,7 @@ public partial class MainViewModel
                     try
                     {
                         var host = new Uri(remoteUrl).Host;
-                        var credentialKey = GetCredentialKeyForHost(host);
+                        var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
                         if (!string.IsNullOrEmpty(credentialKey))
                         {
                             pat = _credentialService.GetCredential(credentialKey);

@@ -59,12 +59,13 @@ public class RemoteSyncService : IRemoteSyncService
     /// <inheritdoc />
     public async Task PushAsync(
         IRepositorySession session,
+        string? remoteName = null,
         string? username = null,
         string? password = null,
         IProgress<string>? progress = null)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        await _gitService.PushAsync(session.RepositoryPath, username, password, progress);
+        await _gitService.PushAsync(session.RepositoryPath, remoteName, username, password, progress);
         _eventHub.NotifyBranchesChanged();
     }
 

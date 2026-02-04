@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Windows.Threading;
+using Leaf.Utils;
 
 namespace Leaf.Services;
 
@@ -58,38 +60,49 @@ public class AutoFetchService : IAutoFetchService
                 return;
             }
 
-            // Try to get credentials from stored PAT
+            // Fetch from all remotes
             var remotes = await _gitService.GetRemotesAsync(repoPath);
-            var originUrl = remotes.FirstOrDefault(r => r.Name == "origin")?.Url;
-            string? pat = null;
 
-            if (!string.IsNullOrEmpty(originUrl))
+            foreach (var remote in remotes)
             {
-                if (TryGetRemoteHost(originUrl, out var host))
+                string? pat = null;
+
+                if (!string.IsNullOrEmpty(remote.Url))
                 {
-                    try
+                    // Check if host is reachable before attempting fetch
+                    if (CredentialHelper.TryGetRemoteHost(remote.Url, out var host))
                     {
-                        await Dns.GetHostAddressesAsync(host);
-                    }
-                    catch
-                    {
-                        // Skip auto-fetch when host cannot be resolved.
-                        return;
+                        try
+                        {
+                            await Dns.GetHostAddressesAsync(host);
+                        }
+                        catch
+                        {
+                            // Skip this remote when host cannot be resolved
+                            Debug.WriteLine($"Auto-fetch: Skipping {remote.Name} - host {host} unreachable");
+                            continue;
+                        }
+
+                        // Get credentials for this remote
+                        var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
+                        if (!string.IsNullOrEmpty(credentialKey))
+                        {
+                            pat = _credentialService.GetCredential(credentialKey);
+                        }
                     }
                 }
 
                 try
                 {
-                    var hostForPat = new Uri(originUrl).Host;
-                    pat = _credentialService.GetPat(hostForPat);
+                    await _gitService.FetchAsync(repoPath, remote.Name, password: pat);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Invalid URL, skip PAT
+                    // Log but continue with other remotes
+                    Debug.WriteLine($"Auto-fetch failed for {remote.Name}: {ex.Message}");
                 }
             }
 
-            await _gitService.FetchAsync(repoPath, "origin", password: pat);
             LastFetchTime = DateTime.Now;
 
             // Get updated ahead/behind counts
@@ -106,27 +119,5 @@ public class AutoFetchService : IAutoFetchService
         {
             // Silent failure for auto-fetch - don't disrupt the user
         }
-    }
-
-    private static bool TryGetRemoteHost(string remoteUrl, out string host)
-    {
-        host = string.Empty;
-
-        if (Uri.TryCreate(remoteUrl, UriKind.Absolute, out var uri) && !string.IsNullOrWhiteSpace(uri.Host))
-        {
-            host = uri.Host;
-            return true;
-        }
-
-        // Handle scp-like syntax: git@github.com:owner/repo.git
-        var atIndex = remoteUrl.IndexOf('@');
-        var colonIndex = remoteUrl.IndexOf(':');
-        if (atIndex >= 0 && colonIndex > atIndex + 1)
-        {
-            host = remoteUrl[(atIndex + 1)..colonIndex];
-            return !string.IsNullOrWhiteSpace(host);
-        }
-
-        return false;
     }
 }

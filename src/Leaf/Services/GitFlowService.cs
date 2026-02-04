@@ -400,7 +400,8 @@ public partial class GitFlowService : IGitFlowService
         if (deleteRemote)
         {
             progress?.Report($"Deleting remote branch...");
-            await _gitService.DeleteRemoteBranchAsync(repoPath, "origin", branchName);
+            var remoteName = await GetDefaultRemoteAsync(repoPath);
+            await _gitService.DeleteRemoteBranchAsync(repoPath, remoteName, branchName);
         }
 
         progress?.Report($"Feature '{featureName}' deleted.");
@@ -491,7 +492,8 @@ public partial class GitFlowService : IGitFlowService
         if (deleteRemote)
         {
             progress?.Report($"Deleting remote branch...");
-            await _gitService.DeleteRemoteBranchAsync(repoPath, "origin", branchName);
+            var remoteName = await GetDefaultRemoteAsync(repoPath);
+            await _gitService.DeleteRemoteBranchAsync(repoPath, remoteName, branchName);
         }
 
         progress?.Report($"Release branch '{version}' deleted.");
@@ -582,7 +584,8 @@ public partial class GitFlowService : IGitFlowService
         if (deleteRemote)
         {
             progress?.Report($"Deleting remote branch...");
-            await _gitService.DeleteRemoteBranchAsync(repoPath, "origin", branchName);
+            var remoteName = await GetDefaultRemoteAsync(repoPath);
+            await _gitService.DeleteRemoteBranchAsync(repoPath, remoteName, branchName);
         }
 
         progress?.Report($"Hotfix branch '{version}' deleted.");
@@ -977,6 +980,25 @@ public partial class GitFlowService : IGitFlowService
     #endregion
 
     #region Helpers
+
+    /// <summary>
+    /// Get the default remote for push/delete operations.
+    /// Reads from leaf.defaultremote config, falls back to "origin" if it exists,
+    /// otherwise returns the first available remote.
+    /// </summary>
+    private async Task<string> GetDefaultRemoteAsync(string repoPath)
+    {
+        // Try to read configured default remote
+        var defaultRemote = await _gitService.GetConfigAsync(repoPath, "leaf.defaultremote");
+        if (!string.IsNullOrEmpty(defaultRemote))
+            return defaultRemote;
+
+        // Fallback: prefer "origin" if it exists, otherwise first remote
+        var remotes = await _gitService.GetRemotesAsync(repoPath);
+        return remotes.FirstOrDefault(r => r.Name == "origin")?.Name
+               ?? remotes.FirstOrDefault()?.Name
+               ?? "origin";
+    }
 
     private async Task<MergeResult> MergeWithStrategy(string repoPath, string branchName, MergeStrategy strategy, IProgress<string>? progress)
     {

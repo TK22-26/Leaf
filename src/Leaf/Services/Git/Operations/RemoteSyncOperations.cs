@@ -38,6 +38,79 @@ internal class RemoteSyncOperations
     }
 
     /// <summary>
+    /// Add a new remote to the repository.
+    /// </summary>
+    public async Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null)
+    {
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "add", remoteName, url]);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
+                ? $"Failed to add remote '{remoteName}'"
+                : result.StandardError);
+        }
+
+        // Set separate push URL if provided
+        if (!string.IsNullOrEmpty(pushUrl))
+        {
+            var pushResult = await _context.CommandRunner.RunAsync(repoPath,
+                ["remote", "set-url", "--push", remoteName, pushUrl]);
+            if (!pushResult.Success)
+            {
+                throw new InvalidOperationException(string.IsNullOrEmpty(pushResult.StandardError)
+                    ? $"Failed to set push URL for remote '{remoteName}'"
+                    : pushResult.StandardError);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Remove a remote from the repository.
+    /// </summary>
+    public async Task RemoveRemoteAsync(string repoPath, string remoteName)
+    {
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "remove", remoteName]);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
+                ? $"Failed to remove remote '{remoteName}'"
+                : result.StandardError);
+        }
+    }
+
+    /// <summary>
+    /// Rename a remote.
+    /// </summary>
+    public async Task RenameRemoteAsync(string repoPath, string oldName, string newName)
+    {
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "rename", oldName, newName]);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
+                ? $"Failed to rename remote '{oldName}' to '{newName}'"
+                : result.StandardError);
+        }
+    }
+
+    /// <summary>
+    /// Set a remote's URL.
+    /// </summary>
+    public async Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false)
+    {
+        var args = isPushUrl
+            ? new[] { "remote", "set-url", "--push", remoteName, url }
+            : new[] { "remote", "set-url", remoteName, url };
+
+        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
+                ? $"Failed to set URL for remote '{remoteName}'"
+                : result.StandardError);
+        }
+    }
+
+    /// <summary>
     /// Clone a remote repository.
     /// </summary>
     public async Task<string> CloneAsync(string url, string localPath, string? username = null,
@@ -98,8 +171,13 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Push to remote.
     /// </summary>
-    public async Task PushAsync(string repoPath, string? username = null, string? password = null,
-        IProgress<string>? progress = null)
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="remoteName">Optional remote name (uses tracking branch's remote or default if not specified)</param>
+    /// <param name="username">Optional username for authentication</param>
+    /// <param name="password">Optional password/token for authentication</param>
+    /// <param name="progress">Optional progress reporter</param>
+    public async Task PushAsync(string repoPath, string? remoteName = null, string? username = null,
+        string? password = null, IProgress<string>? progress = null)
     {
         // Check if we're in detached HEAD state
         using (var repo = new Repository(repoPath))
@@ -115,9 +193,19 @@ internal class RemoteSyncOperations
         using (var repo = new Repository(repoPath))
         {
             var branchName = repo.Head.FriendlyName;
-            args = repo.Head.TrackedBranch == null
-                ? ["push", "-u", "origin", branchName]
-                : ["push"];
+
+            if (repo.Head.TrackedBranch == null)
+            {
+                // No tracking branch - need to set upstream
+                // Use specified remote or get default
+                var targetRemote = remoteName ?? await GetDefaultRemoteAsync(repoPath);
+                args = ["push", "-u", targetRemote, branchName];
+            }
+            else
+            {
+                // Has tracking branch - just push
+                args = ["push"];
+            }
         }
 
         progress?.Report("Pushing...");
@@ -130,6 +218,18 @@ internal class RemoteSyncOperations
                 ? "Push failed"
                 : result.StandardError);
         }
+    }
+
+    /// <summary>
+    /// Get the default remote for a repository.
+    /// Prefers "origin" if it exists, otherwise returns the first available remote.
+    /// </summary>
+    private async Task<string> GetDefaultRemoteAsync(string repoPath)
+    {
+        var remotes = await GetRemotesAsync(repoPath);
+        return remotes.FirstOrDefault(r => r.Name == "origin")?.Name
+               ?? remotes.FirstOrDefault()?.Name
+               ?? "origin";
     }
 
     /// <summary>

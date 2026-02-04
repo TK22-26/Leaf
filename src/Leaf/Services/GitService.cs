@@ -24,6 +24,7 @@ public class GitService : IGitService
     private readonly StashOperations _stashOps;
     private readonly TagOperations _tagOps;
     private readonly HunkOperations _hunkOps;
+    private readonly ConfigOperations _configOps;
 
     public event EventHandler<GitCommandEventArgs>? GitCommandExecuted;
 
@@ -50,6 +51,7 @@ public class GitService : IGitService
         _stashOps = new StashOperations(_context, _conflictOps);
         _tagOps = new TagOperations(_context);
         _hunkOps = new HunkOperations(_context);
+        _configOps = new ConfigOperations(_context);
     }
 
     #region Repository Operations
@@ -167,6 +169,18 @@ public class GitService : IGitService
     public Task<List<RemoteInfo>> GetRemotesAsync(string repoPath)
         => _remoteSyncOps.GetRemotesAsync(repoPath);
 
+    public Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null)
+        => _remoteSyncOps.AddRemoteAsync(repoPath, remoteName, url, pushUrl);
+
+    public Task RemoveRemoteAsync(string repoPath, string remoteName)
+        => _remoteSyncOps.RemoveRemoteAsync(repoPath, remoteName);
+
+    public Task RenameRemoteAsync(string repoPath, string oldName, string newName)
+        => _remoteSyncOps.RenameRemoteAsync(repoPath, oldName, newName);
+
+    public Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false)
+        => _remoteSyncOps.SetRemoteUrlAsync(repoPath, remoteName, url, isPushUrl);
+
     public Task<string> CloneAsync(string url, string localPath, string? username = null, string? password = null, IProgress<string>? progress = null)
         => _remoteSyncOps.CloneAsync(url, localPath, username, password, progress);
 
@@ -176,8 +190,8 @@ public class GitService : IGitService
     public Task PullAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null)
         => _remoteSyncOps.PullAsync(repoPath, username, password, progress);
 
-    public Task PushAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null)
-        => _remoteSyncOps.PushAsync(repoPath, username, password, progress);
+    public Task PushAsync(string repoPath, string? remoteName = null, string? username = null, string? password = null, IProgress<string>? progress = null)
+        => _remoteSyncOps.PushAsync(repoPath, remoteName, username, password, progress);
 
     public Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch)
         => _remoteSyncOps.PullBranchFastForwardAsync(repoPath, branchName, remoteName, remoteBranchName, isCurrentBranch);
@@ -350,6 +364,16 @@ public class GitService : IGitService
 
     public Task UnstageHunkAsync(string repoPath, string patchContent)
         => _hunkOps.UnstageHunkAsync(repoPath, patchContent);
+
+    #endregion
+
+    #region Config Operations
+
+    public Task SetConfigAsync(string repoPath, string key, string value)
+        => _configOps.SetConfigAsync(repoPath, key, value);
+
+    public Task<string?> GetConfigAsync(string repoPath, string key)
+        => _configOps.GetConfigAsync(repoPath, key);
 
     #endregion
 }
