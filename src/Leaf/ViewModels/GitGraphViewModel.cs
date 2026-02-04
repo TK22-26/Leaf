@@ -188,12 +188,20 @@ public partial class GitGraphViewModel : ObservableObject
             var commits = await commitsTask;
             var stashes = await stashesTask;
 
-            _currentBranchName = workingChanges?.BranchName;
-            if (string.IsNullOrWhiteSpace(_currentBranchName))
+            // When detached, don't set a current branch name - let graph builder use default priority
+            if (workingChanges?.IsDetachedHead == true)
             {
-                _currentBranchName = commits
-                    .SelectMany(c => c.BranchLabels)
-                    .FirstOrDefault(l => l.IsCurrent)?.Name;
+                _currentBranchName = null;
+            }
+            else
+            {
+                _currentBranchName = workingChanges?.BranchName;
+                if (string.IsNullOrWhiteSpace(_currentBranchName))
+                {
+                    _currentBranchName = commits
+                        .SelectMany(c => c.BranchLabels)
+                        .FirstOrDefault(l => l.IsCurrent)?.Name;
+                }
             }
 
             _allCommits = commits.ToList();
