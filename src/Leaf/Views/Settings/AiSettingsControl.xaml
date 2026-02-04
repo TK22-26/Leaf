@@ -1,0 +1,310 @@
+<UserControl
+    x:Class="Leaf.Views.Settings.AiSettingsControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf">
+
+    <Grid>
+        <!-- AI General Content -->
+        <StackPanel x:Name="ContentAIGeneral" Visibility="Collapsed">
+            <TextBlock Text="AI Settings"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="Configure general AI integration settings"
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,16" />
+
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel>
+                    <!-- Default AI -->
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Default AI Provider"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock Text="Select which AI to use by default for features like commit message generation"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox x:Name="AiDefaultComboBox"
+                                  Grid.Column="1"
+                                  MinWidth="140"
+                                  VerticalAlignment="Center"
+                                  SelectionChanged="AiDefaultComboBox_SelectionChanged" />
+                    </Grid>
+
+                    <!-- Timeout -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="CLI Timeout"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock Text="Maximum time to wait for AI CLI responses (in seconds)"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <TextBox x:Name="AiTimeoutTextBox"
+                                 Grid.Column="1"
+                                 Width="80"
+                                 Padding="8,6"
+                                 VerticalAlignment="Center"
+                                 HorizontalContentAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- Claude Content -->
+        <StackPanel x:Name="ContentClaude" Visibility="Collapsed">
+            <TextBlock Text="Claude"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="Connect to Claude CLI for AI-powered features"
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,16" />
+
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Claude CLI"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                        <TextBlock x:Name="ClaudeStatusText"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Text="Not connected" />
+                    </StackPanel>
+                    <Button x:Name="ClaudeConnectButton"
+                            Grid.Column="1"
+                            Padding="12,6"
+                            Click="ClaudeConnect_Click"
+                            Content="Connect" />
+                    <Button x:Name="ClaudeDisconnectButton"
+                            Grid.Column="2"
+                            Margin="8,0,0,0"
+                            Padding="12,6"
+                            Click="ClaudeDisconnect_Click"
+                            Content="Disconnect"
+                            IsEnabled="False" />
+                </Grid>
+            </Border>
+        </StackPanel>
+
+        <!-- Gemini Content -->
+        <StackPanel x:Name="ContentGemini" Visibility="Collapsed">
+            <TextBlock Text="Gemini"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="Connect to Gemini CLI for AI-powered features"
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,16" />
+
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Gemini CLI"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                        <TextBlock x:Name="GeminiStatusText"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Text="Not connected" />
+                    </StackPanel>
+                    <Button x:Name="GeminiConnectButton"
+                            Grid.Column="1"
+                            Padding="12,6"
+                            Click="GeminiConnect_Click"
+                            Content="Connect" />
+                    <Button x:Name="GeminiDisconnectButton"
+                            Grid.Column="2"
+                            Margin="8,0,0,0"
+                            Padding="12,6"
+                            Click="GeminiDisconnect_Click"
+                            Content="Disconnect"
+                            IsEnabled="False" />
+                </Grid>
+            </Border>
+        </StackPanel>
+
+        <!-- Codex Content -->
+        <StackPanel x:Name="ContentCodex" Visibility="Collapsed">
+            <TextBlock Text="Codex"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="Connect to Codex CLI for AI-powered features"
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,16" />
+
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Codex CLI"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                        <TextBlock x:Name="CodexStatusText"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Text="Not connected" />
+                    </StackPanel>
+                    <Button x:Name="CodexConnectButton"
+                            Grid.Column="1"
+                            Padding="12,6"
+                            Click="CodexConnect_Click"
+                            Content="Connect" />
+                    <Button x:Name="CodexDisconnectButton"
+                            Grid.Column="2"
+                            Margin="8,0,0,0"
+                            Padding="12,6"
+                            Click="CodexDisconnect_Click"
+                            Content="Disconnect"
+                            IsEnabled="False" />
+                </Grid>
+            </Border>
+        </StackPanel>
+
+        <!-- Ollama Content -->
+        <StackPanel x:Name="ContentOllama" Visibility="Collapsed">
+            <TextBlock Text="Ollama"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="Connect to Ollama for local AI-powered features (no API costs, runs offline)"
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,16" />
+
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel>
+                    <!-- Base URL -->
+                    <TextBlock Text="Ollama URL"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <TextBox x:Name="OllamaBaseUrlTextBox"
+                             Text="http://localhost:11434"
+                             Margin="0,0,0,4"
+                             Padding="8,6" />
+                    <TextBlock Text="Default: http://localhost:11434"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <!-- Model Selection -->
+                    <TextBlock Text="Model"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="OllamaModelComboBox"
+                                  Grid.Column="0"
+                                  Padding="8,6" />
+                        <Button x:Name="OllamaRefreshModelsButton"
+                                Grid.Column="1"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="OllamaRefreshModels_Click"
+                                Content="Refresh" />
+                    </Grid>
+                    <TextBlock Text="Recommended: llama3.1:8b, deepseek-coder:6.7b, or qwen2.5-coder:7b"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <!-- Status and Connect/Disconnect -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Connection Status"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock x:Name="OllamaStatusText"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Not connected" />
+                        </StackPanel>
+                        <Button x:Name="OllamaConnectButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="OllamaConnect_Click"
+                                Content="Connect" />
+                        <Button x:Name="OllamaDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="OllamaDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Grid>
+</UserControl>

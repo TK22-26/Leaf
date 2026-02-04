@@ -453,7 +453,7 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Delete a tag.
+    /// Delete a tag locally and from the remote.
     /// </summary>
     [RelayCommand]
     public async Task DeleteTagAsync(TagInfo tag)
@@ -461,7 +461,7 @@ public partial class MainViewModel
         if (SelectedRepository == null || tag == null) return;
 
         var confirmed = await _dialogService.ShowConfirmationAsync(
-            $"Delete tag '{tag.Name}'?\n\nThis cannot be undone.",
+            $"Delete tag '{tag.Name}'?\n\nThis will delete the tag locally and from the remote origin.\nThis cannot be undone.",
             "Delete Tag");
 
         if (!confirmed) return;
@@ -471,7 +471,19 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = $"Deleting tag {tag.Name}...";
 
+            // Delete locally first
             await _gitService.DeleteTagAsync(SelectedRepository.Path, tag.Name);
+
+            // Also delete from remote origin (ignore errors if tag doesn't exist on remote)
+            try
+            {
+                StatusMessage = $"Deleting tag {tag.Name} from remote...";
+                await _gitService.DeleteRemoteTagAsync(SelectedRepository.Path, tag.Name, "origin");
+            }
+            catch
+            {
+                // Remote deletion may fail if tag doesn't exist on remote - that's OK
+            }
 
             StatusMessage = $"Deleted tag {tag.Name}";
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
