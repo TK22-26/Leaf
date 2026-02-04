@@ -668,3 +668,26 @@ public class HalfValueToCornerRadiusConverter : IValueConverter
         return Binding.DoNothing;
     }
 }
+
+/// <summary>
+/// Converts an enum value to boolean for RadioButton binding.
+/// Returns true if the value matches the converter parameter.
+/// </summary>
+public class EnumBooleanConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value == null || parameter == null)
+            return false;
+
+        return value.Equals(parameter);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is true && parameter != null)
+            return parameter;
+
+        return Binding.DoNothing;
+    }
+}
