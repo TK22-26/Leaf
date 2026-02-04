@@ -162,6 +162,9 @@ public class AppSettings
 
     // Watched folders for auto-discovery of new repositories
     public List<string> WatchedFolders { get; set; } = [];
+
+    // Multi-remote sync behavior
+    public bool SyncAllRemotes { get; set; } = false;
 }
 
 /// <summary>
