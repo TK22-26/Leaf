@@ -60,6 +60,69 @@ public partial class BranchListView : UserControl
         // Don't mark handled - let context menu open
     }
 
+    private void Tag_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not TagInfo tag)
+            return;
+
+        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+            return;
+
+        // Double-click to scroll to commit in graph
+        if (e.ClickCount == 2)
+        {
+            viewModel.GitGraphViewModel?.SelectCommitBySha(tag.TargetSha);
+            e.Handled = true;
+            return;
+        }
+
+        // Single click - select this tag (Ctrl toggles multi-select)
+        SelectTag(viewModel.SelectedRepository, tag, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        e.Handled = true;
+    }
+
+    private void Tag_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not TagInfo tag)
+            return;
+
+        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+            return;
+
+        // If right-clicked tag is not selected, select it
+        if (!tag.IsSelected)
+        {
+            SelectTag(viewModel.SelectedRepository, tag, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        }
+
+        // Don't mark handled - let context menu open
+    }
+
+    private static void SelectTag(RepositoryInfo repo, TagInfo tag, bool toggle)
+    {
+        // Clear any branch selection first
+        repo.ClearBranchSelection();
+
+        if (toggle)
+        {
+            tag.IsSelected = !tag.IsSelected;
+            return;
+        }
+
+        // Clear other tag selections and select this one
+        foreach (var category in repo.BranchCategories)
+        {
+            if (category.IsTagsCategory)
+            {
+                foreach (var t in category.Tags)
+                {
+                    t.IsSelected = false;
+                }
+            }
+        }
+        tag.IsSelected = true;
+    }
+
     /// <summary>
     /// Selects the given branch. For local branches (which are shared between GITFLOW and LOCAL
     /// categories), this automatically shows selection in both places since they're the same instance.

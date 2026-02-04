@@ -14,7 +14,9 @@ public class BranchCategoryItemsConverter : IValueConverter
     {
         if (value is BranchCategory category)
         {
-            return category.IsRemoteCategory ? category.RemoteGroups : category.Branches;
+            if (category.IsTagsCategory) return category.Tags;
+            if (category.IsRemoteCategory) return category.RemoteGroups;
+            return category.Branches;
         }
         return null;
     }

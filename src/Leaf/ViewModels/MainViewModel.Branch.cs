@@ -407,4 +407,82 @@ public partial class MainViewModel
             IsBusy = false;
         }
     }
+
+    /// <summary>
+    /// Checkout a tag (detached HEAD).
+    /// </summary>
+    [RelayCommand]
+    public async Task CheckoutTagAsync(TagInfo tag)
+    {
+        if (SelectedRepository == null || tag == null) return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"Checking out tag {tag.Name}...";
+
+            await _gitService.CheckoutCommitAsync(SelectedRepository.Path, tag.TargetSha);
+
+            // Refresh the repo info
+            var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            SelectedRepository.CurrentBranch = info.CurrentBranch;
+            SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
+            SelectedRepository.MergingBranch = info.MergingBranch;
+            SelectedRepository.ConflictCount = info.ConflictCount;
+
+            // Reload branches to update current indicator
+            SelectedRepository.BranchesLoaded = false;
+            await LoadBranchesForRepoAsync(SelectedRepository);
+
+            // Refresh git graph
+            if (GitGraphViewModel != null)
+            {
+                await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
+            }
+
+            StatusMessage = $"Checked out tag {tag.Name} (detached HEAD)";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Checkout tag failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Delete a tag.
+    /// </summary>
+    [RelayCommand]
+    public async Task DeleteTagAsync(TagInfo tag)
+    {
+        if (SelectedRepository == null || tag == null) return;
+
+        var confirmed = await _dialogService.ShowConfirmationAsync(
+            $"Delete tag '{tag.Name}'?\n\nThis cannot be undone.",
+            "Delete Tag");
+
+        if (!confirmed) return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"Deleting tag {tag.Name}...";
+
+            await _gitService.DeleteTagAsync(SelectedRepository.Path, tag.Name);
+
+            StatusMessage = $"Deleted tag {tag.Name}";
+            await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Delete tag failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }

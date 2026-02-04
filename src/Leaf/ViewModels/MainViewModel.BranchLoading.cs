@@ -132,6 +132,24 @@ public partial class MainViewModel
             }
             categories.Add(remoteCategory);
 
+            // TAGS category
+            var tags = await _gitService.GetTagsAsync(repo.Path);
+            if (tags.Count > 0)
+            {
+                var tagsCategory = new BranchCategory
+                {
+                    Name = "TAGS",
+                    Icon = "\uE8EC", // Tag icon
+                    BranchCount = tags.Count,
+                    IsExpanded = true
+                };
+                foreach (var tag in tags.OrderByDescending(t => t.TaggedAt ?? DateTimeOffset.MinValue).ThenBy(t => t.Name))
+                {
+                    tagsCategory.Tags.Add(tag);
+                }
+                categories.Add(tagsCategory);
+            }
+
             // Assign new collection (replaces entire collection atomically)
             repo.BranchCategories = categories;
 

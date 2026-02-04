@@ -35,7 +35,7 @@
             <Setter Property="IsTabStop" Value="True"/>
             <Setter Property="OverridesDefaultStyle" Value="True"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay, FallbackValue=False}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type TreeViewItem}">
@@ -213,6 +213,11 @@
                             <Setter TargetName="CategoryIcon" Property="Foreground" Value="#10B981"/>
                             <Setter TargetName="CategoryName" Property="Foreground" Value="#10B981"/>
                             <Setter TargetName="GitFlowActionButton" Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsTagsCategory}" Value="True">
+                            <Setter TargetName="CategoryIcon" Property="Symbol" Value="Tag"/>
+                            <Setter TargetName="CategoryIcon" Property="Foreground" Value="#F59E0B"/>
+                            <Setter TargetName="CategoryName" Property="Foreground" Value="#F59E0B"/>
                         </DataTrigger>
                     </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>
@@ -430,6 +435,56 @@
                                 </Border>
                             </StackPanel>
                         </Grid>
+                    </Border>
+                </DataTemplate>
+
+                <!-- Tag template -->
+                <DataTemplate DataType="{x:Type models:TagInfo}">
+                    <Border x:Name="TagBorder"
+                            Padding="2,3"
+                            Background="Transparent"
+                            CornerRadius="2"
+                            Cursor="Hand"
+                            MouseLeftButtonDown="Tag_MouseLeftButtonDown"
+                            MouseRightButtonDown="Tag_MouseRightButtonDown"
+                            Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Checkout (detached HEAD)"
+                                          Command="{Binding PlacementTarget.Tag.CheckoutTagCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"/>
+                                <Separator/>
+                                <MenuItem Header="Delete"
+                                          Command="{Binding PlacementTarget.Tag.DeleteTagCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          Foreground="#DC2626"/>
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <StackPanel Orientation="Horizontal">
+                            <!-- Tag icon -->
+                            <ic:SymbolIcon Symbol="Tag"
+                                           IconVariant="Regular"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,6,0"/>
+
+                            <!-- Tag name -->
+                            <TextBlock Text="{Binding Name}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       VerticalAlignment="Center"/>
+
+                            <!-- Annotated tag indicator -->
+                            <ic:SymbolIcon Symbol="Star"
+                                           IconVariant="Filled"
+                                           FontSize="8"
+                                           Foreground="#F59E0B"
+                                           Visibility="{Binding IsAnnotated, Converter={StaticResource BoolToVisibilityConverter}}"
+                                           VerticalAlignment="Center"
+                                           ToolTip="Annotated tag"
+                                           Margin="4,0,0,0"/>
+                        </StackPanel>
                     </Border>
                 </DataTemplate>
             </TreeView.Resources>
