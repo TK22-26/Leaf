@@ -1,0 +1,160 @@
+<UserControl
+    x:Class="Leaf.Views.Settings.GitFlowSettingsControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <StackPanel>
+        <TextBlock Text="GitFlow Defaults"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                   Margin="0,0,0,4" />
+        <TextBlock Text="Set default values used when initializing GitFlow on new repositories"
+                   FontSize="12"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   Margin="0,0,0,16" />
+
+        <!-- Branch Names -->
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16"
+                Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Branch Names"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           Margin="0,0,0,16" />
+
+                <!-- Main Branch -->
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Main Branch:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="GitFlowDefaultMainBranch" Grid.Column="1"
+                             Text="main"
+                             MaxWidth="200"
+                             HorizontalAlignment="Left" />
+                </Grid>
+
+                <!-- Develop Branch -->
+                <Grid Margin="0,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Develop Branch:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="GitFlowDefaultDevelopBranch" Grid.Column="1"
+                             Text="develop"
+                             MaxWidth="200"
+                             HorizontalAlignment="Left" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Prefixes -->
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16"
+                Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Branch Prefixes"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           Margin="0,0,0,16" />
+
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Feature Prefix:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="GitFlowDefaultFeaturePrefix" Grid.Column="1"
+                             Text="feature/"
+                             FontFamily="Consolas"
+                             MaxWidth="200"
+                             HorizontalAlignment="Left" />
+                </Grid>
+
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Release Prefix:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="GitFlowDefaultReleasePrefix" Grid.Column="1"
+                             Text="release/"
+                             FontFamily="Consolas"
+                             MaxWidth="200"
+                             HorizontalAlignment="Left" />
+                </Grid>
+
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Hotfix Prefix:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="GitFlowDefaultHotfixPrefix" Grid.Column="1"
+                             Text="hotfix/"
+                             FontFamily="Consolas"
+                             MaxWidth="200"
+                             HorizontalAlignment="Left" />
+                </Grid>
+
+                <Grid Margin="0,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Version Tag Prefix:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="GitFlowDefaultVersionTagPrefix" Grid.Column="1"
+                             Text="v"
+                             FontFamily="Consolas"
+                             MaxWidth="200"
+                             HorizontalAlignment="Left" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Options -->
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16">
+            <StackPanel>
+                <TextBlock Text="Default Options"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           Margin="0,0,0,16" />
+
+                <CheckBox x:Name="GitFlowDefaultDeleteBranch"
+                          Content="Delete branch after finish"
+                          IsChecked="True"
+                          Margin="0,0,0,8" />
+
+                <CheckBox x:Name="GitFlowDefaultGenerateChangelog"
+                          Content="Generate changelog on release/hotfix finish"
+                          IsChecked="True" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

@@ -4,7 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Leaf.Controls;
+using Leaf.Controls.GitGraph;
 using Leaf.Models;
 using Leaf.ViewModels;
 
@@ -721,20 +721,75 @@ public partial class GitGraphView : UserControl
         if (GraphCanvas == null)
             return;
 
-        var label = GraphCanvas.GetBranchLabelAt(e.GetPosition(GraphCanvas));
+        var pos = e.GetPosition(GraphCanvas);
+        var label = GraphCanvas.GetBranchLabelAt(pos);
         if (label == null)
             return;
 
         if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
             return;
 
+        if (DataContext is not GitGraphViewModel viewModel)
+            return;
+
+        var menu = new ContextMenu();
+
+        // Get the SHA from the row position
+        int row = (int)(pos.Y / RowHeight);
+        int rowOffset = (viewModel.HasWorkingChanges ? 1 : 0) + viewModel.Stashes.Count;
+        int nodeIndex = row - rowOffset;
+        string? tipSha = null;
+        if (nodeIndex >= 0 && GraphCanvas.Nodes != null && nodeIndex < GraphCanvas.Nodes.Count)
+        {
+            tipSha = GraphCanvas.Nodes[nodeIndex].Sha;
+        }
+
+        // Create BranchInfo for commands that need it
+        var branchName = label.IsRemote && !label.IsLocal && label.RemoteName != null
+            ? $"{label.RemoteName}/{label.Name}"
+            : label.Name;
+        var branchInfo = new BranchInfo
+        {
+            Name = branchName,
+            IsRemote = label.IsRemote,
+            RemoteName = label.RemoteName,
+            IsCurrent = label.IsCurrent,
+            TipSha = tipSha ?? string.Empty
+        };
+
+        // Checkout (skip if already current)
+        if (!label.IsCurrent)
+        {
+            var checkoutItem = new MenuItem
+            {
+                Header = $"Checkout {label.Name}",
+                Command = mainViewModel.CheckoutBranchCommand,
+                CommandParameter = branchInfo
+            };
+            menu.Items.Add(checkoutItem);
+        }
+
+        // Merge into current
         var mergeItem = new MenuItem
         {
             Header = $"Merge {label.FullName} into current",
             Command = mainViewModel.MergeBranchLabelCommand,
             CommandParameter = label
         };
+        menu.Items.Add(mergeItem);
 
+        // Create branch here
+        var createBranchItem = new MenuItem
+        {
+            Header = "Create branch here...",
+            Command = mainViewModel.CreateBranchAtBranchCommand,
+            CommandParameter = branchInfo
+        };
+        menu.Items.Add(createBranchItem);
+
+        menu.Items.Add(new Separator());
+
+        // Delete branch
         var deleteItem = new MenuItem
         {
             Header = "Delete branch",
@@ -742,11 +797,8 @@ public partial class GitGraphView : UserControl
             CommandParameter = label,
             Foreground = new SolidColorBrush(Color.FromRgb(232, 89, 89))
         };
-
-        var menu = new ContextMenu();
-        menu.Items.Add(mergeItem);
-        menu.Items.Add(new Separator());
         menu.Items.Add(deleteItem);
+
         menu.IsOpen = true;
         e.Handled = true;
     }

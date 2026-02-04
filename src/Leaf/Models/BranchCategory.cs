@@ -38,9 +38,19 @@ public class BranchCategory
     public ObservableCollection<RemoteBranchGroup> RemoteGroups { get; set; } = [];
 
     /// <summary>
+    /// Tags (used for TAGS category).
+    /// </summary>
+    public ObservableCollection<TagInfo> Tags { get; set; } = [];
+
+    /// <summary>
     /// Whether this is the REMOTE category (for template selection).
     /// </summary>
     public bool IsRemoteCategory => Name == "REMOTE";
+
+    /// <summary>
+    /// Whether this is the TAGS category (for template selection).
+    /// </summary>
+    public bool IsTagsCategory => Name == "TAGS";
 
     /// <summary>
     /// Whether this is the GITFLOW category (for template selection).

@@ -1,0 +1,243 @@
+<UserControl
+    x:Class="Leaf.Controls.CommitInputControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="clr-namespace:Leaf.Converters"
+    x:Name="Root">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+
+        <!-- Commit button color -->
+        <SolidColorBrush x:Key="CommitButtonBrush" Color="#28A745" />
+
+        <!-- TextBox style without clear button -->
+        <Style
+            x:Key="NoClearButtonTextBox"
+            BasedOn="{StaticResource {x:Type TextBox}}"
+            TargetType="TextBox" />
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Combined commit message control with Fluent styling -->
+        <Border
+            Grid.Row="0"
+            Height="140"
+            Background="{DynamicResource TextControlBackground}"
+            BorderBrush="{DynamicResource TextControlElevationBorderBrush}"
+            BorderThickness="{DynamicResource TextControlBorderThemeThickness}"
+            CornerRadius="{DynamicResource ControlCornerRadius}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Commit message (top) -->
+                <Grid Grid.Row="0" MinHeight="32">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox
+                        x:Name="CommitMessageBox"
+                        Grid.Column="0"
+                        Padding="10,6"
+                        VerticalContentAlignment="Center"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        MaxLength="{Binding MaxMessageLength, ElementName=Root}"
+                        Style="{StaticResource NoClearButtonTextBox}"
+                        Text="{Binding CommitMessage, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                    <!-- Placeholder -->
+                    <TextBlock
+                        Grid.Column="0"
+                        Margin="12,0,0,0"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                        IsHitTestVisible="False"
+                        Text="Commit message">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=CommitMessageBox}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <!-- Character counter -->
+                    <TextBlock
+                        Margin="0,0,10,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        FontSize="10"
+                        Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                        <Run Text="{Binding RemainingChars, ElementName=Root, Mode=OneWay}" />
+                    </TextBlock>
+                    <!-- Auto-fill button -->
+                    <Button
+                        Grid.Column="1"
+                        Width="32"
+                        Height="32"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        Command="{Binding AutoFillCommand, ElementName=Root}"
+                        IsEnabled="{Binding IsLoading, ElementName=Root, Converter={StaticResource InverseBoolConverter}}"
+                        ToolTip="Auto fill commit message">
+                        <Grid Width="18" Height="18">
+                            <!-- Sparkle icon when not loading -->
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe UI Emoji"
+                                FontSize="14"
+                                Text="&#x2728;"
+                                Visibility="{Binding IsLoading, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}" />
+                            <!-- Fluent UI style progress ring when loading -->
+                            <Grid
+                                Margin="6,6,0,0"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding IsLoading, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <!-- Background ring (subtle) -->
+                                <Ellipse
+                                    Width="12"
+                                    Height="12"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Opacity="0.3"
+                                    Stroke="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                    StrokeThickness="1.5" />
+                                <!-- Animated arc -->
+                                <Path
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Stroke="{DynamicResource AccentFillColorDefaultBrush}"
+                                    StrokeEndLineCap="Round"
+                                    StrokeStartLineCap="Round"
+                                    StrokeThickness="1.5">
+                                    <Path.Data>
+                                        <!-- Arc: 270 degrees, radius 5.25, centered at origin -->
+                                        <PathGeometry>
+                                            <PathFigure IsClosed="False" StartPoint="0,-5.25">
+                                                <ArcSegment
+                                                    IsLargeArc="True"
+                                                    Point="-5.25,0"
+                                                    Size="5.25,5.25"
+                                                    SweepDirection="Clockwise" />
+                                            </PathFigure>
+                                        </PathGeometry>
+                                    </Path.Data>
+                                    <Path.RenderTransform>
+                                        <RotateTransform CenterX="0" CenterY="0" />
+                                    </Path.RenderTransform>
+                                    <Path.Triggers>
+                                        <EventTrigger RoutedEvent="Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimation
+                                                        Storyboard.TargetProperty="(Path.RenderTransform).(RotateTransform.Angle)"
+                                                        From="0"
+                                                        To="360"
+                                                        Duration="0:0:0.8" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </Path.Triggers>
+                                </Path>
+                            </Grid>
+                        </Grid>
+                    </Button>
+                </Grid>
+
+                <!-- Separator line -->
+                <Border
+                    Grid.Row="1"
+                    Height="1"
+                    Margin="10,0"
+                    Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
+
+                <!-- Description (bottom) -->
+                <Grid Grid.Row="2" MinHeight="60">
+                    <TextBox
+                        x:Name="CommitDescriptionBox"
+                        Padding="10,6"
+                        VerticalContentAlignment="Top"
+                        AcceptsReturn="True"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource NoClearButtonTextBox}"
+                        Text="{Binding CommitDescription, ElementName=Root, UpdateSourceTrigger=PropertyChanged}"
+                        TextWrapping="Wrap"
+                        VerticalScrollBarVisibility="Auto" />
+                    <!-- Placeholder -->
+                    <TextBlock
+                        Margin="12,6,0,0"
+                        VerticalAlignment="Top"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                        IsHitTestVisible="False"
+                        Text="Description">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=CommitDescriptionBox}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Commit button -->
+        <Button
+            Grid.Row="1"
+            Margin="0,8,0,0"
+            Padding="12,6"
+            HorizontalAlignment="Stretch"
+            Command="{Binding CommitCommand, ElementName=Root}"
+            Content="Commit"
+            FontSize="12"
+            FontWeight="SemiBold">
+            <Button.Style>
+                <Style BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
+                    <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding CanCommit, ElementName=Root}" Value="True">
+                            <Setter Property="Background" Value="{StaticResource CommitButtonBrush}" />
+                            <Setter Property="Foreground" Value="White" />
+                        </DataTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+        </Button>
+    </Grid>
+</UserControl>
