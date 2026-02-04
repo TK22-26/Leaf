@@ -21,257 +21,147 @@
                 CornerRadius="8"
                 Padding="16">
             <StackPanel>
-                <!-- Organization (always visible) -->
-                <TextBlock Text="Organization"
-                           FontSize="12"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                           Margin="0,0,0,4" />
-                <TextBox x:Name="OrganizationTextBox"
-                         Margin="0,0,0,4"
-                         Padding="8,6" />
-                <TextBlock Text="Your Azure DevOps organization name (e.g., 'mycompany' from dev.azure.com/mycompany)"
-                           FontSize="11"
-                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                           Margin="0,0,0,16"
-                           TextWrapping="Wrap" />
+                <!-- Configured Credentials List -->
+                <TextBlock Text="Configured Organizations"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           Margin="0,0,0,12" />
 
-                <!-- OAuth Section -->
-                <Border x:Name="AzureDevOpsOAuthSection"
+                <ItemsControl x:Name="CredentialsList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="12"
+                                    Margin="0,0,0,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <ic:SymbolIcon Symbol="Organization" FontSize="20" Margin="0,0,12,0" VerticalAlignment="Center" />
+
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding}"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                        <TextBlock Text="Personal Access Token"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+
+                                    <Button Grid.Column="2"
+                                            Padding="8,4"
+                                            Click="RemoveCredential_Click"
+                                            Tag="{Binding}"
+                                            Content="Remove" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Empty state -->
+                <TextBlock x:Name="EmptyStateText"
+                           Text="No Azure DevOps organizations configured"
+                           FontSize="12"
+                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                           Margin="0,0,0,12"
+                           Visibility="Collapsed" />
+
+                <!-- Add Organization Button -->
+                <Button x:Name="AddCredentialButton"
+                        Padding="12,8"
+                        Click="AddCredential_Click"
+                        Margin="0,4,0,0"
+                        HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal">
+                        <ic:SymbolIcon Symbol="Add" FontSize="14" Margin="0,0,6,0" />
+                        <TextBlock Text="Add Organization" />
+                    </StackPanel>
+                </Button>
+
+                <!-- Add Credential Form (initially collapsed) -->
+                <Border x:Name="AddCredentialForm"
                         Background="{DynamicResource ControlFillColorDefaultBrush}"
                         BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         CornerRadius="6"
                         Padding="12"
-                        Margin="0,0,0,12">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Avatar (shown when connected via OAuth) -->
-                        <Border x:Name="AzureDevOpsOAuthAvatar"
-                                Width="40" Height="40"
-                                CornerRadius="20"
-                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                Margin="0,0,12,0"
-                                Visibility="Collapsed">
-                            <Grid>
-                                <Grid.Clip>
-                                    <EllipseGeometry Center="19,19" RadiusX="19" RadiusY="19" />
-                                </Grid.Clip>
-                                <Image x:Name="AzureDevOpsOAuthIdenticonImage" Stretch="UniformToFill" />
-                            </Grid>
-                        </Border>
-
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <StackPanel Orientation="Horizontal">
-                                <ic:SymbolIcon Symbol="Person" FontSize="16" Margin="0,0,8,0" />
-                                <TextBlock Text="Sign in with Microsoft"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                <Border Background="{DynamicResource AccentFillColorDefaultBrush}"
-                                        CornerRadius="4"
-                                        Padding="6,2"
-                                        Margin="8,0,0,0">
-                                    <TextBlock Text="Recommended"
-                                               FontSize="10"
-                                               Foreground="White" />
-                                </Border>
-                            </StackPanel>
-                            <TextBlock x:Name="AzureDevOpsOAuthStatusText"
-                                       Text="Securely authenticate using your browser"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                       Margin="24,4,0,0" />
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="2" Orientation="Horizontal">
-                            <Button x:Name="AzureDevOpsOAuthButton"
-                                    Padding="16,8"
-                                    Click="AzureDevOpsOAuth_Click"
-                                    Content="Sign in" />
-                            <Button x:Name="AzureDevOpsOAuthDisconnectButton"
-                                    Padding="12,6"
-                                    Margin="8,0,0,0"
-                                    Click="AzureDevOpsDisconnect_Click"
-                                    Content="Disconnect"
-                                    Visibility="Collapsed" />
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- PAT Section -->
-                <Border x:Name="AzureDevOpsPatSection"
-                        Background="{DynamicResource ControlFillColorDefaultBrush}"
-                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="6"
-                        Padding="12">
+                        Margin="0,12,0,0"
+                        Visibility="Collapsed">
                     <StackPanel>
-                        <!-- PAT Header -->
-                        <Grid Margin="0,0,0,0">
+                        <TextBlock Text="Add Azure DevOps Organization"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,12" />
+
+                        <!-- Organization -->
+                        <TextBlock Text="Organization"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,4" />
+                        <TextBox x:Name="OrganizationTextBox"
+                                 Margin="0,0,0,4"
+                                 Padding="8,6" />
+                        <TextBlock Text="Your Azure DevOps organization name (e.g., 'mycompany' from dev.azure.com/mycompany)"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   Margin="0,0,0,12"
+                                   TextWrapping="Wrap" />
+
+                        <!-- PAT -->
+                        <TextBlock Text="Personal Access Token"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="Needs 'Code (Read)' scope for cloning/fetching, or 'Code (Read &amp; Write)' for pushing."
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   Margin="0,0,0,8"
+                                   TextWrapping="Wrap" />
+                        <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-
-                            <!-- Avatar (shown when connected via PAT) -->
-                            <Border x:Name="AzureDevOpsPatAvatar"
-                                    Width="40" Height="40"
-                                    CornerRadius="20"
-                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                    BorderThickness="1"
-                                    Margin="0,0,12,0"
-                                    Visibility="Collapsed">
-                                <Grid>
-                                    <Grid.Clip>
-                                        <EllipseGeometry Center="19,19" RadiusX="19" RadiusY="19" />
-                                    </Grid.Clip>
-                                    <Image x:Name="AzureDevOpsPatIdenticonImage" Stretch="UniformToFill" />
-                                </Grid>
-                            </Border>
-
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <StackPanel Orientation="Horizontal">
-                                    <ic:SymbolIcon Symbol="Key" FontSize="16" Margin="0,0,8,0" />
-                                    <TextBlock Text="Personal Access Token"
-                                               FontWeight="SemiBold"
-                                               VerticalAlignment="Center"
-                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                </StackPanel>
-                                <TextBlock x:Name="AzureDevOpsPatStatusText"
-                                           Text="Use a PAT for authentication"
-                                           FontSize="11"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           Margin="24,4,0,0" />
-                            </StackPanel>
-
-                            <Button x:Name="AzureDevOpsPatDisconnectButton"
-                                    Grid.Column="2"
-                                    Padding="12,6"
-                                    Click="AzureDevOpsDisconnect_Click"
-                                    Content="Disconnect"
-                                    Visibility="Collapsed" />
+                            <PasswordBox x:Name="PatPasswordBox"
+                                         Grid.Column="0"
+                                         Padding="8,6"
+                                         PasswordChanged="PatPasswordBox_PasswordChanged" />
+                            <Button x:Name="TogglePatVisibilityButton"
+                                    Grid.Column="1"
+                                    Width="60"
+                                    Margin="8,0,0,0"
+                                    Click="TogglePatVisibility_Click"
+                                    Content="Show" />
                         </Grid>
+                        <TextBox x:Name="PatTextBox"
+                                 Margin="0,0,0,12"
+                                 Padding="8,6"
+                                 TextChanged="PatTextBox_TextChanged"
+                                 Visibility="Collapsed" />
 
-                        <!-- PAT Input Fields (shown when not connected via PAT) -->
-                        <StackPanel x:Name="AzureDevOpsPatInputPanel" Margin="0,12,0,0">
-                            <!-- PAT -->
-                            <TextBlock Text="Personal Access Token"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                       Margin="0,0,0,4" />
-                            <TextBlock Text="Needs 'Code (Read)' scope for cloning/fetching, or 'Code (Read &amp; Write)' for pushing."
-                                       FontSize="11"
-                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                       Margin="0,0,0,8"
-                                       TextWrapping="Wrap" />
-                            <Grid Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <PasswordBox x:Name="PatPasswordBox"
-                                             Grid.Column="0"
-                                             Padding="8,6"
-                                             PasswordChanged="PatPasswordBox_PasswordChanged" />
-                                <Button x:Name="TogglePatVisibilityButton"
-                                        Grid.Column="1"
-                                        Width="60"
-                                        Margin="8,0,0,0"
-                                        Click="TogglePatVisibility_Click"
-                                        Content="Show" />
-                            </Grid>
-                            <TextBox x:Name="PatTextBox"
-                                     Margin="0,0,0,8"
-                                     Padding="8,6"
-                                     TextChanged="PatTextBox_TextChanged"
-                                     Visibility="Collapsed" />
-
-                            <!-- PAT Connect Button -->
-                            <Button x:Name="SavePatButton"
+                        <!-- Buttons -->
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="SaveCredentialButton"
                                     Padding="12,6"
-                                    Click="SavePat_Click"
-                                    Content="Connect" />
+                                    Click="SaveCredential_Click"
+                                    Content="Save" />
+                            <Button x:Name="CancelAddButton"
+                                    Padding="12,6"
+                                    Margin="8,0,0,0"
+                                    Click="CancelAdd_Click"
+                                    Content="Cancel" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
-
-                <!-- OAuth Flow Panel (shown during authorization) -->
-                <StackPanel x:Name="AzureDevOpsOAuthFlowPanel" Visibility="Collapsed">
-                    <TextBlock Text="Complete authorization in your browser"
-                               FontWeight="SemiBold"
-                               FontSize="14"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                               Margin="0,0,0,16" />
-
-                    <!-- User Code Display -->
-                    <TextBlock Text="Your verification code:"
-                               FontSize="12"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                               Margin="0,0,0,8" />
-                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
-                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="8"
-                            Padding="20,12"
-                            HorizontalAlignment="Left">
-                        <TextBlock x:Name="AzureDevOpsUserCodeText"
-                                   FontSize="28"
-                                   FontWeight="Bold"
-                                   FontFamily="Consolas"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                   Text="XXXXXXXXX" />
-                    </Border>
-                    <Button x:Name="AzureDevOpsCopyCodeButton"
-                            Margin="0,8,0,0"
-                            Padding="12,6"
-                            HorizontalAlignment="Left"
-                            Click="AzureDevOpsCopyCode_Click">
-                        <StackPanel Orientation="Horizontal">
-                            <ic:SymbolIcon Symbol="Copy" FontSize="14" Margin="0,0,6,0" />
-                            <TextBlock Text="Copy Code" />
-                        </StackPanel>
-                    </Button>
-
-                    <!-- Instructions -->
-                    <StackPanel Margin="0,20,0,0">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <TextBlock Text="1. Go to "
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                            <TextBlock x:Name="AzureDevOpsVerificationUriText"
-                                       Text="https://microsoft.com/devicelogin"
-                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
-                                       TextDecorations="Underline"
-                                       Cursor="Hand"
-                                       MouseDown="AzureDevOpsVerificationUri_Click" />
-                        </StackPanel>
-                        <TextBlock Text="2. Enter the code above and sign in with your Microsoft account"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                    </StackPanel>
-
-                    <!-- Progress -->
-                    <ProgressBar x:Name="AzureDevOpsOAuthProgressBar"
-                                 IsIndeterminate="True"
-                                 Margin="0,20,0,0" />
-                    <TextBlock x:Name="AzureDevOpsOAuthStatusMessage"
-                               FontSize="11"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                               Margin="0,8,0,0"
-                               Text="Waiting for authorization..." />
-
-                    <!-- Cancel -->
-                    <Button x:Name="AzureDevOpsCancelOAuthButton"
-                            Margin="0,16,0,0"
-                            Padding="12,6"
-                            Click="AzureDevOpsCancelOAuth_Click"
-                            Content="Cancel" />
-                </StackPanel>
             </StackPanel>
         </Border>
     </StackPanel>

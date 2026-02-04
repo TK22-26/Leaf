@@ -119,6 +119,8 @@ public class FakeGitService : IGitService
     public Task ClearStoredMergeConflictFilesAsync(string repoPath) => Task.CompletedTask;
     public Task CompleteMergeAsync(string repoPath, string commitMessage) => Task.CompletedTask;
     public Task AbortMergeAsync(string repoPath) => Task.CompletedTask;
+    public Task<bool> IsOrphanedConflictStateAsync(string repoPath) => Task.FromResult(false);
+    public Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges) => Task.CompletedTask;
     public Task<MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false) => Task.FromResult(new MergeResult());
     public Task<MergeResult> FastForwardAsync(string repoPath, string targetBranchName) => Task.FromResult(new MergeResult());
     public Task OpenConflictInVsCodeAsync(string repoPath, string filePath) => Task.CompletedTask;

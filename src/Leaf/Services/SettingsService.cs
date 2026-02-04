@@ -2,10 +2,6 @@ using System.IO;
 using System.Text.Json;
 using Leaf.Models;
 
-// Re-export auth method enums from Models for AppSettings usage
-using GitHubAuthMethod = Leaf.Models.GitHubAuthMethod;
-using AzureDevOpsAuthMethod = Leaf.Models.AzureDevOpsAuthMethod;
-
 namespace Leaf.Services;
 
 /// <summary>
@@ -66,6 +62,38 @@ public class SettingsService
         }
     }
 
+    /// <summary>
+    /// Migrate credentials from the old single-provider format to the new multi-org format.
+    /// Should be called on application startup.
+    /// </summary>
+    public void MigrateCredentialsIfNeeded(CredentialService credentialService)
+    {
+        var settings = LoadSettings();
+        if (settings.CredentialVersion >= 1)
+            return;
+
+        // Migrate legacy GitHub credential (Leaf:GitHub -> Leaf:GitHub:{username})
+        var legacyGitHub = credentialService.GetCredential("GitHub");
+        if (!string.IsNullOrEmpty(legacyGitHub) && !string.IsNullOrEmpty(settings.GitHubUsername))
+        {
+            credentialService.StorePat($"GitHub:{settings.GitHubUsername}", legacyGitHub);
+            credentialService.DeleteCredential("GitHub");
+            credentialService.DeleteRefreshToken("GitHub");
+        }
+
+        // Migrate legacy Azure DevOps credential (Leaf:AzureDevOps -> Leaf:AzureDevOps:{org})
+        var legacyAdo = credentialService.GetCredential("AzureDevOps");
+        if (!string.IsNullOrEmpty(legacyAdo) && !string.IsNullOrEmpty(settings.AzureDevOpsOrganization))
+        {
+            credentialService.StorePat($"AzureDevOps:{settings.AzureDevOpsOrganization}", legacyAdo);
+            credentialService.DeleteCredential("AzureDevOps");
+            credentialService.DeleteRefreshToken("AzureDevOps");
+        }
+
+        settings.CredentialVersion = 1;
+        SaveSettings(settings);
+    }
+
     #endregion
 
     #region Repositories
@@ -109,6 +137,9 @@ public class SettingsService
 /// </summary>
 public class AppSettings
 {
+    // Version for credential migration
+    public int CredentialVersion { get; set; } = 0;
+
     public string Theme { get; set; } = "System";
     public string DefaultClonePath { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     public string AzureDevOpsOrganization { get; set; } = string.Empty;
@@ -133,18 +164,6 @@ public class AppSettings
     public double TerminalFontSize { get; set; } = 12;
     public string TerminalShellExecutable { get; set; } = "cmd.exe";
     public string TerminalShellArguments { get; set; } = "/c {command}";
-
-    // GitHub OAuth settings
-    public GitHubAuthMethod GitHubAuthMethod { get; set; } = GitHubAuthMethod.PersonalAccessToken;
-    public DateTime? GitHubOAuthTokenCreatedAt { get; set; }
-    public string? GitHubOAuthScopes { get; set; }
-
-    // Azure DevOps OAuth settings
-    public AzureDevOpsAuthMethod AzureDevOpsAuthMethod { get; set; } = AzureDevOpsAuthMethod.PersonalAccessToken;
-    public DateTime? AzureDevOpsOAuthTokenCreatedAt { get; set; }
-    public DateTime? AzureDevOpsOAuthTokenExpiresAt { get; set; }
-    public string? AzureDevOpsOAuthScopes { get; set; }
-    public string? AzureDevOpsUserDisplayName { get; set; }
 
     // GitFlow default settings
     public string GitFlowDefaultMainBranch { get; set; } = "main";

@@ -140,9 +140,25 @@ internal class RemoteSyncOperations
     {
         progress?.Report("Fetching...");
 
+        // If password provided, use authenticated URL
+        string fetchTarget = remoteName;
+        if (!string.IsNullOrEmpty(password))
+        {
+            var remotes = await GetRemotesAsync(repoPath);
+            var remote = remotes.FirstOrDefault(r => r.Name.Equals(remoteName, StringComparison.OrdinalIgnoreCase));
+            if (remote != null && !string.IsNullOrEmpty(remote.Url))
+            {
+                var authUrl = BuildAuthenticatedUrl(remote.Url, password);
+                if (authUrl != null)
+                {
+                    fetchTarget = authUrl;
+                }
+            }
+        }
+
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["fetch", "--prune", remoteName]);
+            ["fetch", "--prune", fetchTarget]);
 
         if (!result.Success && !string.IsNullOrEmpty(result.StandardError))
         {
@@ -158,9 +174,46 @@ internal class RemoteSyncOperations
     {
         progress?.Report("Pulling...");
 
-        var result = await _context.CommandRunner.RunAsync(
-            repoPath,
-            ["pull"]);
+        string[] args = ["pull"];
+
+        // If password provided, try to use authenticated URL
+        if (!string.IsNullOrEmpty(password))
+        {
+            // Determine which remote to use (from tracking branch)
+            string? trackingRemoteName = null;
+            string? trackingBranchName = null;
+
+            using (var repo = new Repository(repoPath))
+            {
+                if (repo.Head.TrackedBranch != null)
+                {
+                    // Extract remote name from tracking branch (e.g., "origin/main" -> "origin")
+                    var tracking = repo.Head.TrackedBranch.FriendlyName;
+                    var slashIndex = tracking.IndexOf('/');
+                    if (slashIndex > 0)
+                    {
+                        trackingRemoteName = tracking[..slashIndex];
+                        trackingBranchName = tracking[(slashIndex + 1)..];
+                    }
+                }
+            }
+
+            if (!string.IsNullOrEmpty(trackingRemoteName))
+            {
+                var remotes = await GetRemotesAsync(repoPath);
+                var remote = remotes.FirstOrDefault(r => r.Name.Equals(trackingRemoteName, StringComparison.OrdinalIgnoreCase));
+                if (remote != null && !string.IsNullOrEmpty(remote.Url))
+                {
+                    var authUrl = BuildAuthenticatedUrl(remote.Url, password);
+                    if (authUrl != null && !string.IsNullOrEmpty(trackingBranchName))
+                    {
+                        args = ["pull", authUrl, trackingBranchName];
+                    }
+                }
+            }
+        }
+
+        var result = await _context.CommandRunner.RunAsync(repoPath, args);
 
         if (!result.Success && !string.IsNullOrEmpty(result.StandardError))
         {
@@ -180,32 +233,60 @@ internal class RemoteSyncOperations
         string? password = null, IProgress<string>? progress = null)
     {
         // Check if we're in detached HEAD state
+        string branchName;
+        bool hasTrackingBranch;
         using (var repo = new Repository(repoPath))
         {
             if (repo.Info.IsHeadDetached)
             {
                 throw new InvalidOperationException("Cannot push while in detached HEAD state.");
             }
+            branchName = repo.Head.FriendlyName;
+            hasTrackingBranch = repo.Head.TrackedBranch != null;
         }
 
-        // Get branch name and determine push args
-        string[] args;
-        using (var repo = new Repository(repoPath))
-        {
-            var branchName = repo.Head.FriendlyName;
+        // Determine the target remote
+        var targetRemote = remoteName ?? await GetDefaultRemoteAsync(repoPath);
 
-            if (repo.Head.TrackedBranch == null)
+        // Build push arguments
+        string[] args;
+        string pushTarget = targetRemote;
+
+        // If password provided, try to use authenticated URL
+        if (!string.IsNullOrEmpty(password))
+        {
+            var remotes = await GetRemotesAsync(repoPath);
+            var remote = remotes.FirstOrDefault(r => r.Name.Equals(targetRemote, StringComparison.OrdinalIgnoreCase));
+            if (remote != null)
             {
-                // No tracking branch - need to set upstream
-                // Use specified remote or get default
-                var targetRemote = remoteName ?? await GetDefaultRemoteAsync(repoPath);
-                args = ["push", "-u", targetRemote, branchName];
+                // Use push URL if available, otherwise fetch URL
+                var url = remote.PushUrl ?? remote.Url;
+                if (!string.IsNullOrEmpty(url))
+                {
+                    var authUrl = BuildAuthenticatedUrl(url, password);
+                    if (authUrl != null)
+                    {
+                        pushTarget = authUrl;
+                    }
+                }
             }
-            else
-            {
-                // Has tracking branch - just push
-                args = ["push"];
-            }
+        }
+
+        if (!hasTrackingBranch)
+        {
+            // No tracking branch - need to set upstream
+            // When using URL, we can't use -u (upstream setting requires remote name)
+            // So push with refspec instead
+            args = pushTarget == targetRemote
+                ? ["push", "-u", targetRemote, branchName]
+                : ["push", pushTarget, $"{branchName}:{branchName}"];
+        }
+        else
+        {
+            // Has tracking branch - push to that remote
+            args = pushTarget == targetRemote
+                ? ["push"]
+                : ["push", pushTarget, branchName];
         }
 
         progress?.Report("Pushing...");
@@ -230,6 +311,42 @@ internal class RemoteSyncOperations
         return remotes.FirstOrDefault(r => r.Name == "origin")?.Name
                ?? remotes.FirstOrDefault()?.Name
                ?? "origin";
+    }
+
+    /// <summary>
+    /// Builds a URL with embedded credentials for authentication.
+    /// For HTTPS URLs: https://user:token@host/path
+    /// </summary>
+    /// <param name="url">The remote URL</param>
+    /// <param name="password">The PAT/password to embed</param>
+    /// <returns>URL with credentials embedded, or null if URL format not supported</returns>
+    private static string? BuildAuthenticatedUrl(string url, string password)
+    {
+        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(password))
+            return null;
+
+        // Only works with HTTPS URLs
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return null;
+
+        if (uri.Scheme != "https" && uri.Scheme != "http")
+            return null;
+
+        // Build URL with credentials
+        // Use "x-access-token" as username for GitHub, or existing username if present
+        var existingUser = !string.IsNullOrEmpty(uri.UserInfo) && uri.UserInfo.Contains('@')
+            ? uri.UserInfo.Split('@')[0]
+            : null;
+
+        // Azure DevOps and GitHub both accept PAT as password with any username
+        var username = existingUser ?? "x-access-token";
+
+        // Encode password in case it contains special characters
+        var encodedPassword = Uri.EscapeDataString(password);
+
+        // Reconstruct URL with credentials
+        var portPart = uri.IsDefaultPort ? "" : $":{uri.Port}";
+        return $"{uri.Scheme}://{username}:{encodedPassword}@{uri.Host}{portPart}{uri.PathAndQuery}";
     }
 
     /// <summary>

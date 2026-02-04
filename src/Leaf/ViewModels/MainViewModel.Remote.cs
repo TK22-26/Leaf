@@ -217,12 +217,12 @@ public partial class MainViewModel
 
                 // Get credentials for this remote
                 string? pat = null;
-                if (!string.IsNullOrEmpty(remote.Url) && CredentialHelper.TryGetRemoteHost(remote.Url, out var host))
+                if (!string.IsNullOrEmpty(remote.Url))
                 {
-                    var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
+                    var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
                     if (!string.IsNullOrEmpty(credentialKey))
                     {
-                        pat = _credentialService.GetCredential(credentialKey);
+                        pat = _credentialService.GetPat(credentialKey);
                     }
                 }
 
@@ -290,12 +290,12 @@ public partial class MainViewModel
                 var remoteInfo = remotes.FirstOrDefault(r => r.Name == remoteName);
                 string? pat = null;
 
-                if (!string.IsNullOrEmpty(remoteInfo?.Url) && CredentialHelper.TryGetRemoteHost(remoteInfo.Url, out var host))
+                if (!string.IsNullOrEmpty(remoteInfo?.Url))
                 {
-                    var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
+                    var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remoteInfo.Url);
                     if (!string.IsNullOrEmpty(credentialKey))
                     {
-                        pat = _credentialService.GetCredential(credentialKey);
+                        pat = _credentialService.GetPat(credentialKey);
                     }
                 }
 

@@ -71,18 +71,10 @@ public partial class MainViewModel
             var remoteUrl = remotes.FirstOrDefault(r => r.Name == remoteName)?.Url;
             if (!string.IsNullOrEmpty(remoteUrl))
             {
-                try
+                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remoteUrl);
+                if (!string.IsNullOrEmpty(credentialKey))
                 {
-                    var host = new Uri(remoteUrl).Host;
-                    var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
-                    if (!string.IsNullOrEmpty(credentialKey))
-                    {
-                        pat = _credentialService.GetCredential(credentialKey);
-                    }
-                }
-                catch
-                {
-                    // Invalid URL, skip PAT
+                    pat = _credentialService.GetPat(credentialKey);
                 }
             }
 
@@ -137,12 +129,12 @@ public partial class MainViewModel
                     foreach (var remote in remotes)
                     {
                         string? fetchPat = null;
-                        if (!string.IsNullOrEmpty(remote.Url) && CredentialHelper.TryGetRemoteHost(remote.Url, out var fetchHost))
+                        if (!string.IsNullOrEmpty(remote.Url))
                         {
-                            var credentialKey = CredentialHelper.GetCredentialKeyForHost(fetchHost);
+                            var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
                             if (!string.IsNullOrEmpty(credentialKey))
                             {
-                                fetchPat = _credentialService.GetCredential(credentialKey);
+                                fetchPat = _credentialService.GetPat(credentialKey);
                             }
                         }
 
@@ -164,12 +156,12 @@ public partial class MainViewModel
             var trackingRemoteUrl = remotes.FirstOrDefault(r => r.Name == "origin")?.Url
                                     ?? remotes.FirstOrDefault()?.Url;
             string? pat = null;
-            if (!string.IsNullOrEmpty(trackingRemoteUrl) && CredentialHelper.TryGetRemoteHost(trackingRemoteUrl, out var host))
+            if (!string.IsNullOrEmpty(trackingRemoteUrl))
             {
-                var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
+                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(trackingRemoteUrl);
                 if (!string.IsNullOrEmpty(credentialKey))
                 {
-                    pat = _credentialService.GetCredential(credentialKey);
+                    pat = _credentialService.GetPat(credentialKey);
                 }
             }
 
@@ -222,12 +214,12 @@ public partial class MainViewModel
             // Single remote - push directly
             var remote = remotes.FirstOrDefault();
             string? pat = null;
-            if (!string.IsNullOrEmpty(remote?.Url) && CredentialHelper.TryGetRemoteHost(remote.Url, out var host))
+            if (!string.IsNullOrEmpty(remote?.Url))
             {
-                var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
+                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
                 if (!string.IsNullOrEmpty(credentialKey))
                 {
-                    pat = _credentialService.GetCredential(credentialKey);
+                    pat = _credentialService.GetPat(credentialKey);
                 }
             }
 
@@ -261,12 +253,12 @@ public partial class MainViewModel
             StatusMessage = $"Pushing to {remote.Name}...";
 
             string? pat = null;
-            if (!string.IsNullOrEmpty(remote.Url) && CredentialHelper.TryGetRemoteHost(remote.Url, out var host))
+            if (!string.IsNullOrEmpty(remote.Url))
             {
-                var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
+                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
                 if (!string.IsNullOrEmpty(credentialKey))
                 {
-                    pat = _credentialService.GetCredential(credentialKey);
+                    pat = _credentialService.GetPat(credentialKey);
                 }
             }
 

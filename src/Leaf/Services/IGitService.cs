@@ -350,6 +350,19 @@ public interface IGitService
     Task AbortMergeAsync(string repoPath);
 
     /// <summary>
+    /// Check if the repository is in an "orphaned conflict" state.
+    /// This occurs when the index has unmerged entries but MERGE_HEAD doesn't exist.
+    /// </summary>
+    Task<bool> IsOrphanedConflictStateAsync(string repoPath);
+
+    /// <summary>
+    /// Reset the index to clear orphaned conflict state.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="discardWorkingChanges">If true, also discards all working directory changes</param>
+    Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges);
+
+    /// <summary>
     /// Merge a branch into the current branch.
     /// </summary>
     /// <param name="repoPath">Path to the repository</param>

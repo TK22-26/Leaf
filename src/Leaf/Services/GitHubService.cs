@@ -23,9 +23,26 @@ public class GitHubService
     /// <summary>
     /// Fetch all repositories accessible to the authenticated user.
     /// </summary>
-    public async Task<List<GitHubRepo>> GetRepositoriesAsync()
+    /// <param name="owner">Optional: specific owner/org for credential lookup. If null, uses the first configured GitHub credential.</param>
+    public async Task<List<GitHubRepo>> GetRepositoriesAsync(string? owner = null)
     {
-        var pat = _credentialService.GetCredential("GitHub");
+        string? pat = null;
+
+        if (!string.IsNullOrEmpty(owner))
+        {
+            // Use specific owner's credential
+            pat = _credentialService.GetPat($"GitHub:{owner}");
+        }
+        else
+        {
+            // Use the first configured GitHub credential
+            var orgs = _credentialService.GetOrganizationsForProvider("GitHub").ToList();
+            if (orgs.Count > 0)
+            {
+                pat = _credentialService.GetPat($"GitHub:{orgs[0]}");
+            }
+        }
+
         if (string.IsNullOrEmpty(pat))
         {
             throw new InvalidOperationException("No PAT configured. Please add your GitHub PAT in Settings.");

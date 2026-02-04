@@ -25,15 +25,16 @@ public class AzureDevOpsService
     /// </summary>
     public async Task<List<AzureDevOpsRepo>> GetRepositoriesAsync(string organization)
     {
-        var pat = _credentialService.GetCredential("AzureDevOps");
-        if (string.IsNullOrEmpty(pat))
-        {
-            throw new InvalidOperationException("No PAT configured. Please add your PAT in Settings.");
-        }
-
         if (string.IsNullOrEmpty(organization))
         {
             throw new InvalidOperationException("No organization configured. Please add your organization in Settings.");
+        }
+
+        // Use org-specific credential key
+        var pat = _credentialService.GetPat($"AzureDevOps:{organization}");
+        if (string.IsNullOrEmpty(pat))
+        {
+            throw new InvalidOperationException($"No PAT configured for Azure DevOps organization '{organization}'. Please add credentials in Settings.");
         }
 
         var url = $"https://dev.azure.com/{organization}/_apis/git/repositories?api-version=7.0";

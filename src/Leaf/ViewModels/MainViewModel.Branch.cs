@@ -170,18 +170,10 @@ public partial class MainViewModel
                 var remoteUrl = remotes.FirstOrDefault(r => r.Name == remoteName)?.Url;
                 if (!string.IsNullOrEmpty(remoteUrl))
                 {
-                    try
+                    var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remoteUrl);
+                    if (!string.IsNullOrEmpty(credentialKey))
                     {
-                        var host = new Uri(remoteUrl).Host;
-                        var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
-                        if (!string.IsNullOrEmpty(credentialKey))
-                        {
-                            pat = _credentialService.GetCredential(credentialKey);
-                        }
-                    }
-                    catch
-                    {
-                        // Invalid URL, skip PAT
+                        pat = _credentialService.GetPat(credentialKey);
                     }
                 }
 

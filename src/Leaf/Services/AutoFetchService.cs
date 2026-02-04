@@ -82,13 +82,13 @@ public class AutoFetchService : IAutoFetchService
                             Debug.WriteLine($"Auto-fetch: Skipping {remote.Name} - host {host} unreachable");
                             continue;
                         }
+                    }
 
-                        // Get credentials for this remote
-                        var credentialKey = CredentialHelper.GetCredentialKeyForHost(host);
-                        if (!string.IsNullOrEmpty(credentialKey))
-                        {
-                            pat = _credentialService.GetCredential(credentialKey);
-                        }
+                    // Get credentials for this remote using URL-based lookup
+                    var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
+                    if (!string.IsNullOrEmpty(credentialKey))
+                    {
+                        pat = _credentialService.GetPat(credentialKey);
                     }
                 }
 

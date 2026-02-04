@@ -29,4 +29,18 @@ public interface ICredentialService
     /// Get all stored organization names.
     /// </summary>
     IEnumerable<string> GetStoredOrganizations();
+
+    /// <summary>
+    /// Gets all stored organizations for a specific provider.
+    /// </summary>
+    /// <param name="provider">"GitHub" or "AzureDevOps"</param>
+    /// <returns>List of organization names (without provider prefix)</returns>
+    IEnumerable<string> GetOrganizationsForProvider(string provider);
+
+    /// <summary>
+    /// Checks if a credential exists for the given key.
+    /// </summary>
+    /// <param name="key">The credential key (e.g., "GitHub:microsoft")</param>
+    /// <returns>True if a credential exists and is non-empty</returns>
+    bool HasCredential(string key);
 }

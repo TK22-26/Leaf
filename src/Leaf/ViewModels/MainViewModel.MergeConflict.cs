@@ -1,4 +1,5 @@
 using System;
+using System.Windows;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 
@@ -91,16 +92,71 @@ public partial class MainViewModel
         try
         {
             IsBusy = true;
-            StatusMessage = "Aborting merge...";
 
-            await _gitService.AbortMergeAsync(SelectedRepository.Path);
+            // Check if we're in an orphaned conflict state (conflicts without MERGE_HEAD)
+            var isOrphaned = await _gitService.IsOrphanedConflictStateAsync(SelectedRepository.Path);
 
-            StatusMessage = "Merge aborted";
+            if (isOrphaned)
+            {
+                // Show dialog to let user choose how to recover
+                StatusMessage = "Detected orphaned conflict state...";
+
+                var result = await _dialogService.ShowMessageAsync(
+                    "The repository has conflicts but no merge is in progress.\n" +
+                    "This can happen after a failed checkout or other operation.\n\n" +
+                    "Choose how to recover:\n\n" +
+                    "YES - Reset index only (keeps your working directory changes)\n" +
+                    "NO - Reset and restore (discards ALL uncommitted changes)\n" +
+                    "CANCEL - Do nothing",
+                    "Recovery Required",
+                    MessageBoxButton.YesNoCancel);
+
+                if (result == MessageBoxResult.Cancel)
+                {
+                    StatusMessage = "Recovery cancelled";
+                    return;
+                }
+
+                var discardChanges = result == MessageBoxResult.No;
+
+                if (discardChanges)
+                {
+                    // Extra confirmation for destructive option
+                    var confirmed = await _dialogService.ShowConfirmationAsync(
+                        "This will discard ALL uncommitted changes in your working directory.\n\n" +
+                        "This cannot be undone. Are you sure?",
+                        "Confirm Discard Changes");
+
+                    if (!confirmed)
+                    {
+                        StatusMessage = "Recovery cancelled";
+                        return;
+                    }
+                }
+
+                StatusMessage = discardChanges
+                    ? "Resetting index and restoring files..."
+                    : "Resetting index...";
+
+                await _gitService.ResetOrphanedConflictsAsync(SelectedRepository.Path, discardChanges);
+
+                StatusMessage = discardChanges
+                    ? "Index reset and files restored"
+                    : "Index reset (working directory preserved)";
+            }
+            else
+            {
+                // Normal merge abort
+                StatusMessage = "Aborting merge...";
+                await _gitService.AbortMergeAsync(SelectedRepository.Path);
+                StatusMessage = "Merge aborted";
+            }
+
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Abort merge failed: {ex.Message}";
+            StatusMessage = $"Abort failed: {ex.Message}";
         }
         finally
         {
