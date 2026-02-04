@@ -141,7 +141,7 @@ public partial class MainViewModel
                     Name = "TAGS",
                     Icon = "\uE8EC", // Tag icon
                     BranchCount = tags.Count,
-                    IsExpanded = true
+                    IsExpanded = false // Start collapsed by default
                 };
                 foreach (var tag in tags.OrderByDescending(t => t.TaggedAt ?? DateTimeOffset.MinValue).ThenBy(t => t.Name))
                 {
