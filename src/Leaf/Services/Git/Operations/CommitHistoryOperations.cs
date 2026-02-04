@@ -28,7 +28,8 @@ internal class CommitHistoryOperations
             using var repo = new Repository(repoPath);
 
             var headSha = repo.Head?.Tip?.Sha;
-            var currentBranchName = repo.Head?.FriendlyName;
+            var isDetachedHead = repo.Info.IsHeadDetached;
+            var currentBranchName = isDetachedHead ? null : repo.Head?.FriendlyName;
 
             var localBranchTips = repo.Branches
                 .Where(b => !b.IsRemote)
@@ -114,6 +115,19 @@ internal class CommitHistoryOperations
 
                 var labels = BuildBranchLabels(tipSha, localBranchTips, remoteBranchTips, currentBranchName);
                 AddBranchLabels(targetCommit, labels);
+            }
+
+            // Add a special "HEAD" label when in detached HEAD state
+            if (isDetachedHead && !string.IsNullOrEmpty(headSha) && commitsBySha.TryGetValue(headSha, out var headCommit))
+            {
+                // Insert HEAD label at the beginning so it appears first
+                headCommit.BranchLabels.Insert(0, new BranchLabel
+                {
+                    Name = "HEAD",
+                    IsLocal = true,
+                    IsRemote = false,
+                    IsCurrent = true
+                });
             }
 
             return commitList;
