@@ -5,6 +5,7 @@
     xmlns:controls="clr-namespace:Leaf.Controls"
     xmlns:converters="clr-namespace:Leaf.Converters"
     xmlns:models="clr-namespace:Leaf.Models"
+    xmlns:utils="clr-namespace:Leaf.Utils"
     x:Name="Root">
 
     <UserControl.Resources>
@@ -12,6 +13,9 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/Views/Resources/FileStatusResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- Binding proxy to allow ContextMenu access to Root's Context property -->
+            <utils:BindingProxy x:Key="ContextProxy" Data="{Binding Context, ElementName=Root}" />
 
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <converters:BoolToGridLengthConverter x:Key="BoolToGridLengthConverter" />
@@ -72,22 +76,22 @@
                         <Border.ContextMenu>
                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                 <MenuItem
-                                    Command="{Binding Context.PrimaryActionCommand, ElementName=Root}"
+                                    Command="{Binding Data.PrimaryActionCommand, Source={StaticResource ContextProxy}}"
                                     CommandParameter="{Binding}"
-                                    Header="{Binding Context.PrimaryActionText, ElementName=Root}" />
+                                    Header="{Binding Data.PrimaryActionText, Source={StaticResource ContextProxy}}" />
                                 <MenuItem
-                                    Command="{Binding Context.DiscardFileCommand, ElementName=Root}"
+                                    Command="{Binding Data.DiscardFileCommand, Source={StaticResource ContextProxy}}"
                                     CommandParameter="{Binding}"
                                     Header="Discard changes" />
                                 <MenuItem Header="Ignore">
-                                    <MenuItem Command="{Binding Context.IgnoreFileCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                    <MenuItem Command="{Binding Data.IgnoreFileCommand, Source={StaticResource ContextProxy}}" CommandParameter="{Binding}">
                                         <MenuItem.Header>
                                             <TextBlock>
                                                 <Run Text="Ignore '" /><Run Text="{Binding FileName, Mode=OneWay}" /><Run Text="'" />
                                             </TextBlock>
                                         </MenuItem.Header>
                                     </MenuItem>
-                                    <MenuItem Command="{Binding Context.IgnoreExtensionCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                    <MenuItem Command="{Binding Data.IgnoreExtensionCommand, Source={StaticResource ContextProxy}}" CommandParameter="{Binding}">
                                         <MenuItem.Header>
                                             <TextBlock>
                                                 <Run Text="All files with extension '" /><Run Text="{Binding Extension, Mode=OneWay}" /><Run Text="'" />
@@ -95,7 +99,7 @@
                                         </MenuItem.Header>
                                     </MenuItem>
                                     <MenuItem
-                                        Command="{Binding Context.IgnoreDirectoryCommand, ElementName=Root}"
+                                        Command="{Binding Data.IgnoreDirectoryCommand, Source={StaticResource ContextProxy}}"
                                         CommandParameter="{Binding}"
                                         Visibility="{Binding Directory, Converter={StaticResource NullToVisibilityConverter}}">
                                         <MenuItem.Header>
@@ -106,25 +110,25 @@
                                     </MenuItem>
                                 </MenuItem>
                                 <MenuItem
-                                    Command="{Binding Context.StashFileCommand, ElementName=Root}"
+                                    Command="{Binding Data.StashFileCommand, Source={StaticResource ContextProxy}}"
                                     CommandParameter="{Binding}"
                                     Header="Stash file" />
                                 <Separator />
                                 <MenuItem
-                                    Command="{Binding Context.OpenFileCommand, ElementName=Root}"
+                                    Command="{Binding Data.OpenFileCommand, Source={StaticResource ContextProxy}}"
                                     CommandParameter="{Binding}"
                                     Header="Open file" />
                                 <MenuItem
-                                    Command="{Binding Context.OpenInExplorerCommand, ElementName=Root}"
+                                    Command="{Binding Data.OpenInExplorerCommand, Source={StaticResource ContextProxy}}"
                                     CommandParameter="{Binding}"
                                     Header="Open in Explorer" />
                                 <MenuItem
-                                    Command="{Binding Context.CopyFilePathCommand, ElementName=Root}"
+                                    Command="{Binding Data.CopyFilePathCommand, Source={StaticResource ContextProxy}}"
                                     CommandParameter="{Binding}"
                                     Header="Copy file path" />
                                 <Separator />
                                 <MenuItem
-                                    Command="{Binding Context.DeleteFileCommand, ElementName=Root}"
+                                    Command="{Binding Data.DeleteFileCommand, Source={StaticResource ContextProxy}}"
                                     CommandParameter="{Binding}"
                                     Foreground="#E81123"
                                     Header="Delete file" />
@@ -268,22 +272,22 @@
                                 <Border.ContextMenu>
                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                         <MenuItem
-                                            Command="{Binding Context.PrimaryActionCommand, ElementName=Root}"
+                                            Command="{Binding Data.PrimaryActionCommand, Source={StaticResource ContextProxy}}"
                                             CommandParameter="{Binding}"
-                                            Header="{Binding Context.PrimaryActionText, ElementName=Root}" />
+                                            Header="{Binding Data.PrimaryActionText, Source={StaticResource ContextProxy}}" />
                                         <MenuItem
-                                            Command="{Binding Context.DiscardFileCommand, ElementName=Root}"
+                                            Command="{Binding Data.DiscardFileCommand, Source={StaticResource ContextProxy}}"
                                             CommandParameter="{Binding}"
                                             Header="Discard changes" />
                                         <MenuItem Header="Ignore">
-                                            <MenuItem Command="{Binding Context.IgnoreFileCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                            <MenuItem Command="{Binding Data.IgnoreFileCommand, Source={StaticResource ContextProxy}}" CommandParameter="{Binding}">
                                                 <MenuItem.Header>
                                                     <TextBlock>
                                                         <Run Text="Ignore '" /><Run Text="{Binding FileName, Mode=OneWay}" /><Run Text="'" />
                                                     </TextBlock>
                                                 </MenuItem.Header>
                                             </MenuItem>
-                                            <MenuItem Command="{Binding Context.IgnoreExtensionCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                            <MenuItem Command="{Binding Data.IgnoreExtensionCommand, Source={StaticResource ContextProxy}}" CommandParameter="{Binding}">
                                                 <MenuItem.Header>
                                                     <TextBlock>
                                                         <Run Text="All files with extension '" /><Run Text="{Binding Extension, Mode=OneWay}" /><Run Text="'" />
@@ -291,7 +295,7 @@
                                                 </MenuItem.Header>
                                             </MenuItem>
                                             <MenuItem
-                                                Command="{Binding Context.IgnoreDirectoryCommand, ElementName=Root}"
+                                                Command="{Binding Data.IgnoreDirectoryCommand, Source={StaticResource ContextProxy}}"
                                                 CommandParameter="{Binding}"
                                                 Visibility="{Binding Directory, Converter={StaticResource NullToVisibilityConverter}}">
                                                 <MenuItem.Header>
@@ -302,32 +306,32 @@
                                             </MenuItem>
                                         </MenuItem>
                                         <MenuItem
-                                            Command="{Binding Context.StashFileCommand, ElementName=Root}"
+                                            Command="{Binding Data.StashFileCommand, Source={StaticResource ContextProxy}}"
                                             CommandParameter="{Binding}"
                                             Header="Stash file" />
                                         <Separator />
                                         <MenuItem
-                                            Command="{Binding Context.OpenFileCommand, ElementName=Root}"
+                                            Command="{Binding Data.OpenFileCommand, Source={StaticResource ContextProxy}}"
                                             CommandParameter="{Binding}"
                                             Header="Open file" />
                                         <MenuItem
-                                            Command="{Binding Context.OpenInExplorerCommand, ElementName=Root}"
+                                            Command="{Binding Data.OpenInExplorerCommand, Source={StaticResource ContextProxy}}"
                                             CommandParameter="{Binding}"
                                             Header="Open in Explorer" />
                                         <MenuItem
-                                            Command="{Binding Context.CopyFilePathCommand, ElementName=Root}"
+                                            Command="{Binding Data.CopyFilePathCommand, Source={StaticResource ContextProxy}}"
                                             CommandParameter="{Binding}"
                                             Header="Copy file path" />
                                         <Separator />
                                         <MenuItem
-                                            Command="{Binding Context.DeleteFileCommand, ElementName=Root}"
+                                            Command="{Binding Data.DeleteFileCommand, Source={StaticResource ContextProxy}}"
                                             CommandParameter="{Binding}"
                                             Foreground="#E81123"
                                             Header="Delete file" />
                                         <!-- Admin delete for reserved filenames (unstaged only) -->
                                         <Separator Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}" />
                                         <MenuItem
-                                            Command="{Binding Context.AdminDeleteCommand, ElementName=Root}"
+                                            Command="{Binding Data.AdminDeleteCommand, Source={StaticResource ContextProxy}}"
                                             CommandParameter="{Binding}"
                                             FontWeight="SemiBold"
                                             Foreground="#E81123"
