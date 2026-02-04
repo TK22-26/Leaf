@@ -410,23 +410,13 @@ public partial class CloneDialog : Window
         }
         else if (IsAzureDevOpsUrl(url))
         {
-            var hasPat = !string.IsNullOrEmpty(_credentialService.GetCredential("AzureDevOps"));
-            UrlHintText.Text = hasPat
-                ? "Azure DevOps URL - will use saved credentials"
-                : "Azure DevOps URL - no credentials saved";
-            UrlHintText.Foreground = hasPat
-                ? new SolidColorBrush(Color.FromRgb(40, 167, 69))
-                : new SolidColorBrush(Color.FromRgb(200, 100, 0));
+            UrlHintText.Text = "Azure DevOps URL - will prompt for login if needed";
+            UrlHintText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
         }
         else if (IsGitHubUrl(url))
         {
-            var hasPat = !string.IsNullOrEmpty(_credentialService.GetCredential("GitHub"));
-            UrlHintText.Text = hasPat
-                ? "GitHub URL - will use saved credentials"
-                : "GitHub URL - no credentials saved";
-            UrlHintText.Foreground = hasPat
-                ? new SolidColorBrush(Color.FromRgb(40, 167, 69))
-                : new SolidColorBrush(Color.FromRgb(200, 100, 0));
+            UrlHintText.Text = "GitHub URL - will prompt for login if needed";
+            UrlHintText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
         }
         else
         {
