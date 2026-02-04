@@ -78,7 +78,7 @@
         <Grid Grid.Row="1" Margin="8,0,8,8">
             <TextBox x:Name="SearchBox"
                      VerticalContentAlignment="Center"
-                     Text="{Binding CommitSearchText, UpdateSourceTrigger=PropertyChanged}"/>
+                     Text="{Binding RepositorySearchText, UpdateSourceTrigger=PropertyChanged}"/>
             <TextBlock Text="Search repositories..."
                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                        VerticalAlignment="Center"
@@ -100,7 +100,7 @@
         <!-- Repository tree -->
         <TreeView Grid.Row="2"
                   x:Name="RepoTreeView"
-                  ItemsSource="{Binding RepositoryRootItems}"
+                  ItemsSource="{Binding FilteredRepositoryRootItems}"
                   BorderThickness="0"
                   Style="{StaticResource RepoTreeViewStyle}"
                   SelectedItemChanged="RepoTreeView_SelectedItemChanged">

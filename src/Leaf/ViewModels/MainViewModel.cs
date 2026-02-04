@@ -114,6 +114,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private string _commitSearchText = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FilteredRepositoryRootItems))]
+    private string _repositorySearchText = string.Empty;
+
+    [ObservableProperty]
     private bool _isUpdateAvailable;
 
     [ObservableProperty]
@@ -133,6 +137,63 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// Repository root items for tree view - delegated to RepositoryManagementService.
     /// </summary>
     public ObservableCollection<object> RepositoryRootItems => _repositoryService.RepositoryRootItems;
+
+    /// <summary>
+    /// Filtered repository root items based on search text.
+    /// </summary>
+    public IEnumerable<object> FilteredRepositoryRootItems
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(RepositorySearchText))
+                return RepositoryRootItems;
+
+            var searchText = RepositorySearchText.Trim();
+            var result = new List<object>();
+
+            foreach (var item in RepositoryRootItems)
+            {
+                if (item is Models.RepositorySection section)
+                {
+                    var filteredItems = section.Items
+                        .Where(qi => qi.Repository?.Name?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
+                        .ToList();
+                    if (filteredItems.Count > 0)
+                    {
+                        var filteredSection = new Models.RepositorySection
+                        {
+                            Name = section.Name,
+                            IsExpanded = true
+                        };
+                        foreach (var fi in filteredItems)
+                            filteredSection.Items.Add(fi);
+                        result.Add(filteredSection);
+                    }
+                }
+                else if (item is Models.RepositoryGroup group)
+                {
+                    var filteredRepos = group.Repositories
+                        .Where(r => r.Name?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
+                        .ToList();
+                    if (filteredRepos.Count > 0 || group.Name?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        var filteredGroup = new Models.RepositoryGroup
+                        {
+                            Name = group.Name,
+                            IsExpanded = true,
+                            IsWatched = group.IsWatched
+                        };
+                        var reposToAdd = filteredRepos.Count > 0 ? filteredRepos : group.Repositories.ToList();
+                        foreach (var r in reposToAdd)
+                            filteredGroup.Repositories.Add(r);
+                        result.Add(filteredGroup);
+                    }
+                }
+            }
+
+            return result;
+        }
+    }
 
     private string? _mergeConflictRepoPath;
 
