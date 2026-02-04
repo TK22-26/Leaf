@@ -27,8 +27,16 @@ public partial class GitGraphCanvas
                     var item = kvp.Value[i];
                     if (item.HitArea.Contains(pos))
                     {
+                        string? tipSha = null;
+                        if (Nodes != null && kvp.Key >= 0 && kvp.Key < Nodes.Count)
+                        {
+                            tipSha = Nodes[kvp.Key].Sha;
+                        }
+
                         // Double-clicked on a branch - request checkout
-                        BranchCheckoutRequested?.Invoke(this, item.Label);
+                        BranchCheckoutRequested?.Invoke(
+                            this,
+                            new BranchCheckoutRequestedEventArgs(item.Label, tipSha));
                         e.Handled = true;
                         return;
                     }

@@ -58,6 +58,16 @@ public class GraphBuilder
         if (BranchColorCache.TryGetValue(normalizedName, out var cached))
             return cached;
 
+        // Special case for HEAD label - use Leaf accent color with transparency
+        if (string.Equals(normalizedName, "HEAD", StringComparison.OrdinalIgnoreCase))
+        {
+            // Leaf accent green (#28A745) with 55% opacity (same as LeafAccentSelectedBrush)
+            var headBrush = new SolidColorBrush(Color.FromArgb(0x88, 0x28, 0xA7, 0x45));
+            headBrush.Freeze();
+            BranchColorCache[normalizedName] = headBrush;
+            return headBrush;
+        }
+
         if (_gitFlowConfig != null)
         {
             var gitFlowBrush = BranchInfo.GetGitFlowColorForName(normalizedName, _gitFlowConfig);

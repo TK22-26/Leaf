@@ -385,10 +385,11 @@ public partial class MainViewModel
                     SelectedRepository.BranchesLoaded = false;
                     await LoadBranchesForRepoAsync(SelectedRepository);
 
-                    // Refresh git graph
+                    // Refresh git graph and select the checked out commit
                     if (GitGraphViewModel != null)
                     {
                         await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
+                        GitGraphViewModel.SelectCommitBySha(branch.TipSha);
                     }
 
                     StatusMessage = $"Checked out {branch.Name} (detached HEAD)";
@@ -420,10 +421,11 @@ public partial class MainViewModel
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository);
 
-            // Refresh git graph
+            // Refresh git graph and select the branch's tip commit
             if (GitGraphViewModel != null)
             {
                 await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
+                GitGraphViewModel.SelectCommitBySha(branch.TipSha);
             }
 
             if (SelectedRepository.ConflictCount > 0)
