@@ -40,6 +40,13 @@ public partial class BranchListView : UserControl
 
         // Single click - select this branch (Ctrl toggles multi-select)
         SelectBranch(viewModel.SelectedRepository, branch, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+
+        // Navigate to branch tip in git graph
+        if (!string.IsNullOrEmpty(branch.TipSha))
+        {
+            viewModel.GitGraphViewModel?.SelectCommitBySha(branch.TipSha);
+        }
+
         e.Handled = true;
     }
 

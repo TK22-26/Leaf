@@ -473,7 +473,7 @@ public partial class GitGraphViewModel : ObservableObject
     {
         var trimmed = searchText?.Trim() ?? string.Empty;
         bool hasSearch = !string.IsNullOrEmpty(trimmed);
-        CommitInfo? shaMatch = null;
+        CommitInfo? firstMatch = null;
 
         foreach (var commit in Commits)
         {
@@ -488,10 +488,10 @@ public partial class GitGraphViewModel : ObservableObject
                 commit.IsSearchHighlighted = matches;
                 commit.IsDimmed = !matches;
 
-                // Track first SHA match for auto-scroll
-                if (shaMatch == null && commit.Sha.StartsWith(trimmed, StringComparison.OrdinalIgnoreCase))
+                // Track first match (any type) for auto-scroll
+                if (firstMatch == null && matches)
                 {
-                    shaMatch = commit;
+                    firstMatch = commit;
                 }
             }
             else
@@ -508,10 +508,10 @@ public partial class GitGraphViewModel : ObservableObject
         // Set IsSearchActive AFTER updating data, so canvas renders with correct state
         IsSearchActive = hasSearch;
 
-        // Auto-select SHA matches to trigger scroll
-        if (shaMatch != null && IsLikelyShaSearch(trimmed))
+        // Auto-select first match to trigger scroll (only when nothing is selected)
+        if (firstMatch != null && SelectedCommit == null)
         {
-            SelectCommit(shaMatch);
+            SelectCommit(firstMatch);
         }
     }
 
@@ -718,13 +718,33 @@ public partial class GitGraphViewModel : ObservableObject
 
     /// <summary>
     /// Select a commit by its SHA hash.
+    /// If the commit is filtered out, clears filters to make it visible.
     /// </summary>
     public void SelectCommitBySha(string sha)
     {
         if (string.IsNullOrEmpty(sha))
             return;
 
+        // First try to find in current visible commits
         var commit = Commits.FirstOrDefault(c => c.Sha == sha || c.Sha.StartsWith(sha));
+        if (commit != null)
+        {
+            SelectCommit(commit);
+            return;
+        }
+
+        // Not in visible commits - check if it exists in all commits
+        var allCommit = _allCommits.FirstOrDefault(c => c.Sha == sha || c.Sha.StartsWith(sha));
+        if (allCommit == null)
+            return;
+
+        // Commit exists but is filtered out - clear filters to make it visible
+        _hiddenBranchNames.Clear();
+        _soloBranchNames.Clear();
+        RebuildGraphFromFilters();
+
+        // Now find and select the commit in the rebuilt list
+        commit = Commits.FirstOrDefault(c => c.Sha == sha || c.Sha.StartsWith(sha));
         if (commit != null)
         {
             SelectCommit(commit);
