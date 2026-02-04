@@ -155,6 +155,20 @@ public partial class RepositoryInfo : ObservableObject
     private int _conflictCount;
 
     /// <summary>
+    /// True if HEAD is detached (not on a branch).
+    /// </summary>
+    [ObservableProperty]
+    [property: JsonIgnore]
+    private bool _isDetachedHead;
+
+    /// <summary>
+    /// SHA of the detached HEAD commit (null if on a branch).
+    /// </summary>
+    [ObservableProperty]
+    [property: JsonIgnore]
+    private string? _detachedHeadSha;
+
+    /// <summary>
     /// Currently selected branches in the tree view (supports multi-selection).
     /// </summary>
     [JsonIgnore]

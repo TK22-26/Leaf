@@ -321,6 +321,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
                     SelectedRepository.MergingBranch = info.MergingBranch;
                     SelectedRepository.ConflictCount = info.ConflictCount;
+                    SelectedRepository.IsDetachedHead = info.IsDetachedHead;
+                    SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
 
                     await RefreshMergeConflictResolutionAsync();
                 }

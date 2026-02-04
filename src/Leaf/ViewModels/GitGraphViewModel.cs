@@ -94,6 +94,18 @@ public partial class GitGraphViewModel : ObservableObject
     private bool _isWorkingChangesSelected;
 
     /// <summary>
+    /// True if HEAD is detached (not on a branch).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isDetachedHead;
+
+    /// <summary>
+    /// SHA of the detached HEAD commit (null if on a branch).
+    /// </summary>
+    [ObservableProperty]
+    private string? _detachedHeadSha;
+
+    /// <summary>
     /// True if there are any working directory changes.
     /// </summary>
     public bool HasWorkingChanges => WorkingChanges?.HasChanges ?? false;
@@ -186,6 +198,8 @@ public partial class GitGraphViewModel : ObservableObject
 
             _allCommits = commits.ToList();
             WorkingChanges = workingChanges;
+            IsDetachedHead = workingChanges?.IsDetachedHead ?? false;
+            DetachedHeadSha = workingChanges?.DetachedHeadSha;
             Stashes = new ObservableCollection<StashInfo>(stashes);
 
             // Initialize lazy loading state

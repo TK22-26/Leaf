@@ -352,19 +352,69 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = $"Checking out {branch.Name}...";
 
-            // For remote branches, extract the name after origin/
-            var branchName = branch.IsRemote && branch.Name.StartsWith("origin/")
-                ? branch.Name["origin/".Length..]
-                : branch.Name;
+            string branchName;
+
+            if (branch.IsRemote)
+            {
+                // Extract local branch name (e.g., "origin/main" → "main")
+                var remoteName = branch.RemoteName ?? "origin";
+                var localBranchName = branch.Name.StartsWith($"{remoteName}/", StringComparison.OrdinalIgnoreCase)
+                    ? branch.Name[(remoteName.Length + 1)..]
+                    : branch.Name;
+
+                // Check if local branch exists and where it points
+                var branches = await _gitService.GetBranchesAsync(SelectedRepository.Path);
+                var localBranch = branches.FirstOrDefault(b =>
+                    !b.IsRemote && string.Equals(b.Name, localBranchName, StringComparison.OrdinalIgnoreCase));
+
+                if (localBranch != null && !string.Equals(localBranch.TipSha, branch.TipSha, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Local exists but is at different commit - checkout remote's commit (detached HEAD)
+                    StatusMessage = $"Checking out {branch.Name}...";
+                    await _gitService.CheckoutCommitAsync(SelectedRepository.Path, branch.TipSha);
+
+                    var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+                    SelectedRepository.CurrentBranch = info.CurrentBranch;
+                    SelectedRepository.IsDetachedHead = info.IsDetachedHead;
+                    SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
+                    SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
+                    SelectedRepository.MergingBranch = info.MergingBranch;
+                    SelectedRepository.ConflictCount = info.ConflictCount;
+
+                    // Reload branches to update current indicator
+                    SelectedRepository.BranchesLoaded = false;
+                    await LoadBranchesForRepoAsync(SelectedRepository);
+
+                    // Refresh git graph
+                    if (GitGraphViewModel != null)
+                    {
+                        await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
+                    }
+
+                    StatusMessage = $"Checked out {branch.Name} (detached HEAD)";
+                    IsBusy = false;
+                    return;
+                }
+
+                // Local exists at same commit, OR no local exists
+                // → use existing logic to switch to / create local branch
+                branchName = localBranchName;
+            }
+            else
+            {
+                branchName = branch.Name;
+            }
 
             await _gitService.CheckoutAsync(SelectedRepository.Path, branchName, allowConflicts: true);
 
             // Refresh the repo info
-            var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
-            SelectedRepository.CurrentBranch = info.CurrentBranch;
-            SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
-            SelectedRepository.MergingBranch = info.MergingBranch;
-            SelectedRepository.ConflictCount = info.ConflictCount;
+            var repoInfo = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            SelectedRepository.CurrentBranch = repoInfo.CurrentBranch;
+            SelectedRepository.IsDetachedHead = repoInfo.IsDetachedHead;
+            SelectedRepository.DetachedHeadSha = repoInfo.DetachedHeadSha;
+            SelectedRepository.IsMergeInProgress = repoInfo.IsMergeInProgress;
+            SelectedRepository.MergingBranch = repoInfo.MergingBranch;
+            SelectedRepository.ConflictCount = repoInfo.ConflictCount;
 
             // Reload branches to update current indicator
             SelectedRepository.BranchesLoaded = false;
@@ -419,6 +469,8 @@ public partial class MainViewModel
             // Refresh the repo info
             var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
             SelectedRepository.CurrentBranch = info.CurrentBranch;
+            SelectedRepository.IsDetachedHead = info.IsDetachedHead;
+            SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
             SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
             SelectedRepository.MergingBranch = info.MergingBranch;
             SelectedRepository.ConflictCount = info.ConflictCount;
