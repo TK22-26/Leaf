@@ -2,22 +2,29 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:viewmodels="clr-namespace:Leaf.ViewModels"
+        xmlns:models="clr-namespace:Leaf.Models"
+        xmlns:converters="clr-namespace:Leaf.Converters"
         xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
         d:DataContext="{d:DesignInstance Type=viewmodels:MergeDialogViewModel}"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="{Binding DialogTitle}"
-        Height="400"
+        Height="480"
         Width="500"
-        MinHeight="350"
+        MinHeight="420"
         MinWidth="400"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ResizeMode="CanResize">
 
+    <Window.Resources>
+        <converters:EnumBooleanConverter x:Key="EnumBooleanConverter" />
+    </Window.Resources>
+
     <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -73,8 +80,39 @@
             </Grid>
         </Border>
 
+        <!-- Merge Type Selection -->
+        <StackPanel Grid.Row="2" Margin="0,0,0,16">
+            <TextBlock Text="Merge strategy"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,8"/>
+
+            <RadioButton Content="Normal merge"
+                         IsChecked="{Binding SelectedMergeType, Converter={StaticResource EnumBooleanConverter}, ConverterParameter={x:Static models:MergeType.Normal}}"
+                         Margin="0,0,0,4"/>
+            <TextBlock Text="Preserves commit history from the source branch"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       FontSize="11"
+                       Margin="20,0,0,8"/>
+
+            <RadioButton Content="Squash merge"
+                         IsChecked="{Binding SelectedMergeType, Converter={StaticResource EnumBooleanConverter}, ConverterParameter={x:Static models:MergeType.Squash}}"
+                         Margin="0,0,0,4"/>
+            <TextBlock Text="Combines all commits into a single commit"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       FontSize="11"
+                       Margin="20,0,0,8"/>
+
+            <RadioButton Content="Fast-forward only"
+                         IsChecked="{Binding SelectedMergeType, Converter={StaticResource EnumBooleanConverter}, ConverterParameter={x:Static models:MergeType.FastForwardOnly}}"
+                         Margin="0,0,0,4"/>
+            <TextBlock Text="Only succeeds if the branch can be fast-forwarded"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       FontSize="11"
+                       Margin="20,0,0,0"/>
+        </StackPanel>
+
         <!-- Commit Message (only for squash merge) -->
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="3">
             <Grid.Style>
                 <Style TargetType="Grid">
                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -106,26 +144,8 @@
                      Padding="8"/>
         </Grid>
 
-        <!-- Regular merge info text -->
-        <TextBlock Grid.Row="2"
-                   Text="This will merge the source branch into the current branch, preserving the commit history."
-                   TextWrapping="Wrap"
-                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                   VerticalAlignment="Top">
-            <TextBlock.Style>
-                <Style TargetType="TextBlock">
-                    <Setter Property="Visibility" Value="Visible"/>
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsSquashMerge}" Value="True">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </TextBlock.Style>
-        </TextBlock>
-
         <!-- Footer buttons -->
-        <StackPanel Grid.Row="3"
+        <StackPanel Grid.Row="4"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     Margin="0,16,0,0">

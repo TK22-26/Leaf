@@ -1,10 +1,23 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+
 namespace Leaf.Models;
 
 /// <summary>
 /// Represents information about a Git tag.
 /// </summary>
-public class TagInfo
+public partial class TagInfo : ObservableObject
 {
+    /// <summary>
+    /// Whether this tag is selected in the UI.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSelected;
+
+    /// <summary>
+    /// Tags are leaf items and don't expand (silences TreeView binding warnings).
+    /// </summary>
+    public bool IsExpanded { get; set; }
+
     /// <summary>
     /// The tag name (e.g., "v1.0.0").
     /// </summary>
