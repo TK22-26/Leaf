@@ -712,3 +712,24 @@ public class BoolToDetachedTextConverter : IValueConverter
         return Binding.DoNothing;
     }
 }
+
+/// <summary>
+/// Returns a collection only if it has more than one item, otherwise returns null.
+/// Used to hide single-item hierarchies (e.g., single worktree shouldn't show as expandable).
+/// </summary>
+public class CollectionIfMultipleConverter : IValueConverter
+{
+    public object? Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is System.Collections.ICollection collection && collection.Count > 1)
+        {
+            return value;
+        }
+        return null;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return Binding.DoNothing;
+    }
+}

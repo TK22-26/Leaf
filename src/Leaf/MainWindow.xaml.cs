@@ -162,6 +162,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RepoPaneSplitter_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+        {
+            var newWidth = viewModel.RepoPaneWidth + e.HorizontalChange;
+            // Clamp to min/max defined in XAML (150-400)
+            newWidth = Math.Max(150, Math.Min(400, newWidth));
+            viewModel.RepoPaneWidth = newWidth;
+        }
+    }
+
     private void RepoPaneSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
     {
         if (DataContext is MainViewModel viewModel)

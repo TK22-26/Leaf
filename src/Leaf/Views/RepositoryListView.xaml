@@ -191,15 +191,17 @@
                 </HierarchicalDataTemplate>
 
                 <!-- QuickAccessItem template - uses same visual as RepositoryInfo but binds to Repository property -->
+                <!-- Only show worktree children if there's more than one worktree -->
                 <HierarchicalDataTemplate DataType="{x:Type models:QuickAccessItem}"
-                                          ItemsSource="{Binding Repository.Worktrees}">
+                                          ItemsSource="{Binding Repository.WorktreesIfMultiple}">
                     <ContentPresenter Content="{Binding Repository}"
                                       ContentTemplate="{StaticResource RepositoryItemTemplate}"/>
                 </HierarchicalDataTemplate>
 
                 <!-- Repository template (for repos in folder groups) - expandable with worktrees -->
+                <!-- Only show worktree children if there's more than one worktree -->
                 <HierarchicalDataTemplate DataType="{x:Type models:RepositoryInfo}"
-                                          ItemsSource="{Binding Worktrees}">
+                                          ItemsSource="{Binding WorktreesIfMultiple}">
                     <ContentPresenter Content="{Binding}"
                                       ContentTemplate="{StaticResource RepositoryItemTemplate}"/>
                 </HierarchicalDataTemplate>
@@ -265,7 +267,7 @@
                             </Grid>
                             <!--  Worktree icon  -->
                             <ic:SymbolIcon x:Name="WorktreeIcon"
-                                           Symbol="FolderOpen"
+                                           Symbol="TreeDeciduous"
                                            FontSize="12"
                                            Foreground="#3B82F6"
                                            VerticalAlignment="Center"

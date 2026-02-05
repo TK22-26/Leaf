@@ -28,6 +28,9 @@ public partial class MainViewModel
         // Load repositories via service
         var lastSelectedPath = await _repositoryService.LoadRepositoriesAsync();
 
+        // Eagerly load worktrees for all repositories so they appear in the sidebar
+        await LoadWorktreesForAllReposAsync();
+
         // Restore last selected repository
         if (!string.IsNullOrEmpty(lastSelectedPath))
         {

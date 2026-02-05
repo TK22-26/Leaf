@@ -4,6 +4,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using FluentIcons.Common;
+using FluentIcons.Wpf;
 using Leaf.Controls.GitGraph;
 using Leaf.Models;
 using Leaf.ViewModels;
@@ -427,12 +429,7 @@ public partial class GitGraphView : UserControl
             Header = "Create branch here...",
             Command = mainViewModel.CreateBranchAtCommitCommand,
             CommandParameter = commit,
-            Icon = new TextBlock
-            {
-                Text = "\uE8B7",
-                FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"),
-                FontSize = 14
-            }
+            Icon = new SymbolIcon { Symbol = Symbol.BranchFork, FontSize = 14 }
         };
         menu.Items.Add(createBranchItem);
 

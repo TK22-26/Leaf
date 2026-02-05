@@ -47,6 +47,21 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Load worktrees for all repositories (called on startup for sidebar display).
+    /// </summary>
+    private async Task LoadWorktreesForAllReposAsync()
+    {
+        var allRepos = RepositoryGroups
+            .SelectMany(g => g.Repositories)
+            .ToList();
+
+        foreach (var repo in allRepos)
+        {
+            await LoadWorktreesForRepoAsync(repo);
+        }
+    }
+
+    /// <summary>
     /// Switch to a different worktree.
     /// </summary>
     [RelayCommand]
@@ -60,9 +75,18 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = $"Switching to worktree {worktree.DisplayName}...";
 
-            // Check if worktree is already in repo list
-            var existingRepo = _repositoryService.FindRepository(worktree.Path);
+            // For secondary worktrees, don't add them to the repo list.
+            // They are accessible via the main worktree's Worktrees collection.
+            if (!worktree.IsMainWorktree && SelectedRepository != null)
+            {
+                // The worktree is already loaded in current repo's Worktrees collection.
+                // User can view it there - no need to add a duplicate entry.
+                StatusMessage = $"Worktree {worktree.DisplayName} is available in the current repository's worktrees";
+                return;
+            }
 
+            // For main worktrees, find or add the repository
+            var existingRepo = _repositoryService.FindRepository(worktree.Path);
             if (existingRepo != null)
             {
                 await SelectRepositoryAsync(existingRepo);
@@ -70,35 +94,9 @@ public partial class MainViewModel
                 return;
             }
 
-            // Create RepositoryInfo and add to repo list
+            // Add main worktree as a repository
             var repoInfo = await _gitService.GetRepositoryInfoAsync(worktree.Path);
-
-            // Find the group containing the main worktree's repo and add there
-            var mainRepo = SelectedRepository;
-            RepositoryGroup? targetGroup = null;
-
-            if (mainRepo != null)
-            {
-                foreach (var group in RepositoryGroups)
-                {
-                    if (group.Repositories.Contains(mainRepo))
-                    {
-                        targetGroup = group;
-                        break;
-                    }
-                }
-            }
-
-            if (targetGroup != null)
-            {
-                targetGroup.Repositories.Add(repoInfo);
-            }
-            else
-            {
-                // Fallback: add to first group or create a new one
-                _repositoryService.AddRepository(repoInfo);
-            }
-
+            _repositoryService.AddRepository(repoInfo);
             await SelectRepositoryAsync(repoInfo);
             StatusMessage = $"Switched to {worktree.DisplayName}";
         }

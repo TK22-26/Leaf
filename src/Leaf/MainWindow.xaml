@@ -498,17 +498,13 @@
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="&#xE76C;" />
                         </Border>
-                        <!--  Expanded state: full repo list with collapse button + resize splitter  -->
+                        <!--  Expanded state: full repo list with collapse button  -->
                         <Grid
                             x:Name="RepoPaneGrid"
                             MinWidth="150"
                             MaxWidth="400"
                             Width="{Binding RepoPaneWidth, Mode=TwoWay}"
                             Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
@@ -516,7 +512,6 @@
                             <!--  Header with collapse button  -->
                             <Border
                                 Grid.Row="0"
-                                Grid.Column="0"
                                 Padding="8,4"
                                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                                 BorderThickness="0,0,0,1">
@@ -573,25 +568,24 @@
                             </Border>
                             <views:RepositoryListView
                                 Grid.Row="1"
-                                Grid.Column="0"
                                 DataContext="{Binding}" />
-                            <!--  Resize splitter on right edge  -->
-                            <GridSplitter
-                                Grid.Row="0"
-                                Grid.RowSpan="2"
-                                Grid.Column="1"
-                                Width="4"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Stretch"
-                                Background="Transparent"
-                                Cursor="SizeWE"
-                                DragCompleted="RepoPaneSplitter_DragCompleted"
-                                Focusable="False"
-                                ResizeBehavior="CurrentAndNext"
-                                ResizeDirection="Columns" />
                         </Grid>
                     </Grid>
                 </Border>
+
+                <!--  Resize splitter for repo pane (outside the panel, to the right)  -->
+                <GridSplitter
+                    Grid.Column="1"
+                    Width="4"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Stretch"
+                    Panel.ZIndex="1"
+                    Background="Transparent"
+                    Cursor="SizeWE"
+                    DragDelta="RepoPaneSplitter_DragDelta"
+                    DragCompleted="RepoPaneSplitter_DragCompleted"
+                    Focusable="False"
+                    Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
 
                 <!--  Second panel: Branches for selected repo  -->
                 <Border

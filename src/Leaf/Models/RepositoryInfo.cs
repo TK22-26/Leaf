@@ -100,6 +100,57 @@ public partial class RepositoryInfo : ObservableObject
     }
 
     /// <summary>
+    /// True if this repository path is a secondary worktree (has .git FILE, not directory).
+    /// </summary>
+    [JsonIgnore]
+    public bool IsSecondaryWorktree
+    {
+        get
+        {
+            var gitPath = System.IO.Path.Combine(Path, ".git");
+            return File.Exists(gitPath) && !Directory.Exists(gitPath);
+        }
+    }
+
+    /// <summary>
+    /// Gets the main worktree path if this is a secondary worktree.
+    /// Returns null if this is the main worktree or a regular repo.
+    /// </summary>
+    [JsonIgnore]
+    public string? MainWorktreePath
+    {
+        get
+        {
+            if (!IsSecondaryWorktree) return null;
+
+            var gitFilePath = System.IO.Path.Combine(Path, ".git");
+            try
+            {
+                // .git file contains: gitdir: /path/to/main/.git/worktrees/name
+                var content = File.ReadAllText(gitFilePath).Trim();
+                if (content.StartsWith("gitdir: "))
+                {
+                    var gitDir = content["gitdir: ".Length..].Trim();
+                    // Navigate from .git/worktrees/name to the main repo
+                    // The main .git directory is parent of "worktrees" folder
+                    var worktreesDir = System.IO.Path.GetDirectoryName(gitDir);
+                    if (worktreesDir != null && System.IO.Path.GetFileName(worktreesDir) == "worktrees")
+                    {
+                        var mainGitDir = System.IO.Path.GetDirectoryName(worktreesDir);
+                        if (mainGitDir != null)
+                        {
+                            // Main repo is parent of .git directory
+                            return System.IO.Path.GetDirectoryName(mainGitDir);
+                        }
+                    }
+                }
+            }
+            catch { /* Ignore read errors */ }
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Local branches in this repository.
     /// </summary>
     [ObservableProperty]
@@ -139,6 +190,61 @@ public partial class RepositoryInfo : ObservableObject
     [ObservableProperty]
     [property: JsonIgnore]
     private ObservableCollection<WorktreeInfo> _worktrees = [];
+
+    /// <summary>
+    /// Tracks whether we've subscribed to the Worktrees CollectionChanged event.
+    /// </summary>
+    private bool _worktreesSubscribed;
+
+    /// <summary>
+    /// Returns worktrees only if there are multiple (for tree view binding).
+    /// Returns null if there's only one worktree (the main one) to avoid unnecessary hierarchy.
+    /// </summary>
+    [JsonIgnore]
+    public ObservableCollection<WorktreeInfo>? WorktreesIfMultiple
+    {
+        get
+        {
+            // Lazy subscribe to CollectionChanged (needed because field initializer bypasses setter)
+            EnsureWorktreesSubscribed();
+            return Worktrees.Count > 1 ? Worktrees : null;
+        }
+    }
+
+    /// <summary>
+    /// Ensures the Worktrees collection has its CollectionChanged event subscribed.
+    /// </summary>
+    private void EnsureWorktreesSubscribed()
+    {
+        if (!_worktreesSubscribed && Worktrees != null)
+        {
+            Worktrees.CollectionChanged += Worktrees_CollectionChanged;
+            _worktreesSubscribed = true;
+        }
+    }
+
+    /// <summary>
+    /// Called when Worktrees collection is replaced.
+    /// </summary>
+    partial void OnWorktreesChanged(ObservableCollection<WorktreeInfo>? oldValue, ObservableCollection<WorktreeInfo> newValue)
+    {
+        if (oldValue != null)
+        {
+            oldValue.CollectionChanged -= Worktrees_CollectionChanged;
+        }
+        _worktreesSubscribed = false;
+        if (newValue != null)
+        {
+            newValue.CollectionChanged += Worktrees_CollectionChanged;
+            _worktreesSubscribed = true;
+        }
+        OnPropertyChanged(nameof(WorktreesIfMultiple));
+    }
+
+    private void Worktrees_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(WorktreesIfMultiple));
+    }
 
     /// <summary>
     /// Whether worktrees have been loaded for this repository.
