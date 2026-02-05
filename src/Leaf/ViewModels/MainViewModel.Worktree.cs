@@ -75,17 +75,7 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = $"Switching to worktree {worktree.DisplayName}...";
 
-            // For secondary worktrees, don't add them to the repo list.
-            // They are accessible via the main worktree's Worktrees collection.
-            if (!worktree.IsMainWorktree && SelectedRepository != null)
-            {
-                // The worktree is already loaded in current repo's Worktrees collection.
-                // User can view it there - no need to add a duplicate entry.
-                StatusMessage = $"Worktree {worktree.DisplayName} is available in the current repository's worktrees";
-                return;
-            }
-
-            // For main worktrees, find or add the repository
+            // Find existing repo entry for this worktree path, or add it
             var existingRepo = _repositoryService.FindRepository(worktree.Path);
             if (existingRepo != null)
             {
@@ -94,7 +84,7 @@ public partial class MainViewModel
                 return;
             }
 
-            // Add main worktree as a repository
+            // Add worktree as a repository
             var repoInfo = await _gitService.GetRepositoryInfoAsync(worktree.Path);
             _repositoryService.AddRepository(repoInfo);
             await SelectRepositoryAsync(repoInfo);
