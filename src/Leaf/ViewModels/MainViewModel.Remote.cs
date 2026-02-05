@@ -281,6 +281,7 @@ public partial class MainViewModel
 
             IsBusy = true;
             var selectedRemotes = dialog.SelectedRemoteNames.ToList();
+            var pushedRemotes = new List<(RemoteInfo remote, string? pat)>();
 
             foreach (var remoteName in selectedRemotes)
             {
@@ -302,6 +303,10 @@ public partial class MainViewModel
                 try
                 {
                     await _gitService.PushAsync(SelectedRepository.Path, remoteName, null, pat);
+                    if (remoteInfo != null)
+                    {
+                        pushedRemotes.Add((remoteInfo, pat));
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -311,7 +316,21 @@ public partial class MainViewModel
                 }
             }
 
-            StatusMessage = $"Pushed to {selectedRemotes.Count} remotes";
+            // Fetch from all pushed remotes to update remote refs in the UI
+            StatusMessage = "Updating remote refs...";
+            foreach (var (remote, pat) in pushedRemotes)
+            {
+                try
+                {
+                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: pat);
+                }
+                catch
+                {
+                    // Ignore fetch failures - push succeeded
+                }
+            }
+
+            StatusMessage = $"Pushed to {pushedRemotes.Count} remotes";
             await RefreshAsync();
         }
         catch (Exception ex)
