@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Windows;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
@@ -11,6 +12,40 @@ namespace Leaf.ViewModels;
 /// </summary>
 public partial class MainViewModel
 {
+    /// <summary>
+    /// Load worktrees for a repository (for sidebar display).
+    /// </summary>
+    public async Task LoadWorktreesForRepoAsync(RepositoryInfo repo, bool forceReload = false)
+    {
+        if (repo.WorktreesLoaded && !forceReload) return;
+
+        try
+        {
+            var worktrees = await _gitService.GetWorktreesAsync(repo.Path);
+
+            // Mark the current worktree
+            var normalizedRepoPath = Path.GetFullPath(repo.Path);
+            foreach (var wt in worktrees)
+            {
+                var normalizedWtPath = Path.GetFullPath(wt.Path);
+                wt.IsCurrent = string.Equals(normalizedWtPath, normalizedRepoPath, StringComparison.OrdinalIgnoreCase);
+            }
+
+            // Update the collection
+            repo.Worktrees.Clear();
+            foreach (var wt in worktrees.OrderBy(w => w.IsMainWorktree ? 0 : 1).ThenBy(w => w.DisplayName))
+            {
+                repo.Worktrees.Add(wt);
+            }
+
+            repo.WorktreesLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load worktrees: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Switch to a different worktree.
     /// </summary>

@@ -162,4 +162,11 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RepoPaneSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+        {
+            viewModel.UpdateRepoPaneWidth(RepoPaneGrid.ActualWidth);
+        }
+    }
 }

@@ -188,51 +188,66 @@
             BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
             BorderThickness="0,0,0,1"
             Visibility="{Binding SelectedRepository, Converter={StaticResource NullToVisibilityConverter}}">
+            <!--  Three-column Grid: equal left/right columns keep center truly centered  -->
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!--  Left: Repository and Branch info  -->
-                <StackPanel
+                <!--  Left: Repository and Branch info (star columns shrink and trim text)  -->
+                <Grid
                     Grid.Column="0"
-                    VerticalAlignment="Center"
-                    Orientation="Horizontal">
+                    VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MaxWidth="180" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" MaxWidth="180" />
+                    </Grid.ColumnDefinitions>
+
                     <!--  Repository  -->
-                    <StackPanel Margin="0,0,16,0">
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
                         <TextBlock
                             FontSize="10"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                            Text="Repository" />
+                            Text="Repository"
+                            TextTrimming="CharacterEllipsis" />
                         <TextBlock
                             FontWeight="SemiBold"
                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="{Binding SelectedRepository.Name}" />
+                            Text="{Binding SelectedRepository.Name}"
+                            TextTrimming="CharacterEllipsis"
+                            ToolTip="{Binding SelectedRepository.Name}" />
                     </StackPanel>
+
                     <!--  Chevron separator  -->
                     <TextBlock
+                        Grid.Column="1"
                         Margin="0,0,16,0"
                         VerticalAlignment="Center"
                         FontFamily="Segoe Fluent Icons"
                         FontSize="10"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="&#xE76C;" />
+
                     <!--  Branch  -->
-                    <StackPanel>
+                    <StackPanel Grid.Column="2">
                         <TextBlock
                             FontSize="10"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                            Text="Branch" />
+                            Text="Branch"
+                            TextTrimming="CharacterEllipsis" />
                         <TextBlock
                             FontWeight="SemiBold"
                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="{Binding SelectedRepository.CurrentBranch, FallbackValue='(none)'}" />
+                            Text="{Binding SelectedRepository.CurrentBranch, FallbackValue='(none)'}"
+                            TextTrimming="CharacterEllipsis"
+                            ToolTip="{Binding SelectedRepository.CurrentBranch}" />
                     </StackPanel>
-                </StackPanel>
+                </Grid>
 
-                <!--  Center: Quick Actions  -->
+                <!--  Center: Quick Actions (in center column, always centered)  -->
                 <StackPanel
                     Grid.Column="1"
                     HorizontalAlignment="Center"
@@ -400,7 +415,7 @@
                 </StackPanel>
 
                 <!--  Right: Search (live search, no button needed)  -->
-                <Grid Grid.Column="2" VerticalAlignment="Center">
+                <Grid Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <TextBox
                         x:Name="CommitSearchBox"
                         Width="200"
@@ -460,7 +475,7 @@
                     <ColumnDefinition Width="350" MinWidth="0" />
                 </Grid.ColumnDefinitions>
 
-                <!--  Left panel: Repository list (collapsible)  -->
+                <!--  Left panel: Repository list (collapsible + resizable)  -->
                 <Border
                     Grid.Column="0"
                     BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
@@ -483,8 +498,17 @@
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="&#xE76C;" />
                         </Border>
-                        <!--  Expanded state: full repo list with collapse button  -->
-                        <Grid Width="220" Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
+                        <!--  Expanded state: full repo list with collapse button + resize splitter  -->
+                        <Grid
+                            x:Name="RepoPaneGrid"
+                            MinWidth="150"
+                            MaxWidth="400"
+                            Width="{Binding RepoPaneWidth, Mode=TwoWay}"
+                            Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
@@ -492,6 +516,7 @@
                             <!--  Header with collapse button  -->
                             <Border
                                 Grid.Row="0"
+                                Grid.Column="0"
                                 Padding="8,4"
                                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                                 BorderThickness="0,0,0,1">
@@ -546,7 +571,24 @@
                                     </StackPanel>
                                 </Grid>
                             </Border>
-                            <views:RepositoryListView Grid.Row="1" DataContext="{Binding}" />
+                            <views:RepositoryListView
+                                Grid.Row="1"
+                                Grid.Column="0"
+                                DataContext="{Binding}" />
+                            <!--  Resize splitter on right edge  -->
+                            <GridSplitter
+                                Grid.Row="0"
+                                Grid.RowSpan="2"
+                                Grid.Column="1"
+                                Width="4"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Stretch"
+                                Background="Transparent"
+                                Cursor="SizeWE"
+                                DragCompleted="RepoPaneSplitter_DragCompleted"
+                                Focusable="False"
+                                ResizeBehavior="CurrentAndNext"
+                                ResizeDirection="Columns" />
                         </Grid>
                     </Grid>
                 </Border>

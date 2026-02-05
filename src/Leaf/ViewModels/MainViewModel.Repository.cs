@@ -21,6 +21,7 @@ public partial class MainViewModel
         // Load UI state from settings
         var settings = _settingsService.LoadSettings();
         IsRepoPaneCollapsed = settings.IsRepoPaneCollapsed;
+        RepoPaneWidth = settings.RepoPaneWidth > 0 ? settings.RepoPaneWidth : 220;
         IsTerminalVisible = settings.IsTerminalVisible;
         TerminalHeight = settings.TerminalHeight > 0 ? settings.TerminalHeight : 220;
 
@@ -227,12 +228,17 @@ public partial class MainViewModel
         try
         {
             IsBusy = true;
+            StatusMessage = $"Loading {repository.Name}...";
+
+            // Load branches BEFORE setting SelectedRepository to avoid UI flash
+            // (UI binds to SelectedRepository.BranchCategories, so data should be ready)
+            await LoadBranchesForRepoAsync(repository, forceReload: true);
+
+            // Now set SelectedRepository - UI will see populated BranchCategories
             SelectedRepository = repository;
 
             // Mark as recently accessed (updates quick access sections)
             _repositoryService.MarkAsRecentlyAccessed(repository);
-
-            StatusMessage = $"Loading {repository.Name}...";
 
             // Start watching the new repository for live changes
             _fileWatcherService.WatchRepository(repository.Path);
@@ -266,8 +272,9 @@ public partial class MainViewModel
             repository.IsDetachedHead = info.IsDetachedHead;
             repository.DetachedHeadSha = info.DetachedHeadSha;
 
-            // Load branches for the branch panel (force reload to pick up pruned branches)
-            await LoadBranchesForRepoAsync(repository, forceReload: true);
+            // Load worktrees for sidebar display
+            await LoadWorktreesForRepoAsync(repository);
+
             ApplyBranchFiltersForRepo(repository);
 
             await RefreshMergeConflictResolutionAsync();

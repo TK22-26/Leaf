@@ -33,6 +33,19 @@ public partial class MainViewModel
         _settingsService.SaveSettings(settings);
     }
 
+    public void UpdateRepoPaneWidth(double width)
+    {
+        if (width <= 0)
+        {
+            return;
+        }
+
+        RepoPaneWidth = width;
+        var settings = _settingsService.LoadSettings();
+        settings.RepoPaneWidth = width;
+        _settingsService.SaveSettings(settings);
+    }
+
     /// <summary>
     /// Open settings.
     /// </summary>

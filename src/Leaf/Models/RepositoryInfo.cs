@@ -134,6 +134,19 @@ public partial class RepositoryInfo : ObservableObject
     private ObservableCollection<BranchCategory> _branchCategories = [];
 
     /// <summary>
+    /// Worktrees associated with this repository.
+    /// </summary>
+    [ObservableProperty]
+    [property: JsonIgnore]
+    private ObservableCollection<WorktreeInfo> _worktrees = [];
+
+    /// <summary>
+    /// Whether worktrees have been loaded for this repository.
+    /// </summary>
+    [JsonIgnore]
+    public bool WorktreesLoaded { get; set; }
+
+    /// <summary>
     /// True if a merge is currently in progress.
     /// </summary>
     [ObservableProperty]
