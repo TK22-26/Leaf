@@ -222,17 +222,28 @@ public partial class GitGraphViewModel : ObservableObject
             // This prevents losing selection when file watcher triggers reload during staging
             bool wasWorkingChangesSelected = IsWorkingChangesSelected;
             var wasSelectedStashIndex = SelectedStash?.Index;
+            var wasSelectedCommitSha = SelectedCommit?.Sha;
 
             SelectedCommit = null;
             SelectedStash = wasSelectedStashIndex.HasValue && wasSelectedStashIndex.Value < stashes.Count
                 ? stashes[wasSelectedStashIndex.Value]
                 : null;
-            SelectedSha = wasWorkingChangesSelected ? WorkingChangesSha : null;
+            SelectedSha = wasWorkingChangesSelected ? WorkingChangesSha : wasSelectedCommitSha;
             IsWorkingChangesSelected = wasWorkingChangesSelected && HasWorkingChanges;
+
+            // Try to restore the previously selected commit
+            if (!string.IsNullOrEmpty(wasSelectedCommitSha) && !wasWorkingChangesSelected)
+            {
+                var restoredCommit = _allCommits.FirstOrDefault(c => c.Sha == wasSelectedCommitSha);
+                if (restoredCommit != null)
+                {
+                    SelectedCommit = restoredCommit;
+                }
+            }
 
             // Auto-select working changes or first commit when loading a new repository
             // (only if nothing was preserved from previous selection)
-            if (!IsWorkingChangesSelected && SelectedStash == null)
+            if (!IsWorkingChangesSelected && SelectedStash == null && SelectedCommit == null)
             {
                 if (HasWorkingChanges)
                 {
