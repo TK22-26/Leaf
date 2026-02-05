@@ -15,6 +15,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Leaf.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="Assets\Leaf.png" />
     <Resource Include="Assets\Leaf.ico" />
   </ItemGroup>

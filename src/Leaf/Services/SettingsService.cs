@@ -155,6 +155,7 @@ public class AppSettings
     public double WindowTop { get; set; } = -1;
     public bool IsCommitDetailVisible { get; set; } = true;
     public bool IsRepoPaneCollapsed { get; set; } = false;
+    public double RepoPaneWidth { get; set; } = 220;
     public string? LastSelectedRepositoryPath { get; set; }
     public bool IsTerminalVisible { get; set; } = false;
     public double TerminalHeight { get; set; } = 220;

@@ -90,6 +90,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _isRepoPaneCollapsed;
 
     [ObservableProperty]
+    private double _repoPaneWidth = 220;
+
+    [ObservableProperty]
     private bool _isTerminalVisible;
 
     [ObservableProperty]

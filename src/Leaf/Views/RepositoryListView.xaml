@@ -191,15 +191,119 @@
                 </HierarchicalDataTemplate>
 
                 <!-- QuickAccessItem template - uses same visual as RepositoryInfo but binds to Repository property -->
-                <DataTemplate DataType="{x:Type models:QuickAccessItem}">
+                <!-- Only show worktree children if there's more than one worktree -->
+                <HierarchicalDataTemplate DataType="{x:Type models:QuickAccessItem}"
+                                          ItemsSource="{Binding Repository.WorktreesIfMultiple}">
                     <ContentPresenter Content="{Binding Repository}"
                                       ContentTemplate="{StaticResource RepositoryItemTemplate}"/>
-                </DataTemplate>
+                </HierarchicalDataTemplate>
 
-                <!-- Repository template (for repos in folder groups) -->
-                <DataTemplate DataType="{x:Type models:RepositoryInfo}">
+                <!-- Repository template (for repos in folder groups) - expandable with worktrees -->
+                <!-- Only show worktree children if there's more than one worktree -->
+                <HierarchicalDataTemplate DataType="{x:Type models:RepositoryInfo}"
+                                          ItemsSource="{Binding WorktreesIfMultiple}">
                     <ContentPresenter Content="{Binding}"
                                       ContentTemplate="{StaticResource RepositoryItemTemplate}"/>
+                </HierarchicalDataTemplate>
+
+                <!-- Worktree template (child of repository) -->
+                <DataTemplate DataType="{x:Type models:WorktreeInfo}">
+                    <Border x:Name="WorktreeBorder"
+                            Padding="2,3"
+                            Background="Transparent"
+                            CornerRadius="2"
+                            Cursor="Hand"
+                            HorizontalAlignment="Stretch"
+                            Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Switch to Worktree"
+                                          Command="{Binding PlacementTarget.Tag.SwitchToWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon Symbol="ArrowSwap" FontSize="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator/>
+                                <MenuItem Header="Lock"
+                                          Command="{Binding PlacementTarget.Tag.LockWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          Visibility="{Binding IsLocked, Converter={StaticResource InverseBoolConverter}}">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon Symbol="LockClosed" FontSize="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Unlock"
+                                          Command="{Binding PlacementTarget.Tag.UnlockWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          Visibility="{Binding IsLocked, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon Symbol="LockOpen" FontSize="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator Visibility="{Binding IsMainWorktree, Converter={StaticResource InverseBoolConverter}}"/>
+                                <MenuItem Header="Remove"
+                                          Command="{Binding PlacementTarget.Tag.RemoveWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          Visibility="{Binding IsMainWorktree, Converter={StaticResource InverseBoolConverter}}">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#E81123"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <StackPanel Orientation="Horizontal">
+                            <!--  Current worktree indicator  -->
+                            <Grid Width="14" Margin="0,0,2,0">
+                                <ic:SymbolIcon
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="10"
+                                    Foreground="#10B981"
+                                    IconVariant="Regular"
+                                    Symbol="Checkmark"
+                                    Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </Grid>
+                            <!--  Worktree icon  -->
+                            <ic:SymbolIcon x:Name="WorktreeIcon"
+                                           Symbol="TreeDeciduous"
+                                           FontSize="12"
+                                           Foreground="#3B82F6"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,6,0"/>
+                            <!--  Worktree name with branch  -->
+                            <TextBlock Text="{Binding DisplayText}"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"/>
+                            <!--  Lock icon  -->
+                            <ic:SymbolIcon Symbol="LockClosed"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="6,0,0,0"
+                                           ToolTip="{Binding LockReason}"
+                                           Visibility="{Binding IsLocked, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <!--  Main worktree badge  -->
+                            <Border Background="#3B82F6"
+                                    CornerRadius="2"
+                                    Padding="4,1"
+                                    Margin="6,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding IsMainWorktree, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="MAIN"
+                                           FontSize="9"
+                                           FontWeight="SemiBold"
+                                           Foreground="White"/>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsDetached}" Value="True">
+                            <Setter TargetName="WorktreeIcon" Property="Foreground" Value="#F59E0B"/>
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
                 </DataTemplate>
             </TreeView.Resources>
 

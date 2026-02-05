@@ -352,6 +352,24 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = $"Checking out {branch.Name}...";
 
+            // Check if this branch is already checked out in another worktree
+            var branchNameToCheck = branch.IsRemote
+                ? branch.Name[(branch.Name.IndexOf('/') + 1)..]
+                : branch.Name;
+
+            var worktreeWithBranch = SelectedRepository.Worktrees
+                .FirstOrDefault(wt =>
+                    !wt.IsCurrent &&
+                    !string.IsNullOrEmpty(wt.BranchName) &&
+                    string.Equals(wt.BranchName, branchNameToCheck, StringComparison.OrdinalIgnoreCase));
+
+            if (worktreeWithBranch != null)
+            {
+                IsBusy = false;
+                await SwitchToWorktreeAsync(worktreeWithBranch);
+                return;
+            }
+
             string branchName;
             BranchInfo? localBranch = null;
 

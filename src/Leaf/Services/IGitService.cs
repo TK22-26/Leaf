@@ -535,4 +535,66 @@ public interface IGitService
     Task UnstageHunkAsync(string repoPath, string patchContent);
 
     #endregion
+
+    #region Worktree Operations
+
+    /// <summary>
+    /// Get all worktrees for the repository.
+    /// </summary>
+    Task<List<WorktreeInfo>> GetWorktreesAsync(string repoPath);
+
+    /// <summary>
+    /// Create a new worktree for an existing branch.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="worktreePath">Path where the worktree will be created</param>
+    /// <param name="branchName">Name of the branch to check out in the worktree</param>
+    Task CreateWorktreeAsync(string repoPath, string worktreePath, string branchName);
+
+    /// <summary>
+    /// Create a new worktree with a new branch.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="worktreePath">Path where the worktree will be created</param>
+    /// <param name="newBranchName">Name of the new branch to create</param>
+    /// <param name="startPoint">Optional starting point for the new branch</param>
+    Task CreateWorktreeWithNewBranchAsync(string repoPath, string worktreePath, string newBranchName, string? startPoint = null);
+
+    /// <summary>
+    /// Create a new worktree in detached HEAD state at a specific commit.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="worktreePath">Path where the worktree will be created</param>
+    /// <param name="commitSha">SHA of the commit to check out</param>
+    Task CreateWorktreeDetachedAsync(string repoPath, string worktreePath, string commitSha);
+
+    /// <summary>
+    /// Remove a worktree.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="worktreePath">Path of the worktree to remove</param>
+    /// <param name="force">Force removal even if worktree has modifications</param>
+    Task RemoveWorktreeAsync(string repoPath, string worktreePath, bool force = false);
+
+    /// <summary>
+    /// Lock a worktree to prevent removal.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="worktreePath">Path of the worktree to lock</param>
+    /// <param name="reason">Optional reason for locking</param>
+    Task LockWorktreeAsync(string repoPath, string worktreePath, string? reason = null);
+
+    /// <summary>
+    /// Unlock a worktree.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="worktreePath">Path of the worktree to unlock</param>
+    Task UnlockWorktreeAsync(string repoPath, string worktreePath);
+
+    /// <summary>
+    /// Prune stale worktree references.
+    /// </summary>
+    Task PruneWorktreesAsync(string repoPath);
+
+    #endregion
 }

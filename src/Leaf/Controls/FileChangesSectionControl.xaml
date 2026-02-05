@@ -14,7 +14,7 @@
                 <ResourceDictionary Source="/Views/Resources/FileStatusResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- Binding proxy to allow ContextMenu access to Root's Context property -->
+            <!--  Binding proxy to allow ContextMenu access to Root's Context property  -->
             <utils:BindingProxy x:Key="ContextProxy" Data="{Binding Context, Source={x:Reference Root}}" />
 
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
@@ -22,13 +22,13 @@
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
             <converters:ReservedFileNameToVisibilityConverter x:Key="ReservedFileNameToVisibilityConverter" />
 
-            <!-- Tree node template -->
+            <!--  Tree node template  -->
             <HierarchicalDataTemplate
                 x:Key="TreeNodeTemplate"
                 DataType="{x:Type models:PathTreeNode}"
                 ItemsSource="{Binding Children}">
                 <Grid>
-                    <!-- Folder display -->
+                    <!--  Folder display  -->
                     <StackPanel
                         Margin="2,1"
                         Orientation="Horizontal"
@@ -45,7 +45,7 @@
                             Text="{Binding Name}" />
                     </StackPanel>
 
-                    <!-- File display -->
+                    <!--  File display  -->
                     <Border
                         Margin="2,1"
                         Padding="8,6"
@@ -166,7 +166,7 @@
             <RowDefinition Height="{Binding IsExpanded, ElementName=Root, Converter={StaticResource BoolToGridLengthConverter}}" />
         </Grid.RowDefinitions>
 
-        <!-- Section Header -->
+        <!--  Section Header  -->
         <Grid Grid.Row="0" Margin="0,4,0,6">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -177,7 +177,7 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <!-- Title with chevron and count -->
+            <!--  Title with chevron and count  -->
             <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                 <ToggleButton
                     Margin="0,0,6,0"
@@ -201,7 +201,7 @@
                 </TextBlock>
             </StackPanel>
 
-            <!-- Toggle and action buttons -->
+            <!--  Toggle and action buttons  -->
             <StackPanel
                 Grid.Column="1"
                 Margin="0,0,0,3"
@@ -230,7 +230,7 @@
                     FontSize="11" />
             </StackPanel>
 
-            <!-- Separator line -->
+            <!--  Separator line  -->
             <Border
                 Grid.Row="1"
                 Grid.ColumnSpan="2"
@@ -238,13 +238,13 @@
                 Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
         </Grid>
 
-        <!-- File List/Tree Content -->
+        <!--  File List/Tree Content  -->
         <Grid
             Grid.Row="1"
             Margin="0,0,0,8"
             Background="Transparent"
             Visibility="{Binding IsExpanded, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}">
-            <!-- List View -->
+            <!--  List View  -->
             <ScrollViewer
                 x:Name="ListScrollViewer"
                 Padding="4"
@@ -328,7 +328,7 @@
                                             CommandParameter="{Binding}"
                                             Foreground="#E81123"
                                             Header="Delete file" />
-                                        <!-- Admin delete for reserved filenames (unstaged only) -->
+                                        <!--  Admin delete for reserved filenames (unstaged only)  -->
                                         <Separator Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}" />
                                         <MenuItem
                                             Command="{Binding Data.AdminDeleteCommand, Source={StaticResource ContextProxy}}"
@@ -350,7 +350,7 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
-                                    <!-- Status icon -->
+                                    <!--  Status icon  -->
                                     <TextBlock
                                         Grid.RowSpan="2"
                                         Grid.Column="0"
@@ -360,7 +360,7 @@
                                         Style="{StaticResource FileStatusIconStyle}"
                                         Text="{Binding StatusIcon}" />
 
-                                    <!-- File name -->
+                                    <!--  File name  -->
                                     <TextBlock
                                         Grid.Row="0"
                                         Grid.Column="1"
@@ -370,7 +370,7 @@
                                         Text="{Binding FileName}"
                                         TextTrimming="CharacterEllipsis" />
 
-                                    <!-- Directory path -->
+                                    <!--  Directory path  -->
                                     <TextBlock
                                         Grid.Row="1"
                                         Grid.Column="1"
@@ -390,7 +390,7 @@
                                         </TextBlock.Style>
                                     </TextBlock>
 
-                                    <!-- Primary action button -->
+                                    <!--  Primary action button  -->
                                     <Button
                                         x:Name="ActionButton"
                                         Grid.RowSpan="2"
@@ -416,7 +416,7 @@
                 </ItemsControl>
             </ScrollViewer>
 
-            <!-- Tree View -->
+            <!--  Tree View  -->
             <TreeView
                 x:Name="FileTreeView"
                 Padding="4"

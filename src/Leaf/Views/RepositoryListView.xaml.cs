@@ -82,17 +82,19 @@ public partial class RepositoryListView : UserControl
         if (DataContext is not MainViewModel viewModel)
             return;
 
-        // Handle both RepositoryInfo (from folder groups) and QuickAccessItem (from PINNED/RECENT)
-        RepositoryInfo? repo = e.NewValue switch
+        // Handle RepositoryInfo, QuickAccessItem, and WorktreeInfo
+        switch (e.NewValue)
         {
-            RepositoryInfo r => r,
-            QuickAccessItem qa => qa.Repository,
-            _ => null
-        };
-
-        if (repo != null)
-        {
-            _ = viewModel.SelectRepositoryAsync(repo);
+            case RepositoryInfo repo:
+                _ = viewModel.SelectRepositoryAsync(repo);
+                break;
+            case QuickAccessItem qa:
+                _ = viewModel.SelectRepositoryAsync(qa.Repository);
+                break;
+            case WorktreeInfo worktree:
+                // Switch to the worktree when selected
+                _ = viewModel.SwitchToWorktreeAsync(worktree);
+                break;
         }
     }
 }

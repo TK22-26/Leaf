@@ -2,6 +2,7 @@
     x:Class="Leaf.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:behaviors="clr-namespace:Leaf.Behaviors"
     xmlns:controls="clr-namespace:Leaf.Controls"
     xmlns:converters="clr-namespace:Leaf.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -13,6 +14,7 @@
     Height="700"
     MinWidth="900"
     MinHeight="500"
+    behaviors:HorizontalScrollBehavior.EnableHorizontalScroll="True"
     Icon="{StaticResource AppIcon}"
     WindowStartupLocation="CenterScreen"
     mc:Ignorable="d">
@@ -188,51 +190,66 @@
             BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
             BorderThickness="0,0,0,1"
             Visibility="{Binding SelectedRepository, Converter={StaticResource NullToVisibilityConverter}}">
+            <!--  Three-column Grid: equal left/right columns keep center truly centered  -->
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!--  Left: Repository and Branch info  -->
-                <StackPanel
+                <!--  Left: Repository and Branch info (star columns shrink and trim text)  -->
+                <Grid
                     Grid.Column="0"
-                    VerticalAlignment="Center"
-                    Orientation="Horizontal">
+                    VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MaxWidth="180" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" MaxWidth="180" />
+                    </Grid.ColumnDefinitions>
+
                     <!--  Repository  -->
-                    <StackPanel Margin="0,0,16,0">
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
                         <TextBlock
                             FontSize="10"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                            Text="Repository" />
+                            Text="Repository"
+                            TextTrimming="CharacterEllipsis" />
                         <TextBlock
                             FontWeight="SemiBold"
                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="{Binding SelectedRepository.Name}" />
+                            Text="{Binding SelectedRepository.Name}"
+                            TextTrimming="CharacterEllipsis"
+                            ToolTip="{Binding SelectedRepository.Name}" />
                     </StackPanel>
+
                     <!--  Chevron separator  -->
                     <TextBlock
+                        Grid.Column="1"
                         Margin="0,0,16,0"
                         VerticalAlignment="Center"
                         FontFamily="Segoe Fluent Icons"
                         FontSize="10"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="&#xE76C;" />
+
                     <!--  Branch  -->
-                    <StackPanel>
+                    <StackPanel Grid.Column="2">
                         <TextBlock
                             FontSize="10"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                            Text="Branch" />
+                            Text="Branch"
+                            TextTrimming="CharacterEllipsis" />
                         <TextBlock
                             FontWeight="SemiBold"
                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="{Binding SelectedRepository.CurrentBranch, FallbackValue='(none)'}" />
+                            Text="{Binding SelectedRepository.CurrentBranch, FallbackValue='(none)'}"
+                            TextTrimming="CharacterEllipsis"
+                            ToolTip="{Binding SelectedRepository.CurrentBranch}" />
                     </StackPanel>
-                </StackPanel>
+                </Grid>
 
-                <!--  Center: Quick Actions  -->
+                <!--  Center: Quick Actions (in center column, always centered)  -->
                 <StackPanel
                     Grid.Column="1"
                     HorizontalAlignment="Center"
@@ -400,7 +417,7 @@
                 </StackPanel>
 
                 <!--  Right: Search (live search, no button needed)  -->
-                <Grid Grid.Column="2" VerticalAlignment="Center">
+                <Grid Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <TextBox
                         x:Name="CommitSearchBox"
                         Width="200"
@@ -460,7 +477,7 @@
                     <ColumnDefinition Width="350" MinWidth="0" />
                 </Grid.ColumnDefinitions>
 
-                <!--  Left panel: Repository list (collapsible)  -->
+                <!--  Left panel: Repository list (collapsible + resizable)  -->
                 <Border
                     Grid.Column="0"
                     BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
@@ -484,7 +501,12 @@
                                 Text="&#xE76C;" />
                         </Border>
                         <!--  Expanded state: full repo list with collapse button  -->
-                        <Grid Width="220" Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
+                        <Grid
+                            x:Name="RepoPaneGrid"
+                            MinWidth="150"
+                            MaxWidth="400"
+                            Width="{Binding RepoPaneWidth, Mode=TwoWay}"
+                            Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
@@ -546,10 +568,26 @@
                                     </StackPanel>
                                 </Grid>
                             </Border>
-                            <views:RepositoryListView Grid.Row="1" DataContext="{Binding}" />
+                            <views:RepositoryListView
+                                Grid.Row="1"
+                                DataContext="{Binding}" />
                         </Grid>
                     </Grid>
                 </Border>
+
+                <!--  Resize splitter for repo pane (outside the panel, to the right)  -->
+                <GridSplitter
+                    Grid.Column="1"
+                    Width="4"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Stretch"
+                    Panel.ZIndex="1"
+                    Background="Transparent"
+                    Cursor="SizeWE"
+                    DragDelta="RepoPaneSplitter_DragDelta"
+                    DragCompleted="RepoPaneSplitter_DragCompleted"
+                    Focusable="False"
+                    Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
 
                 <!--  Second panel: Branches for selected repo  -->
                 <Border
@@ -563,121 +601,6 @@
                 <Grid Grid.Column="2">
                     <views:GitGraphView DataContext="{Binding GitGraphViewModel}" Visibility="{Binding DataContext.IsDiffViewerVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
 
-                    <!--  Click-outside overlay to cancel branch input  -->
-                    <Border
-                        Background="Transparent"
-                        MouseLeftButtonDown="BranchInputOverlay_MouseLeftButtonDown"
-                        Visibility="{Binding IsBranchInputVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
-
-                    <!--  Floating Branch Input Overlay  -->
-                    <Border
-                        Margin="0,8,15,0"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Top"
-                        Visibility="{Binding IsBranchInputVisible, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <Border
-                            Padding="3"
-                            Background="#1D4A28"
-                            BorderBrush="#2D6A3E"
-                            BorderThickness="1"
-                            CornerRadius="4">
-                            <Border.Effect>
-                                <DropShadowEffect
-                                    BlurRadius="9"
-                                    Opacity="0.4"
-                                    ShadowDepth="2"
-                                    Color="Black" />
-                            </Border.Effect>
-                            <StackPanel Orientation="Horizontal">
-                                <!--  Branch icon  -->
-                                <ic:SymbolIcon
-                                    Margin="6,0,5,0"
-                                    VerticalAlignment="Center"
-                                    FontSize="15"
-                                    Foreground="#8BC99A"
-                                    Symbol="BranchFork" />
-
-                                <!--  Branch name input  -->
-                                <Border
-                                    Width="165"
-                                    Height="27"
-                                    Padding="4,0,0,0"
-                                    Background="#2A2A2A"
-                                    CornerRadius="2">
-                                    <Grid>
-                                        <TextBlock
-                                            Margin="0"
-                                            HorizontalAlignment="Left"
-                                            VerticalAlignment="Center"
-                                            FontSize="13"
-                                            Foreground="#666666"
-                                            IsHitTestVisible="False"
-                                            Text="{Binding BranchInputPlaceholder}">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Text, ElementName=BranchNameInput}" Value="">
-                                                            <Setter Property="Visibility" Value="Visible" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                        <TextBox
-                                            x:Name="BranchNameInput"
-                                            HorizontalAlignment="Stretch"
-                                            VerticalAlignment="Center"
-                                            BorderThickness="0"
-                                            CaretBrush="#E0E0E0"
-                                            FontSize="13"
-                                            Foreground="#E0E0E0"
-                                            IsVisibleChanged="BranchNameInput_IsVisibleChanged"
-                                            KeyDown="BranchNameInput_KeyDown"
-                                            PreviewTextInput="BranchNameInput_PreviewTextInput"
-                                            Text="{Binding NewBranchName, UpdateSourceTrigger=PropertyChanged}">
-                                            <TextBox.Template>
-                                                <ControlTemplate TargetType="TextBox">
-                                                    <ScrollViewer
-                                                        x:Name="PART_ContentHost"
-                                                        Margin="-12,0,4,0"
-                                                        Padding="0"
-                                                        HorizontalAlignment="Stretch"
-                                                        VerticalAlignment="Center" />
-                                                </ControlTemplate>
-                                            </TextBox.Template>
-                                        </TextBox>
-                                    </Grid>
-                                </Border>
-
-                                <!--  Create button  -->
-                                <Button
-                                    Margin="3,0,2,0"
-                                    Padding="8,2"
-                                    Background="#2D6A3E"
-                                    BorderBrush="#3D8A4E"
-                                    BorderThickness="1"
-                                    Command="{Binding ConfirmCreateBranchCommand}"
-                                    Content="{Binding BranchInputActionText}"
-                                    FontSize="13"
-                                    Foreground="#C0E8CC">
-                                    <Button.Style>
-                                        <Style BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
-                                            <Setter Property="IsEnabled" Value="True" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding NewBranchName}" Value="">
-                                                    <Setter Property="IsEnabled" Value="False" />
-                                                </DataTrigger>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter Property="Background" Value="#3D8A4E" />
-                                                </Trigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
-                            </StackPanel>
-                        </Border>
-                    </Border>
                 </Grid>
 
                 <!--  Right panel: Commit details / Working changes / Merge Status  -->
@@ -807,14 +730,29 @@
                 ResizeDirection="Rows"
                 Visibility="{Binding DataContext.IsTerminalVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
 
-            <!--  Terminal pane  -->
-            <views:TerminalView
-                x:Name="TerminalPane"
+            <!--  Terminal pane - wrapped in ContentControl to properly handle visibility  -->
+            <ContentControl
                 Grid.Row="1"
-                MinHeight="120"
                 Margin="0,4,0,0"
-                DataContext="{Binding TerminalViewModel}"
-                Visibility="{Binding DataContext.IsTerminalVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
+                Focusable="False">
+                <ContentControl.Style>
+                    <Style TargetType="ContentControl">
+                        <Setter Property="Content">
+                            <Setter.Value>
+                                <views:TerminalView
+                                    x:Name="TerminalPane"
+                                    MinHeight="120"
+                                    DataContext="{Binding TerminalViewModel}" />
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.IsTerminalVisible, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+                                <Setter Property="Content" Value="{x:Null}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ContentControl.Style>
+            </ContentControl>
         </Grid>
     </Grid>
 </Window>

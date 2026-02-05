@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using Leaf.Models;
 
 namespace Leaf.ViewModels;
@@ -140,6 +141,34 @@ public partial class MainViewModel
             }
             categories.Add(remoteCategory);
 
+            // WORKTREES category
+            var worktrees = await _gitService.GetWorktreesAsync(repo.Path);
+            if (worktrees.Count > 0)
+            {
+                // Mark the current worktree (use GetFullPath to normalize paths - handles separators, casing, etc.)
+                var normalizedRepoPath = Path.GetFullPath(repo.Path);
+                foreach (var wt in worktrees)
+                {
+                    var normalizedWtPath = Path.GetFullPath(wt.Path);
+                    wt.IsCurrent = string.Equals(normalizedWtPath, normalizedRepoPath, StringComparison.OrdinalIgnoreCase);
+                }
+
+                var worktreesCategory = new BranchCategory
+                {
+                    Name = "WORKTREES",
+                    Icon = "\uE8B7", // FolderOpen icon
+                    BranchCount = worktrees.Count,
+                    IsExpanded = false
+                };
+
+                // Sort: main worktree first, then by display name
+                foreach (var worktree in worktrees.OrderBy(w => w.IsMainWorktree ? 0 : 1).ThenBy(w => w.DisplayName))
+                {
+                    worktreesCategory.Worktrees.Add(worktree);
+                }
+                categories.Add(worktreesCategory);
+            }
+
             // TAGS category
             var tags = await _gitService.GetTagsAsync(repo.Path);
             if (tags.Count > 0)
@@ -156,6 +185,19 @@ public partial class MainViewModel
                     tagsCategory.Tags.Add(tag);
                 }
                 categories.Add(tagsCategory);
+            }
+
+            // Preserve expanded/collapsed state from previous load
+            if (repo.BranchCategories.Count > 0)
+            {
+                var previousStates = repo.BranchCategories.ToDictionary(c => c.Name, c => c.IsExpanded);
+                foreach (var category in categories)
+                {
+                    if (previousStates.TryGetValue(category.Name, out var wasExpanded))
+                    {
+                        category.IsExpanded = wasExpanded;
+                    }
+                }
             }
 
             // Assign new collection (replaces entire collection atomically)

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using Leaf.Models;
 
 namespace Leaf.Services;
@@ -28,14 +29,41 @@ public class RepositoryManagementService : IRepositoryManagementService
     public Task<string?> LoadRepositoriesAsync()
     {
         var data = _settingsService.LoadRepositories();
+        var needsSave = false;
 
         foreach (var repo in data.Repositories)
         {
             // Only add if the repo still exists on disk
-            if (repo.Exists)
+            if (!repo.Exists)
+                continue;
+
+            // Skip secondary worktrees - add their main worktree instead
+            if (repo.IsSecondaryWorktree && repo.MainWorktreePath != null)
             {
-                AddRepositoryToGroups(repo, save: false, raiseEvent: false);
+                var mainPath = repo.MainWorktreePath;
+
+                // Check if main worktree already exists in loaded repos
+                if (!ContainsRepository(mainPath))
+                {
+                    var mainRepo = new RepositoryInfo
+                    {
+                        Path = mainPath,
+                        Name = Path.GetFileName(mainPath.TrimEnd(
+                            Path.DirectorySeparatorChar,
+                            Path.AltDirectorySeparatorChar)),
+                        // Preserve settings from the secondary worktree entry
+                        IsPinned = repo.IsPinned,
+                        LastAccessed = repo.LastAccessed,
+                        Tags = repo.Tags,
+                        GroupId = repo.GroupId
+                    };
+                    AddRepositoryToGroups(mainRepo, save: false, raiseEvent: false);
+                }
+                needsSave = true; // Mark that we need to clean up saved data
+                continue;
             }
+
+            AddRepositoryToGroups(repo, save: false, raiseEvent: false);
         }
 
         // Also load custom groups
@@ -49,6 +77,12 @@ public class RepositoryManagementService : IRepositoryManagementService
 
         SortAllRepositories();
         RefreshQuickAccess();
+
+        // If we migrated any secondary worktrees, save the cleaned-up repo list
+        if (needsSave)
+        {
+            SaveRepositories();
+        }
 
         // Return the last selected repository path
         var settings = _settingsService.LoadSettings();
@@ -82,7 +116,61 @@ public class RepositoryManagementService : IRepositoryManagementService
 
     public void AddRepository(RepositoryInfo repo, bool save = true)
     {
+        // If this is a secondary worktree, add the main worktree instead
+        if (repo.IsSecondaryWorktree && repo.MainWorktreePath != null)
+        {
+            var mainPath = repo.MainWorktreePath;
+
+            // Check if main worktree already exists
+            if (!ContainsRepository(mainPath))
+            {
+                // Create RepositoryInfo for the main worktree
+                var mainRepo = new RepositoryInfo
+                {
+                    Path = mainPath,
+                    Name = System.IO.Path.GetFileName(mainPath.TrimEnd(
+                        System.IO.Path.DirectorySeparatorChar,
+                        System.IO.Path.AltDirectorySeparatorChar))
+                };
+                AddRepositoryToGroups(mainRepo, save, raiseEvent: true);
+            }
+
+            // Don't add the secondary worktree as a separate entry
+            return;
+        }
+
         AddRepositoryToGroups(repo, save, raiseEvent: true);
+    }
+
+    /// <summary>
+    /// Resolves the actual repository path to add (handles secondary worktrees).
+    /// </summary>
+    public string ResolveRepositoryPath(string path)
+    {
+        var gitFilePath = System.IO.Path.Combine(path, ".git");
+        if (File.Exists(gitFilePath) && !Directory.Exists(gitFilePath))
+        {
+            // This is a secondary worktree, find main
+            try
+            {
+                var content = File.ReadAllText(gitFilePath).Trim();
+                if (content.StartsWith("gitdir: "))
+                {
+                    var gitDir = content["gitdir: ".Length..].Trim();
+                    var worktreesDir = System.IO.Path.GetDirectoryName(gitDir);
+                    if (worktreesDir != null && System.IO.Path.GetFileName(worktreesDir) == "worktrees")
+                    {
+                        var mainGitDir = System.IO.Path.GetDirectoryName(worktreesDir);
+                        if (mainGitDir != null)
+                        {
+                            return System.IO.Path.GetDirectoryName(mainGitDir) ?? path;
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+        return path;
     }
 
     public void RemoveRepository(RepositoryInfo repo)
@@ -109,9 +197,31 @@ public class RepositoryManagementService : IRepositoryManagementService
 
     public bool ContainsRepository(string path)
     {
+        var normalizedPath = NormalizePath(path);
         return RepositoryGroups
             .SelectMany(g => g.Repositories)
-            .Any(r => r.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+            .Any(r => NormalizePath(r.Path).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Normalizes a path for comparison (removes trailing slashes, converts to full path).
+    /// </summary>
+    private static string NormalizePath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return path;
+
+        // Get full path to resolve any relative components and normalize slashes
+        try
+        {
+            path = Path.GetFullPath(path);
+        }
+        catch
+        {
+            // If GetFullPath fails, just continue with the original
+        }
+
+        // Remove trailing directory separators
+        return path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     public RepositoryInfo? FindRepository(string path)
@@ -178,8 +288,9 @@ public class RepositoryManagementService : IRepositoryManagementService
             RepositoryGroups.Add(folderGroup);
         }
 
-        // Add repo if not already present
-        if (!folderGroup.Repositories.Any(r => r.Path == repo.Path))
+        // Add repo if not already present (use normalized paths for comparison)
+        var normalizedRepoPath = NormalizePath(repo.Path);
+        if (!folderGroup.Repositories.Any(r => NormalizePath(r.Path).Equals(normalizedRepoPath, StringComparison.OrdinalIgnoreCase)))
         {
             folderGroup.Repositories.Add(repo);
             SortRepositories(folderGroup);

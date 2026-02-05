@@ -21,16 +21,32 @@ public partial class MainViewModel
         // Load UI state from settings
         var settings = _settingsService.LoadSettings();
         IsRepoPaneCollapsed = settings.IsRepoPaneCollapsed;
+        RepoPaneWidth = settings.RepoPaneWidth > 0 ? settings.RepoPaneWidth : 220;
         IsTerminalVisible = settings.IsTerminalVisible;
         TerminalHeight = settings.TerminalHeight > 0 ? settings.TerminalHeight : 220;
 
         // Load repositories via service
         var lastSelectedPath = await _repositoryService.LoadRepositoriesAsync();
 
+        // Eagerly load worktrees for all repositories so they appear in the sidebar
+        await LoadWorktreesForAllReposAsync();
+
         // Restore last selected repository
         if (!string.IsNullOrEmpty(lastSelectedPath))
         {
             var lastRepo = _repositoryService.FindRepository(lastSelectedPath);
+
+            // If not found, the saved path may be a secondary worktree that was
+            // migrated to its main worktree on load — find the parent repo instead
+            if (lastRepo == null)
+            {
+                var normalizedPath = Path.GetFullPath(lastSelectedPath);
+                lastRepo = RepositoryGroups
+                    .SelectMany(g => g.Repositories)
+                    .FirstOrDefault(r => r.Worktrees.Any(wt =>
+                        string.Equals(Path.GetFullPath(wt.Path), normalizedPath, StringComparison.OrdinalIgnoreCase)));
+            }
+
             if (lastRepo != null)
             {
                 await SelectRepositoryAsync(lastRepo);
@@ -227,12 +243,17 @@ public partial class MainViewModel
         try
         {
             IsBusy = true;
+            StatusMessage = $"Loading {repository.Name}...";
+
+            // Load branches BEFORE setting SelectedRepository to avoid UI flash
+            // (UI binds to SelectedRepository.BranchCategories, so data should be ready)
+            await LoadBranchesForRepoAsync(repository, forceReload: true);
+
+            // Now set SelectedRepository - UI will see populated BranchCategories
             SelectedRepository = repository;
 
             // Mark as recently accessed (updates quick access sections)
             _repositoryService.MarkAsRecentlyAccessed(repository);
-
-            StatusMessage = $"Loading {repository.Name}...";
 
             // Start watching the new repository for live changes
             _fileWatcherService.WatchRepository(repository.Path);
@@ -266,8 +287,9 @@ public partial class MainViewModel
             repository.IsDetachedHead = info.IsDetachedHead;
             repository.DetachedHeadSha = info.DetachedHeadSha;
 
-            // Load branches for the branch panel (force reload to pick up pruned branches)
-            await LoadBranchesForRepoAsync(repository, forceReload: true);
+            // Load worktrees for sidebar display
+            await LoadWorktreesForRepoAsync(repository);
+
             ApplyBranchFiltersForRepo(repository);
 
             await RefreshMergeConflictResolutionAsync();

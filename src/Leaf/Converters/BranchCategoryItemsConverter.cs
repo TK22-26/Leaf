@@ -15,6 +15,7 @@ public class BranchCategoryItemsConverter : IValueConverter
         if (value is BranchCategory category)
         {
             if (category.IsTagsCategory) return category.Tags;
+            if (category.IsWorktreesCategory) return category.Worktrees;
             if (category.IsRemoteCategory) return category.RemoteGroups;
             return category.Branches;
         }
