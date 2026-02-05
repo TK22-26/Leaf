@@ -360,6 +360,7 @@ public partial class MainViewModel
             var worktreeWithBranch = SelectedRepository.Worktrees
                 .FirstOrDefault(wt =>
                     !wt.IsCurrent &&
+                    wt.Exists &&
                     !string.IsNullOrEmpty(wt.BranchName) &&
                     string.Equals(wt.BranchName, branchNameToCheck, StringComparison.OrdinalIgnoreCase));
 
