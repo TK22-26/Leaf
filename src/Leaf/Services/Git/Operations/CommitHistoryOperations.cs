@@ -140,9 +140,11 @@ internal class CommitHistoryOperations
             }
 
             // Add a special "HEAD" label when in detached HEAD state
+            System.Diagnostics.Debug.WriteLine($"[HEAD] isDetachedHead={isDetachedHead}, headSha={headSha}, commitExists={!string.IsNullOrEmpty(headSha) && commitsBySha.ContainsKey(headSha)}");
             if (isDetachedHead && !string.IsNullOrEmpty(headSha) && commitsBySha.TryGetValue(headSha, out var headCommit))
             {
                 // Insert HEAD label at the beginning so it appears first
+                System.Diagnostics.Debug.WriteLine($"[HEAD] Adding HEAD label to commit {headSha} with IsCurrent=true");
                 headCommit.BranchLabels.Insert(0, new BranchLabel
                 {
                     Name = "HEAD",
