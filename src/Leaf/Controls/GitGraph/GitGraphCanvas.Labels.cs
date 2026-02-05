@@ -38,20 +38,33 @@ public partial class GitGraphCanvas
             double labelHeight = label.IsCurrent ? 22 : 18;
             double cornerRadius = label.IsCurrent ? 5 : 4;
 
-            // Check if we need to draw a custom remote icon (GitHub/AzureDevOps)
-            bool useCustomRemoteIcon = label.IsRemote &&
-                (label.RemoteType == RemoteType.GitHub || label.RemoteType == RemoteType.AzureDevOps);
-
-            // Build the label text with icons (icons AFTER name now)
+            // Build icon text for local (computer icon) and generic cloud remotes
             var iconText = "";
             if (label.IsLocal)
                 iconText += ComputerIcon;
-            if (label.IsLocal && label.IsRemote)
-                iconText += " ";
-            if (label.IsRemote && !useCustomRemoteIcon)
-                iconText += CloudIcon;
 
-            // Measure icon text
+            // Count how many custom icons we need (GitHub, Azure DevOps)
+            // and how many generic cloud icons (Other remotes)
+            int customIconCount = 0;
+            int genericCloudCount = 0;
+            foreach (var remote in label.Remotes)
+            {
+                if (remote.RemoteType == RemoteType.GitHub || remote.RemoteType == RemoteType.AzureDevOps)
+                    customIconCount++;
+                else
+                    genericCloudCount++;
+            }
+
+            // Add spacing and cloud icons for generic remotes
+            if (label.IsLocal && (customIconCount > 0 || genericCloudCount > 0))
+                iconText += " ";
+            for (int i = 0; i < genericCloudCount; i++)
+            {
+                if (i > 0) iconText += " ";
+                iconText += CloudIcon;
+            }
+
+            // Measure icon text (computer + generic clouds)
             var iconFormatted = new FormattedText(
                 iconText,
                 CultureInfo.CurrentCulture,
@@ -73,9 +86,13 @@ public partial class GitGraphCanvas
             nameFormatted.MaxLineCount = 1;
             nameFormatted.Trimming = TextTrimming.CharacterEllipsis;
 
-            // Calculate custom remote icon size
-            double customIconSize = useCustomRemoteIcon ? iconFontSize : 0;
-            double customIconSpace = useCustomRemoteIcon ? (iconFormatted.Width > 0 ? 2 : 0) : 0;
+            // Calculate custom remote icons size (GitHub/Azure DevOps logos)
+            double singleCustomIconSize = iconFontSize;
+            double customIconSpacing = 2;
+            double totalCustomIconWidth = customIconCount > 0
+                ? (customIconCount * singleCustomIconSize) + ((customIconCount - 1) * customIconSpacing)
+                : 0;
+            double customIconSpace = (customIconCount > 0 && iconFormatted.Width > 0) ? 2 : 0;
 
             // Calculate label dimensions
             double iconWidth = iconFormatted.Width;
@@ -102,7 +119,7 @@ public partial class GitGraphCanvas
                 suffixWidth = suffixFormatted.Width;
             }
 
-            double iconBlockWidth = iconWidth + customIconSpace + customIconSize;
+            double iconBlockWidth = iconWidth + customIconSpace + totalCustomIconWidth;
             double gapBetweenIconAndSuffix = (suffixWidth > 0 && iconBlockWidth > 0) ? 6 : 0;
             double rightSectionWidth = iconBlockWidth + gapBetweenIconAndSuffix + suffixWidth;
             double gapBetweenNameAndRight = rightSectionWidth > 0 ? 6 : 0;
@@ -142,29 +159,37 @@ public partial class GitGraphCanvas
                 dc.DrawText(iconFormatted, new Point(iconX, y - iconFormatted.Height / 2));
             }
 
-            // Draw custom remote icon (GitHub/Azure DevOps) if needed
-            if (useCustomRemoteIcon)
+            // Draw custom remote icons (GitHub/Azure DevOps) for each remote
+            if (customIconCount > 0)
             {
                 double customIconX = iconX + iconWidth + customIconSpace;
-                double customIconY = y - customIconSize / 2;
+                double customIconY = y - singleCustomIconSize / 2;
 
-                Geometry iconGeometry = label.RemoteType == RemoteType.GitHub
-                    ? GitHubLogoGeometry
-                    : AzureDevOpsLogoGeometry;
+                foreach (var remote in label.Remotes)
+                {
+                    if (remote.RemoteType != RemoteType.GitHub && remote.RemoteType != RemoteType.AzureDevOps)
+                        continue;
 
-                double sourceWidth = label.RemoteType == RemoteType.GitHub ? GitHubLogoWidth : AzureDevOpsLogoWidth;
-                double sourceHeight = label.RemoteType == RemoteType.GitHub ? GitHubLogoHeight : AzureDevOpsLogoHeight;
+                    Geometry iconGeometry = remote.RemoteType == RemoteType.GitHub
+                        ? GitHubLogoGeometry
+                        : AzureDevOpsLogoGeometry;
 
-                double scale = customIconSize / Math.Max(sourceWidth, sourceHeight);
+                    double sourceWidth = remote.RemoteType == RemoteType.GitHub ? GitHubLogoWidth : AzureDevOpsLogoWidth;
+                    double sourceHeight = remote.RemoteType == RemoteType.GitHub ? GitHubLogoHeight : AzureDevOpsLogoHeight;
 
-                var transform = new TransformGroup();
-                transform.Children.Add(new ScaleTransform(scale, scale));
-                transform.Children.Add(new TranslateTransform(customIconX, customIconY));
-                transform.Freeze();
+                    double scale = singleCustomIconSize / Math.Max(sourceWidth, sourceHeight);
 
-                dc.PushTransform(transform);
-                dc.DrawGeometry(LabelTextBrush, null, iconGeometry);
-                dc.Pop();
+                    var transform = new TransformGroup();
+                    transform.Children.Add(new ScaleTransform(scale, scale));
+                    transform.Children.Add(new TranslateTransform(customIconX, customIconY));
+                    transform.Freeze();
+
+                    dc.PushTransform(transform);
+                    dc.DrawGeometry(LabelTextBrush, null, iconGeometry);
+                    dc.Pop();
+
+                    customIconX += singleCustomIconSize + customIconSpacing;
+                }
             }
 
             // Draw overflow suffix if present
@@ -375,32 +400,46 @@ public partial class GitGraphCanvas
         ghostTextBrush.Freeze();
 
         bool isLocal = false;
-        bool isRemote = false;
-        RemoteType remoteType = RemoteType.Other;
+        var remotes = new List<RemoteBranchInfo>();
 
         var matchingLabel = node.BranchLabels.FirstOrDefault(l =>
             l.Name.Equals(labelText, StringComparison.OrdinalIgnoreCase));
         if (matchingLabel != null)
         {
             isLocal = matchingLabel.IsLocal;
-            isRemote = matchingLabel.IsRemote;
-            remoteType = matchingLabel.RemoteType;
+            remotes = matchingLabel.Remotes;
         }
         else if (node.PrimaryBranch != null)
         {
             isLocal = !labelText.Contains('/');
-            isRemote = labelText.Contains('/');
+            if (labelText.Contains('/'))
+            {
+                // Remote-only branch inferred from name
+                remotes = [new RemoteBranchInfo { RemoteName = "origin", RemoteType = RemoteType.Other }];
+            }
         }
 
-        bool useCustomRemoteIconGhost = isRemote && (remoteType == RemoteType.GitHub || remoteType == RemoteType.AzureDevOps);
+        // Count custom icons and generic cloud icons
+        int customIconCount = 0;
+        int genericCloudCount = 0;
+        foreach (var remote in remotes)
+        {
+            if (remote.RemoteType == RemoteType.GitHub || remote.RemoteType == RemoteType.AzureDevOps)
+                customIconCount++;
+            else
+                genericCloudCount++;
+        }
 
         var iconText = "";
         if (isLocal)
             iconText += ComputerIcon;
-        if (isLocal && isRemote)
+        if (isLocal && (customIconCount > 0 || genericCloudCount > 0))
             iconText += " ";
-        if (isRemote && !useCustomRemoteIconGhost)
+        for (int i = 0; i < genericCloudCount; i++)
+        {
+            if (i > 0) iconText += " ";
             iconText += CloudIcon;
+        }
 
         var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
@@ -422,13 +461,18 @@ public partial class GitGraphCanvas
             ghostTextBrush,
             dpi);
 
-        double ghostCustomIconSize = useCustomRemoteIconGhost ? 11 : 0;
-        double ghostCustomIconSpace = useCustomRemoteIconGhost ? (iconFormatted.Width > 0 ? 2 : 0) : 0;
+        double ghostCustomIconSize = 11;
+        double ghostCustomIconSpacing = 2;
+        double totalCustomIconWidth = customIconCount > 0
+            ? (customIconCount * ghostCustomIconSize) + ((customIconCount - 1) * ghostCustomIconSpacing)
+            : 0;
+        double ghostCustomIconSpace = (customIconCount > 0 && iconFormatted.Width > 0) ? 2 : 0;
 
         double iconWidth = iconFormatted.Width;
         double nameWidth = nameFormatted.Width;
-        double totalWidth = iconWidth > 0 || ghostCustomIconSize > 0
-            ? 6 + nameWidth + 4 + iconWidth + ghostCustomIconSpace + ghostCustomIconSize + 6
+        double iconBlockWidth = iconWidth + ghostCustomIconSpace + totalCustomIconWidth;
+        double totalWidth = iconBlockWidth > 0
+            ? 6 + nameWidth + 4 + iconBlockWidth + 6
             : 6 + nameWidth + 6;
         double labelHeight = 18;
 
@@ -443,28 +487,37 @@ public partial class GitGraphCanvas
             dc.DrawText(iconFormatted, new Point(ghostIconX, y - iconFormatted.Height / 2));
         }
 
-        if (useCustomRemoteIconGhost)
+        // Draw custom remote icons (GitHub/Azure DevOps)
+        if (customIconCount > 0)
         {
             double customIconXGhost = ghostIconX + iconWidth + ghostCustomIconSpace;
             double customIconYGhost = y - ghostCustomIconSize / 2;
 
-            Geometry iconGeometry = remoteType == RemoteType.GitHub
-                ? GitHubLogoGeometry
-                : AzureDevOpsLogoGeometry;
+            foreach (var remote in remotes)
+            {
+                if (remote.RemoteType != RemoteType.GitHub && remote.RemoteType != RemoteType.AzureDevOps)
+                    continue;
 
-            double sourceWidth = remoteType == RemoteType.GitHub ? GitHubLogoWidth : AzureDevOpsLogoWidth;
-            double sourceHeight = remoteType == RemoteType.GitHub ? GitHubLogoHeight : AzureDevOpsLogoHeight;
+                Geometry iconGeometry = remote.RemoteType == RemoteType.GitHub
+                    ? GitHubLogoGeometry
+                    : AzureDevOpsLogoGeometry;
 
-            double scale = ghostCustomIconSize / Math.Max(sourceWidth, sourceHeight);
+                double sourceWidth = remote.RemoteType == RemoteType.GitHub ? GitHubLogoWidth : AzureDevOpsLogoWidth;
+                double sourceHeight = remote.RemoteType == RemoteType.GitHub ? GitHubLogoHeight : AzureDevOpsLogoHeight;
 
-            var transform = new TransformGroup();
-            transform.Children.Add(new ScaleTransform(scale, scale));
-            transform.Children.Add(new TranslateTransform(customIconXGhost, customIconYGhost));
-            transform.Freeze();
+                double scale = ghostCustomIconSize / Math.Max(sourceWidth, sourceHeight);
 
-            dc.PushTransform(transform);
-            dc.DrawGeometry(ghostTextBrush, null, iconGeometry);
-            dc.Pop();
+                var transform = new TransformGroup();
+                transform.Children.Add(new ScaleTransform(scale, scale));
+                transform.Children.Add(new TranslateTransform(customIconXGhost, customIconYGhost));
+                transform.Freeze();
+
+                dc.PushTransform(transform);
+                dc.DrawGeometry(ghostTextBrush, null, iconGeometry);
+                dc.Pop();
+
+                customIconXGhost += ghostCustomIconSize + ghostCustomIconSpacing;
+            }
         }
 
         var linePen = new Pen(ghostBrush, 1.5);

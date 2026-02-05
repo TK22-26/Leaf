@@ -25,14 +25,15 @@ internal class BranchOperations
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
-            var currentBranch = repo.Head?.FriendlyName;
+            var isDetached = repo.Info.IsHeadDetached;
+            var currentBranch = isDetached ? null : repo.Head?.FriendlyName;
 
             return repo.Branches
                 .Select(b => new BranchInfo
                 {
                     FullName = b.CanonicalName,
                     Name = b.FriendlyName,
-                    IsCurrent = b.FriendlyName == currentBranch,
+                    IsCurrent = !isDetached && string.Equals(b.FriendlyName, currentBranch, StringComparison.OrdinalIgnoreCase),
                     IsRemote = b.IsRemote,
                     RemoteName = b.RemoteName,
                     TrackingBranchName = b.TrackedBranch?.FriendlyName,

@@ -63,11 +63,17 @@ public class FakeGitService : IGitService
     public Task<(string oldContent, string newContent)> GetStagedFileDiffAsync(string repoPath, string filePath) => Task.FromResult(("", ""));
     public Task<List<BranchInfo>> GetBranchesAsync(string repoPath) => Task.FromResult(new List<BranchInfo>());
     public Task<List<RemoteInfo>> GetRemotesAsync(string repoPath) => Task.FromResult(new List<RemoteInfo>());
+    public Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null) => Task.CompletedTask;
+    public Task RemoveRemoteAsync(string repoPath, string remoteName) => Task.CompletedTask;
+    public Task RenameRemoteAsync(string repoPath, string oldName, string newName) => Task.CompletedTask;
+    public Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false) => Task.CompletedTask;
+    public Task SetConfigAsync(string repoPath, string key, string value) => Task.CompletedTask;
+    public Task<string?> GetConfigAsync(string repoPath, string key) => Task.FromResult<string?>(null);
     public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath) => Task.FromResult(new RepositoryInfo());
     public Task<string> CloneAsync(string url, string localPath, string? username = null, string? password = null, IProgress<string>? progress = null) => Task.FromResult("");
     public Task FetchAsync(string repoPath, string remoteName = "origin", string? username = null, string? password = null, IProgress<string>? progress = null) => Task.CompletedTask;
     public Task PullAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null) => Task.CompletedTask;
-    public Task PushAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null) => Task.CompletedTask;
+    public Task PushAsync(string repoPath, string? remoteName = null, string? username = null, string? password = null, IProgress<string>? progress = null) => Task.CompletedTask;
     public Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch) => Task.CompletedTask;
     public Task PushBranchAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch) => Task.CompletedTask;
     public Task SetUpstreamAsync(string repoPath, string branchName, string remoteName, string remoteBranchName) => Task.CompletedTask;
@@ -113,6 +119,8 @@ public class FakeGitService : IGitService
     public Task ClearStoredMergeConflictFilesAsync(string repoPath) => Task.CompletedTask;
     public Task CompleteMergeAsync(string repoPath, string commitMessage) => Task.CompletedTask;
     public Task AbortMergeAsync(string repoPath) => Task.CompletedTask;
+    public Task<bool> IsOrphanedConflictStateAsync(string repoPath) => Task.FromResult(false);
+    public Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges) => Task.CompletedTask;
     public Task<MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false) => Task.FromResult(new MergeResult());
     public Task<MergeResult> FastForwardAsync(string repoPath, string targetBranchName) => Task.FromResult(new MergeResult());
     public Task OpenConflictInVsCodeAsync(string repoPath, string filePath) => Task.CompletedTask;

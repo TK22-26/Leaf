@@ -38,6 +38,29 @@ public class CredentialService : ICredentialService
     }
 
     /// <summary>
+    /// Gets all stored organizations for a specific provider.
+    /// </summary>
+    /// <param name="provider">"GitHub" or "AzureDevOps"</param>
+    /// <returns>List of organization names (without provider prefix)</returns>
+    public IEnumerable<string> GetOrganizationsForProvider(string provider)
+    {
+        var prefix = $"{provider}:";
+        return GetStoredOrganizations()
+            .Where(key => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Select(key => key[prefix.Length..]);
+    }
+
+    /// <summary>
+    /// Checks if a credential exists for the given key.
+    /// </summary>
+    /// <param name="key">The credential key (e.g., "GitHub:microsoft")</param>
+    /// <returns>True if a credential exists and is non-empty</returns>
+    public bool HasCredential(string key)
+    {
+        return !string.IsNullOrEmpty(GetPat(key));
+    }
+
+    /// <summary>
     /// Save a generic credential (wrapper for UI).
     /// </summary>
     public void SaveCredential(string name, string username, string password)

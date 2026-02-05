@@ -28,7 +28,8 @@ internal class CommitHistoryOperations
             using var repo = new Repository(repoPath);
 
             var headSha = repo.Head?.Tip?.Sha;
-            var currentBranchName = repo.Head?.FriendlyName;
+            var isDetachedHead = repo.Info.IsHeadDetached;
+            var currentBranchName = isDetachedHead ? null : repo.Head?.FriendlyName;
 
             var localBranchTips = repo.Branches
                 .Where(b => !b.IsRemote)
@@ -57,6 +58,26 @@ internal class CommitHistoryOperations
             var tagTips = repo.Tags
                 .GroupBy(t => t.Target?.Sha)
                 .ToDictionary(g => g.Key ?? "", g => g.Select(t => t.FriendlyName).ToList());
+
+            // Build reverse map: branch name → tip SHA for BranchLabel.TipSha
+            var branchNameToTipSha = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (tipSha, names) in localBranchTips)
+            {
+                if (string.IsNullOrWhiteSpace(tipSha)) continue;
+                foreach (var name in names)
+                {
+                    branchNameToTipSha[name] = tipSha;
+                }
+            }
+            foreach (var (tipSha, refs) in remoteBranchTips)
+            {
+                if (string.IsNullOrWhiteSpace(tipSha)) continue;
+                foreach (var r in refs)
+                {
+                    var key = $"{r.RemoteName}/{r.Name}";
+                    branchNameToTipSha[key] = tipSha;
+                }
+            }
 
             ICommitLog commits;
             if (!string.IsNullOrEmpty(branchName))
@@ -95,7 +116,7 @@ internal class CommitHistoryOperations
                     ParentShas = c.Parents.Select(p => p.Sha).ToList(),
                     IsHead = c.Sha == headSha,
                     BranchNames = allBranchTips.TryGetValue(c.Sha, out var branches) ? branches : [],
-                    BranchLabels = BuildBranchLabels(c.Sha, localBranchTips, remoteBranchTips, currentBranchName),
+                    BranchLabels = BuildBranchLabels(c.Sha, localBranchTips, remoteBranchTips, branchNameToTipSha, currentBranchName),
                     TagNames = tagTips.TryGetValue(c.Sha, out var tags) ? tags : []
                 })
                 .ToList();
@@ -112,8 +133,30 @@ internal class CommitHistoryOperations
                 if (nearestSha == null || !commitsBySha.TryGetValue(nearestSha, out var targetCommit))
                     continue;
 
-                var labels = BuildBranchLabels(tipSha, localBranchTips, remoteBranchTips, currentBranchName);
+                var labels = BuildBranchLabels(tipSha, localBranchTips, remoteBranchTips, branchNameToTipSha, currentBranchName);
                 AddBranchLabels(targetCommit, labels);
+            }
+
+            // Mark existing branch label as current when in detached HEAD state
+            if (isDetachedHead && !string.IsNullOrEmpty(headSha) && commitsBySha.TryGetValue(headSha, out var headCommit))
+            {
+                // Find and mark the first branch label at HEAD as current
+                var labelToMark = headCommit.BranchLabels.FirstOrDefault();
+                if (labelToMark != null)
+                {
+                    labelToMark.IsCurrent = true;
+                }
+                else
+                {
+                    // No existing label - add a HEAD label as fallback
+                    headCommit.BranchLabels.Insert(0, new BranchLabel
+                    {
+                        Name = "HEAD",
+                        IsLocal = true,
+                        IsCurrent = true,
+                        TipSha = headSha
+                    });
+                }
             }
 
             return commitList;

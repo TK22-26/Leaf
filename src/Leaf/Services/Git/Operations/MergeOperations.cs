@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using Leaf.Services.Git.Core;
 using LibGit2Sharp;
 
@@ -161,6 +162,59 @@ internal class MergeOperations
         {
             GitCliHelpers.RunGit(repoPath, "merge --abort");
         });
+    }
+
+    /// <summary>
+    /// Check if the repository is in an "orphaned conflict" state.
+    /// This occurs when the index has unmerged entries (conflicts) but MERGE_HEAD doesn't exist.
+    /// This can happen after a failed checkout operation.
+    /// </summary>
+    public Task<bool> IsOrphanedConflictStateAsync(string repoPath)
+    {
+        return Task.Run(() =>
+        {
+            var mergeHeadPath = Path.Combine(repoPath, ".git", "MERGE_HEAD");
+            var hasMergeHead = File.Exists(mergeHeadPath);
+
+            if (hasMergeHead)
+            {
+                // Normal merge in progress, not orphaned
+                return false;
+            }
+
+            // Check if there are unmerged entries in the index
+            var conflictCount = GitCliHelpers.GetConflictCount(repoPath);
+            return conflictCount > 0;
+        });
+    }
+
+    /// <summary>
+    /// Reset the index to clear orphaned conflict state.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="discardWorkingChanges">If true, also discards all working directory changes</param>
+    public async Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges)
+    {
+        // Reset the index to HEAD to clear unmerged entries
+        var resetResult = await _context.CommandRunner.RunAsync(repoPath, ["reset", "HEAD"]);
+        if (!resetResult.Success && !string.IsNullOrEmpty(resetResult.StandardError))
+        {
+            // Ignore "Unstaged changes after reset" which is expected
+            if (!resetResult.StandardError.Contains("Unstaged changes"))
+            {
+                throw new InvalidOperationException(resetResult.StandardError);
+            }
+        }
+
+        if (discardWorkingChanges)
+        {
+            // Discard all working directory changes
+            var checkoutResult = await _context.CommandRunner.RunAsync(repoPath, ["checkout", "--", "."]);
+            if (!checkoutResult.Success && !string.IsNullOrEmpty(checkoutResult.StandardError))
+            {
+                throw new InvalidOperationException(checkoutResult.StandardError);
+            }
+        }
     }
 
     /// <summary>

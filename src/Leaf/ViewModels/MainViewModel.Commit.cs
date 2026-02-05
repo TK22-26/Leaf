@@ -131,6 +131,13 @@ public partial class MainViewModel
         try
         {
             await _gitService.CheckoutCommitAsync(SelectedRepository.Path, commit.Sha);
+
+            // Refresh the repo info to update detached HEAD state
+            var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            SelectedRepository.CurrentBranch = info.CurrentBranch;
+            SelectedRepository.IsDetachedHead = info.IsDetachedHead;
+            SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
+
             StatusMessage = $"Checked out commit {commit.ShortSha} (detached HEAD)";
             await RefreshAsync();
         }

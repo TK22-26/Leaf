@@ -43,22 +43,30 @@ public partial class MainViewModel
                 repo.RemoteBranches.Add(branch);
             }
 
-            // Group remote branches by remote name (origin, upstream, etc.)
-            var remoteGroups = remoteBranches
+            // Get the default remote from config (or "origin" as fallback)
+            var defaultRemoteName = await _gitService.GetConfigAsync(repo.Path, "leaf.defaultremote") ?? "origin";
+
+            // Group remote branches by remote name
+            var branchesByRemote = remoteBranches
                 .GroupBy(b => b.RemoteName ?? "origin")
-                .Select(g =>
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+            // Create remote groups for ALL remotes (including those without branches yet)
+            var remoteGroups = remotes
+                .Select(remote =>
                 {
-                    var remoteUrl = remoteUrlLookup.GetValueOrDefault(g.Key, string.Empty);
+                    var remoteBranchList = branchesByRemote.GetValueOrDefault(remote.Name, []);
                     return new RemoteBranchGroup
                     {
-                        Name = g.Key,
-                        Url = remoteUrl,
-                        RemoteType = RemoteBranchGroup.GetRemoteTypeFromUrl(remoteUrl),
+                        Name = remote.Name,
+                        Url = remote.Url,
+                        RemoteType = RemoteBranchGroup.GetRemoteTypeFromUrl(remote.Url),
+                        IsDefault = remote.Name.Equals(defaultRemoteName, StringComparison.OrdinalIgnoreCase),
                         Branches = new System.Collections.ObjectModel.ObservableCollection<BranchInfo>(
-                            g.Select(b => new BranchInfo
+                            remoteBranchList.Select(b => new BranchInfo
                             {
                                 // Strip the remote prefix from the display name
-                                Name = b.Name.StartsWith($"{g.Key}/") ? b.Name[($"{g.Key}/".Length)..] : b.Name,
+                                Name = b.Name.StartsWith($"{remote.Name}/") ? b.Name[($"{remote.Name}/".Length)..] : b.Name,
                                 FullName = b.FullName,
                                 IsCurrent = b.IsCurrent,
                                 IsRemote = b.IsRemote,

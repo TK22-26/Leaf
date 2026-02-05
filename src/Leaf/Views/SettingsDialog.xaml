@@ -111,6 +111,14 @@
                                 </StackPanel>
                             </TreeViewItem.Header>
                         </TreeViewItem>
+                        <TreeViewItem x:Name="NavRemotes" Tag="Remotes">
+                            <TreeViewItem.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="Cloud" FontSize="14" Margin="0,0,8,0" />
+                                    <TextBlock Text="Remotes" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </TreeViewItem.Header>
+                        </TreeViewItem>
                     </TreeViewItem>
                     <TreeViewItem x:Name="NavTerminal" Tag="Terminal">
                         <TreeViewItem.Header>
@@ -326,6 +334,53 @@
                                            FontSize="11"
                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                            Margin="0,16,0,0"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Remotes Content -->
+                    <StackPanel x:Name="ContentRemotes" Visibility="Collapsed">
+                        <TextBlock Text="Remotes"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="Configure behavior for repositories with multiple remotes"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,16" />
+
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="Multi-Remote Sync"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           Margin="0,0,0,12" />
+
+                                <CheckBox x:Name="SyncAllRemotesCheckBox"
+                                          Margin="0,0,0,8">
+                                    <CheckBox.Content>
+                                        <StackPanel>
+                                            <TextBlock Text="Sync all remotes automatically"
+                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                            <TextBlock Text="Push and pull will affect all configured remotes instead of showing a selection dialog"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
+                                    </CheckBox.Content>
+                                </CheckBox>
+
+                                <TextBlock Text="When enabled, Push will send changes to all remotes and Pull will fetch from all remotes. When disabled, you'll be prompted to select which remotes to use."
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           Margin="0,8,0,0"
                                            TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>

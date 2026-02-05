@@ -263,6 +263,8 @@ public partial class MainViewModel
             repository.IsMergeInProgress = info.IsMergeInProgress;
             repository.MergingBranch = info.MergingBranch;
             repository.ConflictCount = info.ConflictCount;
+            repository.IsDetachedHead = info.IsDetachedHead;
+            repository.DetachedHeadSha = info.DetachedHeadSha;
 
             // Load branches for the branch panel (force reload to pick up pruned branches)
             await LoadBranchesForRepoAsync(repository, forceReload: true);

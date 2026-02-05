@@ -46,10 +46,13 @@ public partial class GitGraphView : UserControl
         }
     }
 
-    private void OnBranchCheckoutRequested(object? sender, BranchLabel label)
+    private void OnBranchCheckoutRequested(object? sender, BranchCheckoutRequestedEventArgs e)
     {
         if (Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
         {
+            var label = e.Label;
+            System.Diagnostics.Debug.WriteLine($"[CHECKOUT] OnBranchCheckoutRequested: label.Name={label.Name}, label.TipSha={label.TipSha ?? "NULL"}, e.TipSha={e.TipSha ?? "NULL"}");
+
             // If this is a remote-only label and we're on the matching local branch, fast-forward
             if (label.IsRemote && !label.IsLocal && label.RemoteName != null)
             {
@@ -65,15 +68,19 @@ public partial class GitGraphView : UserControl
             }
 
             // Otherwise do regular checkout
+            // Use the label's actual TipSha, not the display row's commit SHA
             var branchName = label.IsRemote && !label.IsLocal && label.RemoteName != null
                 ? $"{label.RemoteName}/{label.Name}"
                 : label.Name;
+            var tipShaToUse = label.TipSha ?? e.TipSha ?? string.Empty;
+            System.Diagnostics.Debug.WriteLine($"[CHECKOUT] Calling CheckoutBranchAsync: branchName={branchName}, tipShaToUse={tipShaToUse}");
             _ = mainViewModel.CheckoutBranchAsync(new BranchInfo
             {
                 Name = branchName,
                 IsRemote = label.IsRemote,
                 RemoteName = label.RemoteName,
-                IsCurrent = label.IsCurrent
+                IsCurrent = label.IsCurrent,
+                TipSha = tipShaToUse
             });
         }
     }
@@ -321,6 +328,8 @@ public partial class GitGraphView : UserControl
             var label = GraphCanvas.GetBranchLabelAt(pos);
             if (label != null && Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
             {
+                System.Diagnostics.Debug.WriteLine($"[CHECKOUT] GraphCanvas double-click: label.Name={label.Name}, label.TipSha={label.TipSha ?? "NULL"}");
+
                 // If this is a remote-only label (local is at different commit)
                 // and we're currently on the matching local branch, fast-forward instead of checkout
                 if (label.IsRemote && !label.IsLocal && label.RemoteName != null)
@@ -336,15 +345,18 @@ public partial class GitGraphView : UserControl
                 }
 
                 // Otherwise do regular checkout
+                // Use the label's actual TipSha, not the display row's commit SHA
                 var name = label.IsRemote && !label.IsLocal && label.RemoteName != null
                     ? $"{label.RemoteName}/{label.Name}"
                     : label.Name;
+                System.Diagnostics.Debug.WriteLine($"[CHECKOUT] GraphCanvas calling CheckoutBranchAsync: name={name}, TipSha={label.TipSha ?? "NULL"}");
                 _ = mainViewModel.CheckoutBranchAsync(new BranchInfo
                 {
                     Name = name,
                     IsRemote = label.IsRemote,
                     RemoteName = label.RemoteName,
-                    IsCurrent = label.IsCurrent
+                    IsCurrent = label.IsCurrent,
+                    TipSha = label.TipSha ?? string.Empty
                 });
                 e.Handled = true;
                 return;
@@ -734,17 +746,8 @@ public partial class GitGraphView : UserControl
 
         var menu = new ContextMenu();
 
-        // Get the SHA from the row position
-        int row = (int)(pos.Y / RowHeight);
-        int rowOffset = (viewModel.HasWorkingChanges ? 1 : 0) + viewModel.Stashes.Count;
-        int nodeIndex = row - rowOffset;
-        string? tipSha = null;
-        if (nodeIndex >= 0 && GraphCanvas.Nodes != null && nodeIndex < GraphCanvas.Nodes.Count)
-        {
-            tipSha = GraphCanvas.Nodes[nodeIndex].Sha;
-        }
-
         // Create BranchInfo for commands that need it
+        // Use the label's actual TipSha, not the display row's commit SHA
         var branchName = label.IsRemote && !label.IsLocal && label.RemoteName != null
             ? $"{label.RemoteName}/{label.Name}"
             : label.Name;
@@ -754,7 +757,7 @@ public partial class GitGraphView : UserControl
             IsRemote = label.IsRemote,
             RemoteName = label.RemoteName,
             IsCurrent = label.IsCurrent,
-            TipSha = tipSha ?? string.Empty
+            TipSha = label.TipSha ?? string.Empty
         };
 
         // Checkout (skip if already current)

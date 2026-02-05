@@ -68,7 +68,9 @@ public partial class CloneDialog : Window
     {
         var settings = _settingsService.LoadSettings();
         var organization = settings.AzureDevOpsOrganization;
-        var pat = _credentialService.GetCredential("AzureDevOps");
+
+        // Check for org-specific credential
+        var pat = string.IsNullOrEmpty(organization) ? null : _credentialService.GetPat($"AzureDevOps:{organization}");
 
         if (string.IsNullOrEmpty(organization) || string.IsNullOrEmpty(pat))
         {
@@ -186,7 +188,9 @@ public partial class CloneDialog : Window
     {
         var settings = _settingsService.LoadSettings();
         var organization = settings.AzureDevOpsOrganization;
-        var pat = _credentialService.GetCredential("AzureDevOps");
+
+        // Check for org-specific credential
+        var pat = string.IsNullOrEmpty(organization) ? null : _credentialService.GetPat($"AzureDevOps:{organization}");
 
         if (string.IsNullOrEmpty(organization) || string.IsNullOrEmpty(pat))
         {
@@ -293,9 +297,10 @@ public partial class CloneDialog : Window
 
     private async Task LoadGitHubRepositoriesAsync()
     {
-        var pat = _credentialService.GetCredential("GitHub");
+        // Check if any GitHub credentials are configured
+        var gitHubOrgs = _credentialService.GetOrganizationsForProvider("GitHub").ToList();
 
-        if (string.IsNullOrEmpty(pat))
+        if (gitHubOrgs.Count == 0)
         {
             GitHubStatusText.Text = "Configure GitHub credentials in Settings";
             GitHubSourceStatus.Text = "Not configured";
@@ -410,23 +415,13 @@ public partial class CloneDialog : Window
         }
         else if (IsAzureDevOpsUrl(url))
         {
-            var hasPat = !string.IsNullOrEmpty(_credentialService.GetCredential("AzureDevOps"));
-            UrlHintText.Text = hasPat
-                ? "Azure DevOps URL - will use saved credentials"
-                : "Azure DevOps URL - no credentials saved";
-            UrlHintText.Foreground = hasPat
-                ? new SolidColorBrush(Color.FromRgb(40, 167, 69))
-                : new SolidColorBrush(Color.FromRgb(200, 100, 0));
+            UrlHintText.Text = "Azure DevOps URL - will prompt for login if needed";
+            UrlHintText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
         }
         else if (IsGitHubUrl(url))
         {
-            var hasPat = !string.IsNullOrEmpty(_credentialService.GetCredential("GitHub"));
-            UrlHintText.Text = hasPat
-                ? "GitHub URL - will use saved credentials"
-                : "GitHub URL - no credentials saved";
-            UrlHintText.Foreground = hasPat
-                ? new SolidColorBrush(Color.FromRgb(40, 167, 69))
-                : new SolidColorBrush(Color.FromRgb(200, 100, 0));
+            UrlHintText.Text = "GitHub URL - will prompt for login if needed";
+            UrlHintText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
         }
         else
         {
@@ -542,25 +537,25 @@ public partial class CloneDialog : Window
             CloneProgressSection.Visibility = Visibility.Visible;
             ProgressText.Text = "Cloning repository...";
 
-            // Get credentials based on URL type
+            // Get credentials based on URL - extract org from URL for multi-org support
             string? username = null;
             string? password = null;
 
-            if (IsAzureDevOpsUrl(url))
+            var credentialKey = Utils.CredentialHelper.GetCredentialKeyForUrl(url);
+            if (!string.IsNullOrEmpty(credentialKey))
             {
-                password = _credentialService.GetCredential("AzureDevOps");
+                password = _credentialService.GetPat(credentialKey);
                 if (!string.IsNullOrEmpty(password))
                 {
-                    username = "git";
-                }
-            }
-            else if (IsGitHubUrl(url))
-            {
-                password = _credentialService.GetCredential("GitHub");
-                if (!string.IsNullOrEmpty(password))
-                {
-                    // GitHub uses PAT as password with any username (or "x-access-token")
-                    username = "x-access-token";
+                    // Set username based on provider
+                    if (credentialKey.StartsWith("GitHub:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        username = "x-access-token";
+                    }
+                    else if (credentialKey.StartsWith("AzureDevOps:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        username = "git";
+                    }
                 }
             }
 

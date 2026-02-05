@@ -53,6 +53,9 @@ public partial class SettingsDialog : Window
             new("Ollama", "Connect to Ollama for local AI features", "Ollama", Symbol.Bot),
             new("Local LLM", "Run AI locally with Ollama", "Ollama", Symbol.Bot),
             new("GitFlow", "Configure GitFlow default settings", "GitFlow", Symbol.Flow),
+            new("Remotes", "Configure multi-remote sync behavior", "Remotes", Symbol.Cloud),
+            new("Sync All Remotes", "Push and pull to all remotes automatically", "Remotes", Symbol.Cloud),
+            new("Multi-Remote", "Settings for repositories with multiple remotes", "Remotes", Symbol.Cloud),
         };
 
         // Configure UserControls
@@ -85,6 +88,7 @@ public partial class SettingsDialog : Window
         // Hide all content panels
         ContentClonePath.Visibility = Visibility.Collapsed;
         ContentWatchedFolders.Visibility = Visibility.Collapsed;
+        ContentRemotes.Visibility = Visibility.Collapsed;
         ContentTerminal.Visibility = Visibility.Collapsed;
         AzureDevOpsSettings.Visibility = Visibility.Collapsed;
         GitHubSettings.Visibility = Visibility.Collapsed;
@@ -101,6 +105,9 @@ public partial class SettingsDialog : Window
             case "WatchedFolders":
                 ContentWatchedFolders.Visibility = Visibility.Visible;
                 LoadWatchedFolders();
+                break;
+            case "Remotes":
+                ContentRemotes.Visibility = Visibility.Visible;
                 break;
             case "Terminal":
                 ContentTerminal.Visibility = Visibility.Visible;
@@ -168,6 +175,7 @@ public partial class SettingsDialog : Window
         // Hide all content panels
         ContentClonePath.Visibility = Visibility.Collapsed;
         ContentWatchedFolders.Visibility = Visibility.Collapsed;
+        ContentRemotes.Visibility = Visibility.Collapsed;
         ContentTerminal.Visibility = Visibility.Collapsed;
         AzureDevOpsSettings.Visibility = Visibility.Collapsed;
         GitHubSettings.Visibility = Visibility.Collapsed;
@@ -204,6 +212,7 @@ public partial class SettingsDialog : Window
         {
             "ClonePath" => NavClonePath,
             "WatchedFolders" => NavWatchedFolders,
+            "Remotes" => NavRemotes,
             "Terminal" => NavTerminal,
             "AzureDevOps" => NavAzureDevOps,
             "GitHub" => NavGitHub,
@@ -233,6 +242,7 @@ public partial class SettingsDialog : Window
         TerminalFontSizeTextBox.Text = _settings.TerminalFontSize.ToString("0");
         TerminalAutoScrollCheckBox.IsChecked = _settings.TerminalAutoScroll;
         TerminalLogGitCommandsCheckBox.IsChecked = _settings.TerminalLogGitCommands;
+        SyncAllRemotesCheckBox.IsChecked = _settings.SyncAllRemotes;
 
         // Load settings into UserControls
         AzureDevOpsSettings.LoadSettings(_settings, _credentialService);
@@ -275,6 +285,7 @@ public partial class SettingsDialog : Window
         }
         _settings.TerminalAutoScroll = TerminalAutoScrollCheckBox.IsChecked == true;
         _settings.TerminalLogGitCommands = TerminalLogGitCommandsCheckBox.IsChecked == true;
+        _settings.SyncAllRemotes = SyncAllRemotesCheckBox.IsChecked == true;
 
         // Save settings from UserControls
         AzureDevOpsSettings.SaveSettings(_settings, _credentialService);

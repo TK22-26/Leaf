@@ -94,6 +94,18 @@ public partial class GitGraphViewModel : ObservableObject
     private bool _isWorkingChangesSelected;
 
     /// <summary>
+    /// True if HEAD is detached (not on a branch).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isDetachedHead;
+
+    /// <summary>
+    /// SHA of the detached HEAD commit (null if on a branch).
+    /// </summary>
+    [ObservableProperty]
+    private string? _detachedHeadSha;
+
+    /// <summary>
     /// True if there are any working directory changes.
     /// </summary>
     public bool HasWorkingChanges => WorkingChanges?.HasChanges ?? false;
@@ -176,16 +188,32 @@ public partial class GitGraphViewModel : ObservableObject
             var commits = await commitsTask;
             var stashes = await stashesTask;
 
-            _currentBranchName = workingChanges?.BranchName;
-            if (string.IsNullOrWhiteSpace(_currentBranchName))
+            // When detached, don't set a current branch name - let graph builder use default priority
+            if (workingChanges?.IsDetachedHead == true)
             {
-                _currentBranchName = commits
-                    .SelectMany(c => c.BranchLabels)
-                    .FirstOrDefault(l => l.IsCurrent)?.Name;
+                _currentBranchName = null;
             }
+            else
+            {
+                _currentBranchName = workingChanges?.BranchName;
+                if (string.IsNullOrWhiteSpace(_currentBranchName))
+                {
+                    _currentBranchName = commits
+                        .SelectMany(c => c.BranchLabels)
+                        .FirstOrDefault(l => l.IsCurrent)?.Name;
+                }
+            }
+
+            // Capture selection state BEFORE RebuildGraphFromFilters clears it
+            // (RebuildGraphFromFilters clears SelectedCommit when old instance isn't in new Commits)
+            bool wasWorkingChangesSelected = IsWorkingChangesSelected;
+            var wasSelectedStashIndex = SelectedStash?.Index;
+            var wasSelectedCommitSha = SelectedCommit?.Sha;
 
             _allCommits = commits.ToList();
             WorkingChanges = workingChanges;
+            IsDetachedHead = workingChanges?.IsDetachedHead ?? false;
+            DetachedHeadSha = workingChanges?.DetachedHeadSha;
             Stashes = new ObservableCollection<StashInfo>(stashes);
 
             // Initialize lazy loading state
@@ -196,21 +224,26 @@ public partial class GitGraphViewModel : ObservableObject
 
             RebuildGraphFromFilters();
 
-            // Preserve selection if it was selected, otherwise clear
-            // This prevents losing selection when file watcher triggers reload during staging
-            bool wasWorkingChangesSelected = IsWorkingChangesSelected;
-            var wasSelectedStashIndex = SelectedStash?.Index;
-
             SelectedCommit = null;
             SelectedStash = wasSelectedStashIndex.HasValue && wasSelectedStashIndex.Value < stashes.Count
                 ? stashes[wasSelectedStashIndex.Value]
                 : null;
-            SelectedSha = wasWorkingChangesSelected ? WorkingChangesSha : null;
+            SelectedSha = wasWorkingChangesSelected ? WorkingChangesSha : wasSelectedCommitSha;
             IsWorkingChangesSelected = wasWorkingChangesSelected && HasWorkingChanges;
+
+            // Try to restore the previously selected commit
+            if (!string.IsNullOrEmpty(wasSelectedCommitSha) && !wasWorkingChangesSelected)
+            {
+                var restoredCommit = _allCommits.FirstOrDefault(c => c.Sha == wasSelectedCommitSha);
+                if (restoredCommit != null)
+                {
+                    SelectedCommit = restoredCommit;
+                }
+            }
 
             // Auto-select working changes or first commit when loading a new repository
             // (only if nothing was preserved from previous selection)
-            if (!IsWorkingChangesSelected && SelectedStash == null)
+            if (!IsWorkingChangesSelected && SelectedStash == null && SelectedCommit == null)
             {
                 if (HasWorkingChanges)
                 {

@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -169,18 +170,10 @@ public partial class MainViewModel
                 var remoteUrl = remotes.FirstOrDefault(r => r.Name == remoteName)?.Url;
                 if (!string.IsNullOrEmpty(remoteUrl))
                 {
-                    try
+                    var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remoteUrl);
+                    if (!string.IsNullOrEmpty(credentialKey))
                     {
-                        var host = new Uri(remoteUrl).Host;
-                        var credentialKey = GetCredentialKeyForHost(host);
-                        if (!string.IsNullOrEmpty(credentialKey))
-                        {
-                            pat = _credentialService.GetCredential(credentialKey);
-                        }
-                    }
-                    catch
-                    {
-                        // Invalid URL, skip PAT
+                        pat = _credentialService.GetPat(credentialKey);
                     }
                 }
 
@@ -359,28 +352,93 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = $"Checking out {branch.Name}...";
 
-            // For remote branches, extract the name after origin/
-            var branchName = branch.IsRemote && branch.Name.StartsWith("origin/")
-                ? branch.Name["origin/".Length..]
-                : branch.Name;
+            string branchName;
+            BranchInfo? localBranch = null;
+
+            if (branch.IsRemote)
+            {
+                // Extract local branch name (e.g., "origin/main" → "main")
+                var remoteName = branch.RemoteName ?? "origin";
+                var localBranchName = branch.Name.StartsWith($"{remoteName}/", StringComparison.OrdinalIgnoreCase)
+                    ? branch.Name[(remoteName.Length + 1)..]
+                    : branch.Name;
+
+                // Check if local/remote branches exist and where they point
+                var branches = await _gitService.GetBranchesAsync(SelectedRepository.Path);
+                localBranch = branches.FirstOrDefault(b =>
+                    !b.IsRemote && string.Equals(b.Name, localBranchName, StringComparison.OrdinalIgnoreCase));
+                var remoteBranchName = $"{remoteName}/{localBranchName}";
+                var remoteBranch = branches.FirstOrDefault(b =>
+                    b.IsRemote && string.Equals(b.Name, remoteBranchName, StringComparison.OrdinalIgnoreCase));
+                var remoteTipSha = remoteBranch?.TipSha;
+
+                if (localBranch != null &&
+                    !string.IsNullOrWhiteSpace(remoteTipSha) &&
+                    !string.Equals(localBranch.TipSha, remoteTipSha, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Local exists but is at different commit - checkout remote's commit (detached HEAD)
+                    StatusMessage = $"Checking out {branch.Name}...";
+                    await _gitService.CheckoutCommitAsync(SelectedRepository.Path, remoteTipSha);
+
+                    var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+                    SelectedRepository.CurrentBranch = info.CurrentBranch;
+                    SelectedRepository.IsDetachedHead = info.IsDetachedHead;
+                    SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
+                    SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
+                    SelectedRepository.MergingBranch = info.MergingBranch;
+                    SelectedRepository.ConflictCount = info.ConflictCount;
+
+                    // Reload branches to update current indicator
+                    SelectedRepository.BranchesLoaded = false;
+                    await LoadBranchesForRepoAsync(SelectedRepository);
+
+                    // Refresh git graph and select the checked out commit
+                    if (GitGraphViewModel != null)
+                    {
+                        await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
+                        GitGraphViewModel.SelectCommitBySha(remoteTipSha);
+                    }
+
+                    StatusMessage = $"Checked out {branch.Name} (detached HEAD)";
+                    IsBusy = false;
+                    return;
+                }
+
+                // Local exists at same commit, OR no local exists
+                // → use existing logic to switch to / create local branch
+                branchName = localBranchName;
+            }
+            else
+            {
+                branchName = branch.Name;
+            }
 
             await _gitService.CheckoutAsync(SelectedRepository.Path, branchName, allowConflicts: true);
 
             // Refresh the repo info
-            var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
-            SelectedRepository.CurrentBranch = info.CurrentBranch;
-            SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
-            SelectedRepository.MergingBranch = info.MergingBranch;
-            SelectedRepository.ConflictCount = info.ConflictCount;
+            var repoInfo = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            SelectedRepository.CurrentBranch = repoInfo.CurrentBranch;
+            SelectedRepository.IsDetachedHead = repoInfo.IsDetachedHead;
+            SelectedRepository.DetachedHeadSha = repoInfo.DetachedHeadSha;
+            SelectedRepository.IsMergeInProgress = repoInfo.IsMergeInProgress;
+            SelectedRepository.MergingBranch = repoInfo.MergingBranch;
+            SelectedRepository.ConflictCount = repoInfo.ConflictCount;
 
             // Reload branches to update current indicator
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository);
 
-            // Refresh git graph
+            // Refresh git graph and select the branch's tip commit (or requested commit)
             if (GitGraphViewModel != null)
             {
                 await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
+                var selectSha = !string.IsNullOrWhiteSpace(branch.TipSha)
+                    ? branch.TipSha
+                    : localBranch?.TipSha ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(selectSha))
+                {
+                    GitGraphViewModel.SelectCommitBySha(selectSha);
+                }
             }
 
             if (SelectedRepository.ConflictCount > 0)
@@ -426,6 +484,8 @@ public partial class MainViewModel
             // Refresh the repo info
             var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
             SelectedRepository.CurrentBranch = info.CurrentBranch;
+            SelectedRepository.IsDetachedHead = info.IsDetachedHead;
+            SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
             SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
             SelectedRepository.MergingBranch = info.MergingBranch;
             SelectedRepository.ConflictCount = info.ConflictCount;

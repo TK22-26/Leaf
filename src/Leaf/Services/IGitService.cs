@@ -61,6 +61,44 @@ public interface IGitService
     Task<List<RemoteInfo>> GetRemotesAsync(string repoPath);
 
     /// <summary>
+    /// Add a new remote to the repository.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="remoteName">Name for the new remote</param>
+    /// <param name="url">Fetch URL for the remote</param>
+    /// <param name="pushUrl">Optional separate push URL</param>
+    Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null);
+
+    /// <summary>
+    /// Remove a remote from the repository.
+    /// </summary>
+    Task RemoveRemoteAsync(string repoPath, string remoteName);
+
+    /// <summary>
+    /// Rename a remote.
+    /// </summary>
+    Task RenameRemoteAsync(string repoPath, string oldName, string newName);
+
+    /// <summary>
+    /// Set a remote's URL.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="remoteName">Name of the remote</param>
+    /// <param name="url">New URL</param>
+    /// <param name="isPushUrl">If true, sets the push URL; otherwise sets the fetch URL</param>
+    Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false);
+
+    /// <summary>
+    /// Set a git config value.
+    /// </summary>
+    Task SetConfigAsync(string repoPath, string key, string value);
+
+    /// <summary>
+    /// Get a git config value.
+    /// </summary>
+    Task<string?> GetConfigAsync(string repoPath, string key);
+
+    /// <summary>
     /// Get repository status information.
     /// </summary>
     Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath);
@@ -83,7 +121,12 @@ public interface IGitService
     /// <summary>
     /// Push to remote.
     /// </summary>
-    Task PushAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null);
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="remoteName">Optional remote name (uses tracking branch's remote or default if not specified)</param>
+    /// <param name="username">Optional username for authentication</param>
+    /// <param name="password">Optional password/token for authentication</param>
+    /// <param name="progress">Optional progress reporter</param>
+    Task PushAsync(string repoPath, string? remoteName = null, string? username = null, string? password = null, IProgress<string>? progress = null);
 
     /// <summary>
     /// Pull updates for a specific branch (fast-forward if possible).
@@ -305,6 +348,19 @@ public interface IGitService
     /// Abort an in-progress merge and return to pre-merge state.
     /// </summary>
     Task AbortMergeAsync(string repoPath);
+
+    /// <summary>
+    /// Check if the repository is in an "orphaned conflict" state.
+    /// This occurs when the index has unmerged entries but MERGE_HEAD doesn't exist.
+    /// </summary>
+    Task<bool> IsOrphanedConflictStateAsync(string repoPath);
+
+    /// <summary>
+    /// Reset the index to clear orphaned conflict state.
+    /// </summary>
+    /// <param name="repoPath">Path to the repository</param>
+    /// <param name="discardWorkingChanges">If true, also discards all working directory changes</param>
+    Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges);
 
     /// <summary>
     /// Merge a branch into the current branch.

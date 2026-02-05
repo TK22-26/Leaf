@@ -15,7 +15,7 @@
             </ResourceDictionary.MergedDictionaries>
 
             <!-- Binding proxy to allow ContextMenu access to Root's Context property -->
-            <utils:BindingProxy x:Key="ContextProxy" Data="{Binding Context, ElementName=Root}" />
+            <utils:BindingProxy x:Key="ContextProxy" Data="{Binding Context, Source={x:Reference Root}}" />
 
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <converters:BoolToGridLengthConverter x:Key="BoolToGridLengthConverter" />

@@ -34,9 +34,16 @@ internal class StagingOperations : IStagingOperations
                 RecurseUntrackedDirs = true
             });
 
+            var isDetached = repo.Info.IsHeadDetached;
+            var headSha = repo.Head?.Tip?.Sha;
+
             var workingChanges = new WorkingChangesInfo
             {
-                BranchName = repo.Head?.FriendlyName ?? "HEAD"
+                BranchName = isDetached
+                    ? $"HEAD detached at {headSha?[..7] ?? "unknown"}"
+                    : (repo.Head?.FriendlyName ?? "HEAD"),
+                IsDetachedHead = isDetached,
+                DetachedHeadSha = isDetached ? headSha : null
             };
 
             foreach (var entry in status)

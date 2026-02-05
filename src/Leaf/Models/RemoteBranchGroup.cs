@@ -43,6 +43,21 @@ public class RemoteBranchGroup
     public bool IsExpanded { get; set; } = true;
 
     /// <summary>
+    /// Whether this is the default remote for push operations.
+    /// </summary>
+    public bool IsDefault { get; set; }
+
+    /// <summary>
+    /// Display name for the service type.
+    /// </summary>
+    public string ServiceDisplayName => RemoteType switch
+    {
+        RemoteType.GitHub => "GitHub",
+        RemoteType.AzureDevOps => "Azure DevOps",
+        _ => "Git"
+    };
+
+    /// <summary>
     /// Remote groups are never "current" - this silences binding warnings in TreeView.
     /// </summary>
     public bool IsCurrent => false;

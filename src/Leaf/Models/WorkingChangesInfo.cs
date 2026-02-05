@@ -34,6 +34,18 @@ public partial class WorkingChangesInfo : ObservableObject
     private string _branchName = string.Empty;
 
     /// <summary>
+    /// True if HEAD is detached (not on a branch).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isDetachedHead;
+
+    /// <summary>
+    /// SHA of the detached HEAD commit (null if on a branch).
+    /// </summary>
+    [ObservableProperty]
+    private string? _detachedHeadSha;
+
+    /// <summary>
     /// Total number of changed files (staged + unstaged).
     /// </summary>
     public int TotalChanges => UnstagedFiles.Count + StagedFiles.Count;

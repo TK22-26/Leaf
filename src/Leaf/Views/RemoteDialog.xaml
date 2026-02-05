@@ -1,0 +1,181 @@
+<Window x:Class="Leaf.Views.RemoteDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+        Title="Add Remote"
+        Width="500"
+        SizeToContent="Height"
+        MaxHeight="600"
+        MinWidth="400"
+        MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource ApplicationBackgroundBrush}"
+        ResizeMode="CanResize">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="0" Padding="24,20" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- Header -->
+                <StackPanel Margin="0,0,0,20">
+                    <TextBlock x:Name="HeaderText"
+                               Text="Add Remote"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock x:Name="SubheaderText"
+                               Text="Add a new remote repository"
+                               FontSize="13"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <!-- Remote Name -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16"
+                        Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="Remote Name"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,4"/>
+                        <TextBlock Text="A short identifier for this remote (e.g., origin, upstream)"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,8"/>
+
+                        <TextBox x:Name="RemoteNameTextBox"
+                                 Padding="10,8"
+                                 TextChanged="RemoteNameTextBox_TextChanged"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- URLs -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16"
+                        Margin="0,0,0,16">
+                    <StackPanel>
+                        <!-- Fetch URL -->
+                        <TextBlock Text="Fetch URL"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,4"/>
+                        <TextBlock Text="The URL to fetch from (HTTPS or SSH)"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,8"/>
+
+                        <Grid>
+                            <TextBox x:Name="FetchUrlTextBox"
+                                     Padding="32,8,8,8"
+                                     TextChanged="FetchUrlTextBox_TextChanged"/>
+                            <ic:SymbolIcon Symbol="Link"
+                                           FontSize="14"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           HorizontalAlignment="Left"
+                                           VerticalAlignment="Center"
+                                           Margin="10,0,0,0"
+                                           IsHitTestVisible="False"/>
+                        </Grid>
+
+                        <!-- Separate Push URL Option -->
+                        <CheckBox x:Name="UseSeparatePushUrlCheckBox"
+                                  Content="Use different URL for push"
+                                  Margin="0,12,0,0"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                  Checked="UseSeparatePushUrlCheckBox_Changed"
+                                  Unchecked="UseSeparatePushUrlCheckBox_Changed"/>
+
+                        <!-- Push URL (conditional) -->
+                        <StackPanel x:Name="PushUrlSection" Visibility="Collapsed" Margin="0,12,0,0">
+                            <TextBlock Text="Push URL"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       Margin="0,0,0,4"/>
+                            <TextBlock Text="The URL to push to (if different from fetch)"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Margin="0,0,0,8"/>
+
+                            <Grid>
+                                <TextBox x:Name="PushUrlTextBox"
+                                         Padding="32,8,8,8"
+                                         TextChanged="PushUrlTextBox_TextChanged"/>
+                                <ic:SymbolIcon Symbol="Link"
+                                               FontSize="14"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               HorizontalAlignment="Left"
+                                               VerticalAlignment="Center"
+                                               Margin="10,0,0,0"
+                                               IsHitTestVisible="False"/>
+                            </Grid>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Validation Error -->
+                <Border x:Name="ValidationErrorBorder"
+                        Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
+                        BorderBrush="{DynamicResource SystemFillColorCriticalBrush}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="12"
+                        Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <ic:SymbolIcon Symbol="ErrorCircle" FontSize="16"
+                                       Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                       Margin="0,0,10,0" VerticalAlignment="Top"/>
+                        <TextBlock x:Name="ValidationErrorText" Grid.Column="1"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Footer -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="24,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Content="Cancel"
+                            Padding="20,10"
+                            IsCancel="True"
+                            Click="Cancel_Click"/>
+                    <Button x:Name="SaveButton"
+                            Content="Save"
+                            Margin="12,0,0,0"
+                            Padding="24,10"
+                            Click="Save_Click"
+                            IsEnabled="False"
+                            Background="{DynamicResource AccentFillColorDefaultBrush}"
+                            Foreground="White"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

@@ -269,7 +269,7 @@ public partial class GitGraphCanvas : FrameworkElement
     /// <summary>
     /// Event raised when user double-clicks a branch to checkout.
     /// </summary>
-    public event EventHandler<BranchLabel>? BranchCheckoutRequested;
+    public event EventHandler<BranchCheckoutRequestedEventArgs>? BranchCheckoutRequested;
 
     #endregion
 

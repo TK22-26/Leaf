@@ -1,6 +1,8 @@
 using System;
 using CommunityToolkit.Mvvm.Input;
+using Leaf.Models;
 using Leaf.Services;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -69,18 +71,10 @@ public partial class MainViewModel
             var remoteUrl = remotes.FirstOrDefault(r => r.Name == remoteName)?.Url;
             if (!string.IsNullOrEmpty(remoteUrl))
             {
-                try
+                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remoteUrl);
+                if (!string.IsNullOrEmpty(credentialKey))
                 {
-                    var host = new Uri(remoteUrl).Host;
-                    var credentialKey = GetCredentialKeyForHost(host);
-                    if (!string.IsNullOrEmpty(credentialKey))
-                    {
-                        pat = _credentialService.GetCredential(credentialKey);
-                    }
-                }
-                catch
-                {
-                    // Invalid URL, skip PAT
+                    pat = _credentialService.GetPat(credentialKey);
                 }
             }
 
@@ -122,19 +116,52 @@ public partial class MainViewModel
         try
         {
             IsBusy = true;
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+
+            // Check if SyncAllRemotes is enabled for multi-remote repos
+            if (remotes.Count > 1)
+            {
+                var settings = _settingsService.LoadSettings();
+                if (settings.SyncAllRemotes)
+                {
+                    // Fetch from all remotes first
+                    StatusMessage = "Fetching from all remotes...";
+                    foreach (var remote in remotes)
+                    {
+                        string? fetchPat = null;
+                        if (!string.IsNullOrEmpty(remote.Url))
+                        {
+                            var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
+                            if (!string.IsNullOrEmpty(credentialKey))
+                            {
+                                fetchPat = _credentialService.GetPat(credentialKey);
+                            }
+                        }
+
+                        try
+                        {
+                            await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: fetchPat);
+                        }
+                        catch
+                        {
+                            // Continue with other remotes
+                        }
+                    }
+                }
+            }
+
             StatusMessage = "Pulling changes...";
 
-            // Try to get credentials from stored PAT (map hostname to credential key)
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
-            var originUrl = remotes.FirstOrDefault(r => r.Name == "origin")?.Url;
+            // Pull from tracking branch's remote
+            var trackingRemoteUrl = remotes.FirstOrDefault(r => r.Name == "origin")?.Url
+                                    ?? remotes.FirstOrDefault()?.Url;
             string? pat = null;
-            if (!string.IsNullOrEmpty(originUrl))
+            if (!string.IsNullOrEmpty(trackingRemoteUrl))
             {
-                var host = new Uri(originUrl).Host;
-                var credentialKey = GetCredentialKeyForHost(host);
+                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(trackingRemoteUrl);
                 if (!string.IsNullOrEmpty(credentialKey))
                 {
-                    pat = _credentialService.GetCredential(credentialKey);
+                    pat = _credentialService.GetPat(credentialKey);
                 }
             }
 
@@ -163,24 +190,54 @@ public partial class MainViewModel
 
         try
         {
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+
+            // Check if there are multiple remotes
+            if (remotes.Count > 1)
+            {
+                var settings = _settingsService.LoadSettings();
+                if (settings.SyncAllRemotes)
+                {
+                    // Push to all remotes automatically
+                    await PushToAllRemotesAsync(remotes);
+                    return;
+                }
+
+                // Show selection dialog
+                await PushWithSelectionAsync();
+                return;
+            }
+
             IsBusy = true;
             StatusMessage = "Pushing changes...";
 
-            // Try to get credentials from stored PAT (map hostname to credential key)
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
-            var originUrl = remotes.FirstOrDefault(r => r.Name == "origin")?.Url;
+            // Single remote - push directly
+            var remote = remotes.FirstOrDefault();
             string? pat = null;
-            if (!string.IsNullOrEmpty(originUrl))
+            if (!string.IsNullOrEmpty(remote?.Url))
             {
-                var host = new Uri(originUrl).Host;
-                var credentialKey = GetCredentialKeyForHost(host);
+                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
                 if (!string.IsNullOrEmpty(credentialKey))
                 {
-                    pat = _credentialService.GetCredential(credentialKey);
+                    pat = _credentialService.GetPat(credentialKey);
                 }
             }
 
-            await _gitService.PushAsync(SelectedRepository.Path, null, pat);
+            await _gitService.PushAsync(SelectedRepository.Path, remote?.Name, null, pat);
+
+            // Fetch to update remote refs in the UI
+            if (remote != null)
+            {
+                StatusMessage = "Updating remote refs...";
+                try
+                {
+                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: pat);
+                }
+                catch
+                {
+                    // Ignore fetch failures - push succeeded
+                }
+            }
 
             StatusMessage = "Push complete";
             await RefreshAsync();
@@ -196,22 +253,59 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Maps a remote URL hostname to the credential storage key.
+    /// Push to all remotes.
     /// </summary>
-    private static string? GetCredentialKeyForHost(string host)
+    private async Task PushToAllRemotesAsync(List<RemoteInfo> remotes)
     {
-        if (string.IsNullOrEmpty(host))
-            return null;
+        if (SelectedRepository == null) return;
 
-        if (host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
-            return "GitHub";
+        IsBusy = true;
+        var successCount = 0;
+        var pushedRemotes = new List<(RemoteInfo remote, string? pat)>();
 
-        if (host.Equals("dev.azure.com", StringComparison.OrdinalIgnoreCase) ||
-            host.EndsWith(".visualstudio.com", StringComparison.OrdinalIgnoreCase))
-            return "AzureDevOps";
+        foreach (var remote in remotes)
+        {
+            StatusMessage = $"Pushing to {remote.Name}...";
 
-        // Return host as-is for other providers (may have stored by hostname)
-        return host;
+            string? pat = null;
+            if (!string.IsNullOrEmpty(remote.Url))
+            {
+                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
+                if (!string.IsNullOrEmpty(credentialKey))
+                {
+                    pat = _credentialService.GetPat(credentialKey);
+                }
+            }
+
+            try
+            {
+                await _gitService.PushAsync(SelectedRepository.Path, remote.Name, null, pat);
+                successCount++;
+                pushedRemotes.Add((remote, pat));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Push to {remote.Name} failed: {ex.Message}");
+            }
+        }
+
+        // Fetch from all pushed remotes to update remote refs in the UI
+        StatusMessage = "Updating remote refs...";
+        foreach (var (remote, pat) in pushedRemotes)
+        {
+            try
+            {
+                await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: pat);
+            }
+            catch
+            {
+                // Ignore fetch failures - push succeeded
+            }
+        }
+
+        StatusMessage = $"Pushed to {successCount} of {remotes.Count} remotes";
+        await RefreshAsync();
+        IsBusy = false;
     }
 
     /// <summary>

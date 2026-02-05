@@ -47,7 +47,11 @@ internal class RepositoryOperations
             var status = repo.RetrieveStatus();
             var isDirty = status.IsDirty;
 
-            var currentBranch = repo.Head?.FriendlyName ?? "HEAD";
+            var isDetached = repo.Info.IsHeadDetached;
+            var headSha = repo.Head?.Tip?.Sha;
+            var currentBranch = isDetached
+                ? $"HEAD ({headSha?[..7] ?? "detached"})"
+                : (repo.Head?.FriendlyName ?? "HEAD");
             var tracking = repo.Head?.TrackingDetails;
 
             // Check for merge in progress
@@ -96,7 +100,9 @@ internal class RepositoryOperations
                 LastAccessed = DateTimeOffset.Now,
                 IsMergeInProgress = isMergeInProgress,
                 MergingBranch = mergingBranch,
-                ConflictCount = conflictCount
+                ConflictCount = conflictCount,
+                IsDetachedHead = isDetached,
+                DetachedHeadSha = isDetached ? headSha : null
             };
         });
     }
