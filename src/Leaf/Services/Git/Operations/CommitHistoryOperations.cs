@@ -164,7 +164,6 @@ internal class CommitHistoryOperations
                     {
                         Name = "HEAD",
                         IsLocal = true,
-                        IsRemote = false,
                         IsCurrent = true,
                         TipSha = headSha
                     });

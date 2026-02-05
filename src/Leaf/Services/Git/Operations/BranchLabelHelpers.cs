@@ -75,40 +75,72 @@ internal static class BranchLabelHelpers
 
         var processedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Group remote branches by branch name (to consolidate multiple remotes)
+        var remoteBranchesByName = remoteBranches
+            .GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        // Process local branches first - consolidate with ALL matching remotes
         foreach (var localName in localBranches)
         {
-            var matchingRemote = remoteBranches.FirstOrDefault(r =>
-                string.Equals(r.Name, localName, StringComparison.OrdinalIgnoreCase));
-
             var tipShaValue = branchNameToTipSha.GetValueOrDefault(localName);
-            labels.Add(new BranchLabel
+            var label = new BranchLabel
             {
                 Name = localName,
                 IsLocal = true,
-                IsRemote = matchingRemote != null,
-                RemoteName = matchingRemote?.RemoteName,
-                RemoteType = matchingRemote?.RemoteType ?? RemoteType.Other,
                 IsCurrent = string.Equals(localName, currentBranchName, StringComparison.OrdinalIgnoreCase),
                 TipSha = tipShaValue
-            });
+            };
+
+            // Add ALL matching remotes to this label
+            if (remoteBranchesByName.TryGetValue(localName, out var matchingRemotes))
+            {
+                foreach (var remote in matchingRemotes)
+                {
+                    var fullRemoteName = $"{remote.RemoteName}/{remote.Name}";
+                    label.Remotes.Add(new RemoteBranchInfo
+                    {
+                        RemoteName = remote.RemoteName,
+                        RemoteType = remote.RemoteType,
+                        TipSha = branchNameToTipSha.GetValueOrDefault(fullRemoteName)
+                    });
+                }
+            }
+
+            labels.Add(label);
             processedNames.Add(localName);
         }
 
-        foreach (var remote in remoteBranches)
+        // Process remote-only branches - consolidate all remotes with same branch name
+        foreach (var group in remoteBranchesByName)
         {
-            if (!processedNames.Contains(remote.Name))
+            if (processedNames.Contains(group.Key))
+                continue;
+
+            var firstRemote = group.Value[0];
+            var fullRemoteName = $"{firstRemote.RemoteName}/{firstRemote.Name}";
+
+            var label = new BranchLabel
             {
-                var fullRemoteName = $"{remote.RemoteName}/{remote.Name}";
-                labels.Add(new BranchLabel
+                Name = group.Key,
+                IsLocal = false,
+                TipSha = branchNameToTipSha.GetValueOrDefault(fullRemoteName)
+            };
+
+            // Add ALL remotes to this label
+            foreach (var remote in group.Value)
+            {
+                var remoteFullName = $"{remote.RemoteName}/{remote.Name}";
+                label.Remotes.Add(new RemoteBranchInfo
                 {
-                    Name = remote.Name,
-                    IsLocal = false,
-                    IsRemote = true,
                     RemoteName = remote.RemoteName,
                     RemoteType = remote.RemoteType,
-                    TipSha = branchNameToTipSha.GetValueOrDefault(fullRemoteName)
+                    TipSha = branchNameToTipSha.GetValueOrDefault(remoteFullName)
                 });
             }
+
+            labels.Add(label);
+            processedNames.Add(group.Key);
         }
 
         labels.Sort((a, b) =>
