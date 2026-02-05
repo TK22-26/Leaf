@@ -2,6 +2,7 @@
 
 A modern WPF Git client for Windows with an interactive commit graph, AI-powered commit messages, and seamless cloud repository integration.
 
+[![Build and Release](https://github.com/TK22-26/Leaf/actions/workflows/build.yml/badge.svg)](https://github.com/TK22-26/Leaf/actions/workflows/build.yml)
 ![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)
 ![Windows](https://img.shields.io/badge/Platform-Windows-0078D6)
 ![License](https://img.shields.io/badge/License-Freeware-blue)
@@ -47,6 +48,20 @@ The AI analyzes your staged changes and generates:
 - Three-way merge view (Base, Ours, Theirs)
 - Per-file resolution: Accept Ours, Accept Theirs, or Manual Edit
 - Merge status banner with quick actions
+
+### GitFlow Integration
+- Full GitFlow workflow support (initialize, feature, release, hotfix, support branches)
+- Start, finish, and publish GitFlow branches from the UI
+- Configurable merge strategy, auto-push, and branch deletion settings
+- GitFlow branches highlighted with distinct colors in the commit graph
+- Compatible with standard git-flow CLI configuration
+
+### Worktree Management
+- Create worktrees for existing branches or with new branches
+- Switch between worktrees seamlessly from the branch panel or repository sidebar
+- Lock/unlock worktrees to prevent accidental removal
+- Prune stale worktree references
+- Detached HEAD worktree creation from any commit
 
 ### Stash Support
 - Stash working changes with optional message
