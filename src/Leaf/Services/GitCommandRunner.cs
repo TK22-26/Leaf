@@ -109,7 +109,8 @@ public class GitCommandRunner : IGitCommandRunner
             stderr,
             process.ExitCode == 0);
 
-        if (!result.Success)
+        // Only log failures with actual error content (not expected failures like missing config keys)
+        if (!result.Success && !string.IsNullOrWhiteSpace(result.StandardError))
         {
             Debug.WriteLine($"Git command failed (exit code {result.ExitCode}): {result.StandardError}");
         }
