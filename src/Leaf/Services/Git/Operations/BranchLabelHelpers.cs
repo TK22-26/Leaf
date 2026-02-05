@@ -73,14 +73,6 @@ internal static class BranchLabelHelpers
         var localBranches = localBranchTips.TryGetValue(sha, out var locals) ? locals : [];
         var remoteBranches = remoteBranchTips.TryGetValue(sha, out var remotes) ? remotes : [];
 
-        // Debug: Log what remotes we have at this SHA
-        if (remoteBranches.Count > 0)
-        {
-            System.Diagnostics.Debug.WriteLine($"[LABELS] BuildBranchLabels for SHA {sha[..7]}:");
-            System.Diagnostics.Debug.WriteLine($"[LABELS]   Local branches: {string.Join(", ", localBranches)}");
-            System.Diagnostics.Debug.WriteLine($"[LABELS]   Remote branches: {string.Join(", ", remoteBranches.Select(r => $"{r.RemoteName}/{r.Name} ({r.RemoteType})"))}");
-        }
-
         var processedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Group remote branches by branch name (to consolidate multiple remotes)
@@ -113,7 +105,6 @@ internal static class BranchLabelHelpers
                         TipSha = branchNameToTipSha.GetValueOrDefault(fullRemoteName)
                     });
                 }
-                System.Diagnostics.Debug.WriteLine($"[LABELS]   Created label '{localName}' with {label.Remotes.Count} remotes: {string.Join(", ", label.Remotes.Select(r => $"{r.RemoteName}({r.RemoteType})"))}");
             }
 
             labels.Add(label);

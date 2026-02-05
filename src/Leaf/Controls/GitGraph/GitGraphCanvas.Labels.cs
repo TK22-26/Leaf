@@ -29,12 +29,6 @@ public partial class GitGraphCanvas
 
         foreach (var label in node.BranchLabels)
         {
-            // Debug: Log the label's remotes
-            if (label.Remotes.Count > 0)
-            {
-                System.Diagnostics.Debug.WriteLine($"[RENDER] Label '{label.Name}': IsLocal={label.IsLocal}, Remotes={label.Remotes.Count} [{string.Join(", ", label.Remotes.Select(r => $"{r.RemoteName}({r.RemoteType})"))}]");
-            }
-
             // Each branch gets a unique color generated from its name
             Brush bgBrush = GraphBuilder.GetBranchColor(label.Name);
 
