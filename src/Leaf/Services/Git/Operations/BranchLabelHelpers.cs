@@ -66,6 +66,7 @@ internal static class BranchLabelHelpers
         string sha,
         Dictionary<string, List<string>> localBranchTips,
         Dictionary<string, List<RemoteBranchRef>> remoteBranchTips,
+        Dictionary<string, string> branchNameToTipSha,
         string? currentBranchName)
     {
         var labels = new List<BranchLabel>();
@@ -86,7 +87,8 @@ internal static class BranchLabelHelpers
                 IsRemote = matchingRemote != null,
                 RemoteName = matchingRemote?.RemoteName,
                 RemoteType = matchingRemote?.RemoteType ?? RemoteType.Other,
-                IsCurrent = string.Equals(localName, currentBranchName, StringComparison.OrdinalIgnoreCase)
+                IsCurrent = string.Equals(localName, currentBranchName, StringComparison.OrdinalIgnoreCase),
+                TipSha = branchNameToTipSha.GetValueOrDefault(localName)
             });
             processedNames.Add(localName);
         }
@@ -95,13 +97,15 @@ internal static class BranchLabelHelpers
         {
             if (!processedNames.Contains(remote.Name))
             {
+                var fullRemoteName = $"{remote.RemoteName}/{remote.Name}";
                 labels.Add(new BranchLabel
                 {
                     Name = remote.Name,
                     IsLocal = false,
                     IsRemote = true,
                     RemoteName = remote.RemoteName,
-                    RemoteType = remote.RemoteType
+                    RemoteType = remote.RemoteType,
+                    TipSha = branchNameToTipSha.GetValueOrDefault(fullRemoteName)
                 });
             }
         }

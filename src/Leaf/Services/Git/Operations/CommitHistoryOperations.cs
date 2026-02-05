@@ -59,6 +59,21 @@ internal class CommitHistoryOperations
                 .GroupBy(t => t.Target?.Sha)
                 .ToDictionary(g => g.Key ?? "", g => g.Select(t => t.FriendlyName).ToList());
 
+            // Build reverse map: branch name → tip SHA for BranchLabel.TipSha
+            var branchNameToTipSha = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (tipSha, names) in localBranchTips)
+            {
+                if (string.IsNullOrWhiteSpace(tipSha)) continue;
+                foreach (var name in names)
+                    branchNameToTipSha[name] = tipSha;
+            }
+            foreach (var (tipSha, refs) in remoteBranchTips)
+            {
+                if (string.IsNullOrWhiteSpace(tipSha)) continue;
+                foreach (var r in refs)
+                    branchNameToTipSha[$"{r.RemoteName}/{r.Name}"] = tipSha;
+            }
+
             ICommitLog commits;
             if (!string.IsNullOrEmpty(branchName))
             {
@@ -96,7 +111,7 @@ internal class CommitHistoryOperations
                     ParentShas = c.Parents.Select(p => p.Sha).ToList(),
                     IsHead = c.Sha == headSha,
                     BranchNames = allBranchTips.TryGetValue(c.Sha, out var branches) ? branches : [],
-                    BranchLabels = BuildBranchLabels(c.Sha, localBranchTips, remoteBranchTips, currentBranchName),
+                    BranchLabels = BuildBranchLabels(c.Sha, localBranchTips, remoteBranchTips, branchNameToTipSha, currentBranchName),
                     TagNames = tagTips.TryGetValue(c.Sha, out var tags) ? tags : []
                 })
                 .ToList();
@@ -113,7 +128,7 @@ internal class CommitHistoryOperations
                 if (nearestSha == null || !commitsBySha.TryGetValue(nearestSha, out var targetCommit))
                     continue;
 
-                var labels = BuildBranchLabels(tipSha, localBranchTips, remoteBranchTips, currentBranchName);
+                var labels = BuildBranchLabels(tipSha, localBranchTips, remoteBranchTips, branchNameToTipSha, currentBranchName);
                 AddBranchLabels(targetCommit, labels);
             }
 
@@ -126,7 +141,8 @@ internal class CommitHistoryOperations
                     Name = "HEAD",
                     IsLocal = true,
                     IsRemote = false,
-                    IsCurrent = true
+                    IsCurrent = true,
+                    TipSha = headSha
                 });
             }
 

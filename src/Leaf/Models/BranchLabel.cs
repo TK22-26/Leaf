@@ -42,6 +42,12 @@ public class BranchLabel
     public bool IsCurrent { get; set; }
 
     /// <summary>
+    /// SHA of the commit this branch points to.
+    /// Used for checkout operations from the git graph.
+    /// </summary>
+    public string? TipSha { get; set; }
+
+    /// <summary>
     /// Full reference name for display purposes.
     /// </summary>
     public string FullName => IsRemote && !IsLocal && RemoteName != null
