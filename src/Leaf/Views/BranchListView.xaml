@@ -21,6 +21,7 @@
         <converters:BranchNameToGitFlowVisibilityConverter x:Key="BranchNameToGitFlowVisibilityConverter" />
         <converters:GitFlowTypeToVisibilityConverter x:Key="GitFlowTypeToVisibilityConverter" />
         <converters:StringIsNullOrEmptyConverter x:Key="StringIsNullOrEmptyConverter" />
+        <converters:BoolToDetachedTextConverter x:Key="BoolToDetachedTextConverter" />
 
         <!--  Multi-select TreeViewItem style for BranchInfo items  -->
         <!--  NOTE: Does NOT use TreeViewItem.IsSelected triggers to avoid single-selection enforcement  -->
@@ -161,6 +162,7 @@
             Padding="4"
             BorderThickness="0"
             ItemsSource="{Binding SelectedRepository.BranchCategories}"
+            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
             Visibility="{Binding SelectedRepository, Converter={StaticResource NullToVisibilityConverter}}">
             <TreeView.Resources>
                 <!--  Branch category template (LOCAL/REMOTE/GITFLOW)  -->
@@ -277,6 +279,26 @@
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Symbol="Add" />
                         </Button>
+                        <!--  Add Worktree button (WORKTREES category)  -->
+                        <Button
+                            x:Name="AddWorktreeButton"
+                            Grid.Column="1"
+                            Margin="0"
+                            Padding="4"
+                            VerticalAlignment="Center"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="AddWorktreeButton_Click"
+                            Cursor="Hand"
+                            ToolTip="Create worktree"
+                            Visibility="Collapsed">
+                            <ic:SymbolIcon
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Symbol="Add" />
+                        </Button>
                     </Grid>
                     <HierarchicalDataTemplate.Triggers>
                         <DataTrigger Binding="{Binding IsGitFlowCategory}" Value="True">
@@ -295,6 +317,12 @@
                         </DataTrigger>
                         <DataTrigger Binding="{Binding IsRemoteCategory}" Value="True">
                             <Setter TargetName="AddRemoteButton" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsWorktreesCategory}" Value="True">
+                            <Setter TargetName="CategoryIcon" Property="Symbol" Value="TreeDeciduous" />
+                            <Setter TargetName="CategoryIcon" Property="Foreground" Value="#3B82F6" />
+                            <Setter TargetName="CategoryName" Property="Foreground" Value="#3B82F6" />
+                            <Setter TargetName="AddWorktreeButton" Property="Visibility" Value="Visible" />
                         </DataTrigger>
                     </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>
@@ -471,6 +499,11 @@
                                     CommandParameter="{Binding}"
                                     Header="Create branch here..." />
                                 <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.CreateWorktreeForBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Create worktree..."
+                                    IsEnabled="{Binding IsRemote, Converter={StaticResource InverseBoolConverter}}" />
+                                <MenuItem
                                     Command="{Binding PlacementTarget.Tag.RenameBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                     CommandParameter="{Binding}"
                                     Header="Rename branch..."
@@ -525,6 +558,18 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                <!--  Current branch indicator (fixed width for alignment)  -->
+                                <Grid Width="14" Margin="0,0,2,0">
+                                    <ic:SymbolIcon
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        FontSize="10"
+                                        Foreground="#10B981"
+                                        IconVariant="Regular"
+                                        Symbol="Checkmark"
+                                        Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                </Grid>
+
                                 <!--  GitFlow type indicator (colored dot)  -->
                                 <Border
                                     Width="6"
@@ -550,16 +595,6 @@
                                     FontSize="11"
                                     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                     Text="{Binding Name}" />
-
-                                <!--  Current branch indicator  -->
-                                <ic:SymbolIcon
-                                    Margin="4,0,0,0"
-                                    VerticalAlignment="Center"
-                                    FontSize="10"
-                                    Foreground="#10B981"
-                                    IconVariant="Regular"
-                                    Symbol="Checkmark"
-                                    Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVisibilityConverter}}" />
                             </StackPanel>
 
                             <StackPanel
@@ -650,6 +685,148 @@
                                 ToolTip="Annotated tag"
                                 Visibility="{Binding IsAnnotated, Converter={StaticResource BoolToVisibilityConverter}}" />
                         </StackPanel>
+                    </Border>
+                </DataTemplate>
+
+                <!--  Worktree template  -->
+                <DataTemplate DataType="{x:Type models:WorktreeInfo}">
+                    <Border
+                        x:Name="WorktreeBorder"
+                        Padding="2,3"
+                        HorizontalAlignment="Stretch"
+                        Background="Transparent"
+                        CornerRadius="2"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="Worktree_MouseLeftButtonDown"
+                        MouseRightButtonDown="Worktree_MouseRightButtonDown"
+                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.SwitchToWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Switch to Worktree"
+                                    IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}" />
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.LockWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Lock">
+                                    <MenuItem.Style>
+                                        <Style BasedOn="{StaticResource {x:Type MenuItem}}" TargetType="MenuItem">
+                                            <Setter Property="IsEnabled" Value="True" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsLocked}" Value="True">
+                                                    <Setter Property="IsEnabled" Value="False" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsMainWorktree}" Value="True">
+                                                    <Setter Property="IsEnabled" Value="False" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </MenuItem.Style>
+                                </MenuItem>
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.UnlockWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Unlock"
+                                    IsEnabled="{Binding IsLocked}" />
+                                <Separator />
+                                <MenuItem Command="{Binding PlacementTarget.Tag.PruneWorktreesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" Header="Prune Stale References" />
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.RemoveWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Foreground="#DC2626"
+                                    Header="Remove">
+                                    <MenuItem.Style>
+                                        <Style BasedOn="{StaticResource {x:Type MenuItem}}" TargetType="MenuItem">
+                                            <Setter Property="IsEnabled" Value="True" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsMainWorktree}" Value="True">
+                                                    <Setter Property="IsEnabled" Value="False" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                    <Setter Property="IsEnabled" Value="False" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </MenuItem.Style>
+                                </MenuItem>
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <!--  Current worktree indicator (fixed width for alignment)  -->
+                            <ic:SymbolIcon
+                                Grid.Column="0"
+                                Margin="0,0,4,0"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                FontSize="10"
+                                Foreground="#10B981"
+                                IconVariant="Regular"
+                                Symbol="Checkmark"
+                                ToolTip="Current worktree"
+                                Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <!--  Worktree icon  -->
+                            <ic:SymbolIcon
+                                Grid.Column="1"
+                                Margin="0,0,6,0"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                IconVariant="Regular"
+                                Symbol="TreeDeciduous" />
+
+                            <!--  Worktree name and branch info (truncates when narrow)  -->
+                            <TextBlock
+                                Grid.Column="2"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                TextTrimming="CharacterEllipsis"
+                                ToolTip="{Binding DisplayText}">
+                                <Run Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding DisplayName, Mode=OneWay}" /><Run Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="{Binding BranchName, Mode=OneWay, StringFormat=' ({0})', TargetNullValue=''}" /><Run Foreground="#F59E0B" Text="{Binding IsDetached, Mode=OneWay, Converter={StaticResource BoolToDetachedTextConverter}}" />
+                            </TextBlock>
+
+                            <!--  Right-side indicators (always visible)  -->
+                            <StackPanel
+                                Grid.Column="3"
+                                Margin="4,0,0,0"
+                                VerticalAlignment="Center"
+                                Orientation="Horizontal">
+                                <!--  Main worktree badge  -->
+                                <Border
+                                    Padding="4,1"
+                                    Background="{DynamicResource LeafAccentSubtleBrush}"
+                                    CornerRadius="6"
+                                    ToolTip="Main worktree"
+                                    Visibility="{Binding IsMainWorktree, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <TextBlock
+                                        FontSize="9"
+                                        FontWeight="SemiBold"
+                                        Foreground="#3B82F6"
+                                        Text="MAIN" />
+                                </Border>
+
+                                <!--  Lock indicator  -->
+                                <ic:SymbolIcon
+                                    Margin="4,0,0,0"
+                                    FontSize="10"
+                                    Foreground="#F59E0B"
+                                    IconVariant="Filled"
+                                    Symbol="LockClosed"
+                                    ToolTip="{Binding LockReason, TargetNullValue='Locked'}"
+                                    Visibility="{Binding IsLocked, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </StackPanel>
+                        </Grid>
                     </Border>
                 </DataTemplate>
             </TreeView.Resources>
@@ -774,6 +951,108 @@
                             FontSize="10"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Creating branch..." />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <!--  Worktree Create Popup  -->
+        <Popup
+            x:Name="WorktreeCreatePopup"
+            AllowsTransparency="True"
+            Placement="Right"
+            PopupAnimation="Fade"
+            StaysOpen="False">
+            <Border
+                MinWidth="280"
+                MaxWidth="350"
+                Padding="12"
+                Background="{DynamicResource ApplicationBackgroundBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="6">
+                <Border.Effect>
+                    <DropShadowEffect
+                        BlurRadius="16"
+                        Opacity="0.3"
+                        ShadowDepth="4" />
+                </Border.Effect>
+                <StackPanel>
+                    <!--  Header  -->
+                    <StackPanel Margin="0,0,0,8" Orientation="Horizontal">
+                        <ic:SymbolIcon
+                            Margin="0,0,6,0"
+                            VerticalAlignment="Center"
+                            FontSize="14"
+                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                            Symbol="TreeDeciduous" />
+                        <TextBlock
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                            Text="Create Worktree" />
+                    </StackPanel>
+
+                    <!--  Description  -->
+                    <TextBlock
+                        Margin="0,0,0,8"
+                        FontSize="11"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="Create a new worktree with a new branch:"
+                        TextWrapping="Wrap" />
+
+                    <!--  Branch Name Input  -->
+                    <TextBox
+                        x:Name="WorktreeNameBox"
+                        Padding="8,6"
+                        FontSize="12"
+                        KeyDown="WorktreeNameBox_KeyDown"
+                        TextChanged="WorktreeNameBox_TextChanged" />
+
+                    <!--  Path Preview  -->
+                    <TextBlock
+                        x:Name="WorktreePathPreview"
+                        Margin="2,4,0,0"
+                        FontFamily="Consolas"
+                        FontSize="10"
+                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                        Text="Path: ..."
+                        TextTrimming="CharacterEllipsis" />
+
+                    <!--  Buttons  -->
+                    <StackPanel
+                        Margin="0,12,0,0"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal">
+                        <Button
+                            Padding="10,4"
+                            Click="WorktreeCreateCancel_Click"
+                            Content="Cancel"
+                            FontSize="11" />
+                        <Button
+                            x:Name="WorktreeCreateButton"
+                            Margin="6,0,0,0"
+                            Padding="12,4"
+                            Background="{DynamicResource AccentFillColorDefaultBrush}"
+                            Click="WorktreeCreateConfirm_Click"
+                            Content="Create"
+                            FontSize="11"
+                            Foreground="White"
+                            IsEnabled="False" />
+                    </StackPanel>
+
+                    <!--  Progress  -->
+                    <StackPanel
+                        x:Name="WorktreeCreateProgress"
+                        Margin="0,8,0,0"
+                        Visibility="Collapsed">
+                        <ProgressBar Height="2" IsIndeterminate="True" />
+                        <TextBlock
+                            x:Name="WorktreeCreateProgressText"
+                            Margin="0,4,0,0"
+                            FontSize="10"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="Creating worktree..." />
                     </StackPanel>
                 </StackPanel>
             </Border>

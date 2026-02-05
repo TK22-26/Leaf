@@ -25,6 +25,7 @@ public class GitService : IGitService
     private readonly TagOperations _tagOps;
     private readonly HunkOperations _hunkOps;
     private readonly ConfigOperations _configOps;
+    private readonly WorktreeOperations _worktreeOps;
 
     public event EventHandler<GitCommandEventArgs>? GitCommandExecuted;
 
@@ -52,6 +53,7 @@ public class GitService : IGitService
         _tagOps = new TagOperations(_context);
         _hunkOps = new HunkOperations(_context);
         _configOps = new ConfigOperations(_context);
+        _worktreeOps = new WorktreeOperations(_context);
     }
 
     #region Repository Operations
@@ -380,6 +382,34 @@ public class GitService : IGitService
 
     public Task<string?> GetConfigAsync(string repoPath, string key)
         => _configOps.GetConfigAsync(repoPath, key);
+
+    #endregion
+
+    #region Worktree Operations
+
+    public Task<List<WorktreeInfo>> GetWorktreesAsync(string repoPath)
+        => _worktreeOps.GetWorktreesAsync(repoPath);
+
+    public Task CreateWorktreeAsync(string repoPath, string worktreePath, string branchName)
+        => _worktreeOps.CreateWorktreeAsync(repoPath, worktreePath, branchName);
+
+    public Task CreateWorktreeWithNewBranchAsync(string repoPath, string worktreePath, string newBranchName, string? startPoint = null)
+        => _worktreeOps.CreateWorktreeWithNewBranchAsync(repoPath, worktreePath, newBranchName, startPoint);
+
+    public Task CreateWorktreeDetachedAsync(string repoPath, string worktreePath, string commitSha)
+        => _worktreeOps.CreateWorktreeDetachedAsync(repoPath, worktreePath, commitSha);
+
+    public Task RemoveWorktreeAsync(string repoPath, string worktreePath, bool force = false)
+        => _worktreeOps.RemoveWorktreeAsync(repoPath, worktreePath, force);
+
+    public Task LockWorktreeAsync(string repoPath, string worktreePath, string? reason = null)
+        => _worktreeOps.LockWorktreeAsync(repoPath, worktreePath, reason);
+
+    public Task UnlockWorktreeAsync(string repoPath, string worktreePath)
+        => _worktreeOps.UnlockWorktreeAsync(repoPath, worktreePath);
+
+    public Task PruneWorktreesAsync(string repoPath)
+        => _worktreeOps.PruneWorktreesAsync(repoPath);
 
     #endregion
 }

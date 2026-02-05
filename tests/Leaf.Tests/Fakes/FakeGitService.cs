@@ -140,4 +140,14 @@ public class FakeGitService : IGitService
     public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null) => Task.FromResult(new List<CommitInfo>());
     public Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath) => Task.FromResult(new List<FileBlameLine>());
     public Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200) => Task.FromResult(new List<CommitInfo>());
+
+    // Worktree operations
+    public Task<List<WorktreeInfo>> GetWorktreesAsync(string repoPath) => Task.FromResult(new List<WorktreeInfo>());
+    public Task CreateWorktreeAsync(string repoPath, string worktreePath, string branchName) => Task.CompletedTask;
+    public Task CreateWorktreeWithNewBranchAsync(string repoPath, string worktreePath, string newBranchName, string? startPoint = null) => Task.CompletedTask;
+    public Task CreateWorktreeDetachedAsync(string repoPath, string worktreePath, string commitSha) => Task.CompletedTask;
+    public Task RemoveWorktreeAsync(string repoPath, string worktreePath, bool force = false) => Task.CompletedTask;
+    public Task LockWorktreeAsync(string repoPath, string worktreePath, string? reason = null) => Task.CompletedTask;
+    public Task UnlockWorktreeAsync(string repoPath, string worktreePath) => Task.CompletedTask;
+    public Task PruneWorktreesAsync(string repoPath) => Task.CompletedTask;
 }

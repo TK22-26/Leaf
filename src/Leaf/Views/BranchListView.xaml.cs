@@ -130,6 +130,69 @@ public partial class BranchListView : UserControl
         tag.IsSelected = true;
     }
 
+    private void Worktree_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not WorktreeInfo worktree)
+            return;
+
+        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+            return;
+
+        // Double-click to switch to worktree
+        if (e.ClickCount == 2 && !worktree.IsCurrent)
+        {
+            _ = viewModel.SwitchToWorktreeAsync(worktree);
+            e.Handled = true;
+            return;
+        }
+
+        // Single click - select this worktree
+        SelectWorktree(viewModel.SelectedRepository, worktree, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        e.Handled = true;
+    }
+
+    private void Worktree_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not WorktreeInfo worktree)
+            return;
+
+        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+            return;
+
+        // If right-clicked worktree is not selected, select it
+        if (!worktree.IsSelected)
+        {
+            SelectWorktree(viewModel.SelectedRepository, worktree, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        }
+
+        // Don't mark handled - let context menu open
+    }
+
+    private static void SelectWorktree(RepositoryInfo repo, WorktreeInfo worktree, bool toggle)
+    {
+        // Clear any branch selection first to avoid mixed selections
+        repo.ClearBranchSelection();
+
+        if (toggle)
+        {
+            worktree.IsSelected = !worktree.IsSelected;
+            return;
+        }
+
+        // Clear other worktree selections and select this one
+        foreach (var category in repo.BranchCategories)
+        {
+            if (category.IsWorktreesCategory)
+            {
+                foreach (var wt in category.Worktrees)
+                {
+                    wt.IsSelected = false;
+                }
+            }
+        }
+        worktree.IsSelected = true;
+    }
+
     /// <summary>
     /// Selects the given branch. For local branches (which are shared between GITFLOW and LOCAL
     /// categories), this automatically shows selection in both places since they're the same instance.
@@ -515,6 +578,107 @@ public partial class BranchListView : UserControl
         if (name.StartsWith('/') || name.EndsWith('/')) return false;
         if (name.StartsWith('.') || name.EndsWith('.')) return false;
         return true;
+    }
+
+    #endregion
+
+    #region Worktree Create Popup
+
+    private Button? _lastWorktreeButton;
+
+    private void AddWorktreeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button)
+            return;
+
+        _lastWorktreeButton = button;
+        e.Handled = true;
+
+        // Reset UI
+        WorktreeNameBox.Text = "";
+        WorktreeNameBox.IsEnabled = true;
+        WorktreePathPreview.Text = "Path: ...";
+        WorktreeCreateButton.IsEnabled = false;
+        WorktreeCreateProgress.Visibility = Visibility.Collapsed;
+
+        // Position and show popup
+        WorktreeCreatePopup.PlacementTarget = button;
+        WorktreeCreatePopup.IsOpen = true;
+        WorktreeNameBox.Focus();
+    }
+
+    private void WorktreeNameBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var name = WorktreeNameBox.Text.Trim();
+        var isValid = !string.IsNullOrWhiteSpace(name) && IsValidBranchName(name);
+        WorktreeCreateButton.IsEnabled = isValid;
+
+        if (DataContext is MainViewModel viewModel && viewModel.SelectedRepository != null && isValid)
+        {
+            // Sanitize for path preview
+            var safeName = string.Concat(name.Select(c => c == '/' || System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '-' : c));
+            var repoName = System.IO.Path.GetFileName(viewModel.SelectedRepository.Path.TrimEnd(
+                System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+            WorktreePathPreview.Text = $"Path: ../{repoName}-{safeName}";
+        }
+        else
+        {
+            WorktreePathPreview.Text = "Path: ...";
+        }
+    }
+
+    private void WorktreeNameBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && WorktreeCreateButton.IsEnabled)
+        {
+            WorktreeCreateConfirm_Click(sender, e);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            WorktreeCreatePopup.IsOpen = false;
+            e.Handled = true;
+        }
+    }
+
+    private void WorktreeCreateCancel_Click(object sender, RoutedEventArgs e)
+    {
+        WorktreeCreatePopup.IsOpen = false;
+    }
+
+    private async void WorktreeCreateConfirm_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+            return;
+
+        var branchName = WorktreeNameBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(branchName))
+            return;
+
+        // Disable UI
+        WorktreeNameBox.IsEnabled = false;
+        WorktreeCreateButton.IsEnabled = false;
+        WorktreeCreateProgress.Visibility = Visibility.Visible;
+        WorktreeCreateProgressText.Text = "Creating worktree...";
+
+        try
+        {
+            await viewModel.CreateWorktreeWithNewBranchAsync(branchName);
+            WorktreeCreatePopup.IsOpen = false;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to create worktree:\n\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            ResetWorktreeCreateUI();
+        }
+    }
+
+    private void ResetWorktreeCreateUI()
+    {
+        WorktreeNameBox.IsEnabled = true;
+        WorktreeCreateButton.IsEnabled = !string.IsNullOrWhiteSpace(WorktreeNameBox.Text);
+        WorktreeCreateProgress.Visibility = Visibility.Collapsed;
     }
 
     #endregion

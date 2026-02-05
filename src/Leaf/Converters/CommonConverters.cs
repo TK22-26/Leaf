@@ -691,3 +691,24 @@ public class EnumBooleanConverter : IValueConverter
         return Binding.DoNothing;
     }
 }
+
+/// <summary>
+/// Converts a bool (IsDetached) to detached text.
+/// True = " (detached)", False = "".
+/// </summary>
+public class BoolToDetachedTextConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool isDetached && isDetached)
+        {
+            return " (detached)";
+        }
+        return string.Empty;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return Binding.DoNothing;
+    }
+}

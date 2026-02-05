@@ -3,18 +3,18 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="clr-namespace:Leaf.Converters">
 
-    <!-- Converters -->
+    <!--  Converters  -->
     <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
     <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
     <converters:ReservedFileNameToVisibilityConverter x:Key="ReservedFileNameToVisibilityConverter" />
 
-    <!-- File status colors -->
+    <!--  File status colors  -->
     <SolidColorBrush x:Key="StatusAddedBrush" Color="#28A745" />
     <SolidColorBrush x:Key="StatusModifiedBrush" Color="#F5A623" />
     <SolidColorBrush x:Key="StatusDeletedBrush" Color="#E81123" />
     <SolidColorBrush x:Key="StatusUntrackedBrush" Color="#6B7280" />
 
-    <!-- Status icon style with DataTriggers -->
+    <!--  Status icon style with DataTriggers  -->
     <Style x:Key="FileStatusIconStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{StaticResource StatusModifiedBrush}" />
         <Style.Triggers>
@@ -41,7 +41,7 @@
         </Style.Triggers>
     </Style>
 
-    <!-- File item hover border style -->
+    <!--  File item hover border style  -->
     <Style x:Key="FileItemBorderStyle" TargetType="Border">
         <Setter Property="Margin" Value="2,1" />
         <Setter Property="Padding" Value="8,6" />
@@ -58,7 +58,7 @@
         </Style.Triggers>
     </Style>
 
-    <!-- Section chevron toggle style -->
+    <!--  Section chevron toggle style  -->
     <Style x:Key="SectionChevronToggleStyle" TargetType="ToggleButton">
         <Setter Property="Width" Value="18" />
         <Setter Property="Height" Value="18" />
@@ -69,7 +69,21 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
-                    <Grid x:Name="ChevronRoot" Width="18" Height="18" RenderTransformOrigin="0.5,0.5">
+                    <Grid
+                        x:Name="ChevronRoot"
+                        Width="18"
+                        Height="18"
+                        RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <RotateTransform x:Name="ChevronRotate" Angle="0" />
+                        </Grid.RenderTransform>
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontFamily="{DynamicResource SymbolThemeFontFamily}"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="&#xE76C;" />
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CheckStates">
                                 <VisualState x:Name="Checked">
@@ -100,16 +114,6 @@
                                 </VisualState>
                             </VisualStateGroup>
                         </VisualStateManager.VisualStateGroups>
-                        <Grid.RenderTransform>
-                            <RotateTransform x:Name="ChevronRotate" Angle="0" />
-                        </Grid.RenderTransform>
-                        <TextBlock
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            FontFamily="{DynamicResource SymbolThemeFontFamily}"
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="&#xE76C;" />
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>
