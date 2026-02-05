@@ -204,6 +204,12 @@ public partial class GitGraphViewModel : ObservableObject
                 }
             }
 
+            // Capture selection state BEFORE RebuildGraphFromFilters clears it
+            // (RebuildGraphFromFilters clears SelectedCommit when old instance isn't in new Commits)
+            bool wasWorkingChangesSelected = IsWorkingChangesSelected;
+            var wasSelectedStashIndex = SelectedStash?.Index;
+            var wasSelectedCommitSha = SelectedCommit?.Sha;
+
             _allCommits = commits.ToList();
             WorkingChanges = workingChanges;
             IsDetachedHead = workingChanges?.IsDetachedHead ?? false;
@@ -217,12 +223,6 @@ public partial class GitGraphViewModel : ObservableObject
             IsLoadingMore = false;
 
             RebuildGraphFromFilters();
-
-            // Preserve selection if it was selected, otherwise clear
-            // This prevents losing selection when file watcher triggers reload during staging
-            bool wasWorkingChangesSelected = IsWorkingChangesSelected;
-            var wasSelectedStashIndex = SelectedStash?.Index;
-            var wasSelectedCommitSha = SelectedCommit?.Sha;
 
             SelectedCommit = null;
             SelectedStash = wasSelectedStashIndex.HasValue && wasSelectedStashIndex.Value < stashes.Count

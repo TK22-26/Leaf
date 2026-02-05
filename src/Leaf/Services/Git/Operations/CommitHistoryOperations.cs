@@ -67,7 +67,6 @@ internal class CommitHistoryOperations
                 foreach (var name in names)
                 {
                     branchNameToTipSha[name] = tipSha;
-                    System.Diagnostics.Debug.WriteLine($"[MAP] branchNameToTipSha[{name}] = {tipSha}");
                 }
             }
             foreach (var (tipSha, refs) in remoteBranchTips)
@@ -77,7 +76,6 @@ internal class CommitHistoryOperations
                 {
                     var key = $"{r.RemoteName}/{r.Name}";
                     branchNameToTipSha[key] = tipSha;
-                    System.Diagnostics.Debug.WriteLine($"[MAP] branchNameToTipSha[{key}] = {tipSha}");
                 }
             }
 

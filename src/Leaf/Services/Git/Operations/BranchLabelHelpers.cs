@@ -81,7 +81,6 @@ internal static class BranchLabelHelpers
                 string.Equals(r.Name, localName, StringComparison.OrdinalIgnoreCase));
 
             var tipShaValue = branchNameToTipSha.GetValueOrDefault(localName);
-            System.Diagnostics.Debug.WriteLine($"[LABEL] BuildBranchLabels: Creating local label '{localName}' at sha={sha}, TipSha={tipShaValue ?? "NULL"}");
             labels.Add(new BranchLabel
             {
                 Name = localName,
