@@ -188,14 +188,6 @@ public partial class GitGraphViewModel : ObservableObject
             var commits = await commitsTask;
             var stashes = await stashesTask;
 
-            // Debug: Log branch labels on first few commits
-            System.Diagnostics.Debug.WriteLine($"[GRAPH] LoadRepositoryAsync: Loaded {commits.Count} commits");
-            foreach (var c in commits.Take(5))
-            {
-                var labels = string.Join(", ", c.BranchLabels.Select(l => $"{l.Name}(local={l.IsLocal},remote={l.IsRemote},tip={l.TipSha?[..7] ?? "null"})"));
-                System.Diagnostics.Debug.WriteLine($"[GRAPH]   Commit {c.Sha[..7]}: Labels=[{labels}]");
-            }
-
             // When detached, don't set a current branch name - let graph builder use default priority
             if (workingChanges?.IsDetachedHead == true)
             {
