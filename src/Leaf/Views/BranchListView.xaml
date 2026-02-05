@@ -250,7 +250,7 @@
                             VerticalContentAlignment="Center"
                             Background="Transparent"
                             BorderThickness="0"
-                            Command="{Binding DataContext.CreateBranchCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            Click="AddBranchButton_Click"
                             Cursor="Hand"
                             ToolTip="Create new branch"
                             Visibility="Collapsed">
@@ -737,17 +737,19 @@
                                 <MenuItem
                                     Command="{Binding PlacementTarget.Tag.RemoveWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                     CommandParameter="{Binding}"
-                                    Foreground="#DC2626"
                                     Header="Remove">
                                     <MenuItem.Style>
                                         <Style BasedOn="{StaticResource {x:Type MenuItem}}" TargetType="MenuItem">
+                                            <Setter Property="Foreground" Value="#DC2626" />
                                             <Setter Property="IsEnabled" Value="True" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsMainWorktree}" Value="True">
                                                     <Setter Property="IsEnabled" Value="False" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsCurrent}" Value="True">
                                                     <Setter Property="IsEnabled" Value="False" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -1053,6 +1055,102 @@
                             FontSize="10"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Creating worktree..." />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <!--  Branch Create/Rename Popup  -->
+        <Popup
+            x:Name="BranchCreatePopup"
+            AllowsTransparency="True"
+            Placement="Right"
+            PopupAnimation="Fade"
+            StaysOpen="False"
+            Closed="BranchCreatePopup_Closed">
+            <Border
+                MinWidth="280"
+                MaxWidth="350"
+                Padding="12"
+                Background="{DynamicResource ApplicationBackgroundBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="6">
+                <Border.Effect>
+                    <DropShadowEffect
+                        BlurRadius="16"
+                        Opacity="0.3"
+                        ShadowDepth="4" />
+                </Border.Effect>
+                <StackPanel>
+                    <!--  Header  -->
+                    <StackPanel Margin="0,0,0,8" Orientation="Horizontal">
+                        <ic:SymbolIcon
+                            Margin="0,0,6,0"
+                            VerticalAlignment="Center"
+                            FontSize="14"
+                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                            Symbol="BranchFork" />
+                        <TextBlock
+                            x:Name="BranchCreateHeader"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                            Text="Create Branch" />
+                    </StackPanel>
+
+                    <!--  Description  -->
+                    <TextBlock
+                        x:Name="BranchCreateDescription"
+                        Margin="0,0,0,8"
+                        FontSize="11"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="Enter a name for the new branch:"
+                        TextWrapping="Wrap" />
+
+                    <!--  Branch Name Input  -->
+                    <TextBox
+                        x:Name="BranchNameBox"
+                        Padding="8,6"
+                        FontSize="12"
+                        KeyDown="BranchNameBox_KeyDown"
+                        PreviewTextInput="BranchNameBox_PreviewTextInput"
+                        TextChanged="BranchNameBox_TextChanged" />
+
+                    <!--  Buttons  -->
+                    <StackPanel
+                        Margin="0,12,0,0"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal">
+                        <Button
+                            Padding="10,4"
+                            Click="BranchCreateCancel_Click"
+                            Content="Cancel"
+                            FontSize="11" />
+                        <Button
+                            x:Name="BranchCreateButton"
+                            Margin="6,0,0,0"
+                            Padding="12,4"
+                            Background="{DynamicResource AccentFillColorDefaultBrush}"
+                            Click="BranchCreateConfirm_Click"
+                            Content="Create"
+                            FontSize="11"
+                            Foreground="White"
+                            IsEnabled="False" />
+                    </StackPanel>
+
+                    <!--  Progress  -->
+                    <StackPanel
+                        x:Name="BranchCreateProgress"
+                        Margin="0,8,0,0"
+                        Visibility="Collapsed">
+                        <ProgressBar Height="2" IsIndeterminate="True" />
+                        <TextBlock
+                            x:Name="BranchCreateProgressText"
+                            Margin="0,4,0,0"
+                            FontSize="10"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="Creating branch..." />
                     </StackPanel>
                 </StackPanel>
             </Border>

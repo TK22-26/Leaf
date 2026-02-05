@@ -35,6 +35,18 @@ public partial class MainViewModel
         if (!string.IsNullOrEmpty(lastSelectedPath))
         {
             var lastRepo = _repositoryService.FindRepository(lastSelectedPath);
+
+            // If not found, the saved path may be a secondary worktree that was
+            // migrated to its main worktree on load — find the parent repo instead
+            if (lastRepo == null)
+            {
+                var normalizedPath = Path.GetFullPath(lastSelectedPath);
+                lastRepo = RepositoryGroups
+                    .SelectMany(g => g.Repositories)
+                    .FirstOrDefault(r => r.Worktrees.Any(wt =>
+                        string.Equals(Path.GetFullPath(wt.Path), normalizedPath, StringComparison.OrdinalIgnoreCase)));
+            }
+
             if (lastRepo != null)
             {
                 await SelectRepositoryAsync(lastRepo);

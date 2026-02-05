@@ -1,8 +1,10 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Leaf.Models;
 using Leaf.ViewModels;
 
@@ -20,6 +22,25 @@ public partial class BranchListView : UserControl
     public BranchListView()
     {
         InitializeComponent();
+        DataContextChanged += BranchListView_DataContextChanged;
+    }
+
+    private void BranchListView_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.OldValue is MainViewModel oldVm)
+            oldVm.PropertyChanged -= ViewModel_PropertyChanged;
+        if (e.NewValue is MainViewModel newVm)
+            newVm.PropertyChanged += ViewModel_PropertyChanged;
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.IsBranchInputVisible) &&
+            sender is MainViewModel viewModel &&
+            viewModel.IsBranchInputVisible)
+        {
+            OpenBranchCreatePopup(viewModel);
+        }
     }
 
     private void Branch_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -199,6 +220,18 @@ public partial class BranchListView : UserControl
     /// </summary>
     private static void SelectBranch(RepositoryInfo repo, BranchInfo branch, bool toggle)
     {
+        // Clear any worktree selection first to avoid mixed selections
+        foreach (var category in repo.BranchCategories)
+        {
+            if (category.IsWorktreesCategory)
+            {
+                foreach (var wt in category.Worktrees)
+                {
+                    wt.IsSelected = false;
+                }
+            }
+        }
+
         if (toggle)
         {
             if (branch.IsSelected)
@@ -679,6 +712,146 @@ public partial class BranchListView : UserControl
         WorktreeNameBox.IsEnabled = true;
         WorktreeCreateButton.IsEnabled = !string.IsNullOrWhiteSpace(WorktreeNameBox.Text);
         WorktreeCreateProgress.Visibility = Visibility.Collapsed;
+    }
+
+    #endregion
+
+    #region Branch Create Popup
+
+    private Button? _lastBranchButton;
+
+    private void AddBranchButton_Click(object sender, RoutedEventArgs e)
+    {
+        _lastBranchButton = sender as Button;
+        e.Handled = true;
+
+        if (DataContext is MainViewModel viewModel)
+            viewModel.CreateBranch(); // Sets state + IsBranchInputVisible → PropertyChanged opens popup
+    }
+
+    private void OpenBranchCreatePopup(MainViewModel viewModel)
+    {
+        var isRename = viewModel.BranchInputActionText == "Rename";
+
+        BranchCreateHeader.Text = isRename ? "Rename Branch" : "Create Branch";
+        BranchCreateDescription.Text = isRename
+            ? "Enter the new name for the branch:"
+            : "Enter a name for the new branch:";
+        BranchNameBox.Text = viewModel.NewBranchName;
+        BranchNameBox.IsEnabled = true;
+        BranchCreateButton.Content = viewModel.BranchInputActionText;
+        BranchCreateButton.IsEnabled = !string.IsNullOrWhiteSpace(viewModel.NewBranchName);
+        BranchCreateProgress.Visibility = Visibility.Collapsed;
+
+        BranchCreatePopup.PlacementTarget = _lastBranchButton ?? (UIElement)this;
+
+        BranchCreatePopup.IsOpen = true;
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            BranchNameBox.Focus();
+            if (isRename)
+                BranchNameBox.SelectAll();
+        });
+    }
+
+    private void BranchNameBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var name = BranchNameBox.Text.Trim();
+        BranchCreateButton.IsEnabled = !string.IsNullOrWhiteSpace(name) && IsValidBranchName(name);
+
+        if (DataContext is MainViewModel viewModel)
+            viewModel.NewBranchName = BranchNameBox.Text;
+    }
+
+    private void BranchNameBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && BranchCreateButton.IsEnabled)
+        {
+            BranchCreateConfirm_Click(sender, e);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            BranchCreatePopup.IsOpen = false;
+            e.Handled = true;
+        }
+    }
+
+    private void BranchNameBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        const string invalidChars = " ~^:?*[\\@{}";
+
+        foreach (char c in e.Text)
+        {
+            if (invalidChars.Contains(c) || char.IsControl(c))
+            {
+                e.Handled = true;
+                return;
+            }
+        }
+
+        if (sender is TextBox textBox)
+        {
+            string newText = textBox.Text.Insert(textBox.CaretIndex, e.Text);
+
+            if (newText.StartsWith('.') || newText.StartsWith('-') ||
+                newText.Contains("..") || newText.Contains("@{"))
+            {
+                e.Handled = true;
+            }
+        }
+    }
+
+    private void BranchCreateCancel_Click(object sender, RoutedEventArgs e)
+    {
+        BranchCreatePopup.IsOpen = false;
+    }
+
+    private async void BranchCreateConfirm_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+            return;
+
+        var name = BranchNameBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        // Disable UI and show progress
+        BranchNameBox.IsEnabled = false;
+        BranchCreateButton.IsEnabled = false;
+        BranchCreateProgress.Visibility = Visibility.Visible;
+        BranchCreateProgressText.Text = viewModel.BranchInputActionText == "Rename"
+            ? "Renaming branch..."
+            : "Creating branch...";
+
+        try
+        {
+            viewModel.NewBranchName = name;
+            await viewModel.ConfirmCreateBranchAsync();
+            BranchCreatePopup.IsOpen = false;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed: {ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            ResetBranchCreateUI();
+        }
+    }
+
+    private void BranchCreatePopup_Closed(object? sender, EventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel && viewModel.IsBranchInputVisible)
+        {
+            viewModel.CancelBranchInputCommand.Execute(null);
+        }
+    }
+
+    private void ResetBranchCreateUI()
+    {
+        BranchNameBox.IsEnabled = true;
+        BranchCreateButton.IsEnabled = !string.IsNullOrWhiteSpace(BranchNameBox.Text);
+        BranchCreateProgress.Visibility = Visibility.Collapsed;
     }
 
     #endregion

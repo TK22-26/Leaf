@@ -158,7 +158,7 @@ public partial class MainViewModel
                     Name = "WORKTREES",
                     Icon = "\uE8B7", // FolderOpen icon
                     BranchCount = worktrees.Count,
-                    IsExpanded = true
+                    IsExpanded = false
                 };
 
                 // Sort: main worktree first, then by display name
@@ -185,6 +185,19 @@ public partial class MainViewModel
                     tagsCategory.Tags.Add(tag);
                 }
                 categories.Add(tagsCategory);
+            }
+
+            // Preserve expanded/collapsed state from previous load
+            if (repo.BranchCategories.Count > 0)
+            {
+                var previousStates = repo.BranchCategories.ToDictionary(c => c.Name, c => c.IsExpanded);
+                foreach (var category in categories)
+                {
+                    if (previousStates.TryGetValue(category.Name, out var wasExpanded))
+                    {
+                        category.IsExpanded = wasExpanded;
+                    }
+                }
             }
 
             // Assign new collection (replaces entire collection atomically)
