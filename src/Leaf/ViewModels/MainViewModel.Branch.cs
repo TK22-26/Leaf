@@ -359,11 +359,13 @@ public partial class MainViewModel
 
             if (branch.IsRemote)
             {
+                System.Diagnostics.Debug.WriteLine($"[CHECKOUT] IsRemote=true path, branch.RemoteName={branch.RemoteName}");
                 // Extract local branch name (e.g., "origin/main" → "main")
                 var remoteName = branch.RemoteName ?? "origin";
                 var localBranchName = branch.Name.StartsWith($"{remoteName}/", StringComparison.OrdinalIgnoreCase)
                     ? branch.Name[(remoteName.Length + 1)..]
                     : branch.Name;
+                System.Diagnostics.Debug.WriteLine($"[CHECKOUT] remoteName={remoteName}, localBranchName={localBranchName}");
 
                 // Check if local/remote branches exist and where they point
                 var branches = await _gitService.GetBranchesAsync(SelectedRepository.Path);
@@ -373,11 +375,14 @@ public partial class MainViewModel
                 var remoteBranch = branches.FirstOrDefault(b =>
                     b.IsRemote && string.Equals(b.Name, remoteBranchName, StringComparison.OrdinalIgnoreCase));
                 var remoteTipSha = remoteBranch?.TipSha;
+                System.Diagnostics.Debug.WriteLine($"[CHECKOUT] localBranch={localBranch?.Name}, localTipSha={localBranch?.TipSha}");
+                System.Diagnostics.Debug.WriteLine($"[CHECKOUT] remoteBranch={remoteBranch?.Name}, remoteTipSha={remoteTipSha}");
 
                 if (localBranch != null &&
                     !string.IsNullOrWhiteSpace(remoteTipSha) &&
                     !string.Equals(localBranch.TipSha, remoteTipSha, StringComparison.OrdinalIgnoreCase))
                 {
+                    System.Diagnostics.Debug.WriteLine($"[CHECKOUT] Taking DETACHED HEAD path (local at different commit)");
                     // Local exists but is at different commit - checkout remote's commit (detached HEAD)
                     StatusMessage = $"Checking out {branch.Name}...";
                     await _gitService.CheckoutCommitAsync(SelectedRepository.Path, remoteTipSha);
@@ -398,6 +403,7 @@ public partial class MainViewModel
                     if (GitGraphViewModel != null)
                     {
                         await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
+                        System.Diagnostics.Debug.WriteLine($"[CHECKOUT] Detached HEAD - selecting commit {remoteTipSha}");
                         GitGraphViewModel.SelectCommitBySha(remoteTipSha);
                     }
 
@@ -408,6 +414,7 @@ public partial class MainViewModel
 
                 // Local exists at same commit, OR no local exists
                 // → use existing logic to switch to / create local branch
+                System.Diagnostics.Debug.WriteLine($"[CHECKOUT] Taking LOCAL CHECKOUT path (localBranchName={localBranchName})");
                 branchName = localBranchName;
             }
             else
