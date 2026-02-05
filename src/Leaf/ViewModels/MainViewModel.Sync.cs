@@ -225,6 +225,20 @@ public partial class MainViewModel
 
             await _gitService.PushAsync(SelectedRepository.Path, remote?.Name, null, pat);
 
+            // Fetch to update remote refs in the UI
+            if (remote != null)
+            {
+                StatusMessage = "Updating remote refs...";
+                try
+                {
+                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: pat);
+                }
+                catch
+                {
+                    // Ignore fetch failures - push succeeded
+                }
+            }
+
             StatusMessage = "Push complete";
             await RefreshAsync();
         }
@@ -247,6 +261,7 @@ public partial class MainViewModel
 
         IsBusy = true;
         var successCount = 0;
+        var pushedRemotes = new List<(RemoteInfo remote, string? pat)>();
 
         foreach (var remote in remotes)
         {
@@ -266,10 +281,25 @@ public partial class MainViewModel
             {
                 await _gitService.PushAsync(SelectedRepository.Path, remote.Name, null, pat);
                 successCount++;
+                pushedRemotes.Add((remote, pat));
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Push to {remote.Name} failed: {ex.Message}");
+            }
+        }
+
+        // Fetch from all pushed remotes to update remote refs in the UI
+        StatusMessage = "Updating remote refs...";
+        foreach (var (remote, pat) in pushedRemotes)
+        {
+            try
+            {
+                await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: pat);
+            }
+            catch
+            {
+                // Ignore fetch failures - push succeeded
             }
         }
 

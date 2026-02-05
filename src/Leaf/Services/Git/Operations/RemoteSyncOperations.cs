@@ -140,8 +140,10 @@ internal class RemoteSyncOperations
     {
         progress?.Report("Fetching...");
 
-        // If password provided, use authenticated URL
-        string fetchTarget = remoteName;
+        string[] args;
+
+        // If password provided, use authenticated URL with explicit refspec
+        // so git knows which remote's tracking branches to update
         if (!string.IsNullOrEmpty(password))
         {
             var remotes = await GetRemotesAsync(repoPath);
@@ -151,14 +153,26 @@ internal class RemoteSyncOperations
                 var authUrl = BuildAuthenticatedUrl(remote.Url, password);
                 if (authUrl != null)
                 {
-                    fetchTarget = authUrl;
+                    // Use authenticated URL with explicit refspec to update remote tracking branches
+                    // Format: git fetch <url> +refs/heads/*:refs/remotes/<remote>/*
+                    args = ["fetch", "--prune", authUrl, $"+refs/heads/*:refs/remotes/{remoteName}/*"];
+                }
+                else
+                {
+                    args = ["fetch", "--prune", remoteName];
                 }
             }
+            else
+            {
+                args = ["fetch", "--prune", remoteName];
+            }
+        }
+        else
+        {
+            args = ["fetch", "--prune", remoteName];
         }
 
-        var result = await _context.CommandRunner.RunAsync(
-            repoPath,
-            ["fetch", "--prune", fetchTarget]);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args);
 
         if (!result.Success && !string.IsNullOrEmpty(result.StandardError))
         {

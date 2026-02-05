@@ -31,6 +31,17 @@ internal class CommitHistoryOperations
             var isDetachedHead = repo.Info.IsHeadDetached;
             var currentBranchName = isDetachedHead ? null : repo.Head?.FriendlyName;
 
+            // Debug: Log all branches and their tips
+            System.Diagnostics.Debug.WriteLine($"[HISTORY] GetCommitHistoryAsync: HEAD={headSha?[..7] ?? "null"}, isDetached={isDetachedHead}");
+            foreach (var b in repo.Branches.Where(br => br.IsRemote).Take(10))
+            {
+                System.Diagnostics.Debug.WriteLine($"[HISTORY]   Remote branch: {b.FriendlyName} -> {b.Tip?.Sha?[..7] ?? "null"}");
+            }
+            foreach (var b in repo.Branches.Where(br => !br.IsRemote).Take(10))
+            {
+                System.Diagnostics.Debug.WriteLine($"[HISTORY]   Local branch: {b.FriendlyName} -> {b.Tip?.Sha?[..7] ?? "null"}");
+            }
+
             var localBranchTips = repo.Branches
                 .Where(b => !b.IsRemote)
                 .GroupBy(b => b.Tip?.Sha)
