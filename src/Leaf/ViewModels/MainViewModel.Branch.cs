@@ -353,6 +353,7 @@ public partial class MainViewModel
             StatusMessage = $"Checking out {branch.Name}...";
 
             string branchName;
+            BranchInfo? localBranch = null;
 
             if (branch.IsRemote)
             {
@@ -362,16 +363,22 @@ public partial class MainViewModel
                     ? branch.Name[(remoteName.Length + 1)..]
                     : branch.Name;
 
-                // Check if local branch exists and where it points
+                // Check if local/remote branches exist and where they point
                 var branches = await _gitService.GetBranchesAsync(SelectedRepository.Path);
-                var localBranch = branches.FirstOrDefault(b =>
+                localBranch = branches.FirstOrDefault(b =>
                     !b.IsRemote && string.Equals(b.Name, localBranchName, StringComparison.OrdinalIgnoreCase));
+                var remoteBranchName = $"{remoteName}/{localBranchName}";
+                var remoteBranch = branches.FirstOrDefault(b =>
+                    b.IsRemote && string.Equals(b.Name, remoteBranchName, StringComparison.OrdinalIgnoreCase));
+                var remoteTipSha = remoteBranch?.TipSha;
 
-                if (localBranch != null && !string.Equals(localBranch.TipSha, branch.TipSha, StringComparison.OrdinalIgnoreCase))
+                if (localBranch != null &&
+                    !string.IsNullOrWhiteSpace(remoteTipSha) &&
+                    !string.Equals(localBranch.TipSha, remoteTipSha, StringComparison.OrdinalIgnoreCase))
                 {
                     // Local exists but is at different commit - checkout remote's commit (detached HEAD)
                     StatusMessage = $"Checking out {branch.Name}...";
-                    await _gitService.CheckoutCommitAsync(SelectedRepository.Path, branch.TipSha);
+                    await _gitService.CheckoutCommitAsync(SelectedRepository.Path, remoteTipSha);
 
                     var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
                     SelectedRepository.CurrentBranch = info.CurrentBranch;
@@ -389,7 +396,7 @@ public partial class MainViewModel
                     if (GitGraphViewModel != null)
                     {
                         await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
-                        GitGraphViewModel.SelectCommitBySha(branch.TipSha);
+                        GitGraphViewModel.SelectCommitBySha(remoteTipSha);
                     }
 
                     StatusMessage = $"Checked out {branch.Name} (detached HEAD)";
@@ -421,11 +428,17 @@ public partial class MainViewModel
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository);
 
-            // Refresh git graph and select the branch's tip commit
+            // Refresh git graph and select the branch's tip commit (or requested commit)
             if (GitGraphViewModel != null)
             {
                 await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
-                GitGraphViewModel.SelectCommitBySha(branch.TipSha);
+                var selectSha = !string.IsNullOrWhiteSpace(branch.TipSha)
+                    ? branch.TipSha
+                    : localBranch?.TipSha ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(selectSha))
+                {
+                    GitGraphViewModel.SelectCommitBySha(selectSha);
+                }
             }
 
             if (SelectedRepository.ConflictCount > 0)
