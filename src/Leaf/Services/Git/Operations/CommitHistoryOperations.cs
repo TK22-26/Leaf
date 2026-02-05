@@ -65,13 +65,20 @@ internal class CommitHistoryOperations
             {
                 if (string.IsNullOrWhiteSpace(tipSha)) continue;
                 foreach (var name in names)
+                {
                     branchNameToTipSha[name] = tipSha;
+                    System.Diagnostics.Debug.WriteLine($"[MAP] branchNameToTipSha[{name}] = {tipSha}");
+                }
             }
             foreach (var (tipSha, refs) in remoteBranchTips)
             {
                 if (string.IsNullOrWhiteSpace(tipSha)) continue;
                 foreach (var r in refs)
-                    branchNameToTipSha[$"{r.RemoteName}/{r.Name}"] = tipSha;
+                {
+                    var key = $"{r.RemoteName}/{r.Name}";
+                    branchNameToTipSha[key] = tipSha;
+                    System.Diagnostics.Debug.WriteLine($"[MAP] branchNameToTipSha[{key}] = {tipSha}");
+                }
             }
 
             ICommitLog commits;

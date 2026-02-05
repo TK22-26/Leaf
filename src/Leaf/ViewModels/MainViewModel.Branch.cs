@@ -347,6 +347,8 @@ public partial class MainViewModel
     {
         if (SelectedRepository == null) return;
 
+        System.Diagnostics.Debug.WriteLine($"[CHECKOUT] CheckoutBranchAsync: branch.Name={branch.Name}, branch.TipSha={branch.TipSha}");
+
         try
         {
             IsBusy = true;
@@ -435,8 +437,10 @@ public partial class MainViewModel
                 var selectSha = !string.IsNullOrWhiteSpace(branch.TipSha)
                     ? branch.TipSha
                     : localBranch?.TipSha ?? string.Empty;
+                System.Diagnostics.Debug.WriteLine($"[CHECKOUT] After reload - branch.TipSha={branch.TipSha}, localBranch?.TipSha={localBranch?.TipSha}, selectSha={selectSha}");
                 if (!string.IsNullOrWhiteSpace(selectSha))
                 {
+                    System.Diagnostics.Debug.WriteLine($"[CHECKOUT] Calling SelectCommitBySha({selectSha})");
                     GitGraphViewModel.SelectCommitBySha(selectSha);
                 }
             }

@@ -80,6 +80,8 @@ internal static class BranchLabelHelpers
             var matchingRemote = remoteBranches.FirstOrDefault(r =>
                 string.Equals(r.Name, localName, StringComparison.OrdinalIgnoreCase));
 
+            var tipShaValue = branchNameToTipSha.GetValueOrDefault(localName);
+            System.Diagnostics.Debug.WriteLine($"[LABEL] BuildBranchLabels: Creating local label '{localName}' at sha={sha}, TipSha={tipShaValue ?? "NULL"}");
             labels.Add(new BranchLabel
             {
                 Name = localName,
@@ -88,7 +90,7 @@ internal static class BranchLabelHelpers
                 RemoteName = matchingRemote?.RemoteName,
                 RemoteType = matchingRemote?.RemoteType ?? RemoteType.Other,
                 IsCurrent = string.Equals(localName, currentBranchName, StringComparison.OrdinalIgnoreCase),
-                TipSha = branchNameToTipSha.GetValueOrDefault(localName)
+                TipSha = tipShaValue
             });
             processedNames.Add(localName);
         }
