@@ -285,8 +285,9 @@ public partial class MainViewModel
             repository.IsDetachedHead = info.IsDetachedHead;
             repository.DetachedHeadSha = info.DetachedHeadSha;
 
-            // Load worktrees for sidebar display
-            await LoadWorktreesForRepoAsync(repository);
+            // Load worktrees for sidebar display (force reload to fix stale IsCurrent flags
+            // that may have been clobbered by UpdateWorktreeCurrentFlags on a different repo)
+            await LoadWorktreesForRepoAsync(repository, forceReload: true);
 
             ApplyBranchFiltersForRepo(repository);
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Utils;
@@ -356,9 +357,12 @@ public partial class MainViewModel
                 ? branch.Name[(branch.Name.IndexOf('/') + 1)..]
                 : branch.Name;
 
+            // Use path comparison instead of IsCurrent flag to identify the current worktree,
+            // because IsCurrent can be stale after switching between repos
+            var normalizedRepoPath = Path.GetFullPath(SelectedRepository.Path);
             var worktreeWithBranch = SelectedRepository.Worktrees
                 .FirstOrDefault(wt =>
-                    !wt.IsCurrent &&
+                    !string.Equals(Path.GetFullPath(wt.Path), normalizedRepoPath, StringComparison.OrdinalIgnoreCase) &&
                     wt.Exists &&
                     !string.IsNullOrEmpty(wt.BranchName) &&
                     string.Equals(wt.BranchName, branchNameToCheck, StringComparison.OrdinalIgnoreCase));
