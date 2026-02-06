@@ -90,6 +90,7 @@
                                     <Setter Property="Padding" Value="8,6"/>
                                     <Setter Property="Margin" Value="2"/>
                                     <Setter Property="Cursor" Value="Hand"/>
+                                    <Setter Property="VerticalContentAlignment" Value="Center"/>
                                     <Setter Property="Template">
                                         <Setter.Value>
                                             <ControlTemplate TargetType="ListBoxItem">
@@ -97,7 +98,7 @@
                                                         Background="Transparent"
                                                         CornerRadius="4"
                                                         Padding="{TemplateBinding Padding}">
-                                                    <ContentPresenter/>
+                                                    <ContentPresenter VerticalAlignment="Center"/>
                                                 </Border>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsSelected" Value="True">
@@ -110,6 +111,12 @@
                                             </ControlTemplate>
                                         </Setter.Value>
                                     </Setter>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.MergeConflictResolutionViewModel.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                            <Setter Property="Padding" Value="8,3"/>
+                                            <Setter Property="Margin" Value="1"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
                                 </Style>
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
@@ -119,7 +126,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding FileName}"
                                                        FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis"
@@ -128,7 +135,8 @@
                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                        FontSize="11"
                                                        TextTrimming="CharacterEllipsis"
-                                                       ToolTip="{Binding FilePath}"/>
+                                                       ToolTip="{Binding FilePath}"
+                                                       Visibility="{Binding DataContext.MergeConflictResolutionViewModel.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1"
                                                     Orientation="Horizontal"
@@ -188,6 +196,7 @@
                                     <Setter Property="Padding" Value="8,6"/>
                                     <Setter Property="Margin" Value="2"/>
                                     <Setter Property="Cursor" Value="Hand"/>
+                                    <Setter Property="VerticalContentAlignment" Value="Center"/>
                                     <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                                     <Setter Property="ContextMenu">
                                         <Setter.Value>
@@ -206,7 +215,7 @@
                                                         Background="Transparent"
                                                         CornerRadius="4"
                                                         Padding="{TemplateBinding Padding}">
-                                                    <ContentPresenter/>
+                                                    <ContentPresenter VerticalAlignment="Center"/>
                                                 </Border>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsSelected" Value="True">
@@ -219,11 +228,17 @@
                                             </ControlTemplate>
                                         </Setter.Value>
                                     </Setter>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.MergeConflictResolutionViewModel.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                            <Setter Property="Padding" Value="8,3"/>
+                                            <Setter Property="Margin" Value="1"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
                                 </Style>
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel>
+                                    <StackPanel VerticalAlignment="Center">
                                         <TextBlock Text="{Binding FileName}"
                                                    FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis"
@@ -232,7 +247,8 @@
                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                    FontSize="11"
                                                    TextTrimming="CharacterEllipsis"
-                                                   ToolTip="{Binding FilePath}"/>
+                                                   ToolTip="{Binding FilePath}"
+                                                   Visibility="{Binding DataContext.MergeConflictResolutionViewModel.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

@@ -242,6 +242,8 @@ public partial class WorkingChangesViewModel : ObservableObject
     /// </summary>
     private void BuildSectionContexts()
     {
+        var isCompact = _settingsService.LoadSettings().CompactFileList;
+
         UnstagedSectionContext = new FileChangesSectionContext
         {
             SectionTitle = "Unstaged",
@@ -266,7 +268,8 @@ public partial class WorkingChangesViewModel : ObservableObject
             FolderPrimaryActionCommand = StageFolderCommand,
             FolderDiscardCommand = DiscardFolderCommand,
             FolderIgnoreCommand = IgnoreFolderCommand,
-            FolderOpenInExplorerCommand = OpenFolderInExplorerCommand
+            FolderOpenInExplorerCommand = OpenFolderInExplorerCommand,
+            IsCompactFileList = isCompact
         };
 
         StagedSectionContext = new FileChangesSectionContext
@@ -293,8 +296,18 @@ public partial class WorkingChangesViewModel : ObservableObject
             FolderPrimaryActionCommand = UnstageFolderCommand,
             FolderDiscardCommand = DiscardFolderCommand,
             FolderIgnoreCommand = IgnoreFolderCommand,
-            FolderOpenInExplorerCommand = OpenFolderInExplorerCommand
+            FolderOpenInExplorerCommand = OpenFolderInExplorerCommand,
+            IsCompactFileList = isCompact
         };
+    }
+
+    /// <summary>
+    /// Rebuild section contexts to pick up changed settings (e.g., compact file list).
+    /// </summary>
+    public void RefreshSectionContexts()
+    {
+        if (WorkingChanges != null)
+            BuildSectionContexts();
     }
 
     /// <summary>

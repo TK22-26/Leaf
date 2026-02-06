@@ -61,6 +61,12 @@ public partial class MainViewModel
         dialog.ShowDialog();
         TerminalViewModel?.ReloadSettings();
         WorkingChangesViewModel?.RefreshAiAvailability();
+        WorkingChangesViewModel?.RefreshSectionContexts();
+        var updatedSettings = _settingsService.LoadSettings();
+        if (CommitDetailViewModel != null)
+            CommitDetailViewModel.IsCompactFileList = updatedSettings.CompactFileList;
+        if (MergeConflictResolutionViewModel != null)
+            MergeConflictResolutionViewModel.IsCompactFileList = updatedSettings.CompactFileList;
     }
 
     public void UpdateTerminalHeight(double height)

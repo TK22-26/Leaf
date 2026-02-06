@@ -57,6 +57,8 @@ public partial class SettingsDialog : Window
             new("Remotes", "Configure multi-remote sync behavior", "Remotes", Symbol.Cloud),
             new("Sync All Remotes", "Push and pull to all remotes automatically", "Remotes", Symbol.Cloud),
             new("Multi-Remote", "Settings for repositories with multiple remotes", "Remotes", Symbol.Cloud),
+            new("Compact File List", "Show only file names without directory paths", "Display", Symbol.Options),
+            new("File Display", "Configure how files are displayed in change lists", "Display", Symbol.Options),
         };
 
         // Configure UserControls
@@ -88,6 +90,7 @@ public partial class SettingsDialog : Window
     {
         // Hide all content panels
         ContentClonePath.Visibility = Visibility.Collapsed;
+        ContentDisplay.Visibility = Visibility.Collapsed;
         ContentWatchedFolders.Visibility = Visibility.Collapsed;
         ContentRemotes.Visibility = Visibility.Collapsed;
         ContentTerminal.Visibility = Visibility.Collapsed;
@@ -103,6 +106,9 @@ public partial class SettingsDialog : Window
         {
             case "ClonePath":
                 ContentClonePath.Visibility = Visibility.Visible;
+                break;
+            case "Display":
+                ContentDisplay.Visibility = Visibility.Visible;
                 break;
             case "WatchedFolders":
                 ContentWatchedFolders.Visibility = Visibility.Visible;
@@ -179,6 +185,7 @@ public partial class SettingsDialog : Window
 
         // Hide all content panels
         ContentClonePath.Visibility = Visibility.Collapsed;
+        ContentDisplay.Visibility = Visibility.Collapsed;
         ContentWatchedFolders.Visibility = Visibility.Collapsed;
         ContentRemotes.Visibility = Visibility.Collapsed;
         ContentTerminal.Visibility = Visibility.Collapsed;
@@ -217,6 +224,7 @@ public partial class SettingsDialog : Window
         TreeViewItem? itemToSelect = tag switch
         {
             "ClonePath" => NavClonePath,
+            "Display" => NavDisplay,
             "WatchedFolders" => NavWatchedFolders,
             "Remotes" => NavRemotes,
             "Terminal" => NavTerminal,
@@ -250,6 +258,7 @@ public partial class SettingsDialog : Window
         TerminalAutoScrollCheckBox.IsChecked = _settings.TerminalAutoScroll;
         TerminalLogGitCommandsCheckBox.IsChecked = _settings.TerminalLogGitCommands;
         SyncAllRemotesCheckBox.IsChecked = _settings.SyncAllRemotes;
+        CompactFileListCheckBox.IsChecked = _settings.CompactFileList;
 
         // Load settings into UserControls
         AzureDevOpsSettings.LoadSettings(_settings, _credentialService);
@@ -293,6 +302,7 @@ public partial class SettingsDialog : Window
         _settings.TerminalAutoScroll = TerminalAutoScrollCheckBox.IsChecked == true;
         _settings.TerminalLogGitCommands = TerminalLogGitCommandsCheckBox.IsChecked == true;
         _settings.SyncAllRemotes = SyncAllRemotesCheckBox.IsChecked == true;
+        _settings.CompactFileList = CompactFileListCheckBox.IsChecked == true;
 
         // Save settings from UserControls
         AzureDevOpsSettings.SaveSettings(_settings, _credentialService);

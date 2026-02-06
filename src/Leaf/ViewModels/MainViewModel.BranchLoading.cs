@@ -19,10 +19,18 @@ public partial class MainViewModel
 
         try
         {
-            var branches = await _gitService.GetBranchesAsync(repo.Path);
+            // Fetch all git data in parallel (each runs on background thread)
+            var branchesTask = _gitService.GetBranchesAsync(repo.Path);
+            var remotesTask = _gitService.GetRemotesAsync(repo.Path);
+            var defaultRemoteTask = _gitService.GetConfigAsync(repo.Path, "leaf.defaultremote");
+            var gitFlowConfigTask = _gitFlowService.GetConfigAsync(repo.Path);
+            var worktreesTask = _gitService.GetWorktreesAsync(repo.Path);
+            var tagsTask = _gitService.GetTagsAsync(repo.Path);
 
-            // Get remote URLs for determining remote type (GitHub, Azure DevOps, etc.)
-            var remotes = await _gitService.GetRemotesAsync(repo.Path);
+            await Task.WhenAll(branchesTask, remotesTask, defaultRemoteTask, gitFlowConfigTask, worktreesTask, tagsTask);
+
+            var branches = await branchesTask;
+            var remotes = await remotesTask;
             var remoteUrlLookup = remotes.ToDictionary(r => r.Name, r => r.Url, StringComparer.OrdinalIgnoreCase);
 
             var localBranches = branches.Where(b => !b.IsRemote).OrderBy(b => b.Name).ToList();
@@ -44,8 +52,7 @@ public partial class MainViewModel
                 repo.RemoteBranches.Add(branch);
             }
 
-            // Get the default remote from config (or "origin" as fallback)
-            var defaultRemoteName = await _gitService.GetConfigAsync(repo.Path, "leaf.defaultremote") ?? "origin";
+            var defaultRemoteName = await defaultRemoteTask ?? "origin";
 
             // Group remote branches by remote name
             var branchesByRemote = remoteBranches
@@ -87,7 +94,7 @@ public partial class MainViewModel
             var categories = new ObservableCollection<BranchCategory>();
 
             // GITFLOW category (if initialized - always show when GitFlow is active)
-            var gitFlowConfig = await _gitFlowService.GetConfigAsync(repo.Path);
+            var gitFlowConfig = await gitFlowConfigTask;
             GitGraphViewModel?.SetGitFlowContext(gitFlowConfig, remotes.Select(r => r.Name).ToList());
             if (gitFlowConfig?.IsInitialized == true)
             {
@@ -141,8 +148,7 @@ public partial class MainViewModel
             }
             categories.Add(remoteCategory);
 
-            // WORKTREES category
-            var worktrees = await _gitService.GetWorktreesAsync(repo.Path);
+            var worktrees = await worktreesTask;
             if (worktrees.Count > 0)
             {
                 // Mark the current worktree (use GetFullPath to normalize paths - handles separators, casing, etc.)
@@ -169,8 +175,7 @@ public partial class MainViewModel
                 categories.Add(worktreesCategory);
             }
 
-            // TAGS category
-            var tags = await _gitService.GetTagsAsync(repo.Path);
+            var tags = await tagsTask;
             if (tags.Count > 0)
             {
                 var tagsCategory = new BranchCategory

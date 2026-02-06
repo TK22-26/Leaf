@@ -276,7 +276,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _autoFetchService.FetchCompleted += OnAutoFetchCompleted;
 
         _gitGraphViewModel = new GitGraphViewModel(gitService);
-        _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService);
+        _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService, settingsService);
 
         // Create AI and gitignore services for WorkingChangesViewModel
         var commitMessageParser = new CommitMessageParser();

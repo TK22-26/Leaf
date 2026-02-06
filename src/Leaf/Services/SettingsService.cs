@@ -185,6 +185,9 @@ public class AppSettings
 
     // Multi-remote sync behavior
     public bool SyncAllRemotes { get; set; } = false;
+
+    // UI display
+    public bool CompactFileList { get; set; } = false;
 }
 
 /// <summary>

@@ -240,37 +240,47 @@
             </Border>
 
             <!--  Message Section  -->
-            <ScrollViewer
-                Grid.Row="2"
-                Height="240"
-                Margin="12,8,12,8"
-                HorizontalScrollBarVisibility="Disabled"
-                VerticalScrollBarVisibility="Auto">
-                <StackPanel>
-                    <!--  Commit Subject  -->
-                    <TextBlock
-                        Margin="0,2,0,0"
-                        FontSize="14"
-                        FontWeight="SemiBold"
-                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                        Text="{Binding Commit.MessageShort}"
-                        TextWrapping="Wrap" />
+            <Grid Grid.Row="2" Margin="12,8,12,8">
+                <Grid.RowDefinitions>
+                    <!--  Commit Subject (always visible)  -->
+                    <RowDefinition Height="Auto" />
+                    <!--  Separator  -->
+                    <RowDefinition Height="Auto" />
+                    <!--  Commit Description (scrollable)  -->
+                    <RowDefinition Height="*" MaxHeight="260" />
+                </Grid.RowDefinitions>
 
-                    <Border
-                        Height="1"
-                        Margin="0,12,0,0"
-                        Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
+                <!--  Commit Subject  -->
+                <TextBlock
+                    Grid.Row="0"
+                    Margin="0,2,0,0"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                    Text="{Binding Commit.MessageShort}"
+                    TextWrapping="Wrap" />
 
-                    <!--  Commit Description  -->
+                <Border
+                    Grid.Row="1"
+                    Height="1"
+                    Margin="0,12,0,0"
+                    Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
+
+                <!--  Commit Description  -->
+                <ScrollViewer
+                    Grid.Row="2"
+                    Height="250"
+                    Margin="0,6,0,0"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="{Binding Commit.Description, Converter={StaticResource NullToVisibilityConverter}}">
                     <TextBlock
-                        Margin="0,6,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="{Binding Commit.Description}"
-                        TextWrapping="Wrap"
-                        Visibility="{Binding Commit.Description, Converter={StaticResource NullToVisibilityConverter}}" />
-                </StackPanel>
-            </ScrollViewer>
+                        TextWrapping="Wrap" />
+                </ScrollViewer>
+            </Grid>
 
             <!--  Author/Parent Info Section  -->
             <Border
@@ -486,8 +496,6 @@
                                 <DataTemplate>
                                     <Border
                                         x:Name="ItemBorder"
-                                        Margin="4,2"
-                                        Padding="8,6"
                                         Background="Transparent"
                                         BorderBrush="Transparent"
                                         BorderThickness="2,0,0,0"
@@ -496,6 +504,18 @@
                                         MouseLeftButtonDown="FileItem_Click"
                                         Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         ToolTip="{Binding Path}">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Margin" Value="4,2" />
+                                                <Setter Property="Padding" Value="8,6" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding DataContext.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                        <Setter Property="Padding" Value="8,3" />
+                                                        <Setter Property="Margin" Value="4,0" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
                                         <Border.ContextMenu>
                                             <ContextMenu>
                                                 <MenuItem
@@ -508,19 +528,14 @@
                                                     Header="Copy file path" />
                                             </ContextMenu>
                                         </Border.ContextMenu>
-                                        <Grid>
+                                        <Grid VerticalAlignment="Center">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="24" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                            </Grid.RowDefinitions>
 
                                             <!--  Status icon  -->
                                             <TextBlock
-                                                Grid.RowSpan="2"
                                                 Grid.Column="0"
                                                 HorizontalAlignment="Center"
                                                 VerticalAlignment="Center"
@@ -544,34 +559,37 @@
                                                 </TextBlock.Style>
                                             </TextBlock>
 
-                                            <!--  File name (prominent)  -->
-                                            <TextBlock
-                                                Grid.Row="0"
+                                            <!--  File name + directory  -->
+                                            <StackPanel
                                                 Grid.Column="1"
-                                                FontSize="13"
-                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                                Text="{Binding FileName}"
-                                                TextTrimming="CharacterEllipsis" />
-
-                                            <!--  Directory path (secondary, smaller)  -->
-                                            <TextBlock
-                                                Grid.Row="1"
-                                                Grid.Column="1"
-                                                FontSize="11"
-                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                Text="{Binding Directory}"
-                                                TextTrimming="CharacterEllipsis">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Directory}" Value="">
-                                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
+                                                VerticalAlignment="Center">
+                                                <!--  File name (prominent)  -->
+                                                <TextBlock
+                                                    FontSize="13"
+                                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                    Text="{Binding FileName}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <!--  Directory path (secondary, smaller)  -->
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                    Text="{Binding Directory}"
+                                                    TextTrimming="CharacterEllipsis">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Directory}" Value="">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding DataContext.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
                                         </Grid>
                                     </Border>
                                     <DataTemplate.Triggers>

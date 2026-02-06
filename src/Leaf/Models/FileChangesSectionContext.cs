@@ -126,4 +126,9 @@ public class FileChangesSectionContext
     /// Command to open a folder in Windows Explorer.
     /// </summary>
     public required ICommand FolderOpenInExplorerCommand { get; init; }
+
+    /// <summary>
+    /// When true, hide directory paths to show a compact file list.
+    /// </summary>
+    public bool IsCompactFileList { get; init; }
 }

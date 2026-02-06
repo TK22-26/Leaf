@@ -15,6 +15,7 @@ public partial class CommitDetailViewModel : ObservableObject
     private readonly IGitService _gitService;
     private readonly IClipboardService _clipboardService;
     private readonly IFileSystemService _fileSystemService;
+    private readonly SettingsService _settingsService;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasParent))]
@@ -55,6 +56,9 @@ public partial class CommitDetailViewModel : ObservableObject
 
     [ObservableProperty]
     private ObservableCollection<FileChangeTreeNode> _fileChangesTreeItems = [];
+
+    [ObservableProperty]
+    private bool _isCompactFileList;
 
     /// <summary>
     /// True if there are working changes to display in banner.
@@ -127,11 +131,14 @@ public partial class CommitDetailViewModel : ObservableObject
     public CommitDetailViewModel(
         IGitService gitService,
         IClipboardService clipboardService,
-        IFileSystemService fileSystemService)
+        IFileSystemService fileSystemService,
+        SettingsService settingsService)
     {
         _gitService = gitService;
         _clipboardService = clipboardService;
         _fileSystemService = fileSystemService;
+        _settingsService = settingsService;
+        IsCompactFileList = settingsService.LoadSettings().CompactFileList;
     }
 
     /// <summary>

@@ -221,8 +221,8 @@ public partial class GitGraphCanvas
     private void DrawStashRow(DrawingContext dc, int row, int stashIndex, bool isHovered, bool isSelected, IReadOnlyList<GitTreeNode>? nodes, int rowOffset)
     {
         double y = GetYForRow(row);
-        // Stashes in separate rightmost lane (MaxLane + 1)
-        int stashLane = MaxLane + 1;
+        // Stashes in lane 0 (leftmost)
+        int stashLane = 0;
         double x = GetXForColumn(stashLane);
 
         // Get stash info and use branch color instead of hardcoded purple
@@ -244,12 +244,12 @@ public partial class GitGraphCanvas
         var trailBrush = new SolidColorBrush(trailColor);
         trailBrush.Freeze();
 
-        // Draw the main trail rectangle
+        // Draw the main trail rectangle (extends from stash node to right edge)
         double boxSize = NodeRadius * 1.875;
         var trailRect = new Rect(x, y - trailHeight / 2, ActualWidth - x - 2, trailHeight);
         dc.DrawRectangle(trailBrush, null, trailRect);
 
-        // Draw accent at edge
+        // Draw accent at right edge of trail
         var accentRect = new Rect(ActualWidth - 2, y - trailHeight / 2, 2, trailHeight);
         dc.DrawRectangle(stashBrush, null, accentRect);
 

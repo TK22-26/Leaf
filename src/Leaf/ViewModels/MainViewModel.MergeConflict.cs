@@ -255,7 +255,10 @@ public partial class MainViewModel
                 MergeConflictResolutionViewModel.MergeCompleted -= OnMergeConflictResolutionCompleted;
             }
 
-            var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, _dispatcherService, SelectedRepository.Path);
+            var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, _dispatcherService, SelectedRepository.Path)
+            {
+                IsCompactFileList = _settingsService.LoadSettings().CompactFileList
+            };
             conflictViewModel.MergeCompleted += OnMergeConflictResolutionCompleted;
             MergeConflictResolutionViewModel = conflictViewModel;
             _mergeConflictRepoPath = SelectedRepository.Path;

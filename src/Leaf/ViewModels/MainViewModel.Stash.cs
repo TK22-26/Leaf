@@ -96,7 +96,8 @@ public partial class MainViewModel
                     var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, _dispatcherService, SelectedRepository.Path)
                     {
                         SourceBranch = stashName,
-                        TargetBranch = SelectedRepository.CurrentBranch ?? "HEAD"
+                        TargetBranch = SelectedRepository.CurrentBranch ?? "HEAD",
+                        IsCompactFileList = _settingsService.LoadSettings().CompactFileList
                     };
                     await conflictViewModel.LoadConflictsAsync();
 

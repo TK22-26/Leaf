@@ -77,6 +77,9 @@ public partial class ConflictResolutionViewModel : ObservableObject
     [ObservableProperty]
     private bool _isResolving;
 
+    [ObservableProperty]
+    private bool _isCompactFileList;
+
     /// <summary>
     /// Number of resolved conflicts.
     /// </summary>

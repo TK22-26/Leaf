@@ -57,7 +57,6 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -445,10 +444,12 @@
             </Grid>
         </Border>
 
-        <!--  Global progress bar (shown during branch checkout, repo loading, etc.)  -->
+        <!--  Global progress bar (overlays top of main content to avoid layout bounce)  -->
         <ProgressBar
             Grid.Row="2"
             Height="2"
+            VerticalAlignment="Top"
+            Panel.ZIndex="10"
             Background="Transparent"
             BorderBrush="Transparent"
             BorderThickness="0"
@@ -462,59 +463,44 @@
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ProgressBar">
-                                <Grid x:Name="TemplateRoot">
-                                    <VisualStateManager.VisualStateGroups>
-                                        <VisualStateGroup x:Name="CommonStates">
-                                            <VisualState x:Name="Determinate" />
-                                            <VisualState x:Name="Indeterminate">
-                                                <Storyboard RepeatBehavior="Forever">
-                                                    <DoubleAnimationUsingKeyFrames
-                                                        Storyboard.TargetName="Animation"
-                                                        Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)">
-                                                        <EasingDoubleKeyFrame KeyTime="0" Value="0.25" />
-                                                        <EasingDoubleKeyFrame KeyTime="0:0:0.45" Value="0.25" />
-                                                        <EasingDoubleKeyFrame KeyTime="0:0:0.9" Value="0.25" />
-                                                    </DoubleAnimationUsingKeyFrames>
-                                                    <PointAnimationUsingKeyFrames
-                                                        Storyboard.TargetName="Animation"
-                                                        Storyboard.TargetProperty="(UIElement.RenderTransformOrigin)">
-                                                        <EasingPointKeyFrame KeyTime="0" Value="-0.5,0.5" />
-                                                        <EasingPointKeyFrame KeyTime="0:0:0.45" Value="0.5,0.5" />
-                                                        <EasingPointKeyFrame KeyTime="0:0:0.9" Value="1.5,0.5" />
-                                                    </PointAnimationUsingKeyFrames>
-                                                </Storyboard>
-                                            </VisualState>
-                                        </VisualStateGroup>
-                                    </VisualStateManager.VisualStateGroups>
-                                    <Border
-                                        x:Name="TrackBorder"
-                                        Background="{TemplateBinding Background}"
-                                        BorderBrush="{TemplateBinding BorderBrush}"
-                                        BorderThickness="0" />
+                                <Grid x:Name="TemplateRoot" ClipToBounds="True">
+                                    <Border Background="{TemplateBinding Background}" />
                                     <Rectangle x:Name="PART_Track" />
                                     <Grid
                                         x:Name="PART_Indicator"
                                         HorizontalAlignment="Left"
                                         Background="Transparent">
                                         <Rectangle x:Name="Indicator" Fill="{TemplateBinding Foreground}" />
-                                        <Rectangle
-                                            x:Name="Animation"
-                                            Fill="{TemplateBinding Foreground}"
-                                            RenderTransformOrigin="0.5,0.5">
-                                            <UIElement.RenderTransform>
-                                                <TransformGroup>
-                                                    <ScaleTransform />
-                                                    <SkewTransform />
-                                                    <RotateTransform />
-                                                    <TranslateTransform />
-                                                </TransformGroup>
-                                            </UIElement.RenderTransform>
-                                        </Rectangle>
                                     </Grid>
+                                    <!--  Indeterminate sliding bar: independent of PART_Indicator to avoid layout interference  -->
+                                    <Rectangle
+                                        x:Name="Animation"
+                                        Width="300"
+                                        HorizontalAlignment="Left"
+                                        CacheMode="BitmapCache"
+                                        Fill="{TemplateBinding Foreground}"
+                                        Visibility="Collapsed">
+                                        <Rectangle.RenderTransform>
+                                            <TranslateTransform />
+                                        </Rectangle.RenderTransform>
+                                    </Rectangle>
                                 </Grid>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsIndeterminate" Value="True">
                                         <Setter TargetName="Indicator" Property="Visibility" Value="Collapsed" />
+                                        <Setter TargetName="Animation" Property="Visibility" Value="Visible" />
+                                        <Trigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever" Timeline.DesiredFrameRate="60">
+                                                    <DoubleAnimation
+                                                        Storyboard.TargetName="Animation"
+                                                        Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                        From="-300"
+                                                        To="1600"
+                                                        Duration="0:0:1.5" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.EnterActions>
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -525,7 +511,7 @@
         </ProgressBar>
 
         <!--  Main layout + terminal pane  -->
-        <Grid Grid.Row="3">
+        <Grid Grid.Row="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
                 <RowDefinition x:Name="TerminalRow">

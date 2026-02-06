@@ -138,7 +138,7 @@ public partial class GitGraphViewModel : ObservableObject
         _gitFlowConfig = config;
         _remoteNames = remoteNames;
         GraphBuilder.SetGitFlowContext(config, remoteNames);
-        RebuildGraphFromFilters();
+        // Graph rebuild deferred to LoadRepositoryAsync or ApplyBranchFilters
     }
 
     /// <summary>
@@ -222,7 +222,24 @@ public partial class GitGraphViewModel : ObservableObject
             _hasMoreCommits = commits.Count == InitialBatchSize;
             IsLoadingMore = false;
 
-            RebuildGraphFromFilters();
+            // Build graph on background thread (heavy computation)
+            var visibleCommits = GetVisibleCommits();
+            var currentBranch = _currentBranchName;
+
+            var (graphNodes, graphMaxLane) = await Task.Run(() =>
+            {
+                var builder = new GraphBuilder();
+                var builtNodes = builder.BuildGraph(visibleCommits, currentBranch);
+                return (builtNodes, builder.MaxLane);
+            });
+
+            // Fast UI property updates (pointer swaps only)
+            Nodes = new ObservableCollection<GitTreeNode>(graphNodes);
+            Commits = new ObservableCollection<CommitInfo>(visibleCommits);
+            MaxLane = graphMaxLane;
+
+            int rowCount = Commits.Count + (HasWorkingChanges ? 1 : 0) + Stashes.Count;
+            TotalHeight = rowCount * RowHeight;
 
             SelectedCommit = null;
             SelectedStash = wasSelectedStashIndex.HasValue && wasSelectedStashIndex.Value < stashes.Count

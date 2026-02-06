@@ -70,7 +70,7 @@
         <!-- Unstaged Files Section -->
         <controls:FileChangesSectionControl
             Grid.Row="1"
-            Margin="8"
+            Margin="8,8,8,0"
             Context="{Binding UnstagedSectionContext}"
             IsExpanded="{Binding IsUnstagedExpanded, Mode=TwoWay}"
             ItemCount="{Binding WorkingChanges.UnstagedFiles.Count, Mode=OneWay, FallbackValue=0}"
