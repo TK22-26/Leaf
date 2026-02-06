@@ -403,6 +403,7 @@ public partial class GitGraphCanvas
         double y = GetYForRow(node.RowIndex + rowOffset);
         double labelX = 4;
         var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        int drawnCount = 0;
 
         foreach (var label in node.BranchLabels)
         {
@@ -410,19 +411,35 @@ public partial class GitGraphCanvas
             double iconFontSize = label.IsCurrent ? 13 : 11;
             double labelHeight = label.IsCurrent ? 22 : 18;
 
+            // Build icon text matching rendering: local icon + generic cloud remotes
             var iconText = "";
             if (label.IsLocal)
                 iconText += ComputerIcon;
-            if (label.IsLocal && label.IsRemote)
-                iconText += " ";
-            if (label.IsRemote)
-                iconText += CloudIcon;
 
+            int customIconCount = 0;
+            int genericCloudCount = 0;
+            foreach (var remote in label.Remotes)
+            {
+                if (remote.RemoteType == RemoteType.GitHub || remote.RemoteType == RemoteType.AzureDevOps)
+                    customIconCount++;
+                else
+                    genericCloudCount++;
+            }
+
+            if (label.IsLocal && (customIconCount > 0 || genericCloudCount > 0))
+                iconText += " ";
+            for (int i = 0; i < genericCloudCount; i++)
+            {
+                if (i > 0) iconText += " ";
+                iconText += CloudIcon;
+            }
+
+            // Use IconTypeface for icon measurement (must match rendering)
             var iconFormatted = new FormattedText(
                 iconText,
                 CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
-                LabelTypeface,
+                IconTypeface,
                 iconFontSize,
                 LabelTextBrush,
                 dpi);
@@ -435,18 +452,70 @@ public partial class GitGraphCanvas
                 fontSize,
                 LabelTextBrush,
                 dpi);
+            nameFormatted.MaxLineCount = 1;
+            nameFormatted.Trimming = TextTrimming.CharacterEllipsis;
+
+            // Calculate custom remote icon sizes (GitHub/Azure DevOps logos)
+            double singleCustomIconSize = iconFontSize;
+            double customIconSpacing = 2;
+            double totalCustomIconWidth = customIconCount > 0
+                ? (customIconCount * singleCustomIconSize) + ((customIconCount - 1) * customIconSpacing)
+                : 0;
+            double customIconSpace = (customIconCount > 0 && iconFormatted.Width > 0) ? 2 : 0;
 
             double iconWidth = iconFormatted.Width;
             double nameWidth = nameFormatted.Width;
             double hPadding = label.IsCurrent ? 8 : 6;
-            double totalWidth = hPadding + nameWidth + 4 + iconWidth + hPadding;
 
-            if (labelX + totalWidth > LabelAreaWidth - 8)
+            // Account for overflow suffix (matches rendering logic)
+            int remainingAfterThis = node.BranchLabels.Count - drawnCount - 1;
+            double suffixWidth = 0;
+            if (remainingAfterThis > 0)
+            {
+                var suffixFormatted = new FormattedText(
+                    $" +{remainingAfterThis}",
+                    CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    LabelTypeface,
+                    fontSize,
+                    LabelTextBrush,
+                    dpi);
+                suffixWidth = suffixFormatted.Width;
+            }
+
+            double iconBlockWidth = iconWidth + customIconSpace + totalCustomIconWidth;
+            double gapBetweenIconAndSuffix = (suffixWidth > 0 && iconBlockWidth > 0) ? 6 : 0;
+            double rightSectionWidth = iconBlockWidth + gapBetweenIconAndSuffix + suffixWidth;
+            double gapBetweenNameAndRight = rightSectionWidth > 0 ? 6 : 0;
+
+            double availableWidth = LabelAreaWidth - 8 - labelX;
+            double minRequiredWidth = (hPadding * 2) + rightSectionWidth + gapBetweenNameAndRight;
+
+            if (availableWidth <= minRequiredWidth)
                 break;
+
+            // Constrain name width to available space (matches rendering truncation)
+            double nameMaxWidth = availableWidth - minRequiredWidth;
+            if (nameWidth > nameMaxWidth)
+                nameWidth = nameMaxWidth;
+
+            double totalWidth = (hPadding * 2) + gapBetweenNameAndRight + rightSectionWidth + nameWidth;
 
             var labelRect = new Rect(labelX, y - labelHeight / 2, totalWidth, labelHeight);
             if (labelRect.Contains(position))
                 return label;
+
+            drawnCount++;
+
+            // If overflow suffix was needed here, this is the last label
+            if (remainingAfterThis > 0)
+            {
+                // Check if next label would actually fit (same logic as rendering)
+                double nextLabelX = labelX + totalWidth + 4;
+                double nextAvailable = LabelAreaWidth - 8 - nextLabelX;
+                if (nextAvailable <= minRequiredWidth)
+                    break;
+            }
 
             labelX += totalWidth + 4;
         }
