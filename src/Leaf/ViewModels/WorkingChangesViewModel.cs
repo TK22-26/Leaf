@@ -542,9 +542,9 @@ public partial class WorkingChangesViewModel : ObservableObject
         if (string.IsNullOrEmpty(_repositoryPath) || file == null)
             return;
 
-        // Normalize path separators (Git uses forward slashes)
+        // Normalize path separators (Git uses forward slashes, worktree paths may too)
         var normalizedFilePath = file.Path.Replace('/', '\\');
-        var fullPath = Path.Combine(_repositoryPath, normalizedFilePath);
+        var fullPath = Path.GetFullPath(Path.Combine(_repositoryPath, normalizedFilePath));
 
         if (File.Exists(fullPath))
         {
@@ -577,7 +577,7 @@ public partial class WorkingChangesViewModel : ObservableObject
             return;
 
         var normalizedFilePath = file.Path.Replace('/', '\\');
-        var fullPath = Path.Combine(_repositoryPath, normalizedFilePath);
+        var fullPath = Path.GetFullPath(Path.Combine(_repositoryPath, normalizedFilePath));
         if (!File.Exists(fullPath))
             return;
 
@@ -671,7 +671,7 @@ public partial class WorkingChangesViewModel : ObservableObject
             return;
 
         var normalizedFilePath = file.Path.Replace('/', '\\');
-        var fullPath = Path.Combine(_repositoryPath, normalizedFilePath);
+        var fullPath = Path.GetFullPath(Path.Combine(_repositoryPath, normalizedFilePath));
         _clipboardService.SetText(fullPath);
     }
 
@@ -693,7 +693,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         try
         {
-            var fullPath = Path.Combine(_repositoryPath, file.Path);
+            var fullPath = Path.GetFullPath(Path.Combine(_repositoryPath, file.Path));
             if (File.Exists(fullPath))
             {
                 File.Delete(fullPath);
@@ -730,7 +730,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         try
         {
-            var fullPath = Path.Combine(_repositoryPath, file.Path);
+            var fullPath = Path.GetFullPath(Path.Combine(_repositoryPath, file.Path));
             var directory = Path.GetDirectoryName(fullPath) ?? _repositoryPath;
             var tempName = $"_leaf_temp_{Guid.NewGuid():N}.tmp";
 
@@ -1042,7 +1042,7 @@ exit /b %errorlevel%
             return;
 
         var normalizedPath = folder.RelativePath.Replace('/', '\\');
-        var fullPath = Path.Combine(_repositoryPath, normalizedPath);
+        var fullPath = Path.GetFullPath(Path.Combine(_repositoryPath, normalizedPath));
 
         if (Directory.Exists(fullPath))
             _fileSystemService.OpenInExplorer(fullPath);
