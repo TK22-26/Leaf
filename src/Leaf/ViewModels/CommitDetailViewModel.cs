@@ -301,9 +301,9 @@ public partial class CommitDetailViewModel : ObservableObject
         if (string.IsNullOrEmpty(RepositoryPath) || file == null)
             return;
 
-        // Normalize path separators (Git uses forward slashes)
+        // Normalize path separators (Git uses forward slashes, worktree paths may too)
         var normalizedFilePath = file.Path.Replace('/', '\\');
-        var fullPath = Path.Combine(RepositoryPath, normalizedFilePath);
+        var fullPath = Path.GetFullPath(Path.Combine(RepositoryPath, normalizedFilePath));
 
         if (File.Exists(fullPath))
         {
@@ -334,7 +334,7 @@ public partial class CommitDetailViewModel : ObservableObject
             return;
 
         var normalizedFilePath = file.Path.Replace('/', '\\');
-        var fullPath = Path.Combine(RepositoryPath, normalizedFilePath);
+        var fullPath = Path.GetFullPath(Path.Combine(RepositoryPath, normalizedFilePath));
         _clipboardService.SetText(fullPath);
     }
 

@@ -230,7 +230,8 @@ internal class WorktreeOperations
 
                 current = new WorktreeInfo
                 {
-                    Path = line["worktree ".Length..].Trim(),
+                    // Normalize path separators - git outputs forward slashes on Windows
+                    Path = Path.GetFullPath(line["worktree ".Length..].Trim()),
                     // Main worktree is ALWAYS first in git worktree list output
                     IsMainWorktree = isFirstWorktree
                 };
