@@ -272,7 +272,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var aiCommitService = new AiCommitMessageService(settingsService, ollamaService, commitMessageParser);
         var gitignoreService = new GitignoreService(gitService);
 
-        _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService);
+        _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService, settingsService);
         _workingChangesViewModel.FileSelected += OnWorkingChangesFileSelected;
         _diffViewerViewModel = new DiffViewerViewModel(gitService);
         _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();

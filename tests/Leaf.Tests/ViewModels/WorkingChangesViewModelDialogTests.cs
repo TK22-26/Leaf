@@ -26,13 +26,15 @@ public class WorkingChangesViewModelDialogTests
         var aiCommitService = new FakeAiCommitMessageService();
         var gitignoreService = new FakeGitignoreService();
 
+        var settingsService = new SettingsService();
         _viewModel = new WorkingChangesViewModel(
             _gitService,
             clipboardService,
             fileSystemService,
             _dialogService,
             aiCommitService,
-            gitignoreService);
+            gitignoreService,
+            settingsService);
     }
 
     [Fact]

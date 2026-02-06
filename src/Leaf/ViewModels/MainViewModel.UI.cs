@@ -60,6 +60,7 @@ public partial class MainViewModel
         };
         dialog.ShowDialog();
         TerminalViewModel?.ReloadSettings();
+        WorkingChangesViewModel?.RefreshAiAvailability();
     }
 
     public void UpdateTerminalHeight(double height)

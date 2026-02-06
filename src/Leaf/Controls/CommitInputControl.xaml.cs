@@ -65,6 +65,13 @@ public partial class CommitInputControl : UserControl
             typeof(CommitInputControl),
             new PropertyMetadata(null));
 
+    public static readonly DependencyProperty IsAiAvailableProperty =
+        DependencyProperty.Register(
+            nameof(IsAiAvailable),
+            typeof(bool),
+            typeof(CommitInputControl),
+            new PropertyMetadata(false));
+
     public CommitInputControl()
     {
         InitializeComponent();
@@ -140,5 +147,14 @@ public partial class CommitInputControl : UserControl
     {
         get => (ICommand?)GetValue(CommitCommandProperty);
         set => SetValue(CommitCommandProperty, value);
+    }
+
+    /// <summary>
+    /// Whether any AI provider is connected (controls sparkle button visibility).
+    /// </summary>
+    public bool IsAiAvailable
+    {
+        get => (bool)GetValue(IsAiAvailableProperty);
+        set => SetValue(IsAiAvailableProperty, value);
     }
 }
