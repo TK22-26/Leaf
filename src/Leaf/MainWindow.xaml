@@ -203,9 +203,9 @@
                     Grid.Column="0"
                     VerticalAlignment="Center">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MaxWidth="180" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" MaxWidth="180" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <!--  Repository  -->

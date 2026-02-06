@@ -137,6 +137,14 @@
                                 <TextBlock Text="Authentication" VerticalAlignment="Center" />
                             </StackPanel>
                         </TreeViewItem.Header>
+                        <TreeViewItem x:Name="NavAuthGeneral" Tag="AuthGeneral">
+                            <TreeViewItem.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="Options" FontSize="14" Margin="0,0,8,0" />
+                                    <TextBlock Text="General" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </TreeViewItem.Header>
+                        </TreeViewItem>
                         <TreeViewItem x:Name="NavAzureDevOps" Tag="AzureDevOps">
                             <TreeViewItem.Header>
                                 <StackPanel Orientation="Horizontal">
@@ -440,6 +448,46 @@
                         <StackPanel Orientation="Horizontal">
                             <CheckBox x:Name="TerminalLogGitCommandsCheckBox" Content="Log Git commands from Leaf" />
                         </StackPanel>
+                    </StackPanel>
+
+                    <!-- Auth General Content -->
+                    <StackPanel x:Name="ContentAuthGeneral" Visibility="Collapsed">
+                        <TextBlock Text="Authentication"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="Manage stored credentials for remote services"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,16" />
+
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="Clear All Credentials"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           Margin="0,0,0,8" />
+                                <TextBlock Text="Remove all stored PATs and tokens from the Windows Credential Manager. You will need to re-enter credentials for each service after clearing."
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,0,0,12" />
+                                <Button Content="Clear All Credentials"
+                                        Padding="12,6"
+                                        Click="ClearAllCredentials_Click">
+                                    <Button.Style>
+                                        <Style BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
+                                            <Setter Property="Foreground" Value="#DC2626" />
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
 
                     <!-- Azure DevOps Content (UserControl) -->

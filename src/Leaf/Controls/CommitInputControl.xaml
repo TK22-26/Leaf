@@ -88,7 +88,7 @@
                         Foreground="{DynamicResource TextFillColorTertiaryBrush}">
                         <Run Text="{Binding RemainingChars, ElementName=Root, Mode=OneWay}" />
                     </TextBlock>
-                    <!-- Auto-fill button -->
+                    <!-- Auto-fill button (hidden when no AI provider is connected) -->
                     <Button
                         Grid.Column="1"
                         Width="32"
@@ -101,7 +101,8 @@
                         BorderBrush="Transparent"
                         Command="{Binding AutoFillCommand, ElementName=Root}"
                         IsEnabled="{Binding IsLoading, ElementName=Root, Converter={StaticResource InverseBoolConverter}}"
-                        ToolTip="Auto fill commit message">
+                        ToolTip="Auto fill commit message"
+                        Visibility="{Binding IsAiAvailable, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid Width="18" Height="18">
                             <!-- Sparkle icon when not loading -->
                             <TextBlock

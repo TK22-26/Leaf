@@ -94,6 +94,7 @@
             CommitCommand="{Binding CommitCommand}"
             CommitDescription="{Binding CommitDescription, Mode=TwoWay}"
             CommitMessage="{Binding CommitMessage, Mode=TwoWay}"
+            IsAiAvailable="{Binding IsAiAvailable}"
             IsLoading="{Binding IsLoading}"
             RemainingChars="{Binding RemainingChars}" />
     </Grid>

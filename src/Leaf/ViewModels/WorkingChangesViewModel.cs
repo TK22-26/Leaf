@@ -35,6 +35,7 @@ public partial class WorkingChangesViewModel : ObservableObject
     private readonly IDialogService _dialogService;
     private readonly IAiCommitMessageService _aiCommitService;
     private readonly IGitignoreService _gitignoreService;
+    private readonly SettingsService _settingsService;
     private string? _repositoryPath;
     private CancellationTokenSource? _aiCancellationTokenSource;
 
@@ -68,6 +69,9 @@ public partial class WorkingChangesViewModel : ObservableObject
 
     [ObservableProperty]
     private string? _errorMessage;
+
+    [ObservableProperty]
+    private bool _isAiAvailable;
 
     [ObservableProperty]
     private ObservableCollection<PathTreeNode> _unstagedTreeItems = [];
@@ -138,7 +142,8 @@ public partial class WorkingChangesViewModel : ObservableObject
         IFileSystemService fileSystemService,
         IDialogService dialogService,
         IAiCommitMessageService aiCommitService,
-        IGitignoreService gitignoreService)
+        IGitignoreService gitignoreService,
+        SettingsService settingsService)
     {
         _gitService = gitService;
         _clipboardService = clipboardService;
@@ -146,6 +151,20 @@ public partial class WorkingChangesViewModel : ObservableObject
         _dialogService = dialogService;
         _aiCommitService = aiCommitService;
         _gitignoreService = gitignoreService;
+        _settingsService = settingsService;
+        RefreshAiAvailability();
+    }
+
+    /// <summary>
+    /// Refresh whether any AI provider is connected.
+    /// </summary>
+    public void RefreshAiAvailability()
+    {
+        var settings = _settingsService.LoadSettings();
+        IsAiAvailable = settings.IsClaudeConnected
+                        || settings.IsGeminiConnected
+                        || settings.IsCodexConnected
+                        || !string.IsNullOrEmpty(settings.OllamaSelectedModel);
     }
 
     /// <summary>
