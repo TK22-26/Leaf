@@ -104,4 +104,31 @@ public class FileChangesSectionContext
     /// Command to show the diff for the selected file.
     /// </summary>
     public required ICommand FileSelectedCommand { get; init; }
+
+    // --- Folder context menu commands (take PathTreeNode) ---
+
+    /// <summary>
+    /// Command to stage/unstage all files in a folder.
+    /// </summary>
+    public required ICommand FolderPrimaryActionCommand { get; init; }
+
+    /// <summary>
+    /// Command to discard all changes in a folder.
+    /// </summary>
+    public required ICommand FolderDiscardCommand { get; init; }
+
+    /// <summary>
+    /// Command to add a folder to .gitignore.
+    /// </summary>
+    public required ICommand FolderIgnoreCommand { get; init; }
+
+    /// <summary>
+    /// Command to open a folder in Windows Explorer.
+    /// </summary>
+    public required ICommand FolderOpenInExplorerCommand { get; init; }
+
+    /// <summary>
+    /// When true, hide directory paths to show a compact file list.
+    /// </summary>
+    public bool IsCompactFileList { get; init; }
 }

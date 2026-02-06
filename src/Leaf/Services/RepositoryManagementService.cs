@@ -190,9 +190,7 @@ public class RepositoryManagementService : IRepositoryManagementService
     {
         repo.LastAccessed = DateTimeOffset.Now;
         SaveRepositories();
-        // Don't call RefreshQuickAccess here - it recreates QuickAccessItem objects
-        // which destroys TreeView selection. Quick access will refresh on next app start
-        // or when repos are added/removed/pinned.
+        UpdateRecentSection();
     }
 
     public bool ContainsRepository(string path)
@@ -270,6 +268,47 @@ public class RepositoryManagementService : IRepositoryManagementService
 
         // Rebuild root items
         RebuildRootItems();
+    }
+
+    /// <summary>
+    /// Updates only the MOST RECENT section items without rebuilding RepositoryRootItems.
+    /// This preserves TreeView selection on folder groups while keeping the recent list current.
+    /// </summary>
+    private void UpdateRecentSection()
+    {
+        var allRepos = RepositoryGroups
+            .SelectMany(g => g.Repositories)
+            .DistinctBy(r => r.Path)
+            .ToList();
+
+        var newRecent = allRepos
+            .OrderByDescending(r => r.LastAccessed)
+            .Take(5)
+            .ToList();
+
+        // Update RecentRepositories backing collection
+        RecentRepositories.Clear();
+        foreach (var repo in newRecent)
+            RecentRepositories.Add(repo);
+
+        // Update _recentSection.Items - only this section refreshes in the TreeView,
+        // folder groups and their selection remain untouched
+        _recentSection.Items.Clear();
+        foreach (var repo in newRecent)
+            _recentSection.Items.Add(new QuickAccessItem(repo));
+
+        // Ensure MOST RECENT section is visible in RepositoryRootItems if it has items
+        if (_recentSection.Items.Count > 0 && !RepositoryRootItems.Contains(_recentSection))
+        {
+            var insertIndex = RepositoryRootItems.Contains(_pinnedSection)
+                ? RepositoryRootItems.IndexOf(_pinnedSection) + 1
+                : 0;
+            RepositoryRootItems.Insert(insertIndex, _recentSection);
+        }
+        else if (_recentSection.Items.Count == 0 && RepositoryRootItems.Contains(_recentSection))
+        {
+            RepositoryRootItems.Remove(_recentSection);
+        }
     }
 
     private void AddRepositoryToGroups(RepositoryInfo repo, bool save, bool raiseEvent)

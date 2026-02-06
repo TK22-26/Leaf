@@ -187,4 +187,5 @@ internal class FakeGitignoreService : IGitignoreService
     public Task IgnoreFileAsync(string repoPath, FileStatusInfo file) => Task.CompletedTask;
     public Task IgnoreExtensionAsync(string repoPath, FileStatusInfo file) => Task.CompletedTask;
     public Task IgnoreDirectoryAsync(string repoPath, FileStatusInfo file) => Task.CompletedTask;
+    public Task IgnoreDirectoryPathAsync(string repoPath, string directoryPath, IEnumerable<FileStatusInfo> trackedFiles) => Task.CompletedTask;
 }

@@ -444,6 +444,72 @@
             </Grid>
         </Border>
 
+        <!--  Global progress bar (overlays top of main content to avoid layout bounce)  -->
+        <ProgressBar
+            Grid.Row="2"
+            Height="2"
+            VerticalAlignment="Top"
+            Panel.ZIndex="10"
+            Background="Transparent"
+            BorderBrush="Transparent"
+            BorderThickness="0"
+            Foreground="#28A745"
+            IsIndeterminate="{Binding IsBusy}"
+            Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}">
+            <ProgressBar.Style>
+                <Style TargetType="ProgressBar">
+                    <Setter Property="SnapsToDevicePixels" Value="True" />
+                    <Setter Property="OverridesDefaultStyle" Value="True" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ProgressBar">
+                                <Grid x:Name="TemplateRoot" ClipToBounds="True">
+                                    <Border Background="{TemplateBinding Background}" />
+                                    <Rectangle x:Name="PART_Track" />
+                                    <Grid
+                                        x:Name="PART_Indicator"
+                                        HorizontalAlignment="Left"
+                                        Background="Transparent">
+                                        <Rectangle x:Name="Indicator" Fill="{TemplateBinding Foreground}" />
+                                    </Grid>
+                                    <!--  Indeterminate sliding bar: independent of PART_Indicator to avoid layout interference  -->
+                                    <Rectangle
+                                        x:Name="Animation"
+                                        Width="300"
+                                        HorizontalAlignment="Left"
+                                        CacheMode="BitmapCache"
+                                        Fill="{TemplateBinding Foreground}"
+                                        Visibility="Collapsed">
+                                        <Rectangle.RenderTransform>
+                                            <TranslateTransform />
+                                        </Rectangle.RenderTransform>
+                                    </Rectangle>
+                                </Grid>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsIndeterminate" Value="True">
+                                        <Setter TargetName="Indicator" Property="Visibility" Value="Collapsed" />
+                                        <Setter TargetName="Animation" Property="Visibility" Value="Visible" />
+                                        <Trigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever" Timeline.DesiredFrameRate="60">
+                                                    <DoubleAnimation
+                                                        Storyboard.TargetName="Animation"
+                                                        Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                        From="-300"
+                                                        To="1600"
+                                                        Duration="0:0:1.5" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.EnterActions>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ProgressBar.Style>
+        </ProgressBar>
+
         <!--  Main layout + terminal pane  -->
         <Grid Grid.Row="2">
             <Grid.RowDefinitions>

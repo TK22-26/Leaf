@@ -101,8 +101,7 @@ public partial class MainViewModel
 
             try
             {
-                IsBusy = true;
-                StatusMessage = "Scanning for repositories...";
+                await BeginBusyAsync("Scanning for repositories...");
 
                 // Find all directories that contain a .git folder
                 var gitDirs = Directory.GetDirectories(rootPath, ".git", SearchOption.AllDirectories);
@@ -242,8 +241,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Loading {repository.Name}...";
+            await BeginBusyAsync($"Loading {repository.Name}...");
 
             // Load branches BEFORE setting SelectedRepository to avoid UI flash
             // (UI binds to SelectedRepository.BranchCategories, so data should be ready)

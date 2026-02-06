@@ -27,4 +27,12 @@ public interface IGitignoreService
     /// <param name="repoPath">Repository root path</param>
     /// <param name="file">File whose directory should be ignored</param>
     Task IgnoreDirectoryAsync(string repoPath, FileStatusInfo file);
+
+    /// <summary>
+    /// Adds a directory path to .gitignore and untracks all tracked files within it.
+    /// </summary>
+    /// <param name="repoPath">Repository root path</param>
+    /// <param name="directoryPath">Relative directory path to ignore (forward slash separated)</param>
+    /// <param name="trackedFiles">Files within the directory that need to be untracked</param>
+    Task IgnoreDirectoryPathAsync(string repoPath, string directoryPath, IEnumerable<FileStatusInfo> trackedFiles);
 }

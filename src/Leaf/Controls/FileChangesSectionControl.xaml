@@ -27,12 +27,37 @@
                 x:Key="TreeNodeTemplate"
                 DataType="{x:Type models:PathTreeNode}"
                 ItemsSource="{Binding Children}">
-                <Grid>
+                <Grid Background="Transparent">
                     <!--  Folder display  -->
                     <StackPanel
                         Margin="2,1"
+                        Background="Transparent"
                         Orientation="Horizontal"
                         Visibility="{Binding IsFile, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
+                        <StackPanel.ContextMenu>
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <MenuItem
+                                    Command="{Binding Data.FolderPrimaryActionCommand, Source={StaticResource ContextProxy}}"
+                                    CommandParameter="{Binding}"
+                                    Header="{Binding Data.PrimaryActionText, Source={StaticResource ContextProxy}, StringFormat='{}{0} all in folder'}" />
+                                <MenuItem
+                                    Command="{Binding Data.FolderDiscardCommand, Source={StaticResource ContextProxy}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Discard all changes in folder" />
+                                <MenuItem Command="{Binding Data.FolderIgnoreCommand, Source={StaticResource ContextProxy}}" CommandParameter="{Binding}">
+                                    <MenuItem.Header>
+                                        <TextBlock>
+                                            <Run Text="Ignore '" /><Run Text="{Binding RelativePath, Mode=OneWay}" /><Run Text="/'" />
+                                        </TextBlock>
+                                    </MenuItem.Header>
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding Data.FolderOpenInExplorerCommand, Source={StaticResource ContextProxy}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Open in Explorer" />
+                            </ContextMenu>
+                        </StackPanel.ContextMenu>
                         <TextBlock
                             Margin="0,0,6,0"
                             FontFamily="Segoe Fluent Icons"
@@ -48,7 +73,7 @@
                     <!--  File display  -->
                     <Border
                         Margin="2,1"
-                        Padding="8,6"
+                        Padding="4,1"
                         Background="Transparent"
                         BorderBrush="Transparent"
                         BorderThickness="2,0,0,0"
@@ -247,7 +272,7 @@
             <!--  List View  -->
             <ScrollViewer
                 x:Name="ListScrollViewer"
-                Padding="4"
+                Padding="4,4,4,0"
                 HorizontalScrollBarVisibility="Disabled"
                 VerticalScrollBarVisibility="Auto">
                 <ItemsControl ItemsSource="{Binding Context.FilesSource, ElementName=Root}">
@@ -255,14 +280,24 @@
                         <DataTemplate>
                             <Border
                                 x:Name="ItemBorder"
-                                Margin="2,1"
-                                Padding="8,6"
                                 Background="Transparent"
                                 BorderBrush="Transparent"
                                 BorderThickness="2,0,0,0"
                                 CornerRadius="4"
                                 Cursor="Hand"
                                 ToolTip="{Binding Path}">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Margin" Value="2,1" />
+                                        <Setter Property="Padding" Value="8,6" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Data.IsCompactFileList, Source={StaticResource ContextProxy}}" Value="True">
+                                                <Setter Property="Padding" Value="8,3" />
+                                                <Setter Property="Margin" Value="2,0" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
                                 <Border.InputBindings>
                                     <MouseBinding
                                         Command="{Binding Context.FileSelectedCommand, ElementName=Root}"
@@ -339,20 +374,15 @@
                                             Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}" />
                                     </ContextMenu>
                                 </Border.ContextMenu>
-                                <Grid>
+                                <Grid VerticalAlignment="Center">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="20" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
 
                                     <!--  Status icon  -->
                                     <TextBlock
-                                        Grid.RowSpan="2"
                                         Grid.Column="0"
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
@@ -360,40 +390,38 @@
                                         Style="{StaticResource FileStatusIconStyle}"
                                         Text="{Binding StatusIcon}" />
 
-                                    <!--  File name  -->
-                                    <TextBlock
-                                        Grid.Row="0"
-                                        Grid.Column="1"
-                                        VerticalAlignment="Center"
-                                        FontSize="13"
-                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                        Text="{Binding FileName}"
-                                        TextTrimming="CharacterEllipsis" />
-
-                                    <!--  Directory path  -->
-                                    <TextBlock
-                                        Grid.Row="1"
-                                        Grid.Column="1"
-                                        FontSize="10"
-                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                        Text="{Binding Directory}"
-                                        TextTrimming="CharacterEllipsis">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Directory}" Value="">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
+                                    <!--  File name + directory  -->
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontSize="13"
+                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                            Text="{Binding FileName}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            FontSize="10"
+                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                            Text="{Binding Directory}"
+                                            TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Directory}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Context.IsCompactFileList, ElementName=Root}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
 
                                     <!--  Primary action button  -->
                                     <Button
                                         x:Name="ActionButton"
-                                        Grid.RowSpan="2"
                                         Grid.Column="2"
                                         Padding="8,2"
                                         VerticalAlignment="Center"
@@ -428,6 +456,7 @@
                 VirtualizingStackPanel.VirtualizationMode="Recycling">
                 <TreeView.ItemContainerStyle>
                     <Style BasedOn="{StaticResource {x:Type TreeViewItem}}" TargetType="TreeViewItem">
+                        <EventSetter Event="PreviewMouseRightButtonDown" Handler="TreeViewItem_PreviewMouseRightButtonDown" />
                         <Style.Triggers>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>

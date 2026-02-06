@@ -460,6 +460,8 @@ public partial class GitGraphCanvas
             11,
             ghostTextBrush,
             dpi);
+        nameFormatted.MaxLineCount = 1;
+        nameFormatted.Trimming = TextTrimming.CharacterEllipsis;
 
         double ghostCustomIconSize = 11;
         double ghostCustomIconSpacing = 2;
@@ -471,6 +473,17 @@ public partial class GitGraphCanvas
         double iconWidth = iconFormatted.Width;
         double nameWidth = nameFormatted.Width;
         double iconBlockWidth = iconWidth + ghostCustomIconSpace + totalCustomIconWidth;
+
+        // Constrain name width to available label area (same as normal branch labels)
+        double availableWidth = LabelAreaWidth - 8 - labelX;
+        double fixedWidth = iconBlockWidth > 0 ? 6 + 4 + iconBlockWidth + 6 : 6 + 6;
+        double nameMaxWidth = availableWidth - fixedWidth;
+        if (nameMaxWidth > 0 && nameWidth > nameMaxWidth)
+        {
+            nameFormatted.MaxTextWidth = nameMaxWidth;
+            nameWidth = nameMaxWidth;
+        }
+
         double totalWidth = iconBlockWidth > 0
             ? 6 + nameWidth + 4 + iconBlockWidth + 6
             : 6 + nameWidth + 6;

@@ -88,12 +88,19 @@ public partial class BranchInfo : ObservableObject
 
     #region GitFlow Colors
 
-    // Standard GitFlow colors (aligned with UI converters)
-    private static readonly SolidColorBrush MainColor = new(Color.FromRgb(0x09, 0x69, 0xDA));     // Blue
-    private static readonly SolidColorBrush DevelopColor = new(Color.FromRgb(0x1F, 0x88, 0x3D)); // Green
-    private static readonly SolidColorBrush ReleaseColor = new(Color.FromRgb(0xBF, 0x87, 0x00)); // Yellow/Amber
-    private static readonly SolidColorBrush HotfixColor = new(Color.FromRgb(0xCF, 0x22, 0x2E));  // Red
-    private static readonly SolidColorBrush SupportColor = new(Color.FromRgb(0x57, 0x60, 0x6A)); // Gray
+    // Standard GitFlow colors (aligned with UI converters) - frozen for cross-thread access
+    private static readonly SolidColorBrush MainColor = CreateFrozenBrush(0x09, 0x69, 0xDA);     // Blue
+    private static readonly SolidColorBrush DevelopColor = CreateFrozenBrush(0x1F, 0x88, 0x3D); // Green
+    private static readonly SolidColorBrush ReleaseColor = CreateFrozenBrush(0xBF, 0x87, 0x00); // Yellow/Amber
+    private static readonly SolidColorBrush HotfixColor = CreateFrozenBrush(0xCF, 0x22, 0x2E);  // Red
+    private static readonly SolidColorBrush SupportColor = CreateFrozenBrush(0x57, 0x60, 0x6A); // Gray
+
+    private static SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
 
     /// <summary>
     /// Gets the GitFlow color brush for this branch.
@@ -137,7 +144,9 @@ public partial class BranchInfo : ObservableObject
         var lightness = 0.45 + (((hash >> 16) % 15) / 100.0); // 45-60%
 
         var (r, g, b) = HslToRgb(hue / 360.0, saturation, lightness);
-        return new SolidColorBrush(Color.FromRgb(r, g, b));
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
     }
 
     /// <summary>

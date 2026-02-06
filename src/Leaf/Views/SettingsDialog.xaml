@@ -111,6 +111,14 @@
                                 </StackPanel>
                             </TreeViewItem.Header>
                         </TreeViewItem>
+                        <TreeViewItem x:Name="NavDisplay" Tag="Display">
+                            <TreeViewItem.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="Options" FontSize="14" Margin="0,0,8,0" />
+                                    <TextBlock Text="Display" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </TreeViewItem.Header>
+                        </TreeViewItem>
                         <TreeViewItem x:Name="NavRemotes" Tag="Remotes">
                             <TreeViewItem.Header>
                                 <StackPanel Orientation="Horizontal">
@@ -279,6 +287,46 @@
                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                            Margin="0,8,0,0"
                                            TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+
+                    <!-- Display Content -->
+                    <StackPanel x:Name="ContentDisplay" Visibility="Collapsed">
+                        <TextBlock Text="Display"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="Configure how files are displayed in change lists"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,16" />
+
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="File Lists"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           Margin="0,0,0,12" />
+                                <CheckBox x:Name="CompactFileListCheckBox">
+                                    <CheckBox.Content>
+                                        <StackPanel>
+                                            <TextBlock Text="Compact file list"
+                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                            <TextBlock Text="Show only file names without directory paths"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
+                                    </CheckBox.Content>
+                                </CheckBox>
                             </StackPanel>
                         </Border>
                     </StackPanel>

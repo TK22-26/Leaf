@@ -349,8 +349,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Checking out {branch.Name}...";
+            await BeginBusyAsync($"Checking out {branch.Name}...");
 
             // Check if this branch is already checked out in another worktree
             var branchNameToCheck = branch.IsRemote

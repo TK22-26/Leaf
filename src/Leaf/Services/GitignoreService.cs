@@ -48,6 +48,24 @@ public class GitignoreService : IGitignoreService
         await UntrackIfTrackedAsync(repoPath, file);
     }
 
+    /// <inheritdoc/>
+    public async Task IgnoreDirectoryPathAsync(string repoPath, string directoryPath, IEnumerable<FileStatusInfo> trackedFiles)
+    {
+        if (string.IsNullOrEmpty(repoPath) || string.IsNullOrEmpty(directoryPath))
+            return;
+
+        var normalizedDir = NormalizePath(directoryPath);
+        await AddToGitignoreAsync(repoPath, $"{normalizedDir}/");
+
+        foreach (var file in trackedFiles)
+        {
+            if (file.Status != FileChangeStatus.Untracked)
+            {
+                await _gitService.UntrackFileAsync(repoPath, file.Path);
+            }
+        }
+    }
+
     /// <summary>
     /// Normalizes path separators from backslash to forward slash for .gitignore compatibility.
     /// </summary>
