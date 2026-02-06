@@ -38,6 +38,7 @@ public partial class SettingsDialog : Window
             new("Terminal", "Configure the built-in command terminal", "Terminal", Symbol.Code),
             new("Terminal Shell", "Select which shell to run commands with", "Terminal", Symbol.Code),
             new("Terminal Output", "Control terminal output behavior", "Terminal", Symbol.Code),
+            new("Clear Credentials", "Remove all stored PATs and tokens", "AuthGeneral", Symbol.Key),
             new("Azure DevOps", "Connect to Azure DevOps for private repositories", "AzureDevOps", Symbol.Cloud),
             new("Azure DevOps PAT", "Personal Access Token for Azure DevOps", "AzureDevOps", Symbol.Key),
             new("Azure DevOps Organization", "Your Azure DevOps organization name", "AzureDevOps", Symbol.Cloud),
@@ -90,6 +91,7 @@ public partial class SettingsDialog : Window
         ContentWatchedFolders.Visibility = Visibility.Collapsed;
         ContentRemotes.Visibility = Visibility.Collapsed;
         ContentTerminal.Visibility = Visibility.Collapsed;
+        ContentAuthGeneral.Visibility = Visibility.Collapsed;
         AzureDevOpsSettings.Visibility = Visibility.Collapsed;
         GitHubSettings.Visibility = Visibility.Collapsed;
         AiSettings.Visibility = Visibility.Collapsed;
@@ -112,6 +114,9 @@ public partial class SettingsDialog : Window
             case "Terminal":
                 ContentTerminal.Visibility = Visibility.Visible;
                 break;
+            case "AuthGeneral":
+                ContentAuthGeneral.Visibility = Visibility.Visible;
+                break;
             case "AzureDevOps":
                 AzureDevOpsSettings.Visibility = Visibility.Visible;
                 break;
@@ -131,8 +136,8 @@ public partial class SettingsDialog : Window
                 ContentClonePath.Visibility = Visibility.Visible;
                 break;
             case "Authentication":
-                // Show Azure DevOps for Authentication category
-                AzureDevOpsSettings.Visibility = Visibility.Visible;
+                // Show Auth General for Authentication category
+                ContentAuthGeneral.Visibility = Visibility.Visible;
                 break;
             case "AI":
                 // Show AI General for AI category
@@ -177,6 +182,7 @@ public partial class SettingsDialog : Window
         ContentWatchedFolders.Visibility = Visibility.Collapsed;
         ContentRemotes.Visibility = Visibility.Collapsed;
         ContentTerminal.Visibility = Visibility.Collapsed;
+        ContentAuthGeneral.Visibility = Visibility.Collapsed;
         AzureDevOpsSettings.Visibility = Visibility.Collapsed;
         GitHubSettings.Visibility = Visibility.Collapsed;
         AiSettings.Visibility = Visibility.Collapsed;
@@ -214,6 +220,7 @@ public partial class SettingsDialog : Window
             "WatchedFolders" => NavWatchedFolders,
             "Remotes" => NavRemotes,
             "Terminal" => NavTerminal,
+            "AuthGeneral" => NavAuthGeneral,
             "AzureDevOps" => NavAzureDevOps,
             "GitHub" => NavGitHub,
             "AIGeneral" => NavAIGeneral,
@@ -298,6 +305,39 @@ public partial class SettingsDialog : Window
 
         DialogResult = true;
         Close();
+    }
+
+    private void ClearAllCredentials_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            "Remove all stored credentials (PATs and tokens)?\n\nYou will need to re-enter them in the Azure DevOps and GitHub settings.",
+            "Clear All Credentials",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        // Remove all Leaf credentials from Windows Credential Manager
+        var allKeys = _credentialService.GetStoredOrganizations().ToList();
+        foreach (var key in allKeys)
+        {
+            _credentialService.RemovePat(key);
+        }
+
+        // Also clean up any refresh tokens from old OAuth flow
+        _credentialService.DeleteRefreshToken("GitHub");
+        _credentialService.DeleteRefreshToken("AzureDevOps");
+
+        // Refresh the Azure DevOps and GitHub settings UI
+        AzureDevOpsSettings.LoadSettings(_settings, _credentialService);
+        GitHubSettings.LoadSettings(_settings, _credentialService);
+
+        MessageBox.Show(
+            "All credentials have been cleared.\n\nRe-enter your PATs under Azure DevOps and GitHub settings.",
+            "Credentials Cleared",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
     }
 
     #region Watched Folders
