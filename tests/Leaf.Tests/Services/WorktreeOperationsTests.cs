@@ -24,7 +24,7 @@ public class WorktreeOperationsTests
 
         // Assert
         worktrees.Should().HaveCount(1);
-        worktrees[0].Path.Should().Be("/path/to/main");
+        worktrees[0].Path.Should().Be(Path.GetFullPath("/path/to/main"));
         worktrees[0].HeadSha.Should().Be("abc123def456789012345678901234567890abcd");
         worktrees[0].BranchName.Should().Be("main");
         worktrees[0].IsMainWorktree.Should().BeTrue();
@@ -52,11 +52,11 @@ public class WorktreeOperationsTests
         // Assert
         worktrees.Should().HaveCount(2);
 
-        worktrees[0].Path.Should().Be("/path/to/main");
+        worktrees[0].Path.Should().Be(Path.GetFullPath("/path/to/main"));
         worktrees[0].BranchName.Should().Be("main");
         worktrees[0].IsMainWorktree.Should().BeTrue();
 
-        worktrees[1].Path.Should().Be("/path/to/feature");
+        worktrees[1].Path.Should().Be(Path.GetFullPath("/path/to/feature"));
         worktrees[1].BranchName.Should().Be("feature/my-feature");
         worktrees[1].IsMainWorktree.Should().BeFalse();
     }
@@ -81,7 +81,7 @@ public class WorktreeOperationsTests
         // Assert
         worktrees.Should().HaveCount(2);
 
-        worktrees[1].Path.Should().Be("/path/to/detached");
+        worktrees[1].Path.Should().Be(Path.GetFullPath("/path/to/detached"));
         worktrees[1].IsDetached.Should().BeTrue();
         worktrees[1].BranchName.Should().BeNull();
     }
@@ -107,7 +107,7 @@ public class WorktreeOperationsTests
         // Assert
         worktrees.Should().HaveCount(2);
 
-        worktrees[1].Path.Should().Be("/path/to/locked");
+        worktrees[1].Path.Should().Be(Path.GetFullPath("/path/to/locked"));
         worktrees[1].IsLocked.Should().BeTrue();
         worktrees[1].LockReason.Should().BeNull();
     }
@@ -133,7 +133,7 @@ public class WorktreeOperationsTests
         // Assert
         worktrees.Should().HaveCount(2);
 
-        worktrees[1].Path.Should().Be("/path/to/locked");
+        worktrees[1].Path.Should().Be(Path.GetFullPath("/path/to/locked"));
         worktrees[1].IsLocked.Should().BeTrue();
         worktrees[1].LockReason.Should().Be("Work in progress");
     }
@@ -247,21 +247,21 @@ public class WorktreeOperationsTests
         worktrees.Should().HaveCount(4);
 
         // Main worktree
-        worktrees[0].Path.Should().Be("/repos/project");
+        worktrees[0].Path.Should().Be(Path.GetFullPath("/repos/project"));
         worktrees[0].BranchName.Should().Be("main");
         worktrees[0].IsMainWorktree.Should().BeTrue();
         worktrees[0].IsDetached.Should().BeFalse();
         worktrees[0].IsLocked.Should().BeFalse();
 
         // Feature worktree
-        worktrees[1].Path.Should().Be("/repos/project-feature");
+        worktrees[1].Path.Should().Be(Path.GetFullPath("/repos/project-feature"));
         worktrees[1].BranchName.Should().Be("feature/cool-stuff");
         worktrees[1].IsMainWorktree.Should().BeFalse();
         worktrees[1].IsDetached.Should().BeFalse();
         worktrees[1].IsLocked.Should().BeFalse();
 
         // Locked worktree
-        worktrees[2].Path.Should().Be("/repos/project-locked");
+        worktrees[2].Path.Should().Be(Path.GetFullPath("/repos/project-locked"));
         worktrees[2].BranchName.Should().Be("release/v2.0");
         worktrees[2].IsMainWorktree.Should().BeFalse();
         worktrees[2].IsDetached.Should().BeFalse();
@@ -269,7 +269,7 @@ public class WorktreeOperationsTests
         worktrees[2].LockReason.Should().Be("Do not delete - important work");
 
         // Detached worktree
-        worktrees[3].Path.Should().Be("/repos/project-detached");
+        worktrees[3].Path.Should().Be(Path.GetFullPath("/repos/project-detached"));
         worktrees[3].BranchName.Should().BeNull();
         worktrees[3].IsMainWorktree.Should().BeFalse();
         worktrees[3].IsDetached.Should().BeTrue();
