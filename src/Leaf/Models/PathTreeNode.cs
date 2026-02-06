@@ -19,4 +19,22 @@ public class PathTreeNode
     public bool IsRoot { get; }
     public FileStatusInfo? File { get; }
     public ObservableCollection<PathTreeNode> Children { get; } = [];
+
+    /// <summary>
+    /// Collects all FileStatusInfo objects from this node and all descendants.
+    /// </summary>
+    public IEnumerable<FileStatusInfo> GetAllFiles()
+    {
+        if (IsFile && File != null)
+        {
+            yield return File;
+            yield break;
+        }
+
+        foreach (var child in Children)
+        {
+            foreach (var file in child.GetAllFiles())
+                yield return file;
+        }
+    }
 }

@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using Leaf.Models;
 
 namespace Leaf.Controls;
@@ -122,6 +124,20 @@ public partial class FileChangesSectionControl : UserControl
         else
         {
             ItemCount = 0;
+        }
+    }
+
+    private void TreeViewItem_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var source = e.OriginalSource as DependencyObject;
+        while (source != null && source is not TreeViewItem)
+            source = VisualTreeHelper.GetParent(source);
+
+        if (source is TreeViewItem item)
+        {
+            item.IsSelected = true;
+            item.Focus();
+            e.Handled = true;
         }
     }
 }

@@ -262,7 +262,11 @@ public partial class WorkingChangesViewModel : ObservableObject
             CopyFilePathCommand = CopyFilePathCommand,
             DeleteFileCommand = DeleteFileCommand,
             AdminDeleteCommand = AdminDeleteReservedFileCommand,
-            FileSelectedCommand = SelectUnstagedFileCommand
+            FileSelectedCommand = SelectUnstagedFileCommand,
+            FolderPrimaryActionCommand = StageFolderCommand,
+            FolderDiscardCommand = DiscardFolderCommand,
+            FolderIgnoreCommand = IgnoreFolderCommand,
+            FolderOpenInExplorerCommand = OpenFolderInExplorerCommand
         };
 
         StagedSectionContext = new FileChangesSectionContext
@@ -285,7 +289,11 @@ public partial class WorkingChangesViewModel : ObservableObject
             CopyFilePathCommand = CopyFilePathCommand,
             DeleteFileCommand = DeleteFileCommand,
             AdminDeleteCommand = null, // Not applicable for staged files
-            FileSelectedCommand = SelectStagedFileCommand
+            FileSelectedCommand = SelectStagedFileCommand,
+            FolderPrimaryActionCommand = UnstageFolderCommand,
+            FolderDiscardCommand = DiscardFolderCommand,
+            FolderIgnoreCommand = IgnoreFolderCommand,
+            FolderOpenInExplorerCommand = OpenFolderInExplorerCommand
         };
     }
 
@@ -913,5 +921,119 @@ exit /b %errorlevel%
     {
         // Notify CanCommit changed when message changes
         CommitCommand.NotifyCanExecuteChanged();
+    }
+
+    // --- Folder context menu commands ---
+
+    /// <summary>
+    /// Stage all files within a folder tree node.
+    /// </summary>
+    [RelayCommand]
+    public async Task StageFolderAsync(PathTreeNode folder)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || folder == null)
+            return;
+
+        try
+        {
+            foreach (var file in folder.GetAllFiles())
+                await _gitService.StageFileAsync(_repositoryPath, file.Path);
+            await RefreshAndNotifyAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Stage folder failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Unstage all files within a folder tree node.
+    /// </summary>
+    [RelayCommand]
+    public async Task UnstageFolderAsync(PathTreeNode folder)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || folder == null)
+            return;
+
+        try
+        {
+            foreach (var file in folder.GetAllFiles())
+                await _gitService.UnstageFileAsync(_repositoryPath, file.Path);
+            await RefreshAndNotifyAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Unstage folder failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Discard all changes in a folder tree node.
+    /// </summary>
+    [RelayCommand]
+    public async Task DiscardFolderAsync(PathTreeNode folder)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || folder == null)
+            return;
+
+        var files = folder.GetAllFiles().ToList();
+        var confirmed = await _dialogService.ShowConfirmationAsync(
+            $"Discard all changes in '{folder.RelativePath}/'?\n\n{files.Count} file(s) will be reverted. This cannot be undone.",
+            "Discard Folder Changes");
+
+        if (!confirmed)
+            return;
+
+        try
+        {
+            foreach (var file in files)
+                await _gitService.DiscardFileChangesAsync(_repositoryPath, file.Path);
+            await RefreshAndNotifyAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Discard folder failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Add a folder to .gitignore.
+    /// </summary>
+    [RelayCommand]
+    public async Task IgnoreFolderAsync(PathTreeNode folder)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || folder == null)
+            return;
+
+        try
+        {
+            var trackedFiles = folder.GetAllFiles()
+                .Where(f => f.Status != FileChangeStatus.Untracked)
+                .ToList();
+            await _gitignoreService.IgnoreDirectoryPathAsync(_repositoryPath, folder.RelativePath, trackedFiles);
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Ignore folder failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Open a folder in Windows Explorer.
+    /// </summary>
+    [RelayCommand]
+    public void OpenFolderInExplorer(PathTreeNode folder)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || folder == null)
+            return;
+
+        var normalizedPath = folder.RelativePath.Replace('/', '\\');
+        var fullPath = Path.Combine(_repositoryPath, normalizedPath);
+
+        if (Directory.Exists(fullPath))
+            _fileSystemService.OpenInExplorer(fullPath);
+        else
+            _fileSystemService.RevealInExplorer(_repositoryPath);
     }
 }

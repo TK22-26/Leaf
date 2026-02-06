@@ -19,8 +19,7 @@ public partial class MainViewModel
     {
         try
         {
-            IsBusy = true;
-            StatusMessage = "Fetching all repositories...";
+            await BeginBusyAsync("Fetching all repositories...");
 
             foreach (var group in RepositoryGroups)
             {
@@ -62,8 +61,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Fetching from {remoteName}...";
+            await BeginBusyAsync($"Fetching from {remoteName}...");
 
             // Get credentials for this remote (map hostname to credential key)
             string? pat = null;
@@ -115,7 +113,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
+            await BeginBusyAsync("Pulling...");
             var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
 
             // Check if SyncAllRemotes is enabled for multi-remote repos
@@ -190,6 +188,7 @@ public partial class MainViewModel
 
         try
         {
+            await BeginBusyAsync("Pushing...");
             var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
 
             // Check if there are multiple remotes
@@ -208,7 +207,6 @@ public partial class MainViewModel
                 return;
             }
 
-            IsBusy = true;
             StatusMessage = "Pushing changes...";
 
             // Single remote - push directly

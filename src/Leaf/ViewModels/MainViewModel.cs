@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Leaf.Models;
 using Leaf.Services;
@@ -112,6 +113,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _isBusy;
+
+    /// <summary>
+    /// Sets IsBusy and yields to the UI thread so the progress bar can render.
+    /// </summary>
+    private async Task BeginBusyAsync(string statusMessage)
+    {
+        IsBusy = true;
+        StatusMessage = statusMessage;
+        // Force WPF to complete a render pass before continuing, so the progress bar appears
+        await Application.Current.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
+    }
 
     [ObservableProperty]
     private string _commitSearchText = string.Empty;

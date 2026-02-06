@@ -27,12 +27,39 @@
                 x:Key="TreeNodeTemplate"
                 DataType="{x:Type models:PathTreeNode}"
                 ItemsSource="{Binding Children}">
-                <Grid>
+                <Grid Background="Transparent">
                     <!--  Folder display  -->
                     <StackPanel
                         Margin="2,1"
+                        Background="Transparent"
                         Orientation="Horizontal"
                         Visibility="{Binding IsFile, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
+                        <StackPanel.ContextMenu>
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <MenuItem
+                                    Command="{Binding Data.FolderPrimaryActionCommand, Source={StaticResource ContextProxy}}"
+                                    CommandParameter="{Binding}"
+                                    Header="{Binding Data.PrimaryActionText, Source={StaticResource ContextProxy}, StringFormat='{}{0} all in folder'}" />
+                                <MenuItem
+                                    Command="{Binding Data.FolderDiscardCommand, Source={StaticResource ContextProxy}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Discard all changes in folder" />
+                                <MenuItem
+                                    Command="{Binding Data.FolderIgnoreCommand, Source={StaticResource ContextProxy}}"
+                                    CommandParameter="{Binding}">
+                                    <MenuItem.Header>
+                                        <TextBlock>
+                                            <Run Text="Ignore '" /><Run Text="{Binding RelativePath, Mode=OneWay}" /><Run Text="/'" />
+                                        </TextBlock>
+                                    </MenuItem.Header>
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding Data.FolderOpenInExplorerCommand, Source={StaticResource ContextProxy}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Open in Explorer" />
+                            </ContextMenu>
+                        </StackPanel.ContextMenu>
                         <TextBlock
                             Margin="0,0,6,0"
                             FontFamily="Segoe Fluent Icons"
@@ -48,7 +75,7 @@
                     <!--  File display  -->
                     <Border
                         Margin="2,1"
-                        Padding="8,6"
+                        Padding="4,1"
                         Background="Transparent"
                         BorderBrush="Transparent"
                         BorderThickness="2,0,0,0"
@@ -428,6 +455,7 @@
                 VirtualizingStackPanel.VirtualizationMode="Recycling">
                 <TreeView.ItemContainerStyle>
                     <Style BasedOn="{StaticResource {x:Type TreeViewItem}}" TargetType="TreeViewItem">
+                        <EventSetter Event="PreviewMouseRightButtonDown" Handler="TreeViewItem_PreviewMouseRightButtonDown" />
                         <Style.Triggers>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
