@@ -73,17 +73,22 @@ internal class BranchOperations
 
             // Find the branch (normalize remote names)
             var branch = repo.Branches[branchName];
-            var remoteName = "origin";
-            var shortName = branchName;
-            var slashIndex = branchName.IndexOf('/');
-            if (slashIndex > 0)
-            {
-                remoteName = branchName[..slashIndex];
-                shortName = branchName[(slashIndex + 1)..];
-            }
 
+            // Determine remote name and local short name by checking actual remotes
+            // (naive first-slash split fails for branch names like "users/Jacob/feature")
+            string shortName = branchName;
             if (branch != null && branch.IsRemote)
             {
+                foreach (var remote in repo.Network.Remotes)
+                {
+                    var prefix = remote.Name + "/";
+                    if (branchName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        shortName = branchName[prefix.Length..];
+                        break;
+                    }
+                }
+
                 var localBranch = repo.Branches[shortName];
                 if (localBranch == null)
                 {
@@ -96,10 +101,21 @@ internal class BranchOperations
             if (branch == null)
             {
                 // Try to find remote branch and create local tracking branch
-                var remoteBranch = repo.Branches[$"{remoteName}/{shortName}"];
+                // Search all remotes since branchName may contain slashes
+                Branch? remoteBranch = null;
+                foreach (var remote in repo.Network.Remotes)
+                {
+                    var candidate = repo.Branches[$"{remote.Name}/{branchName}"];
+                    if (candidate != null && candidate.IsRemote)
+                    {
+                        remoteBranch = candidate;
+                        break;
+                    }
+                }
+
                 if (remoteBranch != null)
                 {
-                    branch = repo.CreateBranch(shortName, remoteBranch.Tip);
+                    branch = repo.CreateBranch(branchName, remoteBranch.Tip);
                     repo.Branches.Update(branch, b => b.TrackedBranch = remoteBranch.CanonicalName);
                 }
                 else
