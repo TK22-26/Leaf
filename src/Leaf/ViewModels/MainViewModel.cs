@@ -224,6 +224,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _newBranchName = string.Empty;
 
+    [ObservableProperty]
+    private CommandPaletteViewModel? _commandPaletteViewModel;
+
     private bool _isRenameBranchInput;
     private string? _pendingRenameBranchName;
 
