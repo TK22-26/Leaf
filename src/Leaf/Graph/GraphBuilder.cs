@@ -211,6 +211,12 @@ public class GraphBuilder
                 branchName = commit.BranchNames[0];
                 laneBranchNames[lane] = branchName;
             }
+            else if (commit.BranchLabels.Count > 0)
+            {
+                // Remote-only branch tip: use BranchLabel name
+                branchName = commit.BranchLabels[0].Name;
+                laneBranchNames[lane] = branchName;
+            }
             else
             {
                 // Use the lane's current branch name
@@ -412,6 +418,18 @@ public class GraphBuilder
                 var firstParentSet = GetFirstParentSet(commit.Sha, commitsBySha);
                 var allAncestors = GetAllAncestors(commit.Sha, commitsBySha);
                 branchData.Add((branchName, firstParentSet, allAncestors));
+            }
+
+            // Also include remote-only branches from BranchLabels
+            foreach (var label in commit.BranchLabels)
+            {
+                if (processedBranches.Contains(label.Name))
+                    continue;
+
+                processedBranches.Add(label.Name);
+                var firstParentSet = GetFirstParentSet(commit.Sha, commitsBySha);
+                var allAncestors = GetAllAncestors(commit.Sha, commitsBySha);
+                branchData.Add((label.Name, firstParentSet, allAncestors));
             }
         }
 

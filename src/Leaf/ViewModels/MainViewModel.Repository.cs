@@ -232,7 +232,9 @@ public partial class MainViewModel
     /// Select a repository to view.
     /// </summary>
     [RelayCommand]
-    public async Task SelectRepositoryAsync(RepositoryInfo? repository)
+    public Task SelectRepositoryAsync(RepositoryInfo? repository) => SelectRepositoryAsync(repository, fetchInBackground: true);
+
+    public async Task SelectRepositoryAsync(RepositoryInfo? repository, bool fetchInBackground)
     {
         if (repository == null) return;
 
@@ -297,6 +299,9 @@ public partial class MainViewModel
                            (repository.IsDirty ? " | Modified" : "") +
                            (repository.AheadBy > 0 ? $" | {repository.AheadBy}" : "") +
                            (repository.BehindBy > 0 ? $" | {repository.BehindBy}" : "");
+
+            if (fetchInBackground)
+                _ = _autoFetchService.FetchAsync(repository.Path);
         }
         catch (Exception ex)
         {

@@ -409,14 +409,10 @@ public partial class GitGraphCanvas
             isLocal = matchingLabel.IsLocal;
             remotes = matchingLabel.Remotes;
         }
-        else if (node.PrimaryBranch != null)
+        else if (_branchLabelLookup.TryGetValue(labelText, out var globalLabel))
         {
-            isLocal = !labelText.Contains('/');
-            if (labelText.Contains('/'))
-            {
-                // Remote-only branch inferred from name
-                remotes = [new RemoteBranchInfo { RemoteName = "origin", RemoteType = RemoteType.Other }];
-            }
+            isLocal = globalLabel.IsLocal;
+            remotes = globalLabel.Remotes;
         }
 
         // Count custom icons and generic cloud icons
