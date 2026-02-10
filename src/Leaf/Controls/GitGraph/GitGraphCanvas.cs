@@ -22,6 +22,8 @@ public partial class GitGraphCanvas : FrameworkElement
 
     #endregion
 
+    private Dictionary<string, BranchLabel> _branchLabelLookup = new(StringComparer.OrdinalIgnoreCase);
+
     #region Dependency Properties
 
     public static readonly DependencyProperty NodesProperty =
@@ -148,6 +150,17 @@ public partial class GitGraphCanvas : FrameworkElement
         if (d is GitGraphCanvas canvas)
         {
             canvas._cacheService.ClearNodeCache();
+
+            canvas._branchLabelLookup.Clear();
+            var newNodes = e.NewValue as IReadOnlyList<GitTreeNode>;
+            if (newNodes != null)
+            {
+                foreach (var node in newNodes)
+                {
+                    foreach (var label in node.BranchLabels)
+                        canvas._branchLabelLookup.TryAdd(label.Name, label);
+                }
+            }
         }
     }
 

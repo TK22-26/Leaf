@@ -41,7 +41,7 @@ public partial class MainViewModel
             // Refresh current repo if selected
             if (SelectedRepository != null)
             {
-                await SelectRepositoryAsync(SelectedRepository);
+                await SelectRepositoryAsync(SelectedRepository, fetchInBackground: false);
             }
         }
         finally
@@ -79,7 +79,7 @@ public partial class MainViewModel
             await _gitService.FetchAsync(SelectedRepository.Path, remoteName, password: pat);
 
             StatusMessage = $"Fetched from {remoteName}";
-            await RefreshAsync();
+            await SelectRepositoryAsync(SelectedRepository, fetchInBackground: false);
         }
         catch (Exception ex)
         {
