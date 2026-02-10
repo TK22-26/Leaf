@@ -51,6 +51,10 @@
             Command="{Binding ToggleTerminalCommand}"
             Modifiers="Control" />
         <KeyBinding Key="F1" Command="{Binding ReportIssueCommand}" />
+        <KeyBinding
+            Key="Space"
+            Command="{Binding ToggleCommandPaletteCommand}"
+            Modifiers="Alt" />
     </Window.InputBindings>
 
     <Grid>
@@ -820,5 +824,12 @@
                 </ContentControl.Style>
             </ContentControl>
         </Grid>
+
+        <!--  Command Palette Overlay  -->
+        <views:CommandPaletteView
+            Grid.RowSpan="3"
+            Panel.ZIndex="50"
+            DataContext="{Binding CommandPaletteViewModel}"
+            Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibilityConverter}}" />
     </Grid>
 </Window>

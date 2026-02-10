@@ -11,6 +11,20 @@ namespace Leaf.ViewModels;
 public partial class MainViewModel
 {
     /// <summary>
+    /// Toggle command palette visibility.
+    /// </summary>
+    [RelayCommand]
+    public void ToggleCommandPalette()
+    {
+        if (CommandPaletteViewModel == null) return;
+
+        if (CommandPaletteViewModel.IsOpen)
+            CommandPaletteViewModel.Close();
+        else
+            CommandPaletteViewModel.Open();
+    }
+
+    /// <summary>
     /// Toggle terminal pane visibility.
     /// </summary>
     [RelayCommand]
