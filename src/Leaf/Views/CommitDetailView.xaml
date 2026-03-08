@@ -21,6 +21,7 @@
         <SolidColorBrush x:Key="StatusAddedBrush" Color="#28A745" />
         <SolidColorBrush x:Key="StatusModifiedBrush" Color="#F5A623" />
         <SolidColorBrush x:Key="StatusDeletedBrush" Color="#E81123" />
+        <SolidColorBrush x:Key="StatusRenamedBrush" Color="#0078D4" />
 
         <!--  Working changes banner - dark green for dark theme  -->
         <SolidColorBrush x:Key="WorkingChangesBannerBrush" Color="#2D5A3D" />
@@ -106,6 +107,10 @@
                                         <DataTrigger Binding="{Binding Status}" Value="Deleted">
                                             <Setter Property="Text" Value="&#xE108;" />
                                             <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="Renamed">
+                                            <Setter Property="Text" Value="&#xE8AB;" />
+                                            <Setter Property="Foreground" Value="{StaticResource StatusRenamedBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -442,7 +447,10 @@
                         </StackPanel>
 
                         <!--  Deleted count  -->
-                        <StackPanel Orientation="Horizontal" Visibility="{Binding DeletedCount, Converter={StaticResource NullToVisibilityConverter}}">
+                        <StackPanel
+                            Margin="0,0,8,0"
+                            Orientation="Horizontal"
+                            Visibility="{Binding DeletedCount, Converter={StaticResource NullToVisibilityConverter}}">
                             <TextBlock
                                 Margin="0,0,4,3"
                                 VerticalAlignment="Center"
@@ -456,6 +464,24 @@
                                 FontSize="11"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="{Binding DeletedCount}" />
+                        </StackPanel>
+
+                        <!--  Renamed count  -->
+                        <StackPanel
+                            Orientation="Horizontal"
+                            Visibility="{Binding RenamedCount, Converter={StaticResource NullToVisibilityConverter}}">
+                            <TextBlock
+                                Margin="0,0,4,0"
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="11"
+                                Foreground="{StaticResource StatusRenamedBrush}"
+                                Text="&#xE8AB;" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding RenamedCount}" />
                         </StackPanel>
                     </StackPanel>
 

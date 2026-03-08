@@ -207,7 +207,8 @@ internal class CommitHistoryOperations
             var tree = commit.Tree;
             var parentTree = parent?.Tree;
 
-            var diff = repo.Diff.Compare<TreeChanges>(parentTree, tree);
+            var diff = repo.Diff.Compare<TreeChanges>(parentTree, tree,
+                new LibGit2Sharp.CompareOptions { Similarity = SimilarityOptions.Renames });
 
             foreach (var change in diff)
             {

@@ -26,6 +26,7 @@ public partial class CommitDetailViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ModifiedCount))]
     [NotifyPropertyChangedFor(nameof(AddedCount))]
     [NotifyPropertyChangedFor(nameof(DeletedCount))]
+    [NotifyPropertyChangedFor(nameof(RenamedCount))]
     [NotifyPropertyChangedFor(nameof(TotalFileCount))]
     private ObservableCollection<FileChangeInfo> _fileChanges = [];
 
@@ -114,6 +115,18 @@ public partial class CommitDetailViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Count of renamed files.
+    /// </summary>
+    public int? RenamedCount
+    {
+        get
+        {
+            var count = FileChanges.Count(f => f.Status == FileChangeStatus.Renamed);
+            return count > 0 ? count : null;
+        }
+    }
+
+    /// <summary>
     /// Total count of changed files.
     /// </summary>
     public int TotalFileCount => FileChanges.Count;
@@ -171,6 +184,7 @@ public partial class CommitDetailViewModel : ObservableObject
             OnPropertyChanged(nameof(ModifiedCount));
             OnPropertyChanged(nameof(AddedCount));
             OnPropertyChanged(nameof(DeletedCount));
+            OnPropertyChanged(nameof(RenamedCount));
             OnPropertyChanged(nameof(TotalFileCount));
             FileChangesTreeItems = BuildTree(FileChanges);
 
@@ -225,6 +239,7 @@ public partial class CommitDetailViewModel : ObservableObject
             OnPropertyChanged(nameof(ModifiedCount));
             OnPropertyChanged(nameof(AddedCount));
             OnPropertyChanged(nameof(DeletedCount));
+            OnPropertyChanged(nameof(RenamedCount));
             OnPropertyChanged(nameof(TotalFileCount));
             FileChangesTreeItems = BuildTree(FileChanges);
 
