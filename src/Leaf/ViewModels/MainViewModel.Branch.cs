@@ -306,6 +306,9 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             StatusMessage = $"Push failed: {ex.Message}";
+            await _dialogService.ShowErrorAsync(
+                $"Failed to push {branch.Name}:\n\n{ex.Message}",
+                "Push Failed");
         }
         finally
         {

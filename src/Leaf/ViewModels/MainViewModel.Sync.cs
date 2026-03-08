@@ -243,6 +243,9 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             StatusMessage = $"Push failed: {ex.Message}";
+            await _dialogService.ShowErrorAsync(
+                $"Failed to push:\n\n{ex.Message}",
+                "Push Failed");
         }
         finally
         {
@@ -259,6 +262,7 @@ public partial class MainViewModel
 
         IsBusy = true;
         var successCount = 0;
+        var failedMessages = new List<string>();
         var pushedRemotes = new List<(RemoteInfo remote, string? pat)>();
 
         foreach (var remote in remotes)
@@ -283,6 +287,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
+                failedMessages.Add($"{remote.Name}: {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"Push to {remote.Name} failed: {ex.Message}");
             }
         }
@@ -302,6 +307,15 @@ public partial class MainViewModel
         }
 
         StatusMessage = $"Pushed to {successCount} of {remotes.Count} remotes";
+
+        if (failedMessages.Count > 0)
+        {
+            var errorDetail = string.Join("\n", failedMessages);
+            await _dialogService.ShowErrorAsync(
+                $"Push failed for {failedMessages.Count} remote(s):\n\n{errorDetail}",
+                "Push Failed");
+        }
+
         await RefreshAsync();
         IsBusy = false;
     }
