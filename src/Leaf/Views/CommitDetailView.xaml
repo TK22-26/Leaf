@@ -50,7 +50,7 @@
                 <Border
                     x:Name="FilePanel"
                     Margin="2,1"
-                    Padding="8,6"
+                    Padding="4,1"
                     Background="Transparent"
                     BorderBrush="Transparent"
                     BorderThickness="2,0,0,0"
@@ -115,7 +115,7 @@
                         <TextBlock
                             Grid.Column="1"
                             VerticalAlignment="Center"
-                            FontSize="13"
+                            FontSize="12"
                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                             Text="{Binding FileName}"
                             TextTrimming="CharacterEllipsis" />

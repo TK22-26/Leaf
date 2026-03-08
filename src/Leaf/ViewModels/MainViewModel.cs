@@ -296,6 +296,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService, settingsService);
         _workingChangesViewModel.FileSelected += OnWorkingChangesFileSelected;
+        _workingChangesViewModel.FileDeletedOrDiscarded += OnFileDeletedOrDiscarded;
         _diffViewerViewModel = new DiffViewerViewModel(gitService);
         _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
         _diffViewerViewModel.HunkReverted += OnDiffViewerHunkReverted;
