@@ -28,6 +28,7 @@ public partial class MainViewModel
         BranchInputActionText = "Create";
         BranchInputPlaceholder = "Branch name...";
         IsBranchInputVisible = true;
+        RequestBranchCreatePopup?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
@@ -43,6 +44,7 @@ public partial class MainViewModel
         BranchInputActionText = "Create";
         BranchInputPlaceholder = "Branch name...";
         IsBranchInputVisible = true;
+        RequestBranchCreatePopup?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
@@ -58,6 +60,7 @@ public partial class MainViewModel
         BranchInputActionText = "Create";
         BranchInputPlaceholder = "Branch name...";
         IsBranchInputVisible = true;
+        RequestBranchCreatePopup?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
@@ -73,6 +76,7 @@ public partial class MainViewModel
         BranchInputActionText = "Rename";
         BranchInputPlaceholder = "New branch name...";
         IsBranchInputVisible = true;
+        RequestBranchCreatePopup?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]

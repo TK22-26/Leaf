@@ -48,6 +48,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event EventHandler<RepositoryInfo>? RequestRepositorySelection;
 
     /// <summary>
+    /// Event raised to open the branch create/rename popup.
+    /// Uses an event instead of PropertyChanged on IsBranchInputVisible to avoid stuck state
+    /// when SetProperty suppresses duplicate true→true transitions.
+    /// </summary>
+    public event EventHandler? RequestBranchCreatePopup;
+
+    /// <summary>
     /// Last fetch time - delegated to AutoFetchService.
     /// </summary>
     public DateTime? LastFetchTime => _autoFetchService.LastFetchTime;
