@@ -282,6 +282,7 @@ public partial class MainViewModel
             IsBusy = true;
             var selectedRemotes = dialog.SelectedRemoteNames.ToList();
             var pushedRemotes = new List<(RemoteInfo remote, string? pat)>();
+            var failedMessages = new List<string>();
 
             foreach (var remoteName in selectedRemotes)
             {
@@ -310,9 +311,7 @@ public partial class MainViewModel
                 }
                 catch (Exception ex)
                 {
-                    StatusMessage = $"Push to {remoteName} failed: {ex.Message}";
-                    // Continue with other remotes or stop?
-                    // For now, continue
+                    failedMessages.Add($"{remoteName}: {ex.Message}");
                 }
             }
 
@@ -331,11 +330,24 @@ public partial class MainViewModel
             }
 
             StatusMessage = $"Pushed to {pushedRemotes.Count} remotes";
+
+            if (failedMessages.Count > 0)
+            {
+                StatusMessage = $"Pushed to {pushedRemotes.Count} of {selectedRemotes.Count} remotes";
+                var errorDetail = string.Join("\n", failedMessages);
+                await _dialogService.ShowErrorAsync(
+                    $"Push failed for {failedMessages.Count} remote(s):\n\n{errorDetail}",
+                    "Push Failed");
+            }
+
             await RefreshAsync();
         }
         catch (Exception ex)
         {
             StatusMessage = $"Push failed: {ex.Message}";
+            await _dialogService.ShowErrorAsync(
+                $"Failed to push:\n\n{ex.Message}",
+                "Push Failed");
         }
         finally
         {
