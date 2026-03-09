@@ -383,6 +383,8 @@ public partial class MainViewModel
 
             string branchName;
             BranchInfo? localBranch = null;
+            bool needsPull = false;
+            string? pullRemoteName = null;
 
             if (branch.IsRemote)
             {
@@ -405,32 +407,9 @@ public partial class MainViewModel
                     !string.IsNullOrWhiteSpace(remoteTipSha) &&
                     !string.Equals(localBranch.TipSha, remoteTipSha, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Local exists but is at different commit - checkout remote's commit (detached HEAD)
-                    StatusMessage = $"Checking out {branch.Name}...";
-                    await _gitService.CheckoutCommitAsync(SelectedRepository.Path, remoteTipSha);
-
-                    var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
-                    SelectedRepository.CurrentBranch = info.CurrentBranch;
-                    SelectedRepository.IsDetachedHead = info.IsDetachedHead;
-                    SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
-                    SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
-                    SelectedRepository.MergingBranch = info.MergingBranch;
-                    SelectedRepository.ConflictCount = info.ConflictCount;
-
-                    // Reload branches to update current indicator
-                    SelectedRepository.BranchesLoaded = false;
-                    await LoadBranchesForRepoAsync(SelectedRepository);
-
-                    // Refresh git graph and select the checked out commit
-                    if (GitGraphViewModel != null)
-                    {
-                        await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
-                        GitGraphViewModel.SelectCommitBySha(remoteTipSha);
-                    }
-
-                    StatusMessage = $"Checked out {branch.Name} (detached HEAD)";
-                    IsBusy = false;
-                    return;
+                    // Local branch is behind (or diverged from) remote — pull after checkout
+                    needsPull = true;
+                    pullRemoteName = remoteName;
                 }
 
                 // Local exists at same commit, OR no local exists
@@ -443,6 +422,26 @@ public partial class MainViewModel
             }
 
             await _gitService.CheckoutAsync(SelectedRepository.Path, branchName, allowConflicts: true);
+
+            // Fast-forward local branch to match remote if behind
+            if (needsPull)
+            {
+                try
+                {
+                    StatusMessage = $"Pulling {branchName}...";
+                    await _gitService.PullBranchFastForwardAsync(
+                        SelectedRepository.Path,
+                        branchName,
+                        pullRemoteName!,
+                        branchName,
+                        isCurrentBranch: true);
+                }
+                catch
+                {
+                    // Fast-forward not possible (branches diverged) — checkout succeeded,
+                    // user will see the diverged state in the graph
+                }
+            }
 
             // Refresh the repo info
             var repoInfo = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
