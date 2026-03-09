@@ -30,7 +30,20 @@
             x:Key="FileChangeTreeNodeTemplate"
             DataType="{x:Type models:FileChangeTreeNode}"
             ItemsSource="{Binding Children}">
-            <Grid>
+            <Grid x:Name="TemplateRoot">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsFile}" Value="True" />
+                                    <Condition Binding="{Binding IsRoot}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Margin" Value="-19,0,0,0" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <StackPanel
                     x:Name="FolderPanel"
                     Margin="2,1"
@@ -695,7 +708,6 @@
                                             <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=HasItems}" Value="False" />
                                             <Condition Binding="{Binding IsRoot}" Value="True" />
                                         </MultiDataTrigger.Conditions>
-                                        <Setter Property="Margin" Value="-19,0,0,0" />
                                         <Setter Property="Padding" Value="0,2" />
                                     </MultiDataTrigger>
                                 </Style.Triggers>
