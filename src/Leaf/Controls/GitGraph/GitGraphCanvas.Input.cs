@@ -96,7 +96,7 @@ public partial class GitGraphCanvas
 
                 if (overflow.HitArea.Contains(pos))
                 {
-                    int rowOffset = (HasWorkingChanges ? 1 : 0) + StashCount;
+                    int rowOffset = HasWorkingChanges ? 1 : 0;
                     int nodeIndex = displayRow - rowOffset;
 
                     if (nodeIndex >= 0)
@@ -143,7 +143,7 @@ public partial class GitGraphCanvas
 
                 if (overflow.HitArea.Contains(pos))
                 {
-                    int rowOffset = (HasWorkingChanges ? 1 : 0) + StashCount;
+                    int rowOffset = HasWorkingChanges ? 1 : 0;
                     int nodeIndex = displayRow - rowOffset;
 
                     if (nodeIndex >= 0)
@@ -282,7 +282,7 @@ public partial class GitGraphCanvas
                     {
                         _stateService.HoveredOverflowRow = displayRow;
                         // Show popup with all branch names
-                        int tooltipRowOffset = (HasWorkingChanges ? 1 : 0) + StashCount;
+                        int tooltipRowOffset = HasWorkingChanges ? 1 : 0;
                         int tooltipNodeIndex = displayRow - tooltipRowOffset;
                         if (Nodes != null && tooltipNodeIndex >= 0 && tooltipNodeIndex < Nodes.Count)
                         {
@@ -325,7 +325,6 @@ public partial class GitGraphCanvas
             {
                 IsWorkingChangesHovered = true;
                 HoveredSha = null;
-                HoveredStashIndex = -1;
                 return;
             }
             currentRow++;
@@ -336,23 +335,7 @@ public partial class GitGraphCanvas
             IsWorkingChangesHovered = false;
         }
 
-        // Handle stash rows
-        if (StashCount > 0)
-        {
-            int stashIndex = row - currentRow;
-            if (stashIndex >= 0 && stashIndex < StashCount)
-            {
-                HoveredStashIndex = stashIndex;
-                HoveredSha = null;
-                return;
-            }
-            HoveredStashIndex = -1;
-            currentRow += StashCount;
-        }
-        else
-        {
-            HoveredStashIndex = -1;
-        }
+        // Stash nodes are now regular graph nodes — no separate stash row handling
 
         if (nodes == null || nodes.Count == 0)
         {
@@ -375,7 +358,6 @@ public partial class GitGraphCanvas
     {
         HoveredSha = null;
         IsWorkingChangesHovered = false;
-        HoveredStashIndex = -1;
 
         if (_stateService.HoveredOverflowRow >= 0)
         {
@@ -390,7 +372,7 @@ public partial class GitGraphCanvas
             return null;
 
         int row = (int)(position.Y / RowHeight);
-        int rowOffset = (HasWorkingChanges ? 1 : 0) + StashCount;
+        int rowOffset = HasWorkingChanges ? 1 : 0;
         int nodeIndex = row - rowOffset;
 
         if (nodeIndex < 0 || nodeIndex >= Nodes.Count)

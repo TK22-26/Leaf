@@ -25,9 +25,6 @@ public partial class GitGraphCanvas
     private const double AzureDevOpsLogoWidth = 18;
     private const double AzureDevOpsLogoHeight = 18;
 
-    // Stash color (purple/violet for distinctiveness)
-    private static readonly Color StashColor = Color.FromRgb(136, 82, 179); // Purple
-
     private static readonly Typeface LabelTypeface = new Typeface(
         new FontFamily("Segoe UI"),
         FontStyles.Normal,

@@ -15,9 +15,9 @@ public partial class GitGraphCanvas
         _hitTestService.ClearHitAreas();
         base.OnRender(dc);
 
-        // Row offset: working changes (0 or 1) + stash count
+        // Row offset: working changes (0 or 1) — stashes are now inline graph nodes
         int workingChangesOffset = HasWorkingChanges ? 1 : 0;
-        int rowOffset = workingChangesOffset + StashCount;
+        int rowOffset = workingChangesOffset;
 
         var nodes = Nodes;
 
@@ -30,7 +30,13 @@ public partial class GitGraphCanvas
             var branchColor = branchBrush.Color;
 
             var headNode = nodes?.FirstOrDefault(n => n.IsHead);
-            var targetNode = headNode ?? (nodes != null && nodes.Count > 0 ? nodes[0] : null);
+            // Target the topmost node in HEAD's lane (may be a stash above HEAD)
+            GitTreeNode? targetNode = null;
+            if (headNode != null && nodes != null)
+            {
+                targetNode = nodes.FirstOrDefault(n => n.ColumnIndex == headNode.ColumnIndex) ?? headNode;
+            }
+            targetNode ??= nodes != null && nodes.Count > 0 ? nodes[0] : null;
             int wipLane = targetNode?.ColumnIndex ?? 0;
 
             // Draw connection from WIP directly to current branch head when possible
@@ -53,15 +59,24 @@ public partial class GitGraphCanvas
 
             if (targetY > wipY && targetNode != null)
             {
-                double targetRadius = targetNode.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
-
-                // Create clip geometry that excludes both the WIP circle and the target commit's circle
+                // Create clip geometry that excludes both the WIP circle and the target node's shape
                 var fullArea = _cacheService.GetFullArea(ActualWidth, ActualHeight);
                 var wipCircle = new EllipseGeometry(new Point(wipX, wipY), avatarRadius, avatarRadius);
-                var targetCircle = new EllipseGeometry(new Point(targetX, targetY), targetRadius, targetRadius);
+
+                Geometry targetShape;
+                if (targetNode.IsStash)
+                {
+                    double boxSize = NodeRadius * 1.875;
+                    targetShape = new RectangleGeometry(new Rect(targetX - boxSize, targetY - boxSize, boxSize * 2, boxSize * 2), 3, 3);
+                }
+                else
+                {
+                    double targetRadius = targetNode.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
+                    targetShape = new EllipseGeometry(new Point(targetX, targetY), targetRadius, targetRadius);
+                }
 
                 var clipWithoutWip = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, wipCircle);
-                var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, clipWithoutWip, targetCircle);
+                var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, clipWithoutWip, targetShape);
                 clipGeometry.Freeze();
 
                 dc.PushClip(clipGeometry);
@@ -72,15 +87,6 @@ public partial class GitGraphCanvas
 
             // Draw WIP node on top of connection line
             DrawWorkingChangesRow(dc, branchColor, wipLane);
-        }
-
-        // Draw stash rows
-        for (int i = 0; i < StashCount; i++)
-        {
-            int stashRow = workingChangesOffset + i;
-            bool isHovered = HoveredStashIndex == i;
-            bool isSelected = SelectedStashIndex == i;
-            DrawStashRow(dc, stashRow, i, isHovered, isSelected, nodes, rowOffset);
         }
 
         if (nodes == null || nodes.Count == 0)
@@ -218,59 +224,6 @@ public partial class GitGraphCanvas
         dc.DrawEllipse(Brushes.Transparent, dashedPen, new Point(x, y), avatarRadius, avatarRadius);
     }
 
-    private void DrawStashRow(DrawingContext dc, int row, int stashIndex, bool isHovered, bool isSelected, IReadOnlyList<GitTreeNode>? nodes, int rowOffset)
-    {
-        double y = GetYForRow(row);
-        // Stashes in lane 0 (leftmost)
-        int stashLane = 0;
-        double x = GetXForColumn(stashLane);
-
-        // Get stash info and use branch color instead of hardcoded purple
-        var stashInfo = Stashes != null && stashIndex < Stashes.Count ? Stashes[stashIndex] : null;
-        var branchName = stashInfo?.BranchName ?? CurrentBranchName ?? "main";
-        var branchBrush = GraphBuilder.GetBranchColor(branchName) as SolidColorBrush ?? Brushes.Gray;
-        var stashColor = branchBrush.Color;
-        var stashBrush = new SolidColorBrush(stashColor);
-        stashBrush.Freeze();
-
-        // Determine if this row is highlighted
-        bool isHighlighted = isSelected || isHovered;
-
-        // Draw trail using stash color
-        double trailHeight = NodeRadius * 3.75 + 4;
-        double trailOpacity = isHighlighted ? 0.5 : 0.15;
-        var trailColor = Color.FromArgb((byte)(stashColor.A * trailOpacity),
-            stashColor.R, stashColor.G, stashColor.B);
-        var trailBrush = new SolidColorBrush(trailColor);
-        trailBrush.Freeze();
-
-        // Draw the main trail rectangle (extends from stash node to right edge)
-        double boxSize = NodeRadius * 1.875;
-        var trailRect = new Rect(x, y - trailHeight / 2, ActualWidth - x - 2, trailHeight);
-        dc.DrawRectangle(trailBrush, null, trailRect);
-
-        // Draw accent at right edge of trail
-        var accentRect = new Rect(ActualWidth - 2, y - trailHeight / 2, 2, trailHeight);
-        dc.DrawRectangle(stashBrush, null, accentRect);
-
-        // Draw stash box (rounded rectangle instead of circle)
-        var boxPen = new Pen(stashBrush, 2.5);
-        boxPen.Freeze();
-        var boxRect = new Rect(x - boxSize, y - boxSize, boxSize * 2, boxSize * 2);
-        dc.DrawRoundedRectangle(Brushes.White, boxPen, boxRect, 3, 3);
-
-        // Draw stash icon inside the box
-        var iconFormatted = new FormattedText(
-            StashIcon,
-            CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
-            IconTypeface,
-            13,
-            stashBrush,
-            VisualTreeHelper.GetDpi(this).PixelsPerDip);
-        dc.DrawText(iconFormatted, new Point(x - iconFormatted.Width / 2, y - iconFormatted.Height / 2));
-    }
-
     private void DrawTrail(DrawingContext dc, GitTreeNode node, int rowOffset = 0)
     {
         double x = GetXForColumn(node.ColumnIndex);
@@ -286,9 +239,6 @@ public partial class GitGraphCanvas
         double trailEndX = ActualWidth;
         double accentWidth = 2;
 
-        // Node radius depends on commit type (merge = smaller dot, regular = avatar circle)
-        double avatarRadius = node.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
-
         // Determine if this row is highlighted (selected, hovered, or search match)
         bool isHighlighted = node.Sha == SelectedSha || node.Sha == HoveredSha || (IsSearchActive && node.IsSearchMatch);
 
@@ -302,15 +252,30 @@ public partial class GitGraphCanvas
         var accentBrush = new SolidColorBrush(baseColor);
         accentBrush.Freeze();
 
-        // Create clipped trail geometry (rectangle with circle cut out)
+        // Create clipped trail geometry (rectangle with node shape cut out)
         var trailRect = new Rect(
             trailStartX,
             y - trailHeight / 2,
             trailEndX - trailStartX - accentWidth,
             trailHeight);
         var trailGeometry = new RectangleGeometry(trailRect);
-        var circleGeometry = new EllipseGeometry(new Point(x, y), avatarRadius, avatarRadius);
-        var clippedTrail = new CombinedGeometry(GeometryCombineMode.Exclude, trailGeometry, circleGeometry);
+
+        Geometry nodeGeometry;
+        if (node.IsStash)
+        {
+            // Stash nodes use a rounded rectangle
+            double boxSize = NodeRadius * 1.875;
+            var boxRect = new Rect(x - boxSize, y - boxSize, boxSize * 2, boxSize * 2);
+            nodeGeometry = new RectangleGeometry(boxRect, 3, 3);
+        }
+        else
+        {
+            // Node radius depends on commit type (merge = smaller dot, regular = avatar circle)
+            double avatarRadius = node.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
+            nodeGeometry = new EllipseGeometry(new Point(x, y), avatarRadius, avatarRadius);
+        }
+
+        var clippedTrail = new CombinedGeometry(GeometryCombineMode.Exclude, trailGeometry, nodeGeometry);
         clippedTrail.Freeze();
 
         // Draw clipped trail
@@ -332,7 +297,27 @@ public partial class GitGraphCanvas
 
         var brush = node.NodeColor ?? Brushes.Gray;
 
-        if (node.IsMerge)
+        if (node.IsStash)
+        {
+            // Stash nodes: rounded rectangle with stash icon (same style as old DrawStashRow)
+            double boxSize = NodeRadius * 1.875;
+            var boxPen = new Pen(brush, 2.5);
+            boxPen.Freeze();
+            var boxRect = new Rect(x - boxSize, y - boxSize, boxSize * 2, boxSize * 2);
+            dc.DrawRoundedRectangle(Brushes.White, boxPen, boxRect, 3, 3);
+
+            // Draw stash icon inside the box
+            var iconFormatted = new FormattedText(
+                StashIcon,
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                IconTypeface,
+                13,
+                brush,
+                VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            dc.DrawText(iconFormatted, new Point(x - iconFormatted.Width / 2, y - iconFormatted.Height / 2));
+        }
+        else if (node.IsMerge)
         {
             // Merge commits: simple dot (0.875x = 0.7 * 1.25)
             double mergeRadius = NodeRadius * 0.875;
@@ -368,9 +353,6 @@ public partial class GitGraphCanvas
         double nodeX = GetXForColumn(node.ColumnIndex);
         double nodeY = GetYForRow(node.RowIndex + rowOffset);
 
-        // Node radius for clipping (merge = smaller, regular = avatar)
-        double nodeRadius = node.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
-
         for (int i = 0; i < node.ParentShas.Count; i++)
         {
             var parentSha = node.ParentShas[i];
@@ -379,7 +361,6 @@ public partial class GitGraphCanvas
 
             double parentX = GetXForColumn(parentNode.ColumnIndex);
             double parentY = GetYForRow(parentNode.RowIndex + rowOffset);
-            double parentRadius = parentNode.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
 
             // First parent (i=0): commit-to-commit style (down then horizontal)
             // Second+ parent (i>0): merge style (horizontal then down)
@@ -393,14 +374,36 @@ public partial class GitGraphCanvas
                 : (node.NodeColor ?? Brushes.Gray);
             var linePen = _cacheService.GetConnectionPen(lineBrush);
 
-            // Draw connection line with clip geometry to avoid visual artifacts at the overlap
+            // Build clip geometry for node shape (stash = rounded rect, others = ellipse)
             var fullArea = _cacheService.GetFullArea(ActualWidth, ActualHeight);
-            var nodeCircle = new EllipseGeometry(new Point(nodeX, nodeY), nodeRadius, nodeRadius);
-            var parentCircle = new EllipseGeometry(new Point(parentX, parentY), parentRadius, parentRadius);
 
-            // Exclude node circle first, then parent circle
-            var clipWithoutNode = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, nodeCircle);
-            var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, clipWithoutNode, parentCircle);
+            Geometry nodeShape;
+            if (node.IsStash)
+            {
+                double boxSize = NodeRadius * 1.875;
+                nodeShape = new RectangleGeometry(new Rect(nodeX - boxSize, nodeY - boxSize, boxSize * 2, boxSize * 2), 3, 3);
+            }
+            else
+            {
+                double nodeRadius = node.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
+                nodeShape = new EllipseGeometry(new Point(nodeX, nodeY), nodeRadius, nodeRadius);
+            }
+
+            Geometry parentShape;
+            if (parentNode.IsStash)
+            {
+                double boxSize = NodeRadius * 1.875;
+                parentShape = new RectangleGeometry(new Rect(parentX - boxSize, parentY - boxSize, boxSize * 2, boxSize * 2), 3, 3);
+            }
+            else
+            {
+                double parentRadius = parentNode.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
+                parentShape = new EllipseGeometry(new Point(parentX, parentY), parentRadius, parentRadius);
+            }
+
+            // Exclude node shape first, then parent shape
+            var clipWithoutNode = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, nodeShape);
+            var clipGeometry = new CombinedGeometry(GeometryCombineMode.Exclude, clipWithoutNode, parentShape);
             clipGeometry.Freeze();
 
             dc.PushClip(clipGeometry);
