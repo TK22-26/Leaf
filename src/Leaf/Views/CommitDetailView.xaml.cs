@@ -70,6 +70,8 @@ public partial class CommitDetailView : UserControl
         if (DataContext is not CommitDetailViewModel commitVm || commitVm.Commit == null)
             return;
 
+        e.Handled = true;
+
         // Get MainViewModel from Window
         if (Window.GetWindow(this)?.DataContext is MainViewModel mainVm)
         {

@@ -57,7 +57,7 @@
                     BorderThickness="2,0,0,0"
                     Cursor="Hand"
                     DataContext="{Binding File}"
-                    MouseLeftButtonDown="FileItem_Click"
+                    PreviewMouseLeftButtonDown="FileItem_Click"
                     Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                     ToolTip="{Binding Path}"
                     Visibility="{Binding DataContext.IsFile, RelativeSource={RelativeSource AncestorType=Grid}, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -259,7 +259,10 @@
             </Border>
 
             <!--  Message Section  -->
-            <Grid Grid.Row="2" Margin="12,8,12,8" Height="290">
+            <Grid
+                Grid.Row="2"
+                Height="290"
+                Margin="12,8,12,8">
                 <Grid.RowDefinitions>
                     <!--  Commit Subject (always visible)  -->
                     <RowDefinition Height="Auto" />
@@ -379,15 +382,16 @@
             </Border>
 
             <!--  Changed Files Section  -->
-            <Grid Grid.Row="4" Margin="8,0,8,8">
+            <Grid Grid.Row="4" Margin="4,0,8,8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
                 <!--  Changed Files Header  -->
-                <Grid Grid.Row="0" Margin="0,4,0,6">
+                <Grid Grid.Row="0" Margin="4,4,0,6">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="1" />
                     </Grid.RowDefinitions>
@@ -397,7 +401,12 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <!--  Row 0, Col 0: Title  -->
+                    <StackPanel
+                        Grid.Row="0"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal">
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
@@ -415,10 +424,48 @@
                         </TextBlock>
                     </StackPanel>
 
-                    <!--  File counts (M/+/-)  -->
-                    <StackPanel
+                    <!--  Row 0, Col 1: List/Tree toggle (centered)  -->
+                    <controls:PillToggle
+                        x:Name="FileChangesTreeToggle"
+                        Grid.Row="0"
                         Grid.Column="1"
-                        Margin="8,0,0,0"
+                        Width="84"
+                        Height="22"
+                        Margin="8,0,8,0"
+                        VerticalAlignment="Center"
+                        Checked="FileChangesTreeToggle_Changed"
+                        IsChecked="{Binding ShowTreeView}"
+                        LabelFontSize="12"
+                        LeftText="List"
+                        RightText="Tree"
+                        ToolTip="Toggle list/tree view"
+                        Unchecked="FileChangesTreeToggle_Changed" />
+
+                    <!--  Row 0, Col 2: View all files checkbox  -->
+                    <CheckBox
+                        x:Name="ShowAllFilesCheckBox"
+                        Grid.Row="0"
+                        Grid.Column="2"
+                        Margin="0,0,-2,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Checked="ShowAllFilesCheckBox_Changed"
+                        Content="View all files"
+                        FontSize="15"
+                        IsChecked="{Binding ShowAllFiles}"
+                        ToolTip="Show all files in the repository at this commit"
+                        Unchecked="ShowAllFilesCheckBox_Changed">
+                        <CheckBox.LayoutTransform>
+                            <ScaleTransform ScaleX="0.7" ScaleY="0.7" />
+                        </CheckBox.LayoutTransform>
+                    </CheckBox>
+
+                    <!--  Row 1: File counts  -->
+                    <StackPanel
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="3"
+                        Margin="0,2,0,4"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Center"
                         Orientation="Horizontal">
@@ -481,9 +528,7 @@
                         </StackPanel>
 
                         <!--  Renamed count  -->
-                        <StackPanel
-                            Orientation="Horizontal"
-                            Visibility="{Binding RenamedCount, Converter={StaticResource NullToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding RenamedCount, Converter={StaticResource NullToVisibilityConverter}}">
                             <TextBlock
                                 Margin="0,0,4,0"
                                 VerticalAlignment="Center"
@@ -499,38 +544,8 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!--  List/Tree Toggle + View all files  -->
-                    <StackPanel
-                        Grid.Column="2"
-                        VerticalAlignment="Center"
-                        Orientation="Horizontal">
-                        <controls:PillToggle
-                            x:Name="FileChangesTreeToggle"
-                            Width="84"
-                            Height="22"
-                            Margin="0,0,8,3"
-                            VerticalAlignment="Center"
-                            Checked="FileChangesTreeToggle_Changed"
-                            IsChecked="{Binding ShowTreeView}"
-                            LabelFontSize="12"
-                            LeftText="List"
-                            RightText="Tree"
-                            ToolTip="Toggle list/tree view"
-                            Unchecked="FileChangesTreeToggle_Changed" />
-                        <CheckBox
-                            x:Name="ShowAllFilesCheckBox"
-                            Margin="0,0,0,3"
-                            VerticalAlignment="Center"
-                            Checked="ShowAllFilesCheckBox_Changed"
-                            Content="View all files"
-                            FontSize="11"
-                            IsChecked="{Binding ShowAllFiles}"
-                            ToolTip="Show all files in the repository at this commit"
-                            Unchecked="ShowAllFilesCheckBox_Changed" />
-                    </StackPanel>
-
                     <Border
-                        Grid.Row="1"
+                        Grid.Row="2"
                         Grid.ColumnSpan="3"
                         Height="1"
                         Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
@@ -554,7 +569,7 @@
                                         BorderThickness="2,0,0,0"
                                         CornerRadius="4"
                                         Cursor="Hand"
-                                        MouseLeftButtonDown="FileItem_Click"
+                                        PreviewMouseLeftButtonDown="FileItem_Click"
                                         Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         ToolTip="{Binding Path}">
                                         <Border.Style>
@@ -618,9 +633,7 @@
                                             </TextBlock>
 
                                             <!--  File name + directory  -->
-                                            <StackPanel
-                                                Grid.Column="1"
-                                                VerticalAlignment="Center">
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                 <!--  File name (prominent)  -->
                                                 <TextBlock
                                                     x:Name="FileNameText"

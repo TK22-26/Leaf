@@ -111,12 +111,17 @@ public partial class CommandPaletteViewModel : ObservableObject
 
     public void Confirm()
     {
-        if (SelectedResult?.Tag is RepositoryInfo repo)
+        ConfirmItem(SelectedResult);
+    }
+
+    public void ConfirmItem(CommandPaletteItem? item)
+    {
+        if (item?.Tag is RepositoryInfo repo)
         {
             Close();
             _repoSelectedCallback(repo);
         }
-        else if (SelectedResult?.Tag is BranchInfo branch)
+        else if (item?.Tag is BranchInfo branch)
         {
             Close();
             _branchSelectedCallback(branch);
