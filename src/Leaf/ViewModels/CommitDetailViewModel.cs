@@ -166,6 +166,23 @@ public partial class CommitDetailViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Clear all commit detail state (used when no repository is selected).
+    /// </summary>
+    public void ClearSelection()
+    {
+        Commit = null;
+        FileChanges.Clear();
+        FileChangesTreeItems.Clear();
+        SelectedFile = null;
+        OldContent = string.Empty;
+        NewContent = string.Empty;
+        RepositoryPath = null;
+        WorkingChangesCount = 0;
+        IsLoading = false;
+        IsDiffLoading = false;
+    }
+
+    /// <summary>
     /// Load commit details.
     /// </summary>
     public async Task LoadCommitAsync(string repoPath, string sha)

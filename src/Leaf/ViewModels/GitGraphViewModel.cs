@@ -134,108 +134,93 @@ public partial class GitGraphViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Creates synthetic CommitInfo entries for stashes, positioned at the tip of their parent branch.
-    /// Multiple stashes on the same branch are chained so they stack linearly above the branch tip.
+    /// Creates synthetic CommitInfo entries for stashes.
+    /// Each stash points directly to its actual parent commit (the commit HEAD was on when stashed).
     /// </summary>
-    private static List<CommitInfo> CreateStashPseudoCommits(IReadOnlyList<StashInfo> stashes, IReadOnlyList<CommitInfo> commits)
+    private static List<CommitInfo> CreateStashPseudoCommits(IReadOnlyList<StashInfo> stashes)
     {
         if (stashes.Count == 0)
             return [];
 
-        // Group stashes by their parent SHA (the commit they were stashed on)
-        var stashesByParent = new Dictionary<string, List<StashInfo>>(StringComparer.OrdinalIgnoreCase);
+        var pseudoCommits = new List<CommitInfo>(stashes.Count);
+
         foreach (var stash in stashes)
         {
-            var parentSha = stash.ParentSha;
-            if (string.IsNullOrEmpty(parentSha))
-                continue;
-
-            if (!stashesByParent.TryGetValue(parentSha, out var list))
+            pseudoCommits.Add(new CommitInfo
             {
-                list = [];
-                stashesByParent[parentSha] = list;
-            }
-            list.Add(stash);
-        }
-
-        // Build a set of commit SHAs for branch label lookup
-        var commitsBySha = new Dictionary<string, CommitInfo>(commits.Count, StringComparer.OrdinalIgnoreCase);
-        foreach (var c in commits)
-            commitsBySha[c.Sha] = c;
-
-        var pseudoCommits = new List<CommitInfo>();
-
-        foreach (var (parentSha, group) in stashesByParent)
-        {
-            // Order by index (0 = newest first)
-            group.Sort((a, b) => a.Index.CompareTo(b.Index));
-
-            // Chain: stash[0].parent = stash[1].sha, stash[1].parent = stash[2].sha, ..., stash[N].parent = branch_tip_sha
-            for (int i = 0; i < group.Count; i++)
-            {
-                var stash = group[i];
-                string pseudoParent = i < group.Count - 1
-                    ? group[i + 1].Sha  // Chain to next (older) stash
-                    : parentSha;         // Last stash connects to branch tip
-
-                // Inherit branch labels from parent commit (only for the stash closest to the branch tip)
-                var branchNames = new List<string>();
-                if (i == group.Count - 1 && commitsBySha.TryGetValue(parentSha, out var parentCommit))
-                {
-                    branchNames = new List<string>(parentCommit.BranchNames);
-                }
-
-                pseudoCommits.Add(new CommitInfo
-                {
-                    Sha = stash.Sha,
-                    Message = stash.Message,
-                    MessageShort = stash.MessageShort,
-                    Author = stash.Author,
-                    AuthorEmail = string.Empty,
-                    Date = stash.Date,
-                    ParentShas = [pseudoParent],
-                    IsStash = true,
-                    StashIndex = stash.Index,
-                    BranchNames = branchNames
-                });
-            }
-        }
-
-        // Also handle stashes with no parent SHA (orphaned) - place them with empty parent
-        foreach (var stash in stashes)
-        {
-            if (string.IsNullOrEmpty(stash.ParentSha))
-            {
-                pseudoCommits.Add(new CommitInfo
-                {
-                    Sha = stash.Sha,
-                    Message = stash.Message,
-                    MessageShort = stash.MessageShort,
-                    Author = stash.Author,
-                    AuthorEmail = string.Empty,
-                    Date = stash.Date,
-                    ParentShas = [],
-                    IsStash = true,
-                    StashIndex = stash.Index
-                });
-            }
+                Sha = stash.Sha,
+                Message = stash.Message,
+                MessageShort = stash.MessageShort,
+                Author = stash.Author,
+                AuthorEmail = string.Empty,
+                Date = stash.Date,
+                ParentShas = string.IsNullOrEmpty(stash.ParentSha) ? [] : [stash.ParentSha],
+                IsStash = true,
+                StashIndex = stash.Index
+            });
         }
 
         return pseudoCommits;
     }
 
     /// <summary>
-    /// Prepends stash pseudo-commits to the commit list for graph building.
+    /// Merges stash pseudo-commits into the commit list positioned directly above their parent commit.
+    /// This matches GitKraken behavior — stashes are children of their parent in the DAG,
+    /// so they appear as a spur immediately before the commit HEAD was on when stashed.
     /// </summary>
-    private List<CommitInfo> PrependStashPseudoCommits(List<CommitInfo> commits)
+    private List<CommitInfo> MergeStashPseudoCommits(List<CommitInfo> commits)
     {
-        var pseudoCommits = CreateStashPseudoCommits(Stashes, commits);
+        var pseudoCommits = CreateStashPseudoCommits(Stashes);
         if (pseudoCommits.Count == 0)
             return commits;
 
+        // Group stashes by parent SHA; within each group, sort by StashIndex ascending
+        // so index 0 (newest) is farthest from parent, matching topo-order output
+        var stashesByParent = new Dictionary<string, List<CommitInfo>>();
+        var orphanStashes = new List<CommitInfo>();
+
+        foreach (var stash in pseudoCommits)
+        {
+            var parentSha = stash.ParentShas.Count > 0 ? stash.ParentShas[0] : null;
+            if (string.IsNullOrEmpty(parentSha))
+            {
+                orphanStashes.Add(stash);
+            }
+            else
+            {
+                if (!stashesByParent.TryGetValue(parentSha, out var group))
+                {
+                    group = [];
+                    stashesByParent[parentSha] = group;
+                }
+                group.Add(stash);
+            }
+        }
+
+        foreach (var group in stashesByParent.Values)
+            group.Sort((a, b) => a.StashIndex.CompareTo(b.StashIndex));
+
+        orphanStashes.Sort((a, b) => a.StashIndex.CompareTo(b.StashIndex));
+
+        // Build result: insert stash groups immediately before their parent commit
         var result = new List<CommitInfo>(pseudoCommits.Count + commits.Count);
-        result.AddRange(pseudoCommits);
-        result.AddRange(commits);
+
+        // Orphaned stashes (no parent or parent not loaded) go to the top
+        result.AddRange(orphanStashes);
+
+        foreach (var commit in commits)
+        {
+            // If this commit is a parent of stashes, insert them before it
+            if (stashesByParent.Remove(commit.Sha, out var group))
+                result.AddRange(group);
+
+            result.Add(commit);
+        }
+
+        // Any remaining stashes whose parent wasn't found in the commit list go to the top
+        foreach (var group in stashesByParent.Values)
+            result.InsertRange(0, group);
+
         return result;
     }
 
@@ -330,7 +315,7 @@ public partial class GitGraphViewModel : ObservableObject
 
             // Build graph on background thread (heavy computation)
             var visibleCommits = GetVisibleCommits();
-            var commitsWithStashes = PrependStashPseudoCommits(visibleCommits);
+            var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
             var currentBranch = _currentBranchName;
 
             var (graphNodes, graphMaxLane) = await Task.Run(() =>
@@ -647,7 +632,7 @@ public partial class GitGraphViewModel : ObservableObject
 
             // Capture state for background work
             var visibleCommits = GetVisibleCommits();
-            var commitsWithStashes = PrependStashPseudoCommits(visibleCommits);
+            var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
             var currentBranch = _currentBranchName;
 
             // Build graph on background thread with new GraphBuilder instance
@@ -878,7 +863,7 @@ public partial class GitGraphViewModel : ObservableObject
         }
 
         var visibleCommits = GetVisibleCommits();
-        var commitsWithStashes = PrependStashPseudoCommits(visibleCommits);
+        var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
 
         var nodes = _graphBuilder.BuildGraph(commitsWithStashes, _currentBranchName);
         Nodes = new ObservableCollection<GitTreeNode>(nodes);

@@ -194,6 +194,21 @@ public partial class WorkingChangesViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Clear all working changes state (used when no repository is selected).
+    /// </summary>
+    public void ClearWorkingChanges()
+    {
+        _repositoryPath = null;
+        WorkingChanges = null;
+        CommitMessage = string.Empty;
+        CommitDescription = string.Empty;
+        ErrorMessage = null;
+        IsLoading = false;
+        OnPropertyChanged(nameof(HasChanges));
+        OnPropertyChanged(nameof(FileChangesSummary));
+    }
+
+    /// <summary>
     /// Set the working changes directly (synced from GitGraphViewModel).
     /// </summary>
     public void SetWorkingChanges(string repoPath, WorkingChangesInfo? workingChanges)

@@ -338,10 +338,9 @@ public partial class GitGraphCanvas
             var outerPen = new Pen(brush, 2.5);
             outerPen.Freeze();
             var backgroundColor = IdenticonGenerator.GetDefaultBackgroundColor();
-            var backgroundBrush = backgroundColor.HasValue
-                ? new SolidColorBrush(backgroundColor.Value)
-                : Brushes.Transparent;
-            backgroundBrush.Freeze();
+            var backgroundBrush = Application.Current?.TryFindResource("SolidBackgroundFillColorBaseBrush") as SolidColorBrush
+                ?? (backgroundColor.HasValue ? new SolidColorBrush(backgroundColor.Value) : Brushes.White);
+            if (!backgroundBrush.IsFrozen) backgroundBrush.Freeze();
             dc.DrawEllipse(backgroundBrush, outerPen, new Point(x, y), avatarRadius, avatarRadius);
 
             var key = string.IsNullOrWhiteSpace(node.IdenticonKey) ? node.Sha : node.IdenticonKey;

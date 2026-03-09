@@ -320,9 +320,11 @@ public partial class MainViewModel
     }
 
     [RelayCommand]
-    public void DeleteRepository(RepositoryInfo repo)
+    public async Task DeleteRepositoryAsync(RepositoryInfo repo)
     {
-        if (SelectedRepository != null && SelectedRepository.Path == repo.Path)
+        bool wasSelected = SelectedRepository != null && SelectedRepository.Path == repo.Path;
+
+        if (wasSelected)
         {
             SelectedRepository = null;
             var settings = _settingsService.LoadSettings();
@@ -331,6 +333,20 @@ public partial class MainViewModel
         }
 
         _repositoryService.RemoveRepository(repo);
+
+        if (wasSelected)
+        {
+            // Find the first available repository to switch to
+            var nextRepo = RepositoryGroups
+                .SelectMany(g => g.Repositories)
+                .FirstOrDefault();
+
+            if (nextRepo != null)
+            {
+                await SelectRepositoryAsync(nextRepo);
+                RequestRepositorySelection?.Invoke(this, nextRepo);
+            }
+        }
     }
 
     [RelayCommand]
@@ -353,7 +369,7 @@ public partial class MainViewModel
         var repos = group.Repositories.ToList();
         foreach (var repo in repos)
         {
-            DeleteRepository(repo);
+            await DeleteRepositoryAsync(repo);
         }
     }
 
