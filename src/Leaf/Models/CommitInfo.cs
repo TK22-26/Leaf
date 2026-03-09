@@ -109,6 +109,16 @@ public partial class CommitInfo : ObservableObject
     }
 
     /// <summary>
+    /// True if this entry represents a stash (pseudo-commit).
+    /// </summary>
+    public bool IsStash { get; set; }
+
+    /// <summary>
+    /// The stash index (0 = most recent) when IsStash is true, otherwise -1.
+    /// </summary>
+    public int StashIndex { get; set; } = -1;
+
+    /// <summary>
     /// True if this commit is currently selected.
     /// </summary>
     [ObservableProperty]

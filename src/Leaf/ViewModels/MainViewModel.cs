@@ -360,7 +360,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (e.PropertyName == nameof(GitGraphViewModel.SelectedCommit))
             {
-                LoadCommitDetails(_gitGraphViewModel.SelectedCommit);
+                // Skip LoadCommitDetails for stash pseudo-commits — the SelectedStash handler loads stash details
+                if (_gitGraphViewModel.SelectedCommit?.IsStash != true)
+                {
+                    LoadCommitDetails(_gitGraphViewModel.SelectedCommit);
+                }
             }
             else if (e.PropertyName == nameof(GitGraphViewModel.IsWorkingChangesSelected))
             {

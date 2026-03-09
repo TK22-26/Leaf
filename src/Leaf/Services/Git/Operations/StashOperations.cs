@@ -178,7 +178,8 @@ internal class StashOperations
                     Message = stash.Message,
                     Author = workTreeCommit.Author.Name,
                     Date = workTreeCommit.Author.When,
-                    BranchName = _context.OutputParser.ExtractBranchFromStashMessage(stash.Message)
+                    BranchName = _context.OutputParser.ExtractBranchFromStashMessage(stash.Message),
+                    ParentSha = workTreeCommit.Parents.FirstOrDefault()?.Sha ?? string.Empty
                 });
                 index++;
             }

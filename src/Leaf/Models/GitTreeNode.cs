@@ -82,6 +82,16 @@ public class GitTreeNode
     public string IdenticonKey { get; set; } = string.Empty;
 
     /// <summary>
+    /// True if this node represents a stash (pseudo-commit).
+    /// </summary>
+    public bool IsStash { get; set; }
+
+    /// <summary>
+    /// The stash index (0 = most recent) when IsStash is true, otherwise -1.
+    /// </summary>
+    public int StashIndex { get; set; } = -1;
+
+    /// <summary>
     /// True if this node matches the current search criteria.
     /// Defaults to true (all visible when no search active).
     /// </summary>
