@@ -95,6 +95,14 @@ public partial class GitGraphCanvas
         // Calculate visible node range for render culling
         var (minNodeIndex, maxNodeIndex) = GetVisibleNodeRange(nodes, rowOffset);
 
+        // Resolve viewport bounds for pass-through lane drawing
+        var scrollViewer = FindParentScrollViewer();
+        double viewportTop = scrollViewer?.VerticalOffset ?? 0;
+        double viewportBottom = viewportTop + (scrollViewer?.ViewportHeight ?? ActualHeight);
+
+        // Pass 0: Draw pass-through lane lines for connections beyond the culling range
+        DrawPassThroughLanes(dc, rowOffset, minNodeIndex, viewportTop, viewportBottom);
+
         // Use cached dictionary for efficient parent finding
         var nodesBySha = _cacheService.GetNodesBySha(nodes);
 
@@ -409,6 +417,50 @@ public partial class GitGraphCanvas
             dc.PushClip(clipGeometry);
             DrawRailConnection(dc, linePen, nodeX, nodeY, parentX, parentY, isMergeConnection);
             dc.Pop();
+        }
+    }
+
+    private void DrawPassThroughLanes(DrawingContext dc, int rowOffset, int minNodeIndex,
+        double viewportTop, double viewportBottom)
+    {
+        if (_laneSegments.Count == 0)
+            return;
+
+        // Binary search: find the last segment index where ChildRow < minNodeIndex
+        // Segments are sorted by ChildRow ascending, so all qualifying segments are at the front
+        int lo = 0, hi = _laneSegments.Count - 1, cutoff = 0;
+        while (lo <= hi)
+        {
+            int mid = lo + (hi - lo) / 2;
+            if (_laneSegments[mid].ChildRow < minNodeIndex)
+            {
+                cutoff = mid + 1;
+                lo = mid + 1;
+            }
+            else
+            {
+                hi = mid - 1;
+            }
+        }
+
+        for (int i = 0; i < cutoff; i++)
+        {
+            var seg = _laneSegments[i];
+
+            double segTopY = GetYForRow(seg.ChildRow + rowOffset);
+            double segBottomY = GetYForRow(seg.ParentRow + rowOffset);
+
+            // Skip if no viewport overlap
+            if (segBottomY < viewportTop || segTopY > viewportBottom)
+                continue;
+
+            // Draw vertical line clamped to viewport
+            double x = GetXForColumn(seg.Column);
+            double drawTop = Math.Max(segTopY, viewportTop);
+            double drawBottom = Math.Min(segBottomY, viewportBottom);
+
+            var pen = _cacheService.GetConnectionPen(seg.Color);
+            dc.DrawLine(pen, new Point(x, drawTop), new Point(x, drawBottom));
         }
     }
 

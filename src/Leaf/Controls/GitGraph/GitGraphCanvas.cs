@@ -24,6 +24,11 @@ public partial class GitGraphCanvas : FrameworkElement
 
     private Dictionary<string, BranchLabel> _branchLabelLookup = new(StringComparer.OrdinalIgnoreCase);
 
+    // Pass-through lane segments for drawing branch lines beyond the culling range
+    private readonly record struct LaneSegment(int Column, int ChildRow, int ParentRow, Brush Color);
+    private readonly List<LaneSegment> _laneSegments = [];
+    private readonly Dictionary<string, GitTreeNode> _segmentNodeLookup = new(StringComparer.OrdinalIgnoreCase);
+
     #region Dependency Properties
 
     public static readonly DependencyProperty NodesProperty =
@@ -125,6 +130,9 @@ public partial class GitGraphCanvas : FrameworkElement
             canvas._cacheService.ClearNodeCache();
 
             canvas._branchLabelLookup.Clear();
+            canvas._laneSegments.Clear();
+            canvas._segmentNodeLookup.Clear();
+
             var newNodes = e.NewValue as IReadOnlyList<GitTreeNode>;
             if (newNodes != null)
             {
@@ -133,6 +141,34 @@ public partial class GitGraphCanvas : FrameworkElement
                     foreach (var label in node.BranchLabels)
                         canvas._branchLabelLookup.TryAdd(label.Name, label);
                 }
+
+                // Build lane segments for pass-through rendering
+                canvas._segmentNodeLookup.EnsureCapacity(newNodes.Count);
+                foreach (var node in newNodes)
+                    canvas._segmentNodeLookup[node.Sha] = node;
+
+                foreach (var node in newNodes)
+                {
+                    for (int i = 0; i < node.ParentShas.Count; i++)
+                    {
+                        if (!canvas._segmentNodeLookup.TryGetValue(node.ParentShas[i], out var parent))
+                            continue;
+                        if (parent.ColumnIndex != node.ColumnIndex)
+                            continue;
+
+                        // Match DrawConnections color: child color for first parent, parent color for merges
+                        var color = i > 0
+                            ? (parent.NodeColor ?? Brushes.Gray)
+                            : (node.NodeColor ?? Brushes.Gray);
+
+                        int childRow = Math.Min(node.RowIndex, parent.RowIndex);
+                        int parentRow = Math.Max(node.RowIndex, parent.RowIndex);
+                        canvas._laneSegments.Add(new LaneSegment(node.ColumnIndex, childRow, parentRow, color));
+                    }
+                }
+
+                // Sort by ChildRow ascending for binary search during render
+                canvas._laneSegments.Sort((a, b) => a.ChildRow.CompareTo(b.ChildRow));
             }
         }
     }
