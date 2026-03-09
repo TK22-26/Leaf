@@ -82,6 +82,22 @@ public partial class CommitDetailView : UserControl
         ApplyTreeVisibility();
     }
 
+    private void ShowAllFilesCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        bool showAll = ShowAllFilesCheckBox?.IsChecked == true;
+        if (showAll)
+        {
+            // Force tree view when showing all files
+            FileChangesTreeToggle.IsChecked = true;
+            FileChangesTreeToggle.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            FileChangesTreeToggle.Visibility = Visibility.Visible;
+        }
+        ApplyTreeVisibility();
+    }
+
     private void ApplyTreeVisibility()
     {
         bool showTree = FileChangesTreeToggle?.IsChecked == true;

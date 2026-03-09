@@ -58,6 +58,7 @@ public class FakeGitService : IGitService
     public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha) => Task.FromResult(new List<CommitInfo>());
     public Task<CommitInfo?> GetCommitAsync(string repoPath, string sha) => Task.FromResult<CommitInfo?>(null);
     public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha) => Task.FromResult(new List<FileChangeInfo>());
+    public Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha) => Task.FromResult(new List<FileChangeInfo>());
     public Task<(string oldContent, string newContent)> GetFileDiffAsync(string repoPath, string sha, string filePath) => Task.FromResult(("", ""));
     public Task<(string oldContent, string newContent)> GetUnstagedFileDiffAsync(string repoPath, string filePath) => Task.FromResult(("", ""));
     public Task<(string oldContent, string newContent)> GetStagedFileDiffAsync(string repoPath, string filePath) => Task.FromResult(("", ""));

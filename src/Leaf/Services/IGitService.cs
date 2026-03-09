@@ -36,6 +36,11 @@ public interface IGitService
     Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha);
 
     /// <summary>
+    /// Get all files in the repository at a given commit, with changed files marked with their status.
+    /// </summary>
+    Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha);
+
+    /// <summary>
     /// Get diff content for a specific file in a commit.
     /// </summary>
     Task<(string oldContent, string newContent)> GetFileDiffAsync(string repoPath, string sha, string filePath);

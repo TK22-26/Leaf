@@ -77,6 +77,9 @@ public class GitService : IGitService
     public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha)
         => _commitHistoryOps.GetCommitChangesAsync(repoPath, sha);
 
+    public Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha)
+        => _commitHistoryOps.GetCommitAllFilesAsync(repoPath, sha);
+
     public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha)
         => _commitHistoryOps.GetMergeCommitsAsync(repoPath, mergeSha);
 
