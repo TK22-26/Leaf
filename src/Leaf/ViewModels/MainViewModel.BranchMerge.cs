@@ -134,6 +134,7 @@ public partial class MainViewModel
             // Refresh repo info to update merge banner and conflicts immediately
             var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository!.Path);
             SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
+            SelectedRepository.OperationType = info.OperationType;
             SelectedRepository.MergingBranch = info.MergingBranch;
             SelectedRepository.ConflictCount = info.ConflictCount;
 

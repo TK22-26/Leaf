@@ -381,6 +381,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 {
                     var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
                     SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
+                    SelectedRepository.OperationType = info.OperationType;
                     SelectedRepository.MergingBranch = info.MergingBranch;
                     SelectedRepository.ConflictCount = info.ConflictCount;
                     SelectedRepository.IsDetachedHead = info.IsDetachedHead;

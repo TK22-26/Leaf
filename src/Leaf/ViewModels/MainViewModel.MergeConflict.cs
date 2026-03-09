@@ -142,18 +142,61 @@ public partial class MainViewModel
 
                 await _gitService.ResetOrphanedConflictsAsync(SelectedRepository.Path, discardChanges);
 
+                // Clean up stored merge conflict file
+                try
+                {
+                    await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path);
+                }
+                catch { /* best-effort cleanup */ }
+
                 StatusMessage = discardChanges
                     ? "Index reset and files restored"
                     : "Index reset (working directory preserved)";
             }
             else
             {
-                // Normal merge abort
-                System.Diagnostics.Debug.WriteLine("[MERGE][UI] AbortMerge: running normal abort");
-                StatusMessage = "Aborting merge...";
-                await _gitService.AbortMergeAsync(SelectedRepository.Path);
+                // Route to correct abort command based on operation type
+                var opType = SelectedRepository.OperationType;
+                System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: running abort for {opType}");
+
+                switch (opType)
+                {
+                    case Models.GitOperationType.CherryPick:
+                        StatusMessage = "Aborting cherry-pick...";
+                        await _gitService.AbortCherryPickAsync(SelectedRepository.Path);
+                        StatusMessage = "Cherry-pick aborted";
+                        break;
+
+                    case Models.GitOperationType.Revert:
+                        StatusMessage = "Aborting revert...";
+                        await _gitService.AbortRevertAsync(SelectedRepository.Path);
+                        StatusMessage = "Revert aborted";
+                        break;
+
+                    case Models.GitOperationType.Rebase:
+                        StatusMessage = "Aborting rebase...";
+                        await _gitService.AbortRebaseAsync(SelectedRepository.Path);
+                        StatusMessage = "Rebase aborted";
+                        break;
+
+                    default:
+                        StatusMessage = "Aborting merge...";
+                        await _gitService.AbortMergeAsync(SelectedRepository.Path);
+                        StatusMessage = "Merge aborted";
+                        break;
+                }
+
                 System.Diagnostics.Debug.WriteLine("[MERGE][UI] AbortMerge: completed");
-                StatusMessage = "Merge aborted";
+            }
+
+            // Clean up the stored merge conflict file immediately after abort
+            try
+            {
+                await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path);
+            }
+            catch (Exception clearEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: failed to clear stored conflicts: {clearEx.Message}");
             }
 
             await RefreshAsync();

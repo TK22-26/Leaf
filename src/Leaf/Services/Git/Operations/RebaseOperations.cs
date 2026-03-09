@@ -60,10 +60,9 @@ internal class RebaseOperations
     {
         return Task.Run(() =>
         {
-            Debug.WriteLine("[MERGE][OPS] AbortRebase");
+            Debug.WriteLine("[MERGE][OPS] AbortRebase: running git rebase --abort");
             MergeDebugHelper.LogMergeState("BeforeAbortRebase", repoPath);
-            using var repo = new Repository(repoPath);
-            repo.Rebase.Abort();
+            GitCliHelpers.RunGit(repoPath, "rebase --abort");
             MergeDebugHelper.LogMergeState("AfterAbortRebase", repoPath);
         });
     }

@@ -473,6 +473,7 @@ public partial class MainViewModel
             SelectedRepository.IsDetachedHead = repoInfo.IsDetachedHead;
             SelectedRepository.DetachedHeadSha = repoInfo.DetachedHeadSha;
             SelectedRepository.IsMergeInProgress = repoInfo.IsMergeInProgress;
+            SelectedRepository.OperationType = repoInfo.OperationType;
             SelectedRepository.MergingBranch = repoInfo.MergingBranch;
             SelectedRepository.ConflictCount = repoInfo.ConflictCount;
 
@@ -541,6 +542,7 @@ public partial class MainViewModel
             SelectedRepository.IsDetachedHead = info.IsDetachedHead;
             SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
             SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
+            SelectedRepository.OperationType = info.OperationType;
             SelectedRepository.MergingBranch = info.MergingBranch;
             SelectedRepository.ConflictCount = info.ConflictCount;
 

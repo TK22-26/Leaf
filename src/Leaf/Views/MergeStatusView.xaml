@@ -4,12 +4,14 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+             xmlns:converters="clr-namespace:Leaf.Converters"
              xmlns:viewmodels="clr-namespace:Leaf.ViewModels"
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="300"
              x:Name="MergeStatusRoot"
              d:DataContext="{d:DesignInstance Type=viewmodels:MainViewModel}">
     <UserControl.Resources>
+        <converters:GitOperationTypeToStringConverter x:Key="GitOpTypeConverter"/>
         <Style x:Key="MergeActionButtonStyle"
                TargetType="Button"
                BasedOn="{StaticResource DefaultButtonStyle}">
@@ -33,16 +35,16 @@
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <ic:SymbolIcon Symbol="Merge" FontSize="24" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                    <TextBlock Text="Merge in Progress" 
-                               FontSize="20" 
-                               FontWeight="SemiBold" 
+                    <TextBlock Text="{Binding SelectedRepository.OperationType, Converter={StaticResource GitOpTypeConverter}, ConverterParameter=Title}"
+                               FontSize="20"
+                               FontWeight="SemiBold"
                                Margin="12,0,0,0"
                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 </StackPanel>
                 <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap">
-                    <Run Text="Merging"/>
+                    <Run Text="{Binding SelectedRepository.OperationType, Converter={StaticResource GitOpTypeConverter}, ConverterParameter=Verb, Mode=OneWay}"/>
                     <Run Text="{Binding SelectedRepository.MergingBranch, Mode=OneWay}" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                    <Run Text="into"/>
+                    <Run Text="{Binding SelectedRepository.OperationType, Converter={StaticResource GitOpTypeConverter}, ConverterParameter=Preposition, Mode=OneWay}"/>
                     <Run Text="{Binding SelectedRepository.CurrentBranch, Mode=OneWay}" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 </TextBlock>
             </StackPanel>

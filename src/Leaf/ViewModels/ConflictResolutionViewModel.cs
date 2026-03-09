@@ -1049,9 +1049,22 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
     private static bool ContainsConflictMarkers(string content)
     {
-        return content.Contains("<<<<<<<", StringComparison.Ordinal) ||
-               content.Contains("=======", StringComparison.Ordinal) ||
-               content.Contains(">>>>>>>", StringComparison.Ordinal);
+        // B10 fix: git conflict markers always start at column 0.
+        // Require both <<<<<<< and >>>>>>> to be present (a real conflict block always has both)
+        // to avoid false-positives from string literals or separators like "=======".
+        bool hasOurs = false;
+        bool hasTheirs = false;
+        foreach (var line in content.Split('\n'))
+        {
+            if (line.StartsWith("<<<<<<<", StringComparison.Ordinal))
+                hasOurs = true;
+            else if (line.StartsWith(">>>>>>>", StringComparison.Ordinal))
+                hasTheirs = true;
+
+            if (hasOurs && hasTheirs)
+                return true;
+        }
+        return false;
     }
 
     private void RefreshConflictBuckets()

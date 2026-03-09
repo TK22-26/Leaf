@@ -355,6 +355,16 @@ public interface IGitService
     Task AbortMergeAsync(string repoPath);
 
     /// <summary>
+    /// Abort an in-progress cherry-pick.
+    /// </summary>
+    Task AbortCherryPickAsync(string repoPath);
+
+    /// <summary>
+    /// Abort an in-progress revert.
+    /// </summary>
+    Task AbortRevertAsync(string repoPath);
+
+    /// <summary>
     /// Check if the repository is in an "orphaned conflict" state.
     /// This occurs when the index has unmerged entries but MERGE_HEAD doesn't exist.
     /// </summary>

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using Leaf.Models;
 using Leaf.Services.Git.Core;
@@ -65,18 +66,18 @@ internal class RepositoryOperations
                 : (repo.Head?.FriendlyName ?? "HEAD");
             var tracking = repo.Head?.TrackingDetails;
 
-            // Check for merge in progress
-            bool isMergeInProgress = false;
+            // Detect operation type from .git/ sentinel files
+            var operationType = Models.GitOperationType.None;
             string mergingBranch = string.Empty;
             int conflictCount = 0;
 
-            var mergeHeadPath = Path.Combine(repoPath, ".git", "MERGE_HEAD");
-            if (File.Exists(mergeHeadPath))
+            var gitDir = Path.Combine(repoPath, ".git");
+            if (File.Exists(Path.Combine(gitDir, "MERGE_HEAD")))
             {
-                isMergeInProgress = true;
+                operationType = Models.GitOperationType.Merge;
                 mergingBranch = "Incoming";
 
-                var mergeMsgPath = Path.Combine(repoPath, ".git", "MERGE_MSG");
+                var mergeMsgPath = Path.Combine(gitDir, "MERGE_MSG");
                 if (File.Exists(mergeMsgPath))
                 {
                     try
@@ -87,12 +88,27 @@ internal class RepositoryOperations
                     catch { /* ignore */ }
                 }
             }
+            else if (Directory.Exists(Path.Combine(gitDir, "rebase-merge"))
+                     || Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
+            {
+                operationType = Models.GitOperationType.Rebase;
+                mergingBranch = "rebase";
+            }
+            else if (File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")))
+            {
+                operationType = Models.GitOperationType.CherryPick;
+                mergingBranch = "cherry-pick";
+            }
+            else if (File.Exists(Path.Combine(gitDir, "REVERT_HEAD")))
+            {
+                operationType = Models.GitOperationType.Revert;
+                mergingBranch = "revert";
+            }
 
-            // Only count conflicts when a merge/rebase/cherry-pick is in progress
-            // (avoids expensive git diff + git status calls on clean checkouts)
-            if (isMergeInProgress
-                || File.Exists(Path.Combine(repoPath, ".git", "REBASE_HEAD"))
-                || File.Exists(Path.Combine(repoPath, ".git", "CHERRY_PICK_HEAD")))
+            bool isMergeInProgress = operationType != Models.GitOperationType.None;
+
+            // Count conflicts when an operation is in progress
+            if (isMergeInProgress)
             {
                 conflictCount = GitCliHelpers.GetConflictCount(repoPath);
 
@@ -105,6 +121,15 @@ internal class RepositoryOperations
                         .Count();
                 }
             }
+            else if (repo.Index.Conflicts.Any())
+            {
+                // Orphaned conflict state: unmerged entries without any operation sentinel
+                conflictCount = repo.Index.Conflicts
+                    .Select(c => c.Ancestor?.Path ?? c.Ours?.Path ?? c.Theirs?.Path)
+                    .Distinct()
+                    .Count();
+                Debug.WriteLine($"[MERGE][STATE] Orphaned conflicts detected: {conflictCount} files");
+            }
 
             return new RepositoryInfo
             {
@@ -116,6 +141,7 @@ internal class RepositoryOperations
                 BehindBy = tracking?.BehindBy ?? 0,
                 LastAccessed = DateTimeOffset.Now,
                 IsMergeInProgress = isMergeInProgress,
+                OperationType = operationType,
                 MergingBranch = mergingBranch,
                 ConflictCount = conflictCount,
                 IsDetachedHead = isDetached,

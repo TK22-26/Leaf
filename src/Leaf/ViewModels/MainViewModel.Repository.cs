@@ -282,6 +282,7 @@ public partial class MainViewModel
             repository.AheadBy = info.AheadBy;
             repository.BehindBy = info.BehindBy;
             repository.IsMergeInProgress = info.IsMergeInProgress;
+            repository.OperationType = info.OperationType;
             repository.MergingBranch = info.MergingBranch;
             repository.ConflictCount = info.ConflictCount;
             repository.IsDetachedHead = info.IsDetachedHead;

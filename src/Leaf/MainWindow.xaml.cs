@@ -77,6 +77,24 @@ public partial class MainWindow : Window
         DataContext = viewModel;
 
         NotificationHostControl.NotificationService = notificationService;
+
+        // Handle --repo command-line flag: open the specified repository after window loads
+        if (App.InitialRepoPath is { } initialRepo)
+        {
+            Loaded += async (_, _) =>
+            {
+                try
+                {
+                    var repoInfo = await gitService.GetRepositoryInfoAsync(initialRepo);
+                    repositoryService.AddRepository(repoInfo);
+                    await viewModel.SelectRepositoryAsync(repoInfo);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[APP] Failed to open --repo path: {ex.Message}");
+                }
+            };
+        }
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
