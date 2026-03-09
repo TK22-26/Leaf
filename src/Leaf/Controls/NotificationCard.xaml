@@ -11,7 +11,7 @@
     </UserControl.RenderTransform>
 
     <Border
-        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+        Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}"
         BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
         BorderThickness="1"
         CornerRadius="8">
@@ -24,7 +24,8 @@
                 Color="Black" />
         </Border.Effect>
 
-        <Grid>
+        <Grid x:Name="CardBody" Cursor="Hand" Background="Transparent"
+              MouseLeftButtonUp="CardBody_MouseLeftButtonUp">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="3" />
                 <ColumnDefinition Width="Auto" />
@@ -67,7 +68,7 @@
                     Margin="0,2,0,0"
                     FontSize="12"
                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    MaxHeight="60"
+                    MaxHeight="100"
                     Text=""
                     TextTrimming="CharacterEllipsis"
                     TextWrapping="Wrap" />

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using FluentIcons.Common;
 using Leaf.Services;
@@ -8,7 +9,14 @@ namespace Leaf.Controls;
 
 public partial class NotificationCard : UserControl
 {
+    private static readonly Brush ErrorIconBrush = new SolidColorBrush(Color.FromRgb(0xD1, 0x34, 0x38));
+
     public event EventHandler? CloseRequested;
+
+    static NotificationCard()
+    {
+        ErrorIconBrush.Freeze();
+    }
 
     public NotificationCard()
     {
@@ -24,8 +32,7 @@ public partial class NotificationCard : UserControl
         {
             case NotificationType.Error:
                 TypeIcon.Symbol = Symbol.ErrorCircle;
-                TypeIcon.Foreground = TryFindResource("SystemFillColorCriticalBrush") as Brush
-                    ?? Brushes.Red;
+                TypeIcon.Foreground = ErrorIconBrush;
                 break;
             case NotificationType.Warning:
                 TypeIcon.Symbol = Symbol.Warning;
@@ -43,6 +50,27 @@ public partial class NotificationCard : UserControl
                     ?? Brushes.DodgerBlue;
                 break;
         }
+    }
+
+    private void CardBody_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        // Don't expand if clicking the close button area
+        if (e.OriginalSource is DependencyObject source && IsChildOfCloseButton(source))
+            return;
+
+        DescriptionText.MaxHeight = double.PositiveInfinity;
+        CardBody.Cursor = Cursors.Arrow;
+    }
+
+    private bool IsChildOfCloseButton(DependencyObject element)
+    {
+        while (element != null)
+        {
+            if (ReferenceEquals(element, CloseButton))
+                return true;
+            element = VisualTreeHelper.GetParent(element);
+        }
+        return false;
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
