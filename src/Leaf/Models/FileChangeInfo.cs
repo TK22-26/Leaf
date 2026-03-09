@@ -13,7 +13,8 @@ public enum FileChangeStatus
     TypeChanged,
     Untracked,
     Ignored,
-    Conflicted
+    Conflicted,
+    Unchanged
 }
 
 /// <summary>
@@ -80,6 +81,7 @@ public class FileChangeInfo
         FileChangeStatus.Untracked => "?",
         FileChangeStatus.Ignored => "!",
         FileChangeStatus.Conflicted => "!",
+        FileChangeStatus.Unchanged => " ",
         _ => " "
     };
 }

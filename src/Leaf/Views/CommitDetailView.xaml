@@ -112,6 +112,10 @@
                                             <Setter Property="Text" Value="&#xE8AB;" />
                                             <Setter Property="Foreground" Value="{StaticResource StatusRenamedBrush}" />
                                         </DataTrigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="Unchanged">
+                                            <Setter Property="Text" Value="" />
+                                            <Setter Property="Foreground" Value="Transparent" />
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </TextBlock.Style>
@@ -121,9 +125,19 @@
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                             Text="{Binding FileName}"
-                            TextTrimming="CharacterEllipsis" />
+                            TextTrimming="CharacterEllipsis">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Status}" Value="Unchanged">
+                                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </Grid>
                 </Border>
             </Grid>
@@ -485,21 +499,35 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!--  List/Tree Toggle  -->
-                    <controls:PillToggle
-                        x:Name="FileChangesTreeToggle"
+                    <!--  List/Tree Toggle + View all files  -->
+                    <StackPanel
                         Grid.Column="2"
-                        Width="84"
-                        Height="22"
-                        Margin="0,0,0,3"
                         VerticalAlignment="Center"
-                        Checked="FileChangesTreeToggle_Changed"
-                        IsChecked="{Binding ShowTreeView}"
-                        LabelFontSize="12"
-                        LeftText="List"
-                        RightText="Tree"
-                        ToolTip="Toggle list/tree view"
-                        Unchecked="FileChangesTreeToggle_Changed" />
+                        Orientation="Horizontal">
+                        <controls:PillToggle
+                            x:Name="FileChangesTreeToggle"
+                            Width="84"
+                            Height="22"
+                            Margin="0,0,8,3"
+                            VerticalAlignment="Center"
+                            Checked="FileChangesTreeToggle_Changed"
+                            IsChecked="{Binding ShowTreeView}"
+                            LabelFontSize="12"
+                            LeftText="List"
+                            RightText="Tree"
+                            ToolTip="Toggle list/tree view"
+                            Unchecked="FileChangesTreeToggle_Changed" />
+                        <CheckBox
+                            x:Name="ShowAllFilesCheckBox"
+                            Margin="0,0,0,3"
+                            VerticalAlignment="Center"
+                            Checked="ShowAllFilesCheckBox_Changed"
+                            Content="View all files"
+                            FontSize="11"
+                            IsChecked="{Binding ShowAllFiles}"
+                            ToolTip="Show all files in the repository at this commit"
+                            Unchecked="ShowAllFilesCheckBox_Changed" />
+                    </StackPanel>
 
                     <Border
                         Grid.Row="1"
@@ -561,6 +589,7 @@
 
                                             <!--  Status icon  -->
                                             <TextBlock
+                                                x:Name="StatusIcon"
                                                 Grid.Column="0"
                                                 HorizontalAlignment="Center"
                                                 VerticalAlignment="Center"
@@ -579,6 +608,10 @@
                                                                 <Setter Property="Text" Value="&#xE108;" />
                                                                 <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}" />
                                                             </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Unchanged">
+                                                                <Setter Property="Text" Value="" />
+                                                                <Setter Property="Foreground" Value="Transparent" />
+                                                            </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
                                                 </TextBlock.Style>
@@ -590,6 +623,7 @@
                                                 VerticalAlignment="Center">
                                                 <!--  File name (prominent)  -->
                                                 <TextBlock
+                                                    x:Name="FileNameText"
                                                     FontSize="13"
                                                     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                     Text="{Binding FileName}"
@@ -622,6 +656,9 @@
                                             <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
                                             <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#28A745" />
                                         </Trigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="Unchanged">
+                                            <Setter TargetName="FileNameText" Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                                        </DataTrigger>
                                     </DataTemplate.Triggers>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

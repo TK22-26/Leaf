@@ -61,6 +61,11 @@ public partial class CommitDetailViewModel : ObservableObject
     [ObservableProperty]
     private bool _isCompactFileList;
 
+    [ObservableProperty]
+    private bool _showAllFiles;
+
+    private List<FileChangeInfo>? _changedFiles;
+
     /// <summary>
     /// True if there are working changes to display in banner.
     /// </summary>
@@ -174,7 +179,9 @@ public partial class CommitDetailViewModel : ObservableObject
             Commit = await _gitService.GetCommitAsync(repoPath, sha);
 
             // Load file changes
+            ShowAllFiles = false;
             var changes = await _gitService.GetCommitChangesAsync(repoPath, sha);
+            _changedFiles = changes;
             foreach (var change in changes)
             {
                 FileChanges.Add(change);
@@ -261,6 +268,48 @@ public partial class CommitDetailViewModel : ObservableObject
     public void UpdateWorkingChangesCount(int count)
     {
         WorkingChangesCount = count;
+    }
+
+    partial void OnShowAllFilesChanged(bool value)
+    {
+        if (value)
+        {
+            ShowTreeView = true;
+            _ = LoadAllFilesAsync();
+        }
+        else
+        {
+            // Restore changed-files-only view
+            FileChanges.Clear();
+            if (_changedFiles != null)
+            {
+                foreach (var change in _changedFiles)
+                    FileChanges.Add(change);
+            }
+            OnPropertyChanged(nameof(TotalFileCount));
+            FileChangesTreeItems = BuildTree(FileChanges);
+        }
+    }
+
+    private async Task LoadAllFilesAsync()
+    {
+        if (string.IsNullOrEmpty(RepositoryPath) || Commit == null)
+            return;
+
+        try
+        {
+            IsLoading = true;
+            var allFiles = await _gitService.GetCommitAllFilesAsync(RepositoryPath, Commit.Sha);
+            FileChanges.Clear();
+            foreach (var file in allFiles)
+                FileChanges.Add(file);
+            OnPropertyChanged(nameof(TotalFileCount));
+            FileChangesTreeItems = BuildTree(FileChanges);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     /// <summary>
