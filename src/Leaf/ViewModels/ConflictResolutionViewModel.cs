@@ -162,7 +162,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
             {
                 IsLoading = true;
             }
-            System.Diagnostics.Debug.WriteLine($"[ConflictVM] LoadConflictsAsync repo={_repoPath}");
+            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] LoadConflicts: repo={System.IO.Path.GetFileName(_repoPath)}");
             var latestConflicts = await _gitService.GetConflictsAsync(_repoPath);
             foreach (var conflict in latestConflicts)
             {
@@ -256,7 +256,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         // Skip if we already built this file and haven't changed selection
         if (_lastBuiltFilePath == filePath && CurrentMergeResult != null)
         {
-            System.Diagnostics.Debug.WriteLine($"[ConflictVM] Skipping redundant build for: {filePath}");
+            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] BuildMergeResult: skipping redundant build for {filePath}");
             return;
         }
 
@@ -265,10 +265,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         _buildMergeCts = new CancellationTokenSource();
         var ct = _buildMergeCts.Token;
 
-        System.Diagnostics.Debug.WriteLine($"[ConflictVM] BuildMergeResultForSelectedConflict: {filePath}");
-        System.Diagnostics.Debug.WriteLine($"[ConflictVM]   baseContent: {baseContent?.Length ?? 0} chars, first 100: [{(baseContent != null ? baseContent.Substring(0, Math.Min(100, baseContent.Length)) : "null")}]");
-        System.Diagnostics.Debug.WriteLine($"[ConflictVM]   oursContent: {oursContent?.Length ?? 0} chars, first 100: [{(oursContent != null ? oursContent.Substring(0, Math.Min(100, oursContent.Length)) : "null")}]");
-        System.Diagnostics.Debug.WriteLine($"[ConflictVM]   theirsContent: {theirsContent?.Length ?? 0} chars, first 100: [{(theirsContent != null ? theirsContent.Substring(0, Math.Min(100, theirsContent.Length)) : "null")}]");
+        System.Diagnostics.Debug.WriteLine($"[MERGE][UI] BuildMergeResult: file={filePath} base={baseContent?.Length ?? 0}chars ours={oursContent?.Length ?? 0}chars theirs={theirsContent?.Length ?? 0}chars");
 
         FileMergeResult result;
         try
@@ -278,19 +275,19 @@ public partial class ConflictResolutionViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            System.Diagnostics.Debug.WriteLine($"[ConflictVM] Build cancelled for: {filePath}");
+            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] BuildMergeResult: cancelled for {filePath}");
             return;
         }
 
         // Check if cancelled or selection changed while we were computing
         if (ct.IsCancellationRequested || SelectedConflict?.FilePath != filePath)
         {
-            System.Diagnostics.Debug.WriteLine($"[ConflictVM] Build result discarded (selection changed): {filePath}");
+            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] BuildMergeResult: discarded (selection changed) for {filePath}");
             return;
         }
 
         _lastBuiltFilePath = filePath;
-        System.Diagnostics.Debug.WriteLine($"[ConflictVM]   merge result: {result.Regions.Count} regions, unresolved: {result.UnresolvedCount}");
+        System.Diagnostics.Debug.WriteLine($"[MERGE][UI] BuildMergeResult: {result.Regions.Count} regions, unresolved={result.UnresolvedCount}");
 
         // Update UI on the dispatcher thread (already on UI thread after await)
         CurrentMergeResult = result;
@@ -460,6 +457,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         try
         {
             IsResolving = true;
+            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] MarkResolved: file={SelectedConflict.FilePath}");
 
             var mergedContent = MergedContent;
             if (string.IsNullOrWhiteSpace(mergedContent) && CurrentMergeResult != null)
@@ -529,12 +527,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
             IsResolving = true;
 
             var commitMessage = $"Merge branch '{SourceBranch}' into {TargetBranch}";
+            System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] CompleteMerge: message={commitMessage}");
             await _gitService.CompleteMergeAsync(_repoPath, commitMessage);
+            System.Diagnostics.Debug.WriteLine("[MERGE][OPS] CompleteMerge: success");
 
             MergeCompleted?.Invoke(this, true);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] CompleteMerge: {ex.Message}");
             MergeCompleted?.Invoke(this, false);
             throw;
         }
@@ -553,7 +554,9 @@ public partial class ConflictResolutionViewModel : ObservableObject
         try
         {
             IsResolving = true;
+            System.Diagnostics.Debug.WriteLine("[MERGE][UI] AbortMerge (from ConflictResolutionVM)");
             await _gitService.AbortMergeAsync(_repoPath);
+            System.Diagnostics.Debug.WriteLine("[MERGE][UI] AbortMerge: completed");
             MergeCompleted?.Invoke(this, false);
         }
         finally

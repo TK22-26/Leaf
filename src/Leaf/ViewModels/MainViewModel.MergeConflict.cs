@@ -92,9 +92,11 @@ public partial class MainViewModel
         try
         {
             IsBusy = true;
+            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: repo={SelectedRepository.Name}");
 
             // Check if we're in an orphaned conflict state (conflicts without MERGE_HEAD)
             var isOrphaned = await _gitService.IsOrphanedConflictStateAsync(SelectedRepository.Path);
+            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: isOrphaned={isOrphaned}");
 
             if (isOrphaned)
             {
@@ -147,8 +149,10 @@ public partial class MainViewModel
             else
             {
                 // Normal merge abort
+                System.Diagnostics.Debug.WriteLine("[MERGE][UI] AbortMerge: running normal abort");
                 StatusMessage = "Aborting merge...";
                 await _gitService.AbortMergeAsync(SelectedRepository.Path);
+                System.Diagnostics.Debug.WriteLine("[MERGE][UI] AbortMerge: completed");
                 StatusMessage = "Merge aborted";
             }
 
@@ -156,6 +160,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] AbortMerge: {ex.Message}");
             StatusMessage = $"Abort failed: {ex.Message}";
         }
         finally
@@ -225,7 +230,7 @@ public partial class MainViewModel
         }
 
         var hasMergeConflicts = SelectedRepository.IsMergeInProgress || SelectedRepository.ConflictCount > 0;
-        System.Diagnostics.Debug.WriteLine($"[MainVM] RefreshMergeConflictResolutionAsync merge={SelectedRepository.IsMergeInProgress} conflictCount={SelectedRepository.ConflictCount}");
+        System.Diagnostics.Debug.WriteLine($"[MERGE][UI] RefreshMergeConflictResolution: merge={SelectedRepository.IsMergeInProgress} conflictCount={SelectedRepository.ConflictCount}");
         if (!hasMergeConflicts)
         {
             if (MergeConflictResolutionViewModel != null)
@@ -282,6 +287,7 @@ public partial class MainViewModel
 
     private async void OnMergeConflictResolutionCompleted(object? sender, bool success)
     {
+        System.Diagnostics.Debug.WriteLine($"[MERGE][UI] OnMergeConflictResolutionCompleted: success={success}");
         StatusMessage = success ? "Merge completed successfully" : "Merge aborted";
         await RefreshAsync();
     }

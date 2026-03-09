@@ -16,6 +16,8 @@ public partial class MainViewModel
         if (SelectedRepository == null || commit == null)
             return;
 
+        System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] RevertCommit: sha={commit.ShortSha} isMerge={commit.IsMerge}");
+
         if (commit.IsMerge)
         {
             var result = await _dialogService.ShowMessageAsync(
@@ -48,6 +50,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] RevertMergeCommit: {ex.Message}");
                 StatusMessage = $"Revert failed: {ex.Message}";
             }
             finally
@@ -65,11 +68,13 @@ public partial class MainViewModel
 
             await _gitService.RevertCommitAsync(SelectedRepository.Path, commit.Sha);
 
+            System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] RevertCommit: success sha={commit.ShortSha}");
             StatusMessage = $"Reverted {commit.ShortSha}";
             await RefreshAsync();
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] RevertCommit: {ex.Message}");
             StatusMessage = $"Revert failed: {ex.Message}";
         }
         finally
@@ -167,6 +172,7 @@ public partial class MainViewModel
         if (commit == null || SelectedRepository == null)
             return;
 
+        System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] CherryPickCommit: sha={commit.ShortSha}");
         IsBusy = true;
         StatusMessage = $"Cherry-picking {commit.ShortSha}...";
 
@@ -175,21 +181,25 @@ public partial class MainViewModel
             var result = await _gitService.CherryPickAsync(SelectedRepository.Path, commit.Sha);
             if (result.Success)
             {
+                System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] CherryPickCommit: success");
                 StatusMessage = $"Cherry-picked {commit.ShortSha}";
                 await RefreshAsync();
             }
             else if (result.HasConflicts)
             {
+                System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] CherryPickCommit: conflicts detected");
                 StatusMessage = $"Cherry-pick has conflicts: {commit.ShortSha}";
                 await RefreshAsync();
             }
             else
             {
+                System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] CherryPickCommit: {result.ErrorMessage}");
                 StatusMessage = $"Cherry-pick failed: {result.ErrorMessage}";
             }
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] CherryPickCommit: {ex.Message}");
             StatusMessage = $"Cherry-pick failed: {ex.Message}";
         }
         finally

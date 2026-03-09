@@ -18,10 +18,10 @@ public partial class MainViewModel
     [RelayCommand]
     public async Task MergeBranchAsync(BranchInfo branch)
     {
-        System.Diagnostics.Debug.WriteLine($"[MainVM] MergeBranchAsync called for {branch.Name}");
+        System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] MergeBranch: branch={branch.Name}");
         if (SelectedRepository == null)
         {
-            System.Diagnostics.Debug.WriteLine("[MainVM] SelectedRepository is null");
+            System.Diagnostics.Debug.WriteLine("[MERGE][ERROR] MergeBranch: SelectedRepository is null");
             return;
         }
 
@@ -73,7 +73,7 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             StatusMessage = $"Merge failed: {ex.Message}";
-            System.Diagnostics.Debug.WriteLine($"[MainVM] Merge exception: {ex}");
+            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] MergeBranch: {ex}");
         }
         finally
         {
@@ -84,7 +84,7 @@ public partial class MainViewModel
     private async Task<MergeResult> ExecuteNormalMergeAsync(string branchName)
     {
         var result = await _gitService.MergeBranchAsync(SelectedRepository!.Path, branchName);
-        System.Diagnostics.Debug.WriteLine($"[MainVM] Merge result: Success={result.Success}, Conflicts={result.HasConflicts}, UnrelatedHistories={result.HasUnrelatedHistories}");
+        System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] NormalMerge: Success={result.Success}, Conflicts={result.HasConflicts}, UnrelatedHistories={result.HasUnrelatedHistories}");
 
         // Handle unrelated histories - prompt and retry
         if (!result.Success && result.HasUnrelatedHistories)
@@ -103,7 +103,7 @@ public partial class MainViewModel
             // Retry with flag
             StatusMessage = $"Merging {branchName} (allowing unrelated histories)...";
             result = await _gitService.MergeBranchAsync(SelectedRepository.Path, branchName, allowUnrelatedHistories: true);
-            System.Diagnostics.Debug.WriteLine($"[MainVM] Retry merge result: Success={result.Success}, Conflicts={result.HasConflicts}");
+            System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] NormalMerge (retry unrelated): Success={result.Success}, Conflicts={result.HasConflicts}");
         }
 
         return result;
@@ -143,7 +143,7 @@ public partial class MainViewModel
         else
         {
             StatusMessage = $"Merge failed: {result.ErrorMessage}";
-            System.Diagnostics.Debug.WriteLine($"[MainVM] Merge failure error: {result.ErrorMessage}");
+            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] HandleMergeResult: {result.ErrorMessage}");
         }
     }
 
