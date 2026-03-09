@@ -86,6 +86,23 @@ public partial class MainViewModel
             return;
 
         var branchName = NewBranchName.Trim();
+
+        // Check for duplicate branch name before closing the popup
+        if (!_isRenameBranchInput)
+        {
+            var exists = SelectedRepository.LocalBranches
+                .Any(b => string.Equals(b.Name, branchName, StringComparison.OrdinalIgnoreCase));
+            if (exists)
+            {
+                IsBranchInputVisible = false;
+                NewBranchName = string.Empty;
+                await _dialogService.ShowErrorAsync(
+                    $"A branch named '{branchName}' already exists.",
+                    "Branch Already Exists");
+                return;
+            }
+        }
+
         IsBranchInputVisible = false;
         NewBranchName = string.Empty;
 
@@ -443,8 +460,15 @@ public partial class MainViewModel
                 }
             }
 
-            // Refresh the repo info
-            var repoInfo = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            // Refresh repo info, branches, and graph in parallel (all independent git calls)
+            SelectedRepository.BranchesLoaded = false;
+            var repoInfoTask = _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            var branchesTask = LoadBranchesForRepoAsync(SelectedRepository, skipFilterApplication: true);
+            var graphTask = GitGraphViewModel?.RefreshAfterCheckoutAsync(branchName, detachedHeadSha: null) ?? Task.CompletedTask;
+
+            await Task.WhenAll(repoInfoTask, branchesTask, graphTask);
+
+            var repoInfo = await repoInfoTask;
             SelectedRepository.CurrentBranch = repoInfo.CurrentBranch;
             SelectedRepository.IsDetachedHead = repoInfo.IsDetachedHead;
             SelectedRepository.DetachedHeadSha = repoInfo.DetachedHeadSha;
@@ -452,14 +476,9 @@ public partial class MainViewModel
             SelectedRepository.MergingBranch = repoInfo.MergingBranch;
             SelectedRepository.ConflictCount = repoInfo.ConflictCount;
 
-            // Reload branches to update current indicator
-            SelectedRepository.BranchesLoaded = false;
-            await LoadBranchesForRepoAsync(SelectedRepository);
-
-            // Refresh git graph and select the branch's tip commit (or requested commit)
+            // Select the branch's tip commit (or requested commit)
             if (GitGraphViewModel != null)
             {
-                await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
                 var selectSha = !string.IsNullOrWhiteSpace(branch.TipSha)
                     ? branch.TipSha
                     : localBranch?.TipSha ?? string.Empty;
@@ -509,24 +528,21 @@ public partial class MainViewModel
 
             await _gitService.CheckoutCommitAsync(SelectedRepository.Path, tag.TargetSha);
 
-            // Refresh the repo info
-            var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            // Refresh repo info, branches, and graph in parallel (all independent git calls)
+            SelectedRepository.BranchesLoaded = false;
+            var infoTask = _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            var branchesTask = LoadBranchesForRepoAsync(SelectedRepository, skipFilterApplication: true);
+            var graphTask = GitGraphViewModel?.RefreshAfterCheckoutAsync(newBranchName: null, detachedHeadSha: tag.TargetSha) ?? Task.CompletedTask;
+
+            await Task.WhenAll(infoTask, branchesTask, graphTask);
+
+            var info = await infoTask;
             SelectedRepository.CurrentBranch = info.CurrentBranch;
             SelectedRepository.IsDetachedHead = info.IsDetachedHead;
             SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
             SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
             SelectedRepository.MergingBranch = info.MergingBranch;
             SelectedRepository.ConflictCount = info.ConflictCount;
-
-            // Reload branches to update current indicator
-            SelectedRepository.BranchesLoaded = false;
-            await LoadBranchesForRepoAsync(SelectedRepository);
-
-            // Refresh git graph
-            if (GitGraphViewModel != null)
-            {
-                await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
-            }
 
             StatusMessage = $"Checked out tag {tag.Name} (detached HEAD)";
         }

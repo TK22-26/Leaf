@@ -824,12 +824,15 @@ public partial class BranchListView : UserControl
         {
             viewModel.NewBranchName = name;
             await viewModel.ConfirmCreateBranchAsync();
-            BranchCreatePopup.IsOpen = false;
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Failed: {ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            BranchCreatePopup.IsOpen = false;
             ResetBranchCreateUI();
         }
     }

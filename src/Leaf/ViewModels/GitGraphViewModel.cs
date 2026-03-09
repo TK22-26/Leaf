@@ -392,6 +392,125 @@ public partial class GitGraphViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Fast refresh after branch/tag checkout. Patches IsCurrent/IsHead flags in-place
+    /// and refreshes only working changes — no commit re-fetch or graph rebuild.
+    /// Falls back to full LoadRepositoryAsync if cached data is stale.
+    /// </summary>
+    public async Task RefreshAfterCheckoutAsync(string? newBranchName, string? detachedHeadSha)
+    {
+        if (string.IsNullOrEmpty(RepositoryPath))
+            return;
+
+        try
+        {
+            // No cached data — must do full load
+            if (_allCommits.Count == 0)
+            {
+                await LoadRepositoryAsync(RepositoryPath);
+                return;
+            }
+
+            // Patch flags in-place; returns false if HEAD commit not in cache
+            if (!PatchBranchAndHeadFlags(newBranchName, detachedHeadSha))
+            {
+                await LoadRepositoryAsync(RepositoryPath);
+                return;
+            }
+
+            // Update internal state for future RebuildGraphFromFilters calls
+            _currentBranchName = newBranchName;
+            IsDetachedHead = detachedHeadSha != null;
+            DetachedHeadSha = detachedHeadSha;
+
+            // Refresh working changes — triggers CurrentBranchName binding → AffectsRender → canvas repaint
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(RepositoryPath);
+
+            // Recalculate total height (working changes row may appear/disappear)
+            int rowCount = Commits.Count + (HasWorkingChanges ? 1 : 0);
+            TotalHeight = rowCount * RowHeight;
+        }
+        catch
+        {
+            // Any failure — fall back to full reload
+            await LoadRepositoryAsync(RepositoryPath);
+        }
+    }
+
+    /// <summary>
+    /// Patches IsCurrent and IsHead flags on cached commits/labels in-place.
+    /// Returns true if the HEAD commit was found in the cache, false otherwise.
+    /// </summary>
+    private bool PatchBranchAndHeadFlags(string? newBranchName, string? detachedHeadSha)
+    {
+        bool headFound = false;
+
+        foreach (var commit in _allCommits)
+        {
+            // Clear IsHead on all commits
+            commit.IsHead = false;
+
+            foreach (var label in commit.BranchLabels)
+            {
+                // Clear IsCurrent on all labels
+                label.IsCurrent = false;
+            }
+
+            // Remove synthetic "HEAD" labels from previous detached state
+            commit.BranchLabels.RemoveAll(l =>
+                string.Equals(l.Name, "HEAD", StringComparison.OrdinalIgnoreCase) && l.IsLocal);
+        }
+
+        if (detachedHeadSha != null)
+        {
+            // Detached HEAD checkout (e.g. tag checkout)
+            foreach (var commit in _allCommits)
+            {
+                if (string.Equals(commit.Sha, detachedHeadSha, StringComparison.OrdinalIgnoreCase))
+                {
+                    commit.IsHead = true;
+                    headFound = true;
+
+                    // Mirror CommitHistoryOperations: mark first existing label, or insert "HEAD"
+                    var labelToMark = commit.BranchLabels.FirstOrDefault();
+                    if (labelToMark != null)
+                    {
+                        labelToMark.IsCurrent = true;
+                    }
+                    else
+                    {
+                        commit.BranchLabels.Insert(0, new BranchLabel
+                        {
+                            Name = "HEAD",
+                            IsLocal = true,
+                            IsCurrent = true,
+                            TipSha = detachedHeadSha
+                        });
+                    }
+                    break;
+                }
+            }
+        }
+        else
+        {
+            // Normal branch checkout
+            foreach (var commit in _allCommits)
+            {
+                foreach (var label in commit.BranchLabels)
+                {
+                    if (string.Equals(label.Name, newBranchName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        label.IsCurrent = true;
+                        commit.IsHead = true;
+                        headFound = true;
+                    }
+                }
+            }
+        }
+
+        return headFound;
+    }
+
+    /// <summary>
     /// Refresh working changes only (faster than full reload).
     /// </summary>
     public async Task RefreshWorkingChangesAsync()

@@ -10,11 +10,13 @@ public class DialogService : IDialogService
 {
     private readonly IDispatcherService _dispatcher;
     private readonly IWindowService _windowService;
+    private readonly INotificationService _notificationService;
 
-    public DialogService(IDispatcherService dispatcher, IWindowService windowService)
+    public DialogService(IDispatcherService dispatcher, IWindowService windowService, INotificationService notificationService)
     {
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _windowService = windowService ?? throw new ArgumentNullException(nameof(windowService));
+        _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
     }
 
     /// <inheritdoc />
@@ -64,18 +66,10 @@ public class DialogService : IDialogService
     }
 
     /// <inheritdoc />
-    public async Task ShowErrorAsync(string message, string title)
+    public Task ShowErrorAsync(string message, string title)
     {
-        await _dispatcher.InvokeAsync(() =>
-        {
-            var owner = _windowService.GetMainWindow();
-            MessageBox.Show(
-                owner,
-                message,
-                title,
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        });
+        _notificationService.Show(title, message, NotificationType.Error);
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />

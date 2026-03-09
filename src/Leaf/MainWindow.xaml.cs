@@ -28,7 +28,8 @@ public partial class MainWindow : Window
         var repositoryEventHub = new RepositoryEventHub(dispatcherService);
 
         // Phase 1: Foundation services
-        var dialogService = new DialogService(dispatcherService, windowService);
+        var notificationService = new NotificationService(dispatcherService);
+        var dialogService = new DialogService(dispatcherService, windowService, notificationService);
         var gitCommandRunner = new GitCommandRunner();
         var clipboardService = new ClipboardService();
         var fileSystemService = new FileSystemService();
@@ -74,6 +75,8 @@ public partial class MainWindow : Window
             branch => viewModel.CheckoutBranchCommand.Execute(branch));
 
         DataContext = viewModel;
+
+        NotificationHostControl.NotificationService = notificationService;
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)

@@ -77,16 +77,22 @@ internal class RepositoryOperations
                 }
             }
 
-            // Count conflicts using git command (more reliable)
-            conflictCount = GitCliHelpers.GetConflictCount(repoPath);
-
-            // Fallback to LibGit2Sharp if git command returns 0
-            if (conflictCount == 0 && repo.Index.Conflicts.Any())
+            // Only count conflicts when a merge/rebase/cherry-pick is in progress
+            // (avoids expensive git diff + git status calls on clean checkouts)
+            if (isMergeInProgress
+                || File.Exists(Path.Combine(repoPath, ".git", "REBASE_HEAD"))
+                || File.Exists(Path.Combine(repoPath, ".git", "CHERRY_PICK_HEAD")))
             {
-                conflictCount = repo.Index.Conflicts
-                    .Select(c => c.Ancestor?.Path ?? c.Ours?.Path ?? c.Theirs?.Path)
-                    .Distinct()
-                    .Count();
+                conflictCount = GitCliHelpers.GetConflictCount(repoPath);
+
+                // Fallback to LibGit2Sharp if git command returns 0
+                if (conflictCount == 0 && repo.Index.Conflicts.Any())
+                {
+                    conflictCount = repo.Index.Conflicts
+                        .Select(c => c.Ancestor?.Path ?? c.Ours?.Path ?? c.Theirs?.Path)
+                        .Distinct()
+                        .Count();
+                }
             }
 
             return new RepositoryInfo
