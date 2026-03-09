@@ -44,6 +44,17 @@ internal class RepositoryOperations
         {
             using var repo = new Repository(repoPath);
 
+            if (repo.Info.IsBare)
+            {
+                return new RepositoryInfo
+                {
+                    Path = repoPath,
+                    Name = Path.GetFileName(repoPath),
+                    CurrentBranch = "(bare)",
+                    LastAccessed = DateTimeOffset.Now
+                };
+            }
+
             var status = repo.RetrieveStatus();
             var isDirty = status.IsDirty;
 

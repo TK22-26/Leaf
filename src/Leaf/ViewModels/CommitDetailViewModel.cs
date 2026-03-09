@@ -20,6 +20,8 @@ public partial class CommitDetailViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasParent))]
     [NotifyPropertyChangedFor(nameof(ParentShortSha))]
+    [NotifyPropertyChangedFor(nameof(CoAuthors))]
+    [NotifyPropertyChangedFor(nameof(HasCoAuthors))]
     private CommitInfo? _commit;
 
     [ObservableProperty]
@@ -75,6 +77,10 @@ public partial class CommitDetailViewModel : ObservableObject
     /// True if the commit has a parent.
     /// </summary>
     public bool HasParent => Commit?.ParentShas.Count > 0;
+
+    public List<CommitInfo.CoAuthorInfo> CoAuthors => Commit?.CoAuthors ?? [];
+
+    public bool HasCoAuthors => CoAuthors.Count > 0;
 
     /// <summary>
     /// Short SHA of the first parent commit.

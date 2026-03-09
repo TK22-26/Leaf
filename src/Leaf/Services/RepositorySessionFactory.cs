@@ -94,8 +94,15 @@ public class RepositorySessionFactory : IRepositorySessionFactory
                 $"Failed to open repository at '{gitDir}'", nameof(userSelectedPath), ex);
         }
 
-        // REJECT: Path inside .git directory (only for non-bare repos)
-        // For bare repos, normalizedPath == normalizedGitDir is valid (that's how you open them)
+        // REJECT: Bare repositories — Leaf requires a working directory
+        if (isBare)
+        {
+            throw new ArgumentException(
+                $"'{userSelectedPath}' is a bare repository. Leaf only supports repositories with a working directory.",
+                nameof(userSelectedPath));
+        }
+
+        // REJECT: Path inside .git directory
         if (!isBare)
         {
             // Check if the user-selected path is inside the .git directory

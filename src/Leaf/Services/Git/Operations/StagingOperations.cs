@@ -28,6 +28,9 @@ internal class StagingOperations : IStagingOperations
         {
             using var repo = new Repository(repoPath);
 
+            if (repo.Info.IsBare)
+                return new WorkingChangesInfo();
+
             var status = repo.RetrieveStatus(new StatusOptions
             {
                 IncludeUntracked = true,
@@ -283,6 +286,10 @@ internal class StagingOperations : IStagingOperations
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
+
+            if (repo.Info.IsBare)
+                return;
+
             var status = repo.RetrieveStatus(filePath);
 
             if (status == FileStatus.NewInWorkdir)
