@@ -92,9 +92,11 @@ public partial class MainViewModel
         try
         {
             IsBusy = true;
+            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: repo={SelectedRepository.Name}");
 
             // Check if we're in an orphaned conflict state (conflicts without MERGE_HEAD)
             var isOrphaned = await _gitService.IsOrphanedConflictStateAsync(SelectedRepository.Path);
+            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: isOrphaned={isOrphaned}");
 
             if (isOrphaned)
             {
@@ -140,22 +142,68 @@ public partial class MainViewModel
 
                 await _gitService.ResetOrphanedConflictsAsync(SelectedRepository.Path, discardChanges);
 
+                // Clean up stored merge conflict file
+                try
+                {
+                    await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path);
+                }
+                catch { /* best-effort cleanup */ }
+
                 StatusMessage = discardChanges
                     ? "Index reset and files restored"
                     : "Index reset (working directory preserved)";
             }
             else
             {
-                // Normal merge abort
-                StatusMessage = "Aborting merge...";
-                await _gitService.AbortMergeAsync(SelectedRepository.Path);
-                StatusMessage = "Merge aborted";
+                // Route to correct abort command based on operation type
+                var opType = SelectedRepository.OperationType;
+                System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: running abort for {opType}");
+
+                switch (opType)
+                {
+                    case Models.GitOperationType.CherryPick:
+                        StatusMessage = "Aborting cherry-pick...";
+                        await _gitService.AbortCherryPickAsync(SelectedRepository.Path);
+                        StatusMessage = "Cherry-pick aborted";
+                        break;
+
+                    case Models.GitOperationType.Revert:
+                        StatusMessage = "Aborting revert...";
+                        await _gitService.AbortRevertAsync(SelectedRepository.Path);
+                        StatusMessage = "Revert aborted";
+                        break;
+
+                    case Models.GitOperationType.Rebase:
+                        StatusMessage = "Aborting rebase...";
+                        await _gitService.AbortRebaseAsync(SelectedRepository.Path);
+                        StatusMessage = "Rebase aborted";
+                        break;
+
+                    default:
+                        StatusMessage = "Aborting merge...";
+                        await _gitService.AbortMergeAsync(SelectedRepository.Path);
+                        StatusMessage = "Merge aborted";
+                        break;
+                }
+
+                System.Diagnostics.Debug.WriteLine("[MERGE][UI] AbortMerge: completed");
+            }
+
+            // Clean up the stored merge conflict file immediately after abort
+            try
+            {
+                await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path);
+            }
+            catch (Exception clearEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: failed to clear stored conflicts: {clearEx.Message}");
             }
 
             await RefreshAsync();
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] AbortMerge: {ex.Message}");
             StatusMessage = $"Abort failed: {ex.Message}";
         }
         finally
@@ -225,7 +273,7 @@ public partial class MainViewModel
         }
 
         var hasMergeConflicts = SelectedRepository.IsMergeInProgress || SelectedRepository.ConflictCount > 0;
-        System.Diagnostics.Debug.WriteLine($"[MainVM] RefreshMergeConflictResolutionAsync merge={SelectedRepository.IsMergeInProgress} conflictCount={SelectedRepository.ConflictCount}");
+        System.Diagnostics.Debug.WriteLine($"[MERGE][UI] RefreshMergeConflictResolution: merge={SelectedRepository.IsMergeInProgress} conflictCount={SelectedRepository.ConflictCount}");
         if (!hasMergeConflicts)
         {
             if (MergeConflictResolutionViewModel != null)
@@ -282,6 +330,7 @@ public partial class MainViewModel
 
     private async void OnMergeConflictResolutionCompleted(object? sender, bool success)
     {
+        System.Diagnostics.Debug.WriteLine($"[MERGE][UI] OnMergeConflictResolutionCompleted: success={success}");
         StatusMessage = success ? "Merge completed successfully" : "Merge aborted";
         await RefreshAsync();
     }

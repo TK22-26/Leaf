@@ -48,6 +48,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event EventHandler<RepositoryInfo>? RequestRepositorySelection;
 
     /// <summary>
+    /// Event raised to open the branch create/rename popup.
+    /// Uses an event instead of PropertyChanged on IsBranchInputVisible to avoid stuck state
+    /// when SetProperty suppresses duplicate true→true transitions.
+    /// </summary>
+    public event EventHandler? RequestBranchCreatePopup;
+
+    /// <summary>
     /// Last fetch time - delegated to AutoFetchService.
     /// </summary>
     public DateTime? LastFetchTime => _autoFetchService.LastFetchTime;
@@ -289,6 +296,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService, settingsService);
         _workingChangesViewModel.FileSelected += OnWorkingChangesFileSelected;
+        _workingChangesViewModel.FileDeletedOrDiscarded += OnFileDeletedOrDiscarded;
         _diffViewerViewModel = new DiffViewerViewModel(gitService);
         _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
         _diffViewerViewModel.HunkReverted += OnDiffViewerHunkReverted;
@@ -312,6 +320,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
                             SelectedRepository.Path,
                             _gitGraphViewModel.WorkingChanges);
                     }
+
+                    // Close diff viewer if the viewed file is no longer in working changes
+                    if (IsDiffViewerVisible && IsWorkingChangesSelected && _diffViewerViewModel != null)
+                    {
+                        var viewedPath = _diffViewerViewModel.FilePath?.Replace('\\', '/');
+                        if (!string.IsNullOrEmpty(viewedPath))
+                        {
+                            var wc = _gitGraphViewModel.WorkingChanges;
+                            var stillPresent = wc != null && (
+                                wc.StagedFiles.Any(f => string.Equals(f.Path, viewedPath, StringComparison.OrdinalIgnoreCase)) ||
+                                wc.UnstagedFiles.Any(f => string.Equals(f.Path, viewedPath, StringComparison.OrdinalIgnoreCase)));
+
+                            if (!stillPresent)
+                            {
+                                CloseDiffViewer();
+                            }
+                        }
+                    }
                 }
             });
         };
@@ -333,10 +359,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         _gitGraphViewModel?.WorkingChanges);
                 }
 
+                // Close diff viewer if the viewed file is no longer in working changes
+                if (IsDiffViewerVisible && IsWorkingChangesSelected && _diffViewerViewModel != null && _gitGraphViewModel != null)
+                {
+                    var viewedPath = _diffViewerViewModel.FilePath?.Replace('\\', '/');
+                    if (!string.IsNullOrEmpty(viewedPath))
+                    {
+                        var wc = _gitGraphViewModel.WorkingChanges;
+                        var stillPresent = wc != null && (
+                            wc.StagedFiles.Any(f => string.Equals(f.Path, viewedPath, StringComparison.OrdinalIgnoreCase)) ||
+                            wc.UnstagedFiles.Any(f => string.Equals(f.Path, viewedPath, StringComparison.OrdinalIgnoreCase)));
+
+                        if (!stillPresent)
+                        {
+                            CloseDiffViewer();
+                        }
+                    }
+                }
+
                 if (SelectedRepository != null)
                 {
                     var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
                     SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
+                    SelectedRepository.OperationType = info.OperationType;
                     SelectedRepository.MergingBranch = info.MergingBranch;
                     SelectedRepository.ConflictCount = info.ConflictCount;
                     SelectedRepository.IsDetachedHead = info.IsDetachedHead;
@@ -352,7 +397,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (e.PropertyName == nameof(GitGraphViewModel.SelectedCommit))
             {
-                LoadCommitDetails(_gitGraphViewModel.SelectedCommit);
+                // Skip LoadCommitDetails for stash pseudo-commits — the SelectedStash handler loads stash details
+                if (_gitGraphViewModel.SelectedCommit?.IsStash != true)
+                {
+                    LoadCommitDetails(_gitGraphViewModel.SelectedCommit);
+                }
             }
             else if (e.PropertyName == nameof(GitGraphViewModel.IsWorkingChangesSelected))
             {
@@ -420,6 +469,30 @@ public partial class MainViewModel : ObservableObject, IDisposable
     partial void OnSelectedRepositoryChanged(RepositoryInfo? value)
     {
         TerminalViewModel?.SetWorkingDirectory(value?.Path);
+
+        if (value == null)
+        {
+            // Clear graph, commit detail, and working changes when no repo is selected
+            if (GitGraphViewModel != null)
+            {
+                GitGraphViewModel.RepositoryPath = null;
+                GitGraphViewModel.Commits.Clear();
+                GitGraphViewModel.Nodes.Clear();
+                GitGraphViewModel.SelectedCommit = null;
+                GitGraphViewModel.WorkingChanges = null;
+                GitGraphViewModel.Stashes.Clear();
+                GitGraphViewModel.SelectedStash = null;
+                GitGraphViewModel.TotalHeight = 0;
+                GitGraphViewModel.MaxLane = 0;
+                GitGraphViewModel.ErrorMessage = null;
+            }
+
+            CommitDetailViewModel?.ClearSelection();
+            WorkingChangesViewModel?.ClearWorkingChanges();
+            IsWorkingChangesSelected = false;
+            IsDiffViewerVisible = false;
+            StatusMessage = "Select a repository";
+        }
     }
 
     partial void OnIsTerminalVisibleChanged(bool value)

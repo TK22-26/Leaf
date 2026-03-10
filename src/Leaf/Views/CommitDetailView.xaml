@@ -21,6 +21,7 @@
         <SolidColorBrush x:Key="StatusAddedBrush" Color="#28A745" />
         <SolidColorBrush x:Key="StatusModifiedBrush" Color="#F5A623" />
         <SolidColorBrush x:Key="StatusDeletedBrush" Color="#E81123" />
+        <SolidColorBrush x:Key="StatusRenamedBrush" Color="#0078D4" />
 
         <!--  Working changes banner - dark green for dark theme  -->
         <SolidColorBrush x:Key="WorkingChangesBannerBrush" Color="#2D5A3D" />
@@ -29,7 +30,20 @@
             x:Key="FileChangeTreeNodeTemplate"
             DataType="{x:Type models:FileChangeTreeNode}"
             ItemsSource="{Binding Children}">
-            <Grid>
+            <Grid x:Name="TemplateRoot">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsFile}" Value="True" />
+                                    <Condition Binding="{Binding IsRoot}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Margin" Value="-19,0,0,0" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <StackPanel
                     x:Name="FolderPanel"
                     Margin="2,1"
@@ -50,13 +64,13 @@
                 <Border
                     x:Name="FilePanel"
                     Margin="2,1"
-                    Padding="8,6"
+                    Padding="4,1"
                     Background="Transparent"
                     BorderBrush="Transparent"
                     BorderThickness="2,0,0,0"
                     Cursor="Hand"
                     DataContext="{Binding File}"
-                    MouseLeftButtonDown="FileItem_Click"
+                    PreviewMouseLeftButtonDown="FileItem_Click"
                     Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                     ToolTip="{Binding Path}"
                     Visibility="{Binding DataContext.IsFile, RelativeSource={RelativeSource AncestorType=Grid}, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -107,6 +121,14 @@
                                             <Setter Property="Text" Value="&#xE108;" />
                                             <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}" />
                                         </DataTrigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="Renamed">
+                                            <Setter Property="Text" Value="&#xE8AB;" />
+                                            <Setter Property="Foreground" Value="{StaticResource StatusRenamedBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="Unchanged">
+                                            <Setter Property="Text" Value="" />
+                                            <Setter Property="Foreground" Value="Transparent" />
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </TextBlock.Style>
@@ -115,10 +137,20 @@
                         <TextBlock
                             Grid.Column="1"
                             VerticalAlignment="Center"
-                            FontSize="13"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                            FontSize="12"
                             Text="{Binding FileName}"
-                            TextTrimming="CharacterEllipsis" />
+                            TextTrimming="CharacterEllipsis">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Status}" Value="Unchanged">
+                                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </Grid>
                 </Border>
             </Grid>
@@ -240,7 +272,10 @@
             </Border>
 
             <!--  Message Section  -->
-            <Grid Grid.Row="2" Margin="12,8,12,8" Height="290">
+            <Grid
+                Grid.Row="2"
+                Height="290"
+                Margin="12,8,12,8">
                 <Grid.RowDefinitions>
                     <!--  Commit Subject (always visible)  -->
                     <RowDefinition Height="Auto" />
@@ -306,18 +341,25 @@
                         Grid.Column="0"
                         VerticalAlignment="Center"
                         Orientation="Horizontal">
-                        <Image
-                            Width="18"
-                            Height="18"
+                        <Border
+                            Width="20"
+                            Height="20"
                             Margin="0,0,8,0"
-                            Source="{Binding Commit.AvatarKey, Converter={StaticResource IdenticonConverter}, ConverterParameter=18}">
-                            <Image.Clip>
-                                <EllipseGeometry
-                                    Center="9,9"
-                                    RadiusX="9"
-                                    RadiusY="9" />
-                            </Image.Clip>
-                        </Image>
+                            BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10">
+                            <Image
+                                Width="18"
+                                Height="18"
+                                Source="{Binding Commit.AvatarKey, Converter={StaticResource IdenticonConverter}, ConverterParameter=18}">
+                                <Image.Clip>
+                                    <EllipseGeometry
+                                        Center="9,9"
+                                        RadiusX="9"
+                                        RadiusY="9" />
+                                </Image.Clip>
+                            </Image>
+                        </Border>
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
@@ -347,8 +389,8 @@
                     <TextBlock
                         Grid.Row="1"
                         Grid.Column="0"
-                        Grid.ColumnSpan="2"
                         Margin="0,2,0,0"
+                        VerticalAlignment="Center"
                         FontSize="10"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}">
                         <Run Text="authored " />
@@ -356,19 +398,108 @@
                         <Run Text=" @ " />
                         <Run Text="{Binding Commit.Date, StringFormat='{}{0:h:mm tt}', Mode=OneWay}" />
                     </TextBlock>
+
+                    <!--  Co-Author Chips  -->
+                    <ItemsControl
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        Margin="0,4,0,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        ItemsSource="{Binding CoAuthors}"
+                        Visibility="{Binding HasCoAuthors, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
+                        <ItemsControl.ToolTip>
+                            <ToolTip Padding="0">
+                                <Border Padding="10,8">
+                                    <StackPanel>
+                                        <TextBlock
+                                            Margin="0,0,0,6"
+                                            FontSize="11"
+                                            FontWeight="SemiBold"
+                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                            Text="Co-Authors" />
+                                        <ItemsControl ItemsSource="{Binding CoAuthors}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel
+                                                        Margin="0,2"
+                                                        Orientation="Horizontal">
+                                                        <Image
+                                                            Width="14"
+                                                            Height="14"
+                                                            Margin="0,0,6,0"
+                                                            VerticalAlignment="Center"
+                                                            Source="{Binding AvatarKey, Converter={StaticResource IdenticonConverter}, ConverterParameter=14}">
+                                                            <Image.Clip>
+                                                                <EllipseGeometry
+                                                                    Center="7,7"
+                                                                    RadiusX="7"
+                                                                    RadiusY="7" />
+                                                            </Image.Clip>
+                                                        </Image>
+                                                        <TextBlock
+                                                            VerticalAlignment="Center"
+                                                            FontSize="11"
+                                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                            Text="{Binding Name}" />
+                                                        <TextBlock
+                                                            Margin="4,0,0,0"
+                                                            VerticalAlignment="Center"
+                                                            FontSize="10"
+                                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                                            <Run Text="&lt;" /><Run Text="{Binding Email, Mode=OneWay}" /><Run Text="&gt;" />
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </ToolTip>
+                        </ItemsControl.ToolTip>
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border
+                                    Width="20"
+                                    Height="20"
+                                    Margin="-4,0,0,0"
+                                    BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10">
+                                    <Image
+                                        Width="18"
+                                        Height="18"
+                                        Source="{Binding AvatarKey, Converter={StaticResource IdenticonConverter}, ConverterParameter=18}">
+                                        <Image.Clip>
+                                            <EllipseGeometry
+                                                Center="9,9"
+                                                RadiusX="9"
+                                                RadiusY="9" />
+                                        </Image.Clip>
+                                    </Image>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </Grid>
             </Border>
 
             <!--  Changed Files Section  -->
-            <Grid Grid.Row="4" Margin="8,0,8,8">
+            <Grid Grid.Row="4" Margin="4,0,8,8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
                 <!--  Changed Files Header  -->
-                <Grid Grid.Row="0" Margin="0,4,0,6">
+                <Grid Grid.Row="0" Margin="4,4,0,6">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="1" />
                     </Grid.RowDefinitions>
@@ -378,7 +509,12 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <!--  Row 0, Col 0: Title  -->
+                    <StackPanel
+                        Grid.Row="0"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal">
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
@@ -396,10 +532,48 @@
                         </TextBlock>
                     </StackPanel>
 
-                    <!--  File counts (M/+/-)  -->
-                    <StackPanel
+                    <!--  Row 0, Col 1: List/Tree toggle (centered)  -->
+                    <controls:PillToggle
+                        x:Name="FileChangesTreeToggle"
+                        Grid.Row="0"
                         Grid.Column="1"
-                        Margin="8,0,0,0"
+                        Width="84"
+                        Height="22"
+                        Margin="8,0,8,0"
+                        VerticalAlignment="Center"
+                        Checked="FileChangesTreeToggle_Changed"
+                        IsChecked="{Binding ShowTreeView}"
+                        LabelFontSize="12"
+                        LeftText="List"
+                        RightText="Tree"
+                        ToolTip="Toggle list/tree view"
+                        Unchecked="FileChangesTreeToggle_Changed" />
+
+                    <!--  Row 0, Col 2: View all files checkbox  -->
+                    <CheckBox
+                        x:Name="ShowAllFilesCheckBox"
+                        Grid.Row="0"
+                        Grid.Column="2"
+                        Margin="0,0,-2,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Checked="ShowAllFilesCheckBox_Changed"
+                        Content="View all files"
+                        FontSize="15"
+                        IsChecked="{Binding ShowAllFiles}"
+                        ToolTip="Show all files in the repository at this commit"
+                        Unchecked="ShowAllFilesCheckBox_Changed">
+                        <CheckBox.LayoutTransform>
+                            <ScaleTransform ScaleX="0.7" ScaleY="0.7" />
+                        </CheckBox.LayoutTransform>
+                    </CheckBox>
+
+                    <!--  Row 1: File counts  -->
+                    <StackPanel
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="3"
+                        Margin="0,2,0,4"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Center"
                         Orientation="Horizontal">
@@ -442,7 +616,10 @@
                         </StackPanel>
 
                         <!--  Deleted count  -->
-                        <StackPanel Orientation="Horizontal" Visibility="{Binding DeletedCount, Converter={StaticResource NullToVisibilityConverter}}">
+                        <StackPanel
+                            Margin="0,0,8,0"
+                            Orientation="Horizontal"
+                            Visibility="{Binding DeletedCount, Converter={StaticResource NullToVisibilityConverter}}">
                             <TextBlock
                                 Margin="0,0,4,3"
                                 VerticalAlignment="Center"
@@ -457,26 +634,26 @@
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="{Binding DeletedCount}" />
                         </StackPanel>
+
+                        <!--  Renamed count  -->
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding RenamedCount, Converter={StaticResource NullToVisibilityConverter}}">
+                            <TextBlock
+                                Margin="0,0,4,0"
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="11"
+                                Foreground="{StaticResource StatusRenamedBrush}"
+                                Text="&#xE8AB;" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding RenamedCount}" />
+                        </StackPanel>
                     </StackPanel>
 
-                    <!--  List/Tree Toggle  -->
-                    <controls:PillToggle
-                        x:Name="FileChangesTreeToggle"
-                        Grid.Column="2"
-                        Width="84"
-                        Height="22"
-                        Margin="0,0,0,3"
-                        VerticalAlignment="Center"
-                        Checked="FileChangesTreeToggle_Changed"
-                        IsChecked="{Binding ShowTreeView}"
-                        LabelFontSize="12"
-                        LeftText="List"
-                        RightText="Tree"
-                        ToolTip="Toggle list/tree view"
-                        Unchecked="FileChangesTreeToggle_Changed" />
-
                     <Border
-                        Grid.Row="1"
+                        Grid.Row="2"
                         Grid.ColumnSpan="3"
                         Height="1"
                         Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
@@ -500,7 +677,7 @@
                                         BorderThickness="2,0,0,0"
                                         CornerRadius="4"
                                         Cursor="Hand"
-                                        MouseLeftButtonDown="FileItem_Click"
+                                        PreviewMouseLeftButtonDown="FileItem_Click"
                                         Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         ToolTip="{Binding Path}">
                                         <Border.Style>
@@ -535,6 +712,7 @@
 
                                             <!--  Status icon  -->
                                             <TextBlock
+                                                x:Name="StatusIcon"
                                                 Grid.Column="0"
                                                 HorizontalAlignment="Center"
                                                 VerticalAlignment="Center"
@@ -553,17 +731,20 @@
                                                                 <Setter Property="Text" Value="&#xE108;" />
                                                                 <Setter Property="Foreground" Value="{StaticResource StatusDeletedBrush}" />
                                                             </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Unchanged">
+                                                                <Setter Property="Text" Value="" />
+                                                                <Setter Property="Foreground" Value="Transparent" />
+                                                            </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
 
                                             <!--  File name + directory  -->
-                                            <StackPanel
-                                                Grid.Column="1"
-                                                VerticalAlignment="Center">
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                 <!--  File name (prominent)  -->
                                                 <TextBlock
+                                                    x:Name="FileNameText"
                                                     FontSize="13"
                                                     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                     Text="{Binding FileName}"
@@ -596,6 +777,9 @@
                                             <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
                                             <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#28A745" />
                                         </Trigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="Unchanged">
+                                            <Setter TargetName="FileNameText" Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                                        </DataTrigger>
                                     </DataTemplate.Triggers>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -619,7 +803,6 @@
                                             <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=HasItems}" Value="False" />
                                             <Condition Binding="{Binding IsRoot}" Value="True" />
                                         </MultiDataTrigger.Conditions>
-                                        <Setter Property="Margin" Value="-19,0,0,0" />
                                         <Setter Property="Padding" Value="0,2" />
                                     </MultiDataTrigger>
                                 </Style.Triggers>

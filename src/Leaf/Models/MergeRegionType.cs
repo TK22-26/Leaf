@@ -54,5 +54,10 @@ public enum ConflictResolution
     /// <summary>
     /// Use manually edited content.
     /// </summary>
-    UseManual
+    UseManual,
+
+    /// <summary>
+    /// Use both versions: ours first, then theirs.
+    /// </summary>
+    UseBoth
 }

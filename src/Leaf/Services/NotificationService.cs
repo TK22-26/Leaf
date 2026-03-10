@@ -1,0 +1,19 @@
+namespace Leaf.Services;
+
+public class NotificationService : INotificationService
+{
+    private readonly IDispatcherService _dispatcher;
+
+    public event Action<NotificationMessage>? NotificationRequested;
+
+    public NotificationService(IDispatcherService dispatcher)
+    {
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+    }
+
+    public void Show(string title, string description, NotificationType type = NotificationType.Error)
+    {
+        var message = new NotificationMessage { Title = title, Description = description, Type = type };
+        _dispatcher.InvokeAsync(() => NotificationRequested?.Invoke(message));
+    }
+}

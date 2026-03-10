@@ -133,6 +133,97 @@ public partial class GitGraphViewModel : ObservableObject
         _gitService = gitService;
     }
 
+    /// <summary>
+    /// Creates synthetic CommitInfo entries for stashes.
+    /// Each stash points directly to its actual parent commit (the commit HEAD was on when stashed).
+    /// </summary>
+    private static List<CommitInfo> CreateStashPseudoCommits(IReadOnlyList<StashInfo> stashes)
+    {
+        if (stashes.Count == 0)
+            return [];
+
+        var pseudoCommits = new List<CommitInfo>(stashes.Count);
+
+        foreach (var stash in stashes)
+        {
+            pseudoCommits.Add(new CommitInfo
+            {
+                Sha = stash.Sha,
+                Message = stash.Message,
+                MessageShort = stash.MessageShort,
+                Author = stash.Author,
+                AuthorEmail = string.Empty,
+                Date = stash.Date,
+                ParentShas = string.IsNullOrEmpty(stash.ParentSha) ? [] : [stash.ParentSha],
+                IsStash = true,
+                StashIndex = stash.Index
+            });
+        }
+
+        return pseudoCommits;
+    }
+
+    /// <summary>
+    /// Merges stash pseudo-commits into the commit list positioned directly above their parent commit.
+    /// This matches GitKraken behavior — stashes are children of their parent in the DAG,
+    /// so they appear as a spur immediately before the commit HEAD was on when stashed.
+    /// </summary>
+    private List<CommitInfo> MergeStashPseudoCommits(List<CommitInfo> commits)
+    {
+        var pseudoCommits = CreateStashPseudoCommits(Stashes);
+        if (pseudoCommits.Count == 0)
+            return commits;
+
+        // Group stashes by parent SHA; within each group, sort by StashIndex ascending
+        // so index 0 (newest) is farthest from parent, matching topo-order output
+        var stashesByParent = new Dictionary<string, List<CommitInfo>>();
+        var orphanStashes = new List<CommitInfo>();
+
+        foreach (var stash in pseudoCommits)
+        {
+            var parentSha = stash.ParentShas.Count > 0 ? stash.ParentShas[0] : null;
+            if (string.IsNullOrEmpty(parentSha))
+            {
+                orphanStashes.Add(stash);
+            }
+            else
+            {
+                if (!stashesByParent.TryGetValue(parentSha, out var group))
+                {
+                    group = [];
+                    stashesByParent[parentSha] = group;
+                }
+                group.Add(stash);
+            }
+        }
+
+        foreach (var group in stashesByParent.Values)
+            group.Sort((a, b) => a.StashIndex.CompareTo(b.StashIndex));
+
+        orphanStashes.Sort((a, b) => a.StashIndex.CompareTo(b.StashIndex));
+
+        // Build result: insert stash groups immediately before their parent commit
+        var result = new List<CommitInfo>(pseudoCommits.Count + commits.Count);
+
+        // Orphaned stashes (no parent or parent not loaded) go to the top
+        result.AddRange(orphanStashes);
+
+        foreach (var commit in commits)
+        {
+            // If this commit is a parent of stashes, insert them before it
+            if (stashesByParent.Remove(commit.Sha, out var group))
+                result.AddRange(group);
+
+            result.Add(commit);
+        }
+
+        // Any remaining stashes whose parent wasn't found in the commit list go to the top
+        foreach (var group in stashesByParent.Values)
+            result.InsertRange(0, group);
+
+        return result;
+    }
+
     public void SetGitFlowContext(GitFlowConfig? config, IReadOnlyCollection<string> remoteNames)
     {
         _gitFlowConfig = config;
@@ -224,21 +315,22 @@ public partial class GitGraphViewModel : ObservableObject
 
             // Build graph on background thread (heavy computation)
             var visibleCommits = GetVisibleCommits();
+            var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
             var currentBranch = _currentBranchName;
 
             var (graphNodes, graphMaxLane) = await Task.Run(() =>
             {
                 var builder = new GraphBuilder();
-                var builtNodes = builder.BuildGraph(visibleCommits, currentBranch);
+                var builtNodes = builder.BuildGraph(commitsWithStashes, currentBranch);
                 return (builtNodes, builder.MaxLane);
             });
 
             // Fast UI property updates (pointer swaps only)
             Nodes = new ObservableCollection<GitTreeNode>(graphNodes);
-            Commits = new ObservableCollection<CommitInfo>(visibleCommits);
+            Commits = new ObservableCollection<CommitInfo>(commitsWithStashes);
             MaxLane = graphMaxLane;
 
-            int rowCount = Commits.Count + (HasWorkingChanges ? 1 : 0) + Stashes.Count;
+            int rowCount = Commits.Count + (HasWorkingChanges ? 1 : 0);
             TotalHeight = rowCount * RowHeight;
 
             SelectedCommit = null;
@@ -285,6 +377,125 @@ public partial class GitGraphViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Fast refresh after branch/tag checkout. Patches IsCurrent/IsHead flags in-place
+    /// and refreshes only working changes — no commit re-fetch or graph rebuild.
+    /// Falls back to full LoadRepositoryAsync if cached data is stale.
+    /// </summary>
+    public async Task RefreshAfterCheckoutAsync(string? newBranchName, string? detachedHeadSha)
+    {
+        if (string.IsNullOrEmpty(RepositoryPath))
+            return;
+
+        try
+        {
+            // No cached data — must do full load
+            if (_allCommits.Count == 0)
+            {
+                await LoadRepositoryAsync(RepositoryPath);
+                return;
+            }
+
+            // Patch flags in-place; returns false if HEAD commit not in cache
+            if (!PatchBranchAndHeadFlags(newBranchName, detachedHeadSha))
+            {
+                await LoadRepositoryAsync(RepositoryPath);
+                return;
+            }
+
+            // Update internal state for future RebuildGraphFromFilters calls
+            _currentBranchName = newBranchName;
+            IsDetachedHead = detachedHeadSha != null;
+            DetachedHeadSha = detachedHeadSha;
+
+            // Refresh working changes — triggers CurrentBranchName binding → AffectsRender → canvas repaint
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(RepositoryPath);
+
+            // Recalculate total height (working changes row may appear/disappear)
+            int rowCount = Commits.Count + (HasWorkingChanges ? 1 : 0);
+            TotalHeight = rowCount * RowHeight;
+        }
+        catch
+        {
+            // Any failure — fall back to full reload
+            await LoadRepositoryAsync(RepositoryPath);
+        }
+    }
+
+    /// <summary>
+    /// Patches IsCurrent and IsHead flags on cached commits/labels in-place.
+    /// Returns true if the HEAD commit was found in the cache, false otherwise.
+    /// </summary>
+    private bool PatchBranchAndHeadFlags(string? newBranchName, string? detachedHeadSha)
+    {
+        bool headFound = false;
+
+        foreach (var commit in _allCommits)
+        {
+            // Clear IsHead on all commits
+            commit.IsHead = false;
+
+            foreach (var label in commit.BranchLabels)
+            {
+                // Clear IsCurrent on all labels
+                label.IsCurrent = false;
+            }
+
+            // Remove synthetic "HEAD" labels from previous detached state
+            commit.BranchLabels.RemoveAll(l =>
+                string.Equals(l.Name, "HEAD", StringComparison.OrdinalIgnoreCase) && l.IsLocal);
+        }
+
+        if (detachedHeadSha != null)
+        {
+            // Detached HEAD checkout (e.g. tag checkout)
+            foreach (var commit in _allCommits)
+            {
+                if (string.Equals(commit.Sha, detachedHeadSha, StringComparison.OrdinalIgnoreCase))
+                {
+                    commit.IsHead = true;
+                    headFound = true;
+
+                    // Mirror CommitHistoryOperations: mark first existing label, or insert "HEAD"
+                    var labelToMark = commit.BranchLabels.FirstOrDefault();
+                    if (labelToMark != null)
+                    {
+                        labelToMark.IsCurrent = true;
+                    }
+                    else
+                    {
+                        commit.BranchLabels.Insert(0, new BranchLabel
+                        {
+                            Name = "HEAD",
+                            IsLocal = true,
+                            IsCurrent = true,
+                            TipSha = detachedHeadSha
+                        });
+                    }
+                    break;
+                }
+            }
+        }
+        else
+        {
+            // Normal branch checkout
+            foreach (var commit in _allCommits)
+            {
+                foreach (var label in commit.BranchLabels)
+                {
+                    if (string.Equals(label.Name, newBranchName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        label.IsCurrent = true;
+                        commit.IsHead = true;
+                        headFound = true;
+                    }
+                }
+            }
+        }
+
+        return headFound;
+    }
+
+    /// <summary>
     /// Refresh working changes only (faster than full reload).
     /// </summary>
     public async Task RefreshWorkingChangesAsync()
@@ -296,13 +507,12 @@ public partial class GitGraphViewModel : ObservableObject
         {
             WorkingChanges = await _gitService.GetWorkingChangesAsync(RepositoryPath);
 
-            // Recalculate total height
+            // Recalculate total height (stashes are included in Commits)
             int rowCount = Commits.Count;
             if (HasWorkingChanges)
             {
                 rowCount += 1;
             }
-            rowCount += Stashes.Count; // Include stash rows
             TotalHeight = rowCount * RowHeight;
         }
         catch
@@ -422,6 +632,7 @@ public partial class GitGraphViewModel : ObservableObject
 
             // Capture state for background work
             var visibleCommits = GetVisibleCommits();
+            var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
             var currentBranch = _currentBranchName;
 
             // Build graph on background thread with new GraphBuilder instance
@@ -430,7 +641,7 @@ public partial class GitGraphViewModel : ObservableObject
             {
                 ct.ThrowIfCancellationRequested();
                 var tempBuilder = new GraphBuilder();
-                var graphNodes = tempBuilder.BuildGraph(visibleCommits, currentBranch);
+                var graphNodes = tempBuilder.BuildGraph(commitsWithStashes, currentBranch);
                 return (graphNodes, tempBuilder.MaxLane);
             }, ct);
 
@@ -438,11 +649,11 @@ public partial class GitGraphViewModel : ObservableObject
 
             // Fast UI update (pointer swaps only)
             Nodes = new ObservableCollection<GitTreeNode>(nodes);
-            Commits = new ObservableCollection<CommitInfo>(visibleCommits);
+            Commits = new ObservableCollection<CommitInfo>(commitsWithStashes);
             MaxLane = maxLane;
 
-            // Recalculate height
-            int rowCount = Commits.Count + (HasWorkingChanges ? 1 : 0) + Stashes.Count;
+            // Recalculate height (stashes are included in Commits)
+            int rowCount = Commits.Count + (HasWorkingChanges ? 1 : 0);
             TotalHeight = rowCount * RowHeight;
 
             // Handle selection (use SHA comparison - new list has new instances)
@@ -474,12 +685,27 @@ public partial class GitGraphViewModel : ObservableObject
     [RelayCommand]
     public void SelectCommit(CommitInfo? commit)
     {
-        // Clear working changes and stash selection when selecting a commit
+        // Clear working changes selection when selecting a commit
         IsWorkingChangesSelected = false;
-        if (SelectedStash != null)
+
+        // If selecting a stash pseudo-commit, also set SelectedStash
+        if (commit?.IsStash == true)
         {
-            SelectedStash.IsSelected = false;
-            SelectedStash = null;
+            // Find the matching StashInfo
+            var matchingStash = Stashes.FirstOrDefault(s => s.Index == commit.StashIndex);
+            if (SelectedStash != null)
+                SelectedStash.IsSelected = false;
+            SelectedStash = matchingStash;
+            if (matchingStash != null)
+                matchingStash.IsSelected = true;
+        }
+        else
+        {
+            if (SelectedStash != null)
+            {
+                SelectedStash.IsSelected = false;
+                SelectedStash = null;
+            }
         }
 
         SelectedCommit = commit;
@@ -632,24 +858,24 @@ public partial class GitGraphViewModel : ObservableObject
             Nodes = [];
             Commits = [];
             MaxLane = 0;
-            TotalHeight = ((HasWorkingChanges ? 1 : 0) + Stashes.Count) * RowHeight;
+            TotalHeight = (HasWorkingChanges ? 1 : 0) * RowHeight;
             return;
         }
 
         var visibleCommits = GetVisibleCommits();
+        var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
 
-        var nodes = _graphBuilder.BuildGraph(visibleCommits, _currentBranchName);
+        var nodes = _graphBuilder.BuildGraph(commitsWithStashes, _currentBranchName);
         Nodes = new ObservableCollection<GitTreeNode>(nodes);
-        Commits = new ObservableCollection<CommitInfo>(visibleCommits);
+        Commits = new ObservableCollection<CommitInfo>(commitsWithStashes);
         MaxLane = _graphBuilder.MaxLane;
 
-        // Calculate total height including working changes and stash rows
+        // Calculate total height (stashes are included in Commits)
         int rowCount = Commits.Count;
         if (HasWorkingChanges)
         {
             rowCount += 1; // Add one row for working changes
         }
-        rowCount += Stashes.Count; // Add row for each stash
         TotalHeight = rowCount * RowHeight;
 
         if (SelectedCommit != null && !Commits.Contains(SelectedCommit))

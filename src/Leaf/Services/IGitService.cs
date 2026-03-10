@@ -36,6 +36,11 @@ public interface IGitService
     Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha);
 
     /// <summary>
+    /// Get all files in the repository at a given commit, with changed files marked with their status.
+    /// </summary>
+    Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha);
+
+    /// <summary>
     /// Get diff content for a specific file in a commit.
     /// </summary>
     Task<(string oldContent, string newContent)> GetFileDiffAsync(string repoPath, string sha, string filePath);
@@ -348,6 +353,16 @@ public interface IGitService
     /// Abort an in-progress merge and return to pre-merge state.
     /// </summary>
     Task AbortMergeAsync(string repoPath);
+
+    /// <summary>
+    /// Abort an in-progress cherry-pick.
+    /// </summary>
+    Task AbortCherryPickAsync(string repoPath);
+
+    /// <summary>
+    /// Abort an in-progress revert.
+    /// </summary>
+    Task AbortRevertAsync(string repoPath);
 
     /// <summary>
     /// Check if the repository is in an "orphaned conflict" state.

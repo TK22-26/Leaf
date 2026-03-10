@@ -38,7 +38,7 @@ internal class ConflictOperations : IConflictOperations
     {
         return Task.Run(() =>
         {
-            Debug.WriteLine($"[GitService] GetConflictsAsync repo={repoPath}");
+            Debug.WriteLine($"[MERGE][STATE] GetConflictsAsync repo={Path.GetFileName(repoPath)}");
             var conflicts = new List<ConflictInfo>();
             var conflictPaths = new List<string>();
 
@@ -48,7 +48,7 @@ internal class ConflictOperations : IConflictOperations
             {
                 conflictPaths.AddRange(result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries));
             }
-            Debug.WriteLine($"[GitService] diff --name-only --diff-filter=U => {conflictPaths.Count}");
+            Debug.WriteLine($"[MERGE][STATE] diff --name-only --diff-filter=U => {conflictPaths.Count}");
 
             if (conflictPaths.Count == 0)
             {
@@ -58,7 +58,7 @@ internal class ConflictOperations : IConflictOperations
                     conflictPaths.AddRange(_context.OutputParser.ParseConflictFilesFromPorcelain(statusResult.Output));
                 }
             }
-            Debug.WriteLine($"[GitService] status --porcelain U => {conflictPaths.Count}");
+            Debug.WriteLine($"[MERGE][STATE] status --porcelain U => {conflictPaths.Count}");
 
             using var repo = new Repository(repoPath);
 
@@ -69,7 +69,7 @@ internal class ConflictOperations : IConflictOperations
                     .Where(p => !string.IsNullOrWhiteSpace(p))
                     .Select(p => p!));
             }
-            Debug.WriteLine($"[GitService] index conflicts => {conflictPaths.Count}");
+            Debug.WriteLine($"[MERGE][STATE] index conflicts => {conflictPaths.Count}");
 
             foreach (var filePath in conflictPaths.Distinct(StringComparer.OrdinalIgnoreCase))
             {
@@ -202,7 +202,7 @@ internal class ConflictOperations : IConflictOperations
 
             if (baseResult.ExitCode != 0 || oursResult.ExitCode != 0 || theirsResult.ExitCode != 0)
             {
-                Debug.WriteLine($"[GitService] Failed to create conflict blobs: {baseResult.Error} {oursResult.Error} {theirsResult.Error}");
+                Debug.WriteLine($"[MERGE][ERROR] ReopenConflict: failed to create blobs: {baseResult.Error} {oursResult.Error} {theirsResult.Error}");
                 return;
             }
 
@@ -217,7 +217,7 @@ internal class ConflictOperations : IConflictOperations
             var indexResult = GitCliHelpers.RunGitWithInput(repoPath, "update-index --index-info", indexInfo);
             if (indexResult.ExitCode != 0)
             {
-                Debug.WriteLine($"[GitService] Failed to restore conflict index: {indexResult.Error}");
+                Debug.WriteLine($"[MERGE][ERROR] ReopenConflict: failed to restore index: {indexResult.Error}");
                 return;
             }
 
@@ -407,7 +407,7 @@ internal class ConflictOperations : IConflictOperations
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[GitService] Failed to read stored merge conflicts: {ex.Message}");
+            Debug.WriteLine($"[MERGE][ERROR] Failed to read stored merge conflicts: {ex.Message}");
             return [];
         }
     }
@@ -426,7 +426,7 @@ internal class ConflictOperations : IConflictOperations
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[GitService] Failed to store merge conflicts: {ex.Message}");
+            Debug.WriteLine($"[MERGE][ERROR] Failed to store merge conflicts: {ex.Message}");
         }
     }
 
@@ -474,7 +474,7 @@ internal class ConflictOperations : IConflictOperations
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[GitService] Failed to read MERGE_MSG: {ex.Message}");
+            Debug.WriteLine($"[MERGE][ERROR] Failed to read MERGE_MSG: {ex.Message}");
             return [];
         }
     }

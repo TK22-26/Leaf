@@ -831,5 +831,11 @@
             Panel.ZIndex="50"
             DataContext="{Binding CommandPaletteViewModel}"
             Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+        <!--  Toast Notifications  -->
+        <controls:NotificationHost
+            x:Name="NotificationHostControl"
+            Grid.RowSpan="3"
+            Panel.ZIndex="20" />
     </Grid>
 </Window>

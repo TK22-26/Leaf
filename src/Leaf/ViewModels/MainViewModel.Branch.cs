@@ -28,6 +28,7 @@ public partial class MainViewModel
         BranchInputActionText = "Create";
         BranchInputPlaceholder = "Branch name...";
         IsBranchInputVisible = true;
+        RequestBranchCreatePopup?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
@@ -43,6 +44,7 @@ public partial class MainViewModel
         BranchInputActionText = "Create";
         BranchInputPlaceholder = "Branch name...";
         IsBranchInputVisible = true;
+        RequestBranchCreatePopup?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
@@ -58,6 +60,7 @@ public partial class MainViewModel
         BranchInputActionText = "Create";
         BranchInputPlaceholder = "Branch name...";
         IsBranchInputVisible = true;
+        RequestBranchCreatePopup?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
@@ -73,6 +76,7 @@ public partial class MainViewModel
         BranchInputActionText = "Rename";
         BranchInputPlaceholder = "New branch name...";
         IsBranchInputVisible = true;
+        RequestBranchCreatePopup?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
@@ -82,6 +86,23 @@ public partial class MainViewModel
             return;
 
         var branchName = NewBranchName.Trim();
+
+        // Check for duplicate branch name before closing the popup
+        if (!_isRenameBranchInput)
+        {
+            var exists = SelectedRepository.LocalBranches
+                .Any(b => string.Equals(b.Name, branchName, StringComparison.OrdinalIgnoreCase));
+            if (exists)
+            {
+                IsBranchInputVisible = false;
+                NewBranchName = string.Empty;
+                await _dialogService.ShowErrorAsync(
+                    $"A branch named '{branchName}' already exists.",
+                    "Branch Already Exists");
+                return;
+            }
+        }
+
         IsBranchInputVisible = false;
         NewBranchName = string.Empty;
 
@@ -302,6 +323,9 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             StatusMessage = $"Push failed: {ex.Message}";
+            await _dialogService.ShowErrorAsync(
+                $"Failed to push {branch.Name}:\n\n{ex.Message}",
+                "Push Failed");
         }
         finally
         {
@@ -376,6 +400,8 @@ public partial class MainViewModel
 
             string branchName;
             BranchInfo? localBranch = null;
+            bool needsPull = false;
+            string? pullRemoteName = null;
 
             if (branch.IsRemote)
             {
@@ -398,32 +424,9 @@ public partial class MainViewModel
                     !string.IsNullOrWhiteSpace(remoteTipSha) &&
                     !string.Equals(localBranch.TipSha, remoteTipSha, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Local exists but is at different commit - checkout remote's commit (detached HEAD)
-                    StatusMessage = $"Checking out {branch.Name}...";
-                    await _gitService.CheckoutCommitAsync(SelectedRepository.Path, remoteTipSha);
-
-                    var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
-                    SelectedRepository.CurrentBranch = info.CurrentBranch;
-                    SelectedRepository.IsDetachedHead = info.IsDetachedHead;
-                    SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
-                    SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
-                    SelectedRepository.MergingBranch = info.MergingBranch;
-                    SelectedRepository.ConflictCount = info.ConflictCount;
-
-                    // Reload branches to update current indicator
-                    SelectedRepository.BranchesLoaded = false;
-                    await LoadBranchesForRepoAsync(SelectedRepository);
-
-                    // Refresh git graph and select the checked out commit
-                    if (GitGraphViewModel != null)
-                    {
-                        await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
-                        GitGraphViewModel.SelectCommitBySha(remoteTipSha);
-                    }
-
-                    StatusMessage = $"Checked out {branch.Name} (detached HEAD)";
-                    IsBusy = false;
-                    return;
+                    // Local branch is behind (or diverged from) remote — pull after checkout
+                    needsPull = true;
+                    pullRemoteName = remoteName;
                 }
 
                 // Local exists at same commit, OR no local exists
@@ -437,23 +440,46 @@ public partial class MainViewModel
 
             await _gitService.CheckoutAsync(SelectedRepository.Path, branchName, allowConflicts: true);
 
-            // Refresh the repo info
-            var repoInfo = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            // Fast-forward local branch to match remote if behind
+            if (needsPull)
+            {
+                try
+                {
+                    StatusMessage = $"Pulling {branchName}...";
+                    await _gitService.PullBranchFastForwardAsync(
+                        SelectedRepository.Path,
+                        branchName,
+                        pullRemoteName!,
+                        branchName,
+                        isCurrentBranch: true);
+                }
+                catch
+                {
+                    // Fast-forward not possible (branches diverged) — checkout succeeded,
+                    // user will see the diverged state in the graph
+                }
+            }
+
+            // Refresh repo info, branches, and graph in parallel (all independent git calls)
+            SelectedRepository.BranchesLoaded = false;
+            var repoInfoTask = _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            var branchesTask = LoadBranchesForRepoAsync(SelectedRepository, skipFilterApplication: true);
+            var graphTask = GitGraphViewModel?.RefreshAfterCheckoutAsync(branchName, detachedHeadSha: null) ?? Task.CompletedTask;
+
+            await Task.WhenAll(repoInfoTask, branchesTask, graphTask);
+
+            var repoInfo = await repoInfoTask;
             SelectedRepository.CurrentBranch = repoInfo.CurrentBranch;
             SelectedRepository.IsDetachedHead = repoInfo.IsDetachedHead;
             SelectedRepository.DetachedHeadSha = repoInfo.DetachedHeadSha;
             SelectedRepository.IsMergeInProgress = repoInfo.IsMergeInProgress;
+            SelectedRepository.OperationType = repoInfo.OperationType;
             SelectedRepository.MergingBranch = repoInfo.MergingBranch;
             SelectedRepository.ConflictCount = repoInfo.ConflictCount;
 
-            // Reload branches to update current indicator
-            SelectedRepository.BranchesLoaded = false;
-            await LoadBranchesForRepoAsync(SelectedRepository);
-
-            // Refresh git graph and select the branch's tip commit (or requested commit)
+            // Select the branch's tip commit (or requested commit)
             if (GitGraphViewModel != null)
             {
-                await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
                 var selectSha = !string.IsNullOrWhiteSpace(branch.TipSha)
                     ? branch.TipSha
                     : localBranch?.TipSha ?? string.Empty;
@@ -503,24 +529,22 @@ public partial class MainViewModel
 
             await _gitService.CheckoutCommitAsync(SelectedRepository.Path, tag.TargetSha);
 
-            // Refresh the repo info
-            var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            // Refresh repo info, branches, and graph in parallel (all independent git calls)
+            SelectedRepository.BranchesLoaded = false;
+            var infoTask = _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            var branchesTask = LoadBranchesForRepoAsync(SelectedRepository, skipFilterApplication: true);
+            var graphTask = GitGraphViewModel?.RefreshAfterCheckoutAsync(newBranchName: null, detachedHeadSha: tag.TargetSha) ?? Task.CompletedTask;
+
+            await Task.WhenAll(infoTask, branchesTask, graphTask);
+
+            var info = await infoTask;
             SelectedRepository.CurrentBranch = info.CurrentBranch;
             SelectedRepository.IsDetachedHead = info.IsDetachedHead;
             SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
             SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
+            SelectedRepository.OperationType = info.OperationType;
             SelectedRepository.MergingBranch = info.MergingBranch;
             SelectedRepository.ConflictCount = info.ConflictCount;
-
-            // Reload branches to update current indicator
-            SelectedRepository.BranchesLoaded = false;
-            await LoadBranchesForRepoAsync(SelectedRepository);
-
-            // Refresh git graph
-            if (GitGraphViewModel != null)
-            {
-                await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
-            }
 
             StatusMessage = $"Checked out tag {tag.Name} (detached HEAD)";
         }

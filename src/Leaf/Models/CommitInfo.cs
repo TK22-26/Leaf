@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Leaf.Models;
@@ -109,6 +110,16 @@ public partial class CommitInfo : ObservableObject
     }
 
     /// <summary>
+    /// True if this entry represents a stash (pseudo-commit).
+    /// </summary>
+    public bool IsStash { get; set; }
+
+    /// <summary>
+    /// The stash index (0 = most recent) when IsStash is true, otherwise -1.
+    /// </summary>
+    public int StashIndex { get; set; } = -1;
+
+    /// <summary>
     /// True if this commit is currently selected.
     /// </summary>
     [ObservableProperty]
@@ -133,4 +144,29 @@ public partial class CommitInfo : ObservableObject
     /// True if this commit should have highlighted background (selected OR search match).
     /// </summary>
     public bool IsHighlighted => IsSelected || IsSearchHighlighted;
+
+    public record CoAuthorInfo(string Name, string Email)
+    {
+        public string AvatarKey => !string.IsNullOrWhiteSpace(Email) ? Email.Trim() : Name.Trim();
+    }
+
+    private static readonly Regex CoAuthorRegex = new(
+        @"Co-Authored-By:\s*(.+?)\s*<(.+?)>",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    public List<CoAuthorInfo> CoAuthors
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(Message))
+                return [];
+
+            var results = new List<CoAuthorInfo>();
+            foreach (Match match in CoAuthorRegex.Matches(Message))
+            {
+                results.Add(new CoAuthorInfo(match.Groups[1].Value.Trim(), match.Groups[2].Value.Trim()));
+            }
+            return results;
+        }
+    }
 }

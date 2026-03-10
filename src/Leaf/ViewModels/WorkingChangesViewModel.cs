@@ -24,6 +24,18 @@ public class FileSelectedEventArgs : EventArgs
 }
 
 /// <summary>
+/// Event arguments for file deleted or discarded events.
+/// </summary>
+public class FileDeletedOrDiscardedEventArgs : EventArgs
+{
+    public string? FilePath { get; }
+    public bool AffectsAllFiles { get; }
+
+    public FileDeletedOrDiscardedEventArgs(string filePath) => FilePath = filePath;
+    public FileDeletedOrDiscardedEventArgs(bool affectsAllFiles) => AffectsAllFiles = affectsAllFiles;
+}
+
+/// <summary>
 /// ViewModel for the working changes staging area view.
 /// Handles staging, unstaging, discarding, and committing files.
 /// </summary>
@@ -89,6 +101,11 @@ public partial class WorkingChangesViewModel : ObservableObject
     /// Event raised when a file is selected for diff viewing.
     /// </summary>
     public event EventHandler<FileSelectedEventArgs>? FileSelected;
+
+    /// <summary>
+    /// Event raised when a file is deleted or discarded.
+    /// </summary>
+    public event EventHandler<FileDeletedOrDiscardedEventArgs>? FileDeletedOrDiscarded;
 
     /// <summary>
     /// Maximum characters for commit message.
@@ -174,6 +191,21 @@ public partial class WorkingChangesViewModel : ObservableObject
     {
         _repositoryPath = repoPath;
         await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Clear all working changes state (used when no repository is selected).
+    /// </summary>
+    public void ClearWorkingChanges()
+    {
+        _repositoryPath = null;
+        WorkingChanges = null;
+        CommitMessage = string.Empty;
+        CommitDescription = string.Empty;
+        ErrorMessage = null;
+        IsLoading = false;
+        OnPropertyChanged(nameof(HasChanges));
+        OnPropertyChanged(nameof(FileChangesSummary));
     }
 
     /// <summary>
@@ -444,6 +476,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         {
             await _gitService.DiscardFileChangesAsync(_repositoryPath, file.Path);
             await RefreshAndNotifyAsync();
+            FileDeletedOrDiscarded?.Invoke(this, new FileDeletedOrDiscardedEventArgs(file.Path));
         }
         catch (Exception ex)
         {
@@ -704,6 +737,7 @@ public partial class WorkingChangesViewModel : ObservableObject
             }
 
             await RefreshAndNotifyAsync();
+            FileDeletedOrDiscarded?.Invoke(this, new FileDeletedOrDiscardedEventArgs(file.Path));
         }
         catch (Exception ex)
         {
@@ -767,6 +801,7 @@ exit /b %errorlevel%
                 if (process.ExitCode == 0)
                 {
                     await RefreshAndNotifyAsync();
+                    FileDeletedOrDiscarded?.Invoke(this, new FileDeletedOrDiscardedEventArgs(file.Path));
                 }
                 else
                 {
@@ -805,6 +840,7 @@ exit /b %errorlevel%
         {
             await _gitService.DiscardAllChangesAsync(_repositoryPath);
             await RefreshAndNotifyAsync();
+            FileDeletedOrDiscarded?.Invoke(this, new FileDeletedOrDiscardedEventArgs(affectsAllFiles: true));
         }
         catch (Exception ex)
         {
@@ -1002,6 +1038,7 @@ exit /b %errorlevel%
             foreach (var file in files)
                 await _gitService.DiscardFileChangesAsync(_repositoryPath, file.Path);
             await RefreshAndNotifyAsync();
+            FileDeletedOrDiscarded?.Invoke(this, new FileDeletedOrDiscardedEventArgs(affectsAllFiles: true));
         }
         catch (Exception ex)
         {

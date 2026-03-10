@@ -7,6 +7,7 @@ x86/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+*.wpftmp.csproj
 
 # Visual Studio
 .vs/
@@ -82,3 +83,5 @@ CHANGELOG.md
 docs/
 
 scripts/Get-LargeFiles.ps1
+
+src/Leaf/Leaf_za3qkqqy_wpftmp.csproj

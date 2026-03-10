@@ -38,6 +38,11 @@ public partial class MergeRegion : ObservableObject
     public int Index { get; set; }
 
     /// <summary>
+    /// 1-based conflict number for user-facing display (only meaningful for conflict regions).
+    /// </summary>
+    public int ConflictNumber { get; set; }
+
+    /// <summary>
     /// Type of this region (Unchanged, OursOnly, TheirsOnly, Conflict).
     /// </summary>
     public MergeRegionType Type { get; set; }
@@ -73,16 +78,6 @@ public partial class MergeRegion : ObservableObject
     public List<string> TheirsLines { get; set; } = [];
 
     /// <summary>
-    /// Display lines for "ours" side (populated by ViewModel).
-    /// </summary>
-    public ObservableCollection<ConflictDisplayLine> OursDisplayLines { get; } = [];
-
-    /// <summary>
-    /// Display lines for "theirs" side (populated by ViewModel).
-    /// </summary>
-    public ObservableCollection<ConflictDisplayLine> TheirsDisplayLines { get; } = [];
-
-    /// <summary>
     /// Lazy-initialized selectable lines from "ours" (only for conflicts).
     /// </summary>
     public ObservableCollection<SelectableLine>? OursSelectableLines { get; set; }
@@ -111,6 +106,37 @@ public partial class MergeRegion : ObservableObject
     private ConflictResolution _resolution = ConflictResolution.Unresolved;
 
     /// <summary>
+    /// Whether this resolved region is collapsed in the UI.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isCollapsed;
+
+    /// <summary>
+    /// Display label for the current resolution state.
+    /// </summary>
+    public string ResolutionLabel => Resolution switch
+    {
+        ConflictResolution.Unresolved => "Unresolved",
+        ConflictResolution.UseOurs => "Ours",
+        ConflictResolution.UseTheirs => "Theirs",
+        ConflictResolution.UseBoth => "Both",
+        ConflictResolution.UseCustom => "Custom",
+        ConflictResolution.UseManual => "Manual",
+        _ => "Unknown"
+    };
+
+    partial void OnResolutionChanged(ConflictResolution value)
+    {
+        OnPropertyChanged(nameof(IsResolved));
+        OnPropertyChanged(nameof(ResolutionLabel));
+        // Auto-collapse when resolved
+        if (value != ConflictResolution.Unresolved)
+            IsCollapsed = true;
+        else
+            IsCollapsed = false;
+    }
+
+    /// <summary>
     /// Whether this region is a conflict requiring resolution.
     /// </summary>
     public bool IsConflict => Type == MergeRegionType.Conflict;
@@ -133,6 +159,7 @@ public partial class MergeRegion : ObservableObject
                 {
                     ConflictResolution.UseOurs => OursLines.Count,
                     ConflictResolution.UseTheirs => TheirsLines.Count,
+                    ConflictResolution.UseBoth => OursLines.Count + TheirsLines.Count,
                     ConflictResolution.UseCustom => GetSelectedLineCount(),
                     ConflictResolution.UseManual => ManualEditContent.Split('\n').Length,
                     _ => Math.Max(OursLines.Count, TheirsLines.Count)
@@ -186,6 +213,25 @@ public partial class MergeRegion : ObservableObject
                 line.IsSelected = false;
         }
         Resolution = ConflictResolution.UseOurs;
+    }
+
+    /// <summary>
+    /// Select all lines from both versions (ours first, then theirs).
+    /// </summary>
+    public void SelectAllBoth()
+    {
+        InitializeSelectableLines();
+        if (OursSelectableLines != null)
+        {
+            foreach (var line in OursSelectableLines)
+                line.IsSelected = true;
+        }
+        if (TheirsSelectableLines != null)
+        {
+            foreach (var line in TheirsSelectableLines)
+                line.IsSelected = true;
+        }
+        Resolution = ConflictResolution.UseBoth;
     }
 
     /// <summary>
@@ -253,9 +299,10 @@ public partial class MergeRegion : ObservableObject
         {
             ConflictResolution.UseOurs => string.Join("\n", OursLines),
             ConflictResolution.UseTheirs => string.Join("\n", TheirsLines),
+            ConflictResolution.UseBoth => string.Join("\n", OursLines) + (OursLines.Count > 0 && TheirsLines.Count > 0 ? "\n" : "") + string.Join("\n", TheirsLines),
             ConflictResolution.UseCustom => GetCustomSelectedContent(),
             ConflictResolution.UseManual => ManualEditContent,
-            ConflictResolution.Unresolved => string.Empty, // Or could show conflict markers
+            ConflictResolution.Unresolved => string.Empty,
             _ => string.Empty
         };
     }
@@ -314,7 +361,9 @@ public partial class MergeRegion : ObservableObject
         bool noOursSelected = OursSelectableLines?.All(l => !l.IsSelected) ?? true;
         bool noTheirsSelected = TheirsSelectableLines?.All(l => !l.IsSelected) ?? true;
 
-        if (allOursSelected && noTheirsSelected)
+        if (allOursSelected && allTheirsSelected)
+            Resolution = ConflictResolution.UseBoth;
+        else if (allOursSelected && noTheirsSelected)
             Resolution = ConflictResolution.UseOurs;
         else if (allTheirsSelected && noOursSelected)
             Resolution = ConflictResolution.UseTheirs;

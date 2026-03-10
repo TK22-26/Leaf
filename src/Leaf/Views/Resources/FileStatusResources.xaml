@@ -13,6 +13,7 @@
     <SolidColorBrush x:Key="StatusModifiedBrush" Color="#F5A623" />
     <SolidColorBrush x:Key="StatusDeletedBrush" Color="#E81123" />
     <SolidColorBrush x:Key="StatusUntrackedBrush" Color="#6B7280" />
+    <SolidColorBrush x:Key="StatusRenamedBrush" Color="#0078D4" />
 
     <!--  Status icon style with DataTriggers  -->
     <Style x:Key="FileStatusIconStyle" TargetType="TextBlock">
@@ -37,6 +38,11 @@
             <DataTrigger Binding="{Binding Status}" Value="Untracked">
                 <Setter Property="Foreground" Value="{StaticResource StatusAddedBrush}" />
                 <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Status}" Value="Renamed">
+                <Setter Property="Foreground" Value="{StaticResource StatusRenamedBrush}" />
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                <Setter Property="FontSize" Value="13" />
             </DataTrigger>
         </Style.Triggers>
     </Style>

@@ -58,6 +58,7 @@ public class FakeGitService : IGitService
     public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha) => Task.FromResult(new List<CommitInfo>());
     public Task<CommitInfo?> GetCommitAsync(string repoPath, string sha) => Task.FromResult<CommitInfo?>(null);
     public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha) => Task.FromResult(new List<FileChangeInfo>());
+    public Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha) => Task.FromResult(new List<FileChangeInfo>());
     public Task<(string oldContent, string newContent)> GetFileDiffAsync(string repoPath, string sha, string filePath) => Task.FromResult(("", ""));
     public Task<(string oldContent, string newContent)> GetUnstagedFileDiffAsync(string repoPath, string filePath) => Task.FromResult(("", ""));
     public Task<(string oldContent, string newContent)> GetStagedFileDiffAsync(string repoPath, string filePath) => Task.FromResult(("", ""));
@@ -119,6 +120,8 @@ public class FakeGitService : IGitService
     public Task ClearStoredMergeConflictFilesAsync(string repoPath) => Task.CompletedTask;
     public Task CompleteMergeAsync(string repoPath, string commitMessage) => Task.CompletedTask;
     public Task AbortMergeAsync(string repoPath) => Task.CompletedTask;
+    public Task AbortCherryPickAsync(string repoPath) => Task.CompletedTask;
+    public Task AbortRevertAsync(string repoPath) => Task.CompletedTask;
     public Task<bool> IsOrphanedConflictStateAsync(string repoPath) => Task.FromResult(false);
     public Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges) => Task.CompletedTask;
     public Task<MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false) => Task.FromResult(new MergeResult());

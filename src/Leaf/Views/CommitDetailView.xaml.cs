@@ -70,6 +70,8 @@ public partial class CommitDetailView : UserControl
         if (DataContext is not CommitDetailViewModel commitVm || commitVm.Commit == null)
             return;
 
+        e.Handled = true;
+
         // Get MainViewModel from Window
         if (Window.GetWindow(this)?.DataContext is MainViewModel mainVm)
         {
@@ -79,6 +81,22 @@ public partial class CommitDetailView : UserControl
 
     private void FileChangesTreeToggle_Changed(object sender, RoutedEventArgs e)
     {
+        ApplyTreeVisibility();
+    }
+
+    private void ShowAllFilesCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        bool showAll = ShowAllFilesCheckBox?.IsChecked == true;
+        if (showAll)
+        {
+            // Force tree view when showing all files
+            FileChangesTreeToggle.IsChecked = true;
+            FileChangesTreeToggle.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            FileChangesTreeToggle.Visibility = Visibility.Visible;
+        }
         ApplyTreeVisibility();
     }
 

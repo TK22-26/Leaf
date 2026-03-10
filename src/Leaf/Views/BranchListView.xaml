@@ -22,6 +22,7 @@
         <converters:GitFlowTypeToVisibilityConverter x:Key="GitFlowTypeToVisibilityConverter" />
         <converters:StringIsNullOrEmptyConverter x:Key="StringIsNullOrEmptyConverter" />
         <converters:BoolToDetachedTextConverter x:Key="BoolToDetachedTextConverter" />
+        <converters:IntGreaterThanZeroToVisibilityConverter x:Key="IntGreaterThanZeroToVisibilityConverter" />
 
         <!--  Multi-select TreeViewItem style for BranchInfo items  -->
         <!--  NOTE: Does NOT use TreeViewItem.IsSelected triggers to avoid single-selection enforcement  -->
@@ -602,6 +603,26 @@
                                 Margin="6,0,0,0"
                                 VerticalAlignment="Center"
                                 Orientation="Horizontal">
+                                <!--  Ahead indicator (N↑ = commits to push)  -->
+                                <TextBlock
+                                    Margin="0,0,2,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="10"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding AheadBy, StringFormat='{}{0}↑'}"
+                                    ToolTip="{Binding AheadBy, StringFormat='{}{0} commit(s) ahead of remote'}"
+                                    Visibility="{Binding AheadBy, Converter={StaticResource IntGreaterThanZeroToVisibilityConverter}}" />
+
+                                <!--  Behind indicator (N↓ = commits to pull)  -->
+                                <TextBlock
+                                    Margin="0,0,4,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="10"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding BehindBy, StringFormat='{}{0}↓'}"
+                                    ToolTip="{Binding BehindBy, StringFormat='{}{0} commit(s) behind remote'}"
+                                    Visibility="{Binding BehindBy, Converter={StaticResource IntGreaterThanZeroToVisibilityConverter}}" />
+
                                 <Border
                                     Margin="0,0,4,0"
                                     Padding="4,1"

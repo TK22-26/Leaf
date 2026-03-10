@@ -24,6 +24,11 @@ public partial class StashInfo : ObservableObject
     public string ShortSha => Sha.Length >= 7 ? Sha[..7] : Sha;
 
     /// <summary>
+    /// The SHA of the commit this stash was created on (first parent of the stash commit).
+    /// </summary>
+    public string ParentSha { get; set; } = string.Empty;
+
+    /// <summary>
     /// The stash index (0 = most recent).
     /// </summary>
     public int Index { get; set; }

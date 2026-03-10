@@ -207,7 +207,8 @@ internal class CommitHistoryOperations
             var tree = commit.Tree;
             var parentTree = parent?.Tree;
 
-            var diff = repo.Diff.Compare<TreeChanges>(parentTree, tree);
+            var diff = repo.Diff.Compare<TreeChanges>(parentTree, tree,
+                new LibGit2Sharp.CompareOptions { Similarity = SimilarityOptions.Renames });
 
             foreach (var change in diff)
             {
@@ -470,6 +471,76 @@ internal class CommitHistoryOperations
         }
 
         return commits;
+    }
+
+    /// <summary>
+    /// Get all files in the repository at a given commit, with changed files marked with their status.
+    /// </summary>
+    public Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha)
+    {
+        return Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+            var commit = repo.Lookup<Commit>(sha);
+            if (commit == null) return [];
+
+            // Get changed files with their statuses
+            var parent = commit.Parents.FirstOrDefault();
+            var diff = repo.Diff.Compare<TreeChanges>(parent?.Tree, commit.Tree,
+                new LibGit2Sharp.CompareOptions { Similarity = SimilarityOptions.Renames });
+
+            var changedByPath = new Dictionary<string, FileChangeInfo>(StringComparer.OrdinalIgnoreCase);
+            foreach (var change in diff)
+            {
+                changedByPath[change.Path] = new FileChangeInfo
+                {
+                    Path = change.Path,
+                    OldPath = change.OldPath != change.Path ? change.OldPath : null,
+                    Status = MapChangeStatus(change.Status),
+                    LinesAdded = 0,
+                    LinesDeleted = 0,
+                    IsBinary = false
+                };
+            }
+
+            // Walk the full tree to get all files
+            var allFiles = new List<FileChangeInfo>();
+            foreach (var entry in commit.Tree.SelectMany(e => EnumerateTreeEntries(e, commit.Tree)))
+            {
+                if (changedByPath.TryGetValue(entry, out var changedFile))
+                {
+                    allFiles.Add(changedFile);
+                }
+                else
+                {
+                    allFiles.Add(new FileChangeInfo
+                    {
+                        Path = entry,
+                        Status = FileChangeStatus.Unchanged
+                    });
+                }
+            }
+
+            return allFiles;
+        });
+    }
+
+    private static IEnumerable<string> EnumerateTreeEntries(TreeEntry entry, Tree root)
+    {
+        if (entry.TargetType == TreeEntryTargetType.Blob)
+        {
+            yield return entry.Path;
+        }
+        else if (entry.TargetType == TreeEntryTargetType.Tree && entry.Target is Tree subtree)
+        {
+            foreach (var child in subtree)
+            {
+                foreach (var path in EnumerateTreeEntries(child, root))
+                {
+                    yield return path;
+                }
+            }
+        }
     }
 
     private static FileChangeStatus MapChangeStatus(ChangeKind kind) => kind switch

@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -28,19 +27,15 @@ public partial class BranchListView : UserControl
     private void BranchListView_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (e.OldValue is MainViewModel oldVm)
-            oldVm.PropertyChanged -= ViewModel_PropertyChanged;
+            oldVm.RequestBranchCreatePopup -= OnRequestBranchCreatePopup;
         if (e.NewValue is MainViewModel newVm)
-            newVm.PropertyChanged += ViewModel_PropertyChanged;
+            newVm.RequestBranchCreatePopup += OnRequestBranchCreatePopup;
     }
 
-    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnRequestBranchCreatePopup(object? sender, EventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.IsBranchInputVisible) &&
-            sender is MainViewModel viewModel &&
-            viewModel.IsBranchInputVisible)
-        {
+        if (sender is MainViewModel viewModel)
             OpenBranchCreatePopup(viewModel);
-        }
     }
 
     private void Branch_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -829,12 +824,15 @@ public partial class BranchListView : UserControl
         {
             viewModel.NewBranchName = name;
             await viewModel.ConfirmCreateBranchAsync();
-            BranchCreatePopup.IsOpen = false;
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Failed: {ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            BranchCreatePopup.IsOpen = false;
             ResetBranchCreateUI();
         }
     }

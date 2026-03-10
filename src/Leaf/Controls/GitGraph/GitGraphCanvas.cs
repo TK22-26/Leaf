@@ -24,6 +24,11 @@ public partial class GitGraphCanvas : FrameworkElement
 
     private Dictionary<string, BranchLabel> _branchLabelLookup = new(StringComparer.OrdinalIgnoreCase);
 
+    // Pass-through lane segments for drawing branch lines beyond the culling range
+    private readonly record struct LaneSegment(int Column, int ChildRow, int ParentRow, Brush Color);
+    private readonly List<LaneSegment> _laneSegments = [];
+    private readonly Dictionary<string, GitTreeNode> _segmentNodeLookup = new(StringComparer.OrdinalIgnoreCase);
+
     #region Dependency Properties
 
     public static readonly DependencyProperty NodesProperty =
@@ -117,33 +122,6 @@ public partial class GitGraphCanvas : FrameworkElement
             typeof(GitGraphCanvas),
             new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
-    public static readonly DependencyProperty StashCountProperty =
-        DependencyProperty.Register(
-            nameof(StashCount),
-            typeof(int),
-            typeof(GitGraphCanvas),
-            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender | FrameworkPropertyMetadataOptions.AffectsMeasure));
-
-    public static readonly DependencyProperty HoveredStashIndexProperty =
-        DependencyProperty.Register(
-            nameof(HoveredStashIndex),
-            typeof(int),
-            typeof(GitGraphCanvas),
-            new FrameworkPropertyMetadata(-1, FrameworkPropertyMetadataOptions.AffectsRender));
-
-    public static readonly DependencyProperty SelectedStashIndexProperty =
-        DependencyProperty.Register(
-            nameof(SelectedStashIndex),
-            typeof(int),
-            typeof(GitGraphCanvas),
-            new FrameworkPropertyMetadata(-1, FrameworkPropertyMetadataOptions.AffectsRender));
-
-    public static readonly DependencyProperty StashesProperty =
-        DependencyProperty.Register(
-            nameof(Stashes),
-            typeof(IReadOnlyList<StashInfo>),
-            typeof(GitGraphCanvas),
-            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
     private static void OnNodesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -152,6 +130,9 @@ public partial class GitGraphCanvas : FrameworkElement
             canvas._cacheService.ClearNodeCache();
 
             canvas._branchLabelLookup.Clear();
+            canvas._laneSegments.Clear();
+            canvas._segmentNodeLookup.Clear();
+
             var newNodes = e.NewValue as IReadOnlyList<GitTreeNode>;
             if (newNodes != null)
             {
@@ -160,6 +141,34 @@ public partial class GitGraphCanvas : FrameworkElement
                     foreach (var label in node.BranchLabels)
                         canvas._branchLabelLookup.TryAdd(label.Name, label);
                 }
+
+                // Build lane segments for pass-through rendering
+                canvas._segmentNodeLookup.EnsureCapacity(newNodes.Count);
+                foreach (var node in newNodes)
+                    canvas._segmentNodeLookup[node.Sha] = node;
+
+                foreach (var node in newNodes)
+                {
+                    for (int i = 0; i < node.ParentShas.Count; i++)
+                    {
+                        if (!canvas._segmentNodeLookup.TryGetValue(node.ParentShas[i], out var parent))
+                            continue;
+                        if (parent.ColumnIndex != node.ColumnIndex)
+                            continue;
+
+                        // Match DrawConnections color: child color for first parent, parent color for merges
+                        var color = i > 0
+                            ? (parent.NodeColor ?? Brushes.Gray)
+                            : (node.NodeColor ?? Brushes.Gray);
+
+                        int childRow = Math.Min(node.RowIndex, parent.RowIndex);
+                        int parentRow = Math.Max(node.RowIndex, parent.RowIndex);
+                        canvas._laneSegments.Add(new LaneSegment(node.ColumnIndex, childRow, parentRow, color));
+                    }
+                }
+
+                // Sort by ChildRow ascending for binary search during render
+                canvas._laneSegments.Sort((a, b) => a.ChildRow.CompareTo(b.ChildRow));
             }
         }
     }
@@ -246,29 +255,6 @@ public partial class GitGraphCanvas : FrameworkElement
         set => SetValue(CurrentBranchNameProperty, value);
     }
 
-    public int StashCount
-    {
-        get => (int)GetValue(StashCountProperty);
-        set => SetValue(StashCountProperty, value);
-    }
-
-    public int HoveredStashIndex
-    {
-        get => (int)GetValue(HoveredStashIndexProperty);
-        set => SetValue(HoveredStashIndexProperty, value);
-    }
-
-    public int SelectedStashIndex
-    {
-        get => (int)GetValue(SelectedStashIndexProperty);
-        set => SetValue(SelectedStashIndexProperty, value);
-    }
-
-    public IReadOnlyList<StashInfo>? Stashes
-    {
-        get => (IReadOnlyList<StashInfo>?)GetValue(StashesProperty);
-        set => SetValue(StashesProperty, value);
-    }
 
     #endregion
 
@@ -337,28 +323,25 @@ public partial class GitGraphCanvas : FrameworkElement
         var nodes = Nodes;
         if (nodes == null || nodes.Count == 0)
         {
-            // Even with no nodes, if we have working changes or stashes, show those rows
-            int emptyRowCount = (HasWorkingChanges ? 1 : 0) + StashCount;
+            // Even with no nodes, if we have working changes, show that row
+            int emptyRowCount = HasWorkingChanges ? 1 : 0;
             if (emptyRowCount > 0)
             {
-                // Extra lane for stashes if present
-                int stashLaneCount = StashCount > 0 ? 1 : 0;
-                double emptyWidth = LabelAreaWidth + (2 + stashLaneCount) * LaneWidth;
+                double emptyWidth = LabelAreaWidth + 2 * LaneWidth;
                 return new Size(emptyWidth, emptyRowCount * RowHeight);
             }
             return new Size(0, 0);
         }
 
-        // Width: label area + (MaxLane + 2) lanes * LaneWidth + stash lane if present
-        // Height: node count * RowHeight (+ 1 for working changes if present, + stash count)
-        int stashLane = StashCount > 0 ? 1 : 0;
-        double width = LabelAreaWidth + (MaxLane + 2 + stashLane) * LaneWidth;
+        // Width: label area + (MaxLane + 2) lanes * LaneWidth
+        // Height: node count * RowHeight (+ 1 for working changes if present)
+        // Stash nodes are included in nodes.Count
+        double width = LabelAreaWidth + (MaxLane + 2) * LaneWidth;
         int rowCount = nodes.Count;
         if (HasWorkingChanges)
         {
             rowCount += 1;
         }
-        rowCount += StashCount;
 
         // Expansion is rendered as overlay, doesn't affect layout height
         double height = rowCount * RowHeight;

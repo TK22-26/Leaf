@@ -150,9 +150,8 @@ public partial class GitGraphView : UserControl
         if (index < 0)
             return;
 
-        // Account for working changes and stash rows offset
+        // Account for working changes offset (stashes are now in Commits)
         int rowOffset = viewModel.HasWorkingChanges ? 1 : 0;
-        rowOffset += viewModel.Stashes.Count;
 
         // Calculate the Y position of this commit
         double targetY = (index + rowOffset) * RowHeight;
@@ -253,72 +252,6 @@ public partial class GitGraphView : UserControl
         }
     }
 
-    private void StashItem_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is FrameworkElement element && element.DataContext is StashInfo stash)
-        {
-            if (DataContext is GitGraphViewModel viewModel)
-            {
-                viewModel.SelectStash(stash);
-            }
-        }
-    }
-
-    private void StashItem_MouseEnter(object sender, MouseEventArgs e)
-    {
-        if (sender is FrameworkElement element && element.DataContext is StashInfo stash)
-        {
-            if (DataContext is GitGraphViewModel viewModel)
-            {
-                viewModel.HoveredSha = stash.Sha;
-            }
-
-            // Update canvas hover state
-            if (GraphCanvas != null)
-            {
-                GraphCanvas.HoveredStashIndex = stash.Index;
-            }
-        }
-    }
-
-    private void StashItem_MouseLeave(object sender, MouseEventArgs e)
-    {
-        if (DataContext is GitGraphViewModel viewModel)
-        {
-            viewModel.HoveredSha = null;
-        }
-
-        // Update canvas hover state
-        if (GraphCanvas != null)
-        {
-            GraphCanvas.HoveredStashIndex = -1;
-        }
-    }
-
-    private void PopStashMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        // Get the MainViewModel from the Window's DataContext
-        if (Window.GetWindow(this)?.DataContext is ViewModels.MainViewModel mainViewModel)
-        {
-            if (mainViewModel.PopStashCommand.CanExecute(null))
-            {
-                mainViewModel.PopStashCommand.Execute(null);
-            }
-        }
-    }
-
-    private void DeleteStashMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        // Get the MainViewModel from the Window's DataContext
-        if (Window.GetWindow(this)?.DataContext is ViewModels.MainViewModel mainViewModel)
-        {
-            if (mainViewModel.DeleteStashCommand.CanExecute(null))
-            {
-                mainViewModel.DeleteStashCommand.Execute(null);
-            }
-        }
-    }
-
     private void GraphCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is not GitGraphViewModel viewModel)
@@ -378,19 +311,7 @@ public partial class GitGraphView : UserControl
             currentRow++;
         }
 
-        // Handle stash row clicks
-        if (viewModel.HasStashes)
-        {
-            int stashIndex = row - currentRow;
-            if (stashIndex >= 0 && stashIndex < viewModel.Stashes.Count)
-            {
-                viewModel.SelectStash(viewModel.Stashes[stashIndex]);
-                return;
-            }
-            currentRow += viewModel.Stashes.Count;
-        }
-
-        // Select the commit at this row
+        // Select the commit at this row (stashes are now inline graph nodes)
         int commitIndex = row - currentRow;
         if (commitIndex >= 0 && commitIndex < viewModel.Commits.Count)
         {
@@ -405,6 +326,56 @@ public partial class GitGraphView : UserControl
 
         if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
             return;
+
+        // If this is a stash pseudo-commit, show stash context menu instead
+        if (commit.IsStash)
+        {
+            var stashMenu = new ContextMenu();
+
+            var popItem = new MenuItem
+            {
+                Header = "Pop Stash",
+                InputGestureText = "Apply and remove",
+                Icon = new TextBlock
+                {
+                    Text = "\uE74C",
+                    FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"),
+                    FontSize = 14
+                }
+            };
+            popItem.Click += (_, _) =>
+            {
+                if (mainViewModel.PopStashCommand.CanExecute(null))
+                    mainViewModel.PopStashCommand.Execute(null);
+            };
+            stashMenu.Items.Add(popItem);
+
+            stashMenu.Items.Add(new Separator());
+
+            var deleteItem = new MenuItem
+            {
+                Header = "Delete Stash",
+                InputGestureText = "Discard",
+                Icon = new TextBlock
+                {
+                    Text = "\uE74D",
+                    FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"),
+                    FontSize = 14,
+                    Foreground = new SolidColorBrush(Color.FromRgb(232, 17, 35))
+                }
+            };
+            deleteItem.Click += (_, _) =>
+            {
+                if (mainViewModel.DeleteStashCommand.CanExecute(null))
+                    mainViewModel.DeleteStashCommand.Execute(null);
+            };
+            stashMenu.Items.Add(deleteItem);
+
+            element.ContextMenu = stashMenu;
+            stashMenu.IsOpen = true;
+            e.Handled = true;
+            return;
+        }
 
         var menu = new ContextMenu();
 
@@ -715,7 +686,7 @@ public partial class GitGraphView : UserControl
             return null;
 
         int row = (int)(pos.Y / RowHeight);
-        int rowOffset = (viewModel.HasWorkingChanges ? 1 : 0) + viewModel.Stashes.Count;
+        int rowOffset = viewModel.HasWorkingChanges ? 1 : 0;
         int nodeIndex = row - rowOffset;
 
         if (nodeIndex < 0 || nodeIndex >= GraphCanvas.Nodes.Count)

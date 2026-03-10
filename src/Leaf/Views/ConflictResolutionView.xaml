@@ -4,8 +4,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:viewmodels="clr-namespace:Leaf.ViewModels"
-        xmlns:models="clr-namespace:Leaf.Models"
         xmlns:controls="clr-namespace:Leaf.Controls"
+        xmlns:mergecontrols="clr-namespace:Leaf.Controls.Merge"
         xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
         xmlns:converters="clr-namespace:Leaf.Converters"
         d:DataContext="{d:DesignInstance Type=viewmodels:ConflictResolutionViewModel}"
@@ -17,640 +17,396 @@
         MinWidth="800"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ResizeMode="CanResize">
+        ResizeMode="CanResize"
+        AutomationProperties.AutomationId="ConflictResolutionWindow">
 
     <Window.InputBindings>
         <KeyBinding Key="Up" Modifiers="Alt" Command="{Binding PreviousRegionConflictCommand}"/>
         <KeyBinding Key="Down" Modifiers="Alt" Command="{Binding NextRegionConflictCommand}"/>
         <KeyBinding Key="D1" Modifiers="Alt" Command="{Binding AcceptAllOursCommand}"/>
         <KeyBinding Key="D2" Modifiers="Alt" Command="{Binding AcceptAllTheirsCommand}"/>
+        <KeyBinding Key="D3" Modifiers="Alt" Command="{Binding AcceptAllBothCommand}"/>
         <KeyBinding Key="Enter" Modifiers="Ctrl" Command="{Binding MarkResolvedCommand}"/>
+        <KeyBinding Key="Z" Modifiers="Ctrl" Command="{Binding UndoCommand}"/>
+        <KeyBinding Key="Y" Modifiers="Ctrl" Command="{Binding RedoCommand}"/>
     </Window.InputBindings>
 
     <Window.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
 
-        <Style x:Key="LineCheckBoxStyle" TargetType="CheckBox">
-            <Setter Property="Width" Value="14"/>
-            <Setter Property="Height" Value="14"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Margin" Value="0,0,6,0"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Visibility" Value="Hidden"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsSelectable}" Value="True">
-                    <Setter Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
+        <!-- Semantic color resources — desaturated for modern IDE feel -->
+        <SolidColorBrush x:Key="OursAccentBrush" Color="#1E3A5F"/>
+        <SolidColorBrush x:Key="OursAccentLightBrush" Color="#552B4A6E"/>
+        <SolidColorBrush x:Key="OursForegroundBrush" Color="#C0D4EC"/>
+        <SolidColorBrush x:Key="TheirsAccentBrush" Color="#1A5035"/>
+        <SolidColorBrush x:Key="TheirsAccentLightBrush" Color="#551A5035"/>
+        <SolidColorBrush x:Key="TheirsForegroundBrush" Color="#B8E8CE"/>
+        <SolidColorBrush x:Key="MergedAccentBrush" Color="#6D28D9"/>
+        <SolidColorBrush x:Key="MergedForegroundBrush" Color="#D0C4F0"/>
+        <SolidColorBrush x:Key="ResolvedAccentBrush" Color="#22C55E"/>
+        <SolidColorBrush x:Key="BothAccentBrush" Color="#0E7490"/>
+        <SolidColorBrush x:Key="WarningBrush" Color="#E5A220"/>
+        <SolidColorBrush x:Key="ManualAccentBrush" Color="#6D28D9"/>
 
-        <Style x:Key="DisplayLineBorderStyleOurs" TargetType="Border">
-            <Setter Property="Padding" Value="0,1"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Opacity" Value="1"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsContextLine}" Value="True">
-                    <Setter Property="Opacity" Value="0.5"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding IsSelectable}" Value="True">
-                    <Setter Property="Background" Value="#331E3A5F"/>
-                    <Setter Property="Opacity" Value="1"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                    <Setter Property="Background" Value="#B31E3A5F"/>
-                </DataTrigger>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#661E3A5F"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <Style x:Key="DisplayLineBorderStyleTheirs" TargetType="Border">
-            <Setter Property="Padding" Value="0,1"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Opacity" Value="1"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsContextLine}" Value="True">
-                    <Setter Property="Opacity" Value="0.5"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding IsSelectable}" Value="True">
-                    <Setter Property="Background" Value="#3314532D"/>
-                    <Setter Property="Opacity" Value="1"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                    <Setter Property="Background" Value="#B314532D"/>
-                </DataTrigger>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#6614532D"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <!-- Conflict file tab style -->
-        <Style x:Key="ConflictTabStyle" TargetType="ListBoxItem">
-            <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="Margin" Value="0,0,2,0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="Border"
-                                Background="{DynamicResource ControlFillColorDefaultBrush}"
-                                CornerRadius="4,4,0,0"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="ResolveHeaderActionButtonStyle"
-               TargetType="Button"
-               BasedOn="{StaticResource DefaultButtonStyle}">
-            <Setter Property="Height" Value="28"/>
-            <Setter Property="MinHeight" Value="28"/>
-            <Setter Property="Padding" Value="10,0"/>
+        <Style x:Key="ToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="MinHeight" Value="26"/>
+            <Setter Property="Padding" Value="8,0"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="1,0"/>
         </Style>
+
+        <Style x:Key="RegionActionButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Margin" Value="3,0,0,0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- Colored region button variants -->
+        <Style x:Key="RegionOursButtonStyle" TargetType="Button" BasedOn="{StaticResource RegionActionButtonStyle}">
+            <Setter Property="Background" Value="{StaticResource OursAccentBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource OursForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="#3388BBEE"/>
+        </Style>
+        <Style x:Key="RegionTheirsButtonStyle" TargetType="Button" BasedOn="{StaticResource RegionActionButtonStyle}">
+            <Setter Property="Background" Value="{StaticResource TheirsAccentBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TheirsForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="#3366CC88"/>
+        </Style>
+        <Style x:Key="RegionBothButtonStyle" TargetType="Button" BasedOn="{StaticResource RegionActionButtonStyle}">
+            <Setter Property="Background" Value="{StaticResource BothAccentBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#3322BBDD"/>
+        </Style>
+
     </Window.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>  <!-- Toolbar -->
+            <RowDefinition Height="*"/>     <!-- Panes -->
+            <RowDefinition Height="Auto"/>  <!-- Action bar -->
         </Grid.RowDefinitions>
 
-        <!-- Header -->
+        <!-- Row 0: Toolbar — [filename + progress | nav | resolution | utility] -->
         <Border Grid.Row="0"
                 Background="{DynamicResource ControlFillColorDefaultBrush}"
-                Padding="16,12">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- Branch info and conflict count -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <ic:SymbolIcon Symbol="Warning" FontSize="20" Foreground="#F59E0B" Margin="0,0,8,0"/>
-                    <TextBlock Text="Merge Conflicts -" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    <ic:SymbolIcon Symbol="BranchFork" FontSize="14" Margin="8,0,4,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                    <TextBlock Text="{Binding SourceBranch}" VerticalAlignment="Center"/>
-                    <TextBlock Text=" into " Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
-                    <ic:SymbolIcon Symbol="BranchFork" FontSize="14" Margin="0,0,4,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                    <TextBlock Text="{Binding TargetBranch}" VerticalAlignment="Center"/>
+                Padding="6,3"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="0,0,0,1">
+            <DockPanel>
+                <!-- Left: progress indicators -->
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="3" Padding="8,3">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <ProgressBar Value="{Binding RegionProgressPercent, Mode=OneWay}"
+                                         Width="44" Height="6"
+                                         Minimum="0" Maximum="100"
+                                         Foreground="{StaticResource ResolvedAccentBrush}"/>
+                            <TextBlock FontSize="11" FontWeight="SemiBold" Margin="6,0,0,0" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                                <Run Text="{Binding CurrentFileResolvedRegionCount, Mode=OneWay}"/><Run Text="/"/><Run Text="{Binding CurrentFileRegionCount, Mode=OneWay}"/>
+                            </TextBlock>
+                            <TextBlock Text=" regions" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
-            </Grid>
+
+                <!-- Right: all action groups -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Navigation -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,2,0">
+                        <Button Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding PreviousRegionConflictCommand}"
+                                ToolTip="Previous conflict (Alt+Up)" Padding="4,0">
+                            <ic:SymbolIcon Symbol="ChevronUp" FontSize="12"/>
+                        </Button>
+                        <Button Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding NextRegionConflictCommand}"
+                                ToolTip="Next conflict (Alt+Down)" Padding="4,0">
+                            <ic:SymbolIcon Symbol="ChevronDown" FontSize="12"/>
+                        </Button>
+                    </StackPanel>
+
+                    <Border Width="1" Margin="4,5" Background="{DynamicResource ControlStrokeColorDefaultBrush}"/>
+
+                    <!-- Resolution -->
+                    <StackPanel Orientation="Horizontal" Margin="2,0">
+                        <Button Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding AcceptAllOursCommand}"
+                                Background="{StaticResource OursAccentBrush}"
+                                Foreground="{StaticResource OursForegroundBrush}"
+                                ToolTip="Accept all from current branch (Alt+1)">
+                            <TextBlock Text="Ours" FontSize="11"/>
+                        </Button>
+                        <Button Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding AcceptAllTheirsCommand}"
+                                Background="{StaticResource TheirsAccentBrush}"
+                                Foreground="{StaticResource TheirsForegroundBrush}"
+                                ToolTip="Accept all from incoming branch (Alt+2)">
+                            <TextBlock Text="Theirs" FontSize="11"/>
+                        </Button>
+                        <Button Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding AcceptAllBothCommand}"
+                                Background="{StaticResource BothAccentBrush}"
+                                Foreground="White"
+                                ToolTip="Insert ours, then theirs (Alt+3)">
+                            <TextBlock Text="Both" FontSize="11"/>
+                        </Button>
+                    </StackPanel>
+
+                    <Border Width="1" Margin="4,5" Background="{DynamicResource ControlStrokeColorDefaultBrush}"/>
+
+                    <!-- Utility -->
+                    <StackPanel Orientation="Horizontal" Margin="2,0">
+                        <ToggleButton IsChecked="{Binding IsSyncScrollEnabled}"
+                                      Height="26" MinHeight="26" Padding="6,0"
+                                      VerticalAlignment="Center" Margin="1,0"
+                                      ToolTip="Synchronized scrolling"
+                                      AutomationProperties.AutomationId="SyncScrollToggle">
+                            <ToggleButton.Style>
+                                <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource ResolvedAccentBrush}"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ToggleButton.Style>
+                            <ic:SymbolIcon Symbol="LinkMultiple" FontSize="12"/>
+                        </ToggleButton>
+                        <Button Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding UndoCommand}"
+                                IsEnabled="{Binding CanUndo}"
+                                ToolTip="Undo (Ctrl+Z)"
+                                AutomationProperties.AutomationId="UndoButton">
+                            <ic:SymbolIcon Symbol="ArrowUndo" FontSize="12"/>
+                        </Button>
+                        <Button Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding RedoCommand}"
+                                IsEnabled="{Binding CanRedo}"
+                                ToolTip="Redo (Ctrl+Y)"
+                                AutomationProperties.AutomationId="RedoButton">
+                            <ic:SymbolIcon Symbol="ArrowRedo" FontSize="12"/>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Center spacer (DockPanel fills remaining) -->
+                <Border/>
+            </DockPanel>
         </Border>
 
-        <!-- Main content area with file list on left -->
+        <!-- Row 2: Main panes -->
         <Grid Grid.Row="1" Margin="8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220" MinWidth="150" MaxWidth="350"/>
-                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- File list (left sidebar) -->
-            <Border Grid.Column="0"
-                    Background="{DynamicResource ControlFillColorDefaultBrush}"
-                    CornerRadius="4">
+            <!-- Normal merge view (hidden when binary or large file) -->
+            <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Grid.RowSpan="2"
+                  Visibility="{Binding IsBinaryConflict, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                 <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- File list header -->
-                    <Border Grid.Row="0"
-                            Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                            Padding="12,8"
-                            CornerRadius="4,4,0,0">
-                        <StackPanel Orientation="Horizontal">
-                            <ic:SymbolIcon Symbol="DocumentMultiple" FontSize="14" Margin="0,0,8,0"/>
-                            <TextBlock Text="Conflicting Files" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding TotalCount, StringFormat=' ({0})'}"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- File list -->
-                    <ListBox Grid.Row="1"
-                             ItemsSource="{Binding Conflicts}"
-                             SelectedItem="{Binding SelectedConflict}"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             Padding="4"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto">
-                        <ListBox.ItemContainerStyle>
-                            <Style TargetType="ListBoxItem">
-                                <Setter Property="Padding" Value="8,6"/>
-                                <Setter Property="Margin" Value="2"/>
-                                <Setter Property="Cursor" Value="Hand"/>
-                                <Setter Property="ContextMenu">
-                                    <Setter.Value>
-                                        <ContextMenu DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
-                                            <MenuItem Header="Move to Conflicted"
-                                                      Command="{Binding UnresolveConflictCommand}"
-                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      IsEnabled="{Binding PlacementTarget.DataContext.IsResolved, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-                                        </ContextMenu>
-                                    </Setter.Value>
-                                </Setter>
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="ListBoxItem">
-                                            <Border x:Name="Border"
-                                                    Background="Transparent"
-                                                    CornerRadius="4"
-                                                    Padding="{TemplateBinding Padding}">
-                                                <ContentPresenter/>
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsSelected" Value="True">
-                                                    <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
-                                                </Trigger>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <!-- Status icon -->
-                                    <ic:SymbolIcon Grid.Column="0"
-                                                   FontSize="14"
-                                                   Margin="0,0,8,0"
-                                                   VerticalAlignment="Center">
-                                        <ic:SymbolIcon.Style>
-                                            <Style TargetType="ic:SymbolIcon">
-                                                <Setter Property="Symbol" Value="Warning"/>
-                                                <Setter Property="Foreground" Value="#F59E0B"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsResolved}" Value="True">
-                                                        <Setter Property="Symbol" Value="CheckmarkCircle"/>
-                                                        <Setter Property="Foreground" Value="#10B981"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </ic:SymbolIcon.Style>
-                                    </ic:SymbolIcon>
-
-                                    <!-- File name -->
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding FileName}"
-                                               TextTrimming="CharacterEllipsis"
-                                               ToolTip="{Binding FilePath}"
-                                               VerticalAlignment="Center"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </Grid>
-            </Border>
-
-            <!-- Splitter -->
-            <GridSplitter Grid.Column="1"
-                          Width="8"
-                          HorizontalAlignment="Stretch"
-                          Background="Transparent"/>
-
-            <!-- Merge View (right side) -->
-            <Border Grid.Column="2"
-                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="4">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- Header with actions -->
-                    <Border Grid.Row="0"
-                            Background="{DynamicResource ControlFillColorDefaultBrush}"
-                            Padding="12,8"
-                            CornerRadius="2,2,0,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="Resolve Conflicts"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-
-                            <!-- Conflict counter -->
-                            <Border Grid.Column="1"
-                                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                    CornerRadius="4"
-                                    Height="28"
-                                    Padding="10,0"
-                                    Margin="0,0,8,0"
-                                    VerticalAlignment="Center"
-                                    Visibility="{Binding RemainingCount, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <Grid VerticalAlignment="Center">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <ic:SymbolIcon Grid.Column="0"
-                                                   Symbol="Warning"
-                                                   FontSize="12"
-                                                   Foreground="#F59E0B"
-                                                   Margin="0,0,4,0"
-                                                   VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="1"
-                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                               VerticalAlignment="Center"
-                                               Text="{Binding RemainingCount, Mode=OneWay}"/>
-                                    <TextBlock Grid.Column="2"
-                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                               VerticalAlignment="Center"
-                                               Margin="4,0,0,0"
-                                               Text="unresolved"/>
-                                </Grid>
-                            </Border>
-
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                                <Button Command="{Binding AcceptAllOursCommand}"
-                                        Style="{StaticResource ResolveHeaderActionButtonStyle}"
-                                        Background="#1E3A5F"
-                                        Foreground="#BFDBFE"
-                                        BorderBrush="#60A5FA"
-                                        Margin="0,0,4,0"
-                                        ToolTip="Accept all from current branch">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <ic:SymbolIcon Symbol="Checkmark" FontSize="12" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="All Ours" FontSize="11" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Button>
-                                <Button Command="{Binding AcceptAllTheirsCommand}"
-                                        Style="{StaticResource ResolveHeaderActionButtonStyle}"
-                                        Background="#14532D"
-                                        Foreground="#BBF7D0"
-                                        BorderBrush="#4ADE80"
-                                        ToolTip="Accept all from incoming branch">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <ic:SymbolIcon Symbol="Checkmark" FontSize="12" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="All Theirs" FontSize="11" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Button>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-
-                    <Grid Grid.Row="1" Margin="8">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
+                    <Grid Visibility="{Binding IsLargeFile, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- Ours -->
+                        <!-- Ours pane -->
                         <Border Grid.Row="0" Grid.Column="0"
-                                BorderThickness="1"
-                                BorderBrush="#1E3A5F"
-                                CornerRadius="4"
-                                Background="#1A1E3A5F"
-                                Margin="0,0,8,8">
+                                CornerRadius="6"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                Margin="0,0,4,4">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
-                                <Border Grid.Row="0" Background="#1E3A5F" Padding="8,4">
-                                    <TextBlock Text="OURS (current branch)" FontSize="11" Foreground="#BFDBFE"/>
+                                <Border Grid.Row="0" Padding="8,3"
+                                        Background="{StaticResource OursAccentLightBrush}"
+                                        CornerRadius="6,6,0,0">
+                                    <TextBlock FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                        <Run Text="Ours" FontWeight="SemiBold" Foreground="{StaticResource OursForegroundBrush}"/>
+                                        <Run Text=" (current branch)" Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </TextBlock>
                                 </Border>
-                                <ScrollViewer x:Name="OursScrollViewer"
-                                              Grid.Row="1"
-                                              VerticalScrollBarVisibility="Auto"
-                                              HorizontalScrollBarVisibility="Auto">
-                                    <!-- Only show conflict regions (not all 2600+ lines) -->
-                                    <ItemsControl x:Name="OursRegionList"
-                                                  ItemsSource="{Binding ConflictRegions}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate DataType="{x:Type models:MergeRegion}">
-                                                <StackPanel Margin="0,0,0,8">
-                                                    <!-- Conflict header -->
-                                                    <Grid Background="#331E3A5F" Margin="0,4,0,2">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0"
-                                                                   Text="{Binding Index, StringFormat='Conflict #{0}'}"
-                                                                   FontSize="11"
-                                                                   FontWeight="SemiBold"
-                                                                   Foreground="#BFDBFE"
-                                                                   Margin="8,4"/>
-                                                        <TextBlock Grid.Column="1"
-                                                                   Text="{Binding OursStartLineNumber, StringFormat='(line {0})'}"
-                                                                   FontSize="10"
-                                                                   Foreground="#7FBFDBFE"
-                                                                   VerticalAlignment="Center"
-                                                                   Margin="8,0"/>
-                                                        <Button Grid.Column="2"
-                                                                Command="{Binding DataContext.TakeOursHunkCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                CommandParameter="{Binding}"
-                                                                Padding="6,2"
-                                                                Margin="0,2,4,2"
-                                                                ToolTip="Take this hunk from ours">
-                                                            <TextBlock Text="Take hunk" FontSize="11"/>
-                                                        </Button>
-                                                    </Grid>
-                                                    <!-- Lines for this conflict region only -->
-                                                    <ItemsControl ItemsSource="{Binding OursDisplayLines}">
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate DataType="{x:Type models:ConflictDisplayLine}">
-                                                                <Border Style="{StaticResource DisplayLineBorderStyleOurs}">
-                                                                    <Grid>
-                                                                        <Grid.ColumnDefinitions>
-                                                                            <ColumnDefinition Width="36"/>
-                                                                            <ColumnDefinition Width="22"/>
-                                                                            <ColumnDefinition Width="*"/>
-                                                                        </Grid.ColumnDefinitions>
-                                                                        <TextBlock Grid.Column="0"
-                                                                                   Text="{Binding LineNumber}"
-                                                                                   FontFamily="Consolas"
-                                                                                   FontSize="11"
-                                                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                                   HorizontalAlignment="Right"
-                                                                                   VerticalAlignment="Center"
-                                                                                   Margin="0,0,6,0"/>
-                                                                        <CheckBox Grid.Column="1"
-                                                                                  Style="{StaticResource LineCheckBoxStyle}"
-                                                                                  IsChecked="{Binding IsSelected}"/>
-                                                                        <TextBlock Grid.Column="2"
-                                                                                   Text="{Binding Content}"
-                                                                                   FontFamily="Consolas"
-                                                                                   FontSize="12"
-                                                                                   TextWrapping="NoWrap"
-                                                                                   VerticalAlignment="Center"/>
-                                                                    </Grid>
-                                                                </Border>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
+                                <mergecontrols:ConflictSideEditorControl x:Name="OursEditor"
+                                                                         Grid.Row="1"
+                                                                         Side="Ours"/>
                             </Grid>
                         </Border>
 
-                        <!-- Theirs -->
+                        <!-- Theirs pane -->
                         <Border Grid.Row="0" Grid.Column="1"
-                                BorderThickness="1"
-                                BorderBrush="#14532D"
-                                CornerRadius="4"
-                                Background="#1A14532D"
-                                Margin="0,0,0,8">
+                                CornerRadius="6"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                Margin="4,0,0,4">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
-                                <Border Grid.Row="0" Background="#14532D" Padding="8,4">
-                                    <TextBlock Text="THEIRS (incoming)" FontSize="11" Foreground="#BBF7D0"/>
+                                <Border Grid.Row="0" Padding="8,3"
+                                        Background="{StaticResource TheirsAccentLightBrush}"
+                                        CornerRadius="6,6,0,0">
+                                    <TextBlock FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                        <Run Text="Theirs" FontWeight="SemiBold" Foreground="{StaticResource TheirsForegroundBrush}"/>
+                                        <Run Text=" (incoming)" Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </TextBlock>
                                 </Border>
-                                <ScrollViewer x:Name="TheirsScrollViewer"
-                                              Grid.Row="1"
-                                              VerticalScrollBarVisibility="Auto"
-                                              HorizontalScrollBarVisibility="Auto">
-                                    <!-- Only show conflict regions (not all 2600+ lines) -->
-                                    <ItemsControl x:Name="TheirsRegionList"
-                                                  ItemsSource="{Binding ConflictRegions}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate DataType="{x:Type models:MergeRegion}">
-                                                <StackPanel Margin="0,0,0,8">
-                                                    <!-- Conflict header -->
-                                                    <Grid Background="#3314532D" Margin="0,4,0,2">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0"
-                                                                   Text="{Binding Index, StringFormat='Conflict #{0}'}"
-                                                                   FontSize="11"
-                                                                   FontWeight="SemiBold"
-                                                                   Foreground="#BBF7D0"
-                                                                   Margin="8,4"/>
-                                                        <TextBlock Grid.Column="1"
-                                                                   Text="{Binding TheirsStartLineNumber, StringFormat='(line {0})'}"
-                                                                   FontSize="10"
-                                                                   Foreground="#7FBBF7D0"
-                                                                   VerticalAlignment="Center"
-                                                                   Margin="8,0"/>
-                                                        <Button Grid.Column="2"
-                                                                Command="{Binding DataContext.TakeTheirsHunkCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                CommandParameter="{Binding}"
-                                                                Padding="6,2"
-                                                                Margin="0,2,4,2"
-                                                                ToolTip="Take this hunk from theirs">
-                                                            <TextBlock Text="Take hunk" FontSize="11"/>
-                                                        </Button>
-                                                    </Grid>
-                                                    <!-- Lines for this conflict region only -->
-                                                    <ItemsControl ItemsSource="{Binding TheirsDisplayLines}">
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate DataType="{x:Type models:ConflictDisplayLine}">
-                                                                <Border Style="{StaticResource DisplayLineBorderStyleTheirs}">
-                                                                    <Grid>
-                                                                        <Grid.ColumnDefinitions>
-                                                                            <ColumnDefinition Width="36"/>
-                                                                            <ColumnDefinition Width="22"/>
-                                                                            <ColumnDefinition Width="*"/>
-                                                                        </Grid.ColumnDefinitions>
-                                                                        <TextBlock Grid.Column="0"
-                                                                                   Text="{Binding LineNumber}"
-                                                                                   FontFamily="Consolas"
-                                                                                   FontSize="11"
-                                                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                                   HorizontalAlignment="Right"
-                                                                                   VerticalAlignment="Center"
-                                                                                   Margin="0,0,6,0"/>
-                                                                        <CheckBox Grid.Column="1"
-                                                                                  Style="{StaticResource LineCheckBoxStyle}"
-                                                                                  IsChecked="{Binding IsSelected}"/>
-                                                                        <TextBlock Grid.Column="2"
-                                                                                   Text="{Binding Content}"
-                                                                                   FontFamily="Consolas"
-                                                                                   FontSize="12"
-                                                                                   TextWrapping="NoWrap"
-                                                                                   VerticalAlignment="Center"/>
-                                                                    </Grid>
-                                                                </Border>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
+                                <mergecontrols:ConflictSideEditorControl x:Name="TheirsEditor"
+                                                                         Grid.Row="1"
+                                                                         Side="Theirs"/>
                             </Grid>
                         </Border>
 
                         <!-- Merged Result -->
                         <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                                BorderThickness="1"
-                                BorderBrush="#B45309"
-                                Background="#1AB45309"
-                                CornerRadius="4">
+                                CornerRadius="6"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                Margin="0,4,0,0">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
-                                <Border Grid.Row="0" Background="#B45309" Padding="8,4">
-                                    <TextBlock Text="MERGED RESULT" FontSize="11" Foreground="#FEF3C7"/>
+                                <Border Grid.Row="0" Padding="8,3"
+                                        Background="#446D28D9"
+                                        CornerRadius="6,6,0,0"
+                                        BorderBrush="#336D28D9"
+                                        BorderThickness="0,0,0,1">
+                                    <TextBlock FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                        <Run Text="Merged result" FontWeight="SemiBold" Foreground="{StaticResource MergedForegroundBrush}"/>
+                                        <Run Text=" (editable)" Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </TextBlock>
                                 </Border>
-                                <controls:MergedResultEditorControl Grid.Row="1"/>
+                                <controls:MergedResultEditorControl x:Name="MergedEditor" Grid.Row="1"/>
                             </Grid>
                         </Border>
                     </Grid>
 
-                    <!-- Footer with Mark Resolved and Copy buttons -->
-                    <Border Grid.Row="2" Padding="8" Background="{DynamicResource ControlFillColorDefaultBrush}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-
-                            <!-- Copy merged result button -->
-                            <Button Grid.Column="0"
-                                    Command="{Binding CopyMergedResultCommand}"
-                                    Padding="12,6"
-                                    ToolTip="Copy full merged result to clipboard">
-                                <StackPanel Orientation="Horizontal">
-                                    <ic:SymbolIcon Symbol="Copy" FontSize="14" Margin="0,0,6,0"/>
-                                    <TextBlock Text="Copy Result"/>
-                                </StackPanel>
-                            </Button>
-
-                            <!-- Mark resolved button -->
-                            <Button Grid.Column="2"
-                                    Command="{Binding MarkResolvedCommand}"
-                                    Padding="16,6"
-                                    IsEnabled="{Binding CanMarkResolved}">
-                                <Button.Style>
-                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                                        <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding CanMarkResolved}" Value="True">
-                                                <Setter Property="Background" Value="#22C55E"/>
-                                                <Setter Property="Foreground" Value="White"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Button.Style>
-                                <StackPanel Orientation="Horizontal">
-                                    <ic:SymbolIcon Symbol="CheckmarkCircle" FontSize="14" Margin="0,0,6,0"/>
-                                    <TextBlock Text="Mark as Resolved"/>
-                                </StackPanel>
-                            </Button>
-                        </Grid>
+                    <!-- Large file warning overlay -->
+                    <Border Visibility="{Binding IsLargeFile, Converter={StaticResource BoolToVisibilityConverter}}"
+                            Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            CornerRadius="6"
+                            Padding="40">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ic:SymbolIcon Symbol="Warning" FontSize="48" Foreground="{StaticResource WarningBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,16,0,8">
+                                <Run Text="Large file — "/><Run Text="{Binding LargeFileLineCount, Mode=OneWay}"/><Run Text=" lines"/>
+                            </TextBlock>
+                            <TextBlock Text="Consider resolving in VS Code for better performance."
+                                       FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       HorizontalAlignment="Center" Margin="0,0,0,20"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Button Padding="16,8" Margin="0,0,8,0"
+                                        Command="{Binding ContinueLargeFileLoadCommand}">
+                                    <TextBlock Text="Continue Anyway"/>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
                     </Border>
                 </Grid>
+            </Grid>
+
+            <!-- Binary file panel (shown when binary) -->
+            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Grid.RowSpan="2"
+                    Visibility="{Binding IsBinaryConflict, Converter={StaticResource BoolToVisibilityConverter}}"
+                    Background="{DynamicResource ControlFillColorDefaultBrush}"
+                    CornerRadius="6"
+                    Padding="40">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <ic:SymbolIcon Symbol="DocumentError" FontSize="48"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Center"/>
+                    <TextBlock Text="Binary file — choose a version"
+                               FontSize="16" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,16,0,8"/>
+                    <TextBlock Text="This file contains binary content and cannot be merged line-by-line."
+                               FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center" Margin="0,0,0,20"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button Padding="16,8" Margin="0,0,8,0"
+                                Command="{Binding UseOursCommand}"
+                                Background="{StaticResource OursAccentBrush}"
+                                Foreground="{StaticResource OursForegroundBrush}">
+                            <TextBlock Text="Use Ours"/>
+                        </Button>
+                        <Button Padding="16,8"
+                                Command="{Binding UseTheirsCommand}"
+                                Background="{StaticResource TheirsAccentBrush}"
+                                Foreground="{StaticResource TheirsForegroundBrush}">
+                            <TextBlock Text="Use Theirs"/>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
             </Border>
         </Grid>
 
-        <!-- Footer with Done button -->
+        <!-- Row 2: Footer — status + action -->
         <Border Grid.Row="2"
                 Background="{DynamicResource ControlFillColorDefaultBrush}"
-                Padding="16,12">
+                Padding="10,4"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0">
             <Grid>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <Button Grid.Column="1"
-                        Padding="20,10"
-                        Click="OnDoneClick">
+                <!-- Conflict navigation label -->
+                <TextBlock Grid.Column="0"
+                           Text="{Binding ConflictNavigationLabel}"
+                           FontSize="11" FontWeight="Medium"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           VerticalAlignment="Center"/>
+
+                <!-- Resolve File button -->
+                <Button Grid.Column="2"
+                        Command="{Binding MarkResolvedCommand}"
+                        Padding="16,5"
+                        IsEnabled="{Binding CanMarkResolved}"
+                        AutomationProperties.AutomationId="ResolveFileButton">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CanMarkResolved}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource ResolvedAccentBrush}"/>
+                                    <Setter Property="Foreground" Value="White"/>
+                                    <Setter Property="BorderBrush" Value="#44FFFFFF"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
                     <StackPanel Orientation="Horizontal">
-                        <ic:SymbolIcon Symbol="Checkmark" FontSize="16" Margin="0,0,8,0"/>
-                        <TextBlock Text="Done" FontWeight="SemiBold"/>
+                        <ic:SymbolIcon Symbol="CheckmarkCircle" FontSize="14" Margin="0,0,6,0"/>
+                        <TextBlock Text="Resolve File" FontSize="12" FontWeight="Medium"/>
                     </StackPanel>
                 </Button>
             </Grid>

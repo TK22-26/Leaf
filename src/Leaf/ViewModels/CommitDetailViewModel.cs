@@ -20,12 +20,15 @@ public partial class CommitDetailViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasParent))]
     [NotifyPropertyChangedFor(nameof(ParentShortSha))]
+    [NotifyPropertyChangedFor(nameof(CoAuthors))]
+    [NotifyPropertyChangedFor(nameof(HasCoAuthors))]
     private CommitInfo? _commit;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModifiedCount))]
     [NotifyPropertyChangedFor(nameof(AddedCount))]
     [NotifyPropertyChangedFor(nameof(DeletedCount))]
+    [NotifyPropertyChangedFor(nameof(RenamedCount))]
     [NotifyPropertyChangedFor(nameof(TotalFileCount))]
     private ObservableCollection<FileChangeInfo> _fileChanges = [];
 
@@ -60,6 +63,11 @@ public partial class CommitDetailViewModel : ObservableObject
     [ObservableProperty]
     private bool _isCompactFileList;
 
+    [ObservableProperty]
+    private bool _showAllFiles;
+
+    private List<FileChangeInfo>? _changedFiles;
+
     /// <summary>
     /// True if there are working changes to display in banner.
     /// </summary>
@@ -69,6 +77,10 @@ public partial class CommitDetailViewModel : ObservableObject
     /// True if the commit has a parent.
     /// </summary>
     public bool HasParent => Commit?.ParentShas.Count > 0;
+
+    public List<CommitInfo.CoAuthorInfo> CoAuthors => Commit?.CoAuthors ?? [];
+
+    public bool HasCoAuthors => CoAuthors.Count > 0;
 
     /// <summary>
     /// Short SHA of the first parent commit.
@@ -114,6 +126,18 @@ public partial class CommitDetailViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Count of renamed files.
+    /// </summary>
+    public int? RenamedCount
+    {
+        get
+        {
+            var count = FileChanges.Count(f => f.Status == FileChangeStatus.Renamed);
+            return count > 0 ? count : null;
+        }
+    }
+
+    /// <summary>
     /// Total count of changed files.
     /// </summary>
     public int TotalFileCount => FileChanges.Count;
@@ -142,6 +166,23 @@ public partial class CommitDetailViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Clear all commit detail state (used when no repository is selected).
+    /// </summary>
+    public void ClearSelection()
+    {
+        Commit = null;
+        FileChanges.Clear();
+        FileChangesTreeItems.Clear();
+        SelectedFile = null;
+        OldContent = string.Empty;
+        NewContent = string.Empty;
+        RepositoryPath = null;
+        WorkingChangesCount = 0;
+        IsLoading = false;
+        IsDiffLoading = false;
+    }
+
+    /// <summary>
     /// Load commit details.
     /// </summary>
     public async Task LoadCommitAsync(string repoPath, string sha)
@@ -161,7 +202,9 @@ public partial class CommitDetailViewModel : ObservableObject
             Commit = await _gitService.GetCommitAsync(repoPath, sha);
 
             // Load file changes
+            ShowAllFiles = false;
             var changes = await _gitService.GetCommitChangesAsync(repoPath, sha);
+            _changedFiles = changes;
             foreach (var change in changes)
             {
                 FileChanges.Add(change);
@@ -171,6 +214,7 @@ public partial class CommitDetailViewModel : ObservableObject
             OnPropertyChanged(nameof(ModifiedCount));
             OnPropertyChanged(nameof(AddedCount));
             OnPropertyChanged(nameof(DeletedCount));
+            OnPropertyChanged(nameof(RenamedCount));
             OnPropertyChanged(nameof(TotalFileCount));
             FileChangesTreeItems = BuildTree(FileChanges);
 
@@ -225,6 +269,7 @@ public partial class CommitDetailViewModel : ObservableObject
             OnPropertyChanged(nameof(ModifiedCount));
             OnPropertyChanged(nameof(AddedCount));
             OnPropertyChanged(nameof(DeletedCount));
+            OnPropertyChanged(nameof(RenamedCount));
             OnPropertyChanged(nameof(TotalFileCount));
             FileChangesTreeItems = BuildTree(FileChanges);
 
@@ -246,6 +291,48 @@ public partial class CommitDetailViewModel : ObservableObject
     public void UpdateWorkingChangesCount(int count)
     {
         WorkingChangesCount = count;
+    }
+
+    partial void OnShowAllFilesChanged(bool value)
+    {
+        if (value)
+        {
+            ShowTreeView = true;
+            _ = LoadAllFilesAsync();
+        }
+        else
+        {
+            // Restore changed-files-only view
+            FileChanges.Clear();
+            if (_changedFiles != null)
+            {
+                foreach (var change in _changedFiles)
+                    FileChanges.Add(change);
+            }
+            OnPropertyChanged(nameof(TotalFileCount));
+            FileChangesTreeItems = BuildTree(FileChanges);
+        }
+    }
+
+    private async Task LoadAllFilesAsync()
+    {
+        if (string.IsNullOrEmpty(RepositoryPath) || Commit == null)
+            return;
+
+        try
+        {
+            IsLoading = true;
+            var allFiles = await _gitService.GetCommitAllFilesAsync(RepositoryPath, Commit.Sha);
+            FileChanges.Clear();
+            foreach (var file in allFiles)
+                FileChanges.Add(file);
+            OnPropertyChanged(nameof(TotalFileCount));
+            FileChangesTreeItems = BuildTree(FileChanges);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     /// <summary>

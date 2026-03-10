@@ -13,7 +13,7 @@ public partial class MainViewModel
     /// <summary>
     /// Load branches for a repository.
     /// </summary>
-    public async Task LoadBranchesForRepoAsync(RepositoryInfo repo, bool forceReload = false)
+    public async Task LoadBranchesForRepoAsync(RepositoryInfo repo, bool forceReload = false, bool skipFilterApplication = false)
     {
         if (repo.BranchesLoaded && !forceReload) return;
 
@@ -220,7 +220,8 @@ public partial class MainViewModel
             repo.BranchesLoaded = true;
             UpdateBranchFilterFlags(repo);
 
-            if (SelectedRepository != null &&
+            if (!skipFilterApplication &&
+                SelectedRepository != null &&
                 string.Equals(SelectedRepository.Path, repo.Path, StringComparison.OrdinalIgnoreCase))
             {
                 ApplyBranchFiltersForRepo(repo);

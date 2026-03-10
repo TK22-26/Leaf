@@ -77,6 +77,9 @@ public class GitService : IGitService
     public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha)
         => _commitHistoryOps.GetCommitChangesAsync(repoPath, sha);
 
+    public Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha)
+        => _commitHistoryOps.GetCommitAllFilesAsync(repoPath, sha);
+
     public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha)
         => _commitHistoryOps.GetMergeCommitsAsync(repoPath, mergeSha);
 
@@ -287,6 +290,12 @@ public class GitService : IGitService
 
     public Task AbortMergeAsync(string repoPath)
         => _mergeOps.AbortMergeAsync(repoPath);
+
+    public Task AbortCherryPickAsync(string repoPath)
+        => _mergeOps.AbortCherryPickAsync(repoPath);
+
+    public Task AbortRevertAsync(string repoPath)
+        => _mergeOps.AbortRevertAsync(repoPath);
 
     public Task<bool> IsOrphanedConflictStateAsync(string repoPath)
         => _mergeOps.IsOrphanedConflictStateAsync(repoPath);

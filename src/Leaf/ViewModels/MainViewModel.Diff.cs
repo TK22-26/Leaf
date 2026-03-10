@@ -55,6 +55,30 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Handle file deleted or discarded - close diff viewer if it's showing the affected file.
+    /// </summary>
+    private void OnFileDeletedOrDiscarded(object? sender, FileDeletedOrDiscardedEventArgs e)
+    {
+        if (!IsDiffViewerVisible || DiffViewerViewModel == null)
+            return;
+
+        if (e.AffectsAllFiles)
+        {
+            CloseDiffViewer();
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(e.FilePath) &&
+            string.Equals(
+                e.FilePath?.Replace('\\', '/'),
+                DiffViewerViewModel.FilePath?.Replace('\\', '/'),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            CloseDiffViewer();
+        }
+    }
+
+    /// <summary>
     /// Handle hunk reverted event from the diff viewer - refresh working changes.
     /// </summary>
     private async void OnDiffViewerHunkReverted(object? sender, Models.DiffHunk hunk)

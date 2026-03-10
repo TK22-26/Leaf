@@ -503,6 +503,53 @@ public class GitFlowTypeToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
+/// Converts GitOperationType to display strings.
+/// Parameter: "Title" → "Merge in Progress", "Verb" → "Merging", "Icon" → FluentIcon symbol name.
+/// </summary>
+public class GitOperationTypeToStringConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var opType = value is Models.GitOperationType t ? t : Models.GitOperationType.None;
+        var mode = parameter as string ?? "Title";
+
+        return mode switch
+        {
+            "Title" => opType switch
+            {
+                Models.GitOperationType.Merge => "Merge in Progress",
+                Models.GitOperationType.CherryPick => "Cherry-pick in Progress",
+                Models.GitOperationType.Revert => "Revert in Progress",
+                Models.GitOperationType.Rebase => "Rebase in Progress",
+                _ => "Operation in Progress"
+            },
+            "Verb" => opType switch
+            {
+                Models.GitOperationType.Merge => "Merging",
+                Models.GitOperationType.CherryPick => "Cherry-picking",
+                Models.GitOperationType.Revert => "Reverting",
+                Models.GitOperationType.Rebase => "Rebasing",
+                _ => "Processing"
+            },
+            "Preposition" => opType switch
+            {
+                Models.GitOperationType.Merge => "into",
+                Models.GitOperationType.CherryPick => "onto",
+                Models.GitOperationType.Revert => "on",
+                Models.GitOperationType.Rebase => "onto",
+                _ => "on"
+            },
+            _ => opType.ToString()
+        };
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return Binding.DoNothing;
+    }
+}
+
+/// <summary>
 /// Converts a filename to Visibility based on whether it's a Windows reserved filename.
 /// Reserved names: CON, PRN, AUX, NUL, COM1-COM9, LPT1-LPT9
 /// Returns Visible for reserved names, Collapsed for normal files.

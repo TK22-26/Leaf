@@ -8,6 +8,11 @@ namespace Leaf;
 /// </summary>
 public partial class App : Application
 {
+    /// <summary>
+    /// Repository path to open on startup, set via --repo command-line flag.
+    /// </summary>
+    internal static string? InitialRepoPath { get; private set; }
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -60,6 +65,20 @@ public partial class App : Application
                     }
                     return true;
 
+                case "--repo":
+                case "-r":
+                    if (i + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Error: --repo requires a repository path.");
+                        Console.Error.WriteLine("Usage: Leaf.exe --repo <path>");
+                        Environment.ExitCode = 1;
+                        return true;
+                    }
+
+                    InitialRepoPath = args[i + 1];
+                    i++; // skip the path argument
+                    return false; // don't shutdown — launch GUI with this repo
+
                 case "--help":
                 case "-h":
                     PrintHelp();
@@ -98,10 +117,12 @@ public partial class App : Application
         Console.WriteLine("Usage: Leaf.exe [options]");
         Console.WriteLine();
         Console.WriteLine("Options:");
+        Console.WriteLine("  --repo, -r <path>              Open Leaf and navigate to the specified repository");
         Console.WriteLine("  --auto-commit, -ac <repoName>  Stage all changes and commit with AI-generated message");
         Console.WriteLine("  --help, -h                     Show this help message");
         Console.WriteLine();
         Console.WriteLine("Examples:");
+        Console.WriteLine("  Leaf.exe --repo \"C:\\Repos\\MyProject\"");
         Console.WriteLine("  Leaf.exe --auto-commit MyProject");
         Console.WriteLine("  Leaf.exe -ac \"C:\\Repos\\MyProject\"");
         Console.WriteLine();

@@ -253,11 +253,18 @@ public partial class RepositoryInfo : ObservableObject
     public bool WorktreesLoaded { get; set; }
 
     /// <summary>
-    /// True if a merge is currently in progress.
+    /// True if a merge, cherry-pick, revert, or rebase is currently in progress.
     /// </summary>
     [ObservableProperty]
     [property: JsonIgnore]
     private bool _isMergeInProgress;
+
+    /// <summary>
+    /// The type of git operation in progress (Merge, CherryPick, Revert, Rebase, or None).
+    /// </summary>
+    [ObservableProperty]
+    [property: JsonIgnore]
+    private GitOperationType _operationType;
 
     /// <summary>
     /// The branch being merged (from MERGE_HEAD).
