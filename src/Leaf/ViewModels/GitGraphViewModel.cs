@@ -27,8 +27,6 @@ public partial class GitGraphViewModel : ObservableObject
     private readonly HashSet<string> _soloBranchNames = new(StringComparer.OrdinalIgnoreCase);
     private List<CommitInfo> _allCommits = [];
     private string? _currentBranchName;
-    private GitFlowConfig? _gitFlowConfig;
-    private IReadOnlyCollection<string> _remoteNames = Array.Empty<string>();
 
     // Lazy loading state
     private int _loadedCommitCount;
@@ -226,8 +224,6 @@ public partial class GitGraphViewModel : ObservableObject
 
     public void SetGitFlowContext(GitFlowConfig? config, IReadOnlyCollection<string> remoteNames)
     {
-        _gitFlowConfig = config;
-        _remoteNames = remoteNames;
         GraphBuilder.SetGitFlowContext(config, remoteNames);
         // Graph rebuild deferred to LoadRepositoryAsync or ApplyBranchFilters
     }
@@ -789,17 +785,6 @@ public partial class GitGraphViewModel : ObservableObject
         {
             SelectCommit(firstMatch);
         }
-    }
-
-    /// <summary>
-    /// Check if search text looks like a SHA (hex-only, 4+ chars).
-    /// </summary>
-    private static bool IsLikelyShaSearch(string text)
-    {
-        // SHA searches are hex-only and typically 4-40 chars
-        return text.Length >= 4 &&
-               text.Length <= 40 &&
-               text.All(c => char.IsAsciiHexDigit(c));
     }
 
     /// <summary>

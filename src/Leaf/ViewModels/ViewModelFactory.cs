@@ -13,12 +13,6 @@ namespace Leaf.ViewModels;
 /// </remarks>
 public class ViewModelFactory : IViewModelFactory
 {
-    private readonly IGitService _gitService;
-    private readonly IDialogService _dialogService;
-    private readonly IRepositoryEventHub _eventHub;
-    private readonly IClipboardService _clipboardService;
-    private readonly IFileSystemService _fileSystemService;
-
     // Note: Additional services will be added as sub-ViewModels are extracted
 
     public ViewModelFactory(
@@ -28,11 +22,11 @@ public class ViewModelFactory : IViewModelFactory
         IClipboardService clipboardService,
         IFileSystemService fileSystemService)
     {
-        _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
-        _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
-        _eventHub = eventHub ?? throw new ArgumentNullException(nameof(eventHub));
-        _clipboardService = clipboardService ?? throw new ArgumentNullException(nameof(clipboardService));
-        _fileSystemService = fileSystemService ?? throw new ArgumentNullException(nameof(fileSystemService));
+        ArgumentNullException.ThrowIfNull(gitService);
+        ArgumentNullException.ThrowIfNull(dialogService);
+        ArgumentNullException.ThrowIfNull(eventHub);
+        ArgumentNullException.ThrowIfNull(clipboardService);
+        ArgumentNullException.ThrowIfNull(fileSystemService);
     }
 
     // Phase 3 additions:

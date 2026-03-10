@@ -41,19 +41,14 @@ public class ThreeWayMergeService : IThreeWayMergeService
         System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] Split: base={baseLines.Length}, ours={oursLines.Length}, theirs={theirsLines.Length} in {sw.ElapsedMilliseconds}ms");
 
         // Get diffs using DiffPlex
-        var differ = new Differ();
         var oursDiff = InlineDiffBuilder.Diff(baseContent, oursContent, ignoreWhitespace);
         System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] oursDiff in {sw.ElapsedMilliseconds}ms");
         var theirsDiff = InlineDiffBuilder.Diff(baseContent, theirsContent, ignoreWhitespace);
         System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] theirsDiff in {sw.ElapsedMilliseconds}ms");
 
         // Build change maps: baseLineIndex -> what happened
-        var oursChanges = BuildChangeMap(oursDiff);
-        var theirsChanges = BuildChangeMap(theirsDiff);
-        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] ChangeMaps in {sw.ElapsedMilliseconds}ms");
-
         // Walk through and build merge regions
-        var regions = BuildMergeRegions(baseLines, oursLines, theirsLines, oursChanges, theirsChanges);
+        var regions = BuildMergeRegions(baseLines, oursLines, theirsLines);
         System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] BuildMergeRegions returned {regions.Count} regions in {sw.ElapsedMilliseconds}ms");
 
         foreach (var region in regions)
@@ -79,36 +74,10 @@ public class ThreeWayMergeService : IThreeWayMergeService
         return content.Split('\n');
     }
 
-    /// <summary>
-    /// Build a map of line changes from a diff result.
-    /// Key: line index in the "new" (modified) version
-    /// Value: (ChangeType, correspondingBaseLine or -1)
-    /// </summary>
-    private static Dictionary<int, LineChange> BuildChangeMap(DiffPaneModel diff)
-    {
-        var changes = new Dictionary<int, LineChange>();
-        int lineIndex = 0;
-
-        foreach (var line in diff.Lines)
-        {
-            changes[lineIndex] = new LineChange
-            {
-                Type = line.Type,
-                Text = line.Text ?? string.Empty,
-                Position = line.Position
-            };
-            lineIndex++;
-        }
-
-        return changes;
-    }
-
     private static List<MergeRegion> BuildMergeRegions(
         string[] baseLines,
         string[] oursLines,
-        string[] theirsLines,
-        Dictionary<int, LineChange> oursChanges,
-        Dictionary<int, LineChange> theirsChanges)
+        string[] theirsLines)
     {
         var regions = new List<MergeRegion>();
         int regionIndex = 0;
@@ -120,8 +89,8 @@ public class ThreeWayMergeService : IThreeWayMergeService
         var theirsResult = differ.CreateDiffs(string.Join("\n", baseLines), string.Join("\n", theirsLines), false, false, lineChunker);
 
         // Build position-based change tracking
-        var oursBlockMap = BuildBlockMap(oursResult.DiffBlocks, baseLines.Length);
-        var theirsBlockMap = BuildBlockMap(theirsResult.DiffBlocks, baseLines.Length);
+        var oursBlockMap = BuildBlockMap(oursResult.DiffBlocks);
+        var theirsBlockMap = BuildBlockMap(theirsResult.DiffBlocks);
 
         int baseIdx = 0;
         int oursIdx = 0;
@@ -178,8 +147,8 @@ public class ThreeWayMergeService : IThreeWayMergeService
             else
             {
                 // At least one side has changes
-                var (oursChunk, oursDeleted, oursAdvance) = ExtractChunk(oursBlockMap, baseIdx, oursLines, oursIdx);
-                var (theirsChunk, theirsDeleted, theirsAdvance) = ExtractChunk(theirsBlockMap, baseIdx, theirsLines, theirsIdx);
+                var (oursChunk, oursDeleted, oursAdvance) = ExtractChunk(oursBlockMap, baseIdx, oursLines);
+                var (theirsChunk, theirsDeleted, theirsAdvance) = ExtractChunk(theirsBlockMap, baseIdx, theirsLines);
 
                 // Get the base content being replaced
                 int deletedCount = Math.Max(oursDeleted, theirsDeleted);
@@ -313,7 +282,7 @@ public class ThreeWayMergeService : IThreeWayMergeService
         return MergeConsecutiveRegions(regions);
     }
 
-    private static Dictionary<int, DiffBlock> BuildBlockMap(IList<DiffPlex.Model.DiffBlock> blocks, int baseLength)
+    private static Dictionary<int, DiffBlock> BuildBlockMap(IList<DiffPlex.Model.DiffBlock> blocks)
     {
         var map = new Dictionary<int, DiffBlock>();
         foreach (var block in blocks)
@@ -336,8 +305,7 @@ public class ThreeWayMergeService : IThreeWayMergeService
     private static (List<string> chunk, int deleted, int inserted) ExtractChunk(
         Dictionary<int, DiffBlock> blockMap,
         int basePos,
-        string[] modifiedLines,
-        int modifiedPos)
+        string[] modifiedLines)
     {
         if (!blockMap.TryGetValue(basePos, out var block))
             return ([], 0, 0);
@@ -403,13 +371,6 @@ public class ThreeWayMergeService : IThreeWayMergeService
         }
 
         return merged;
-    }
-
-    private class LineChange
-    {
-        public ChangeType Type { get; set; }
-        public string Text { get; set; } = string.Empty;
-        public int? Position { get; set; }
     }
 
     private class DiffBlock

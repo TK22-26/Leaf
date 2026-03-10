@@ -22,7 +22,6 @@ public partial class ConflictResolutionViewModel : ObservableObject
     private readonly IGitService _gitService;
     private readonly IClipboardService _clipboardService;
     private readonly IThreeWayMergeService _mergeService;
-    private readonly IDispatcherService _dispatcherService;
     private readonly IMergeUiLogger _logger;
     private readonly string _repoPath;
     private int _currentRegionIndex = -1;
@@ -189,7 +188,6 @@ public partial class ConflictResolutionViewModel : ObservableObject
         _gitService = gitService;
         _clipboardService = clipboardService;
         _mergeService = mergeService;
-        _dispatcherService = dispatcherService;
         _repoPath = repoPath;
         _logger = new MergeUiLogger();
 

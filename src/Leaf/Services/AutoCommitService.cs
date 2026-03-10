@@ -378,10 +378,6 @@ Description: [your description here]";
 
     private static bool TryParseCommitResult(string response, out string message, out string description, out string error)
     {
-        message = "";
-        description = "";
-        error = "";
-
         // Try JSON first
         if (TryParseJson(response, out message, out description))
         {

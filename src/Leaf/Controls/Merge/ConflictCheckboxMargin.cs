@@ -55,8 +55,6 @@ public sealed class ConflictCheckboxMargin : AbstractMargin
             var selectable = _mapping.GetSelectableLineForLine(lineNumber);
             if (selectable == null) continue;
 
-            var region = _mapping.GetRegionForLine(lineNumber);
-
             var y = visualLine.VisualTop - TextView.VerticalOffset;
             var boxX = (MarginWidth - BoxSize) / 2;
             var boxY = y + (visualLine.Height - BoxSize) / 2;

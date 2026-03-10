@@ -101,7 +101,6 @@ public partial class GitGraphCanvas
 
                     if (nodeIndex >= 0)
                     {
-                        bool wasExpanded = _stateService.IsNodeExpanded(nodeIndex);
                         bool isNowExpanded = _stateService.ToggleNodeExpansion(nodeIndex, overflow.Labels.Count);
 
                         if (!isNowExpanded)
@@ -148,7 +147,6 @@ public partial class GitGraphCanvas
 
                     if (nodeIndex >= 0)
                     {
-                        bool wasExpanded = _stateService.IsTagNodeExpanded(nodeIndex);
                         bool isNowExpanded = _stateService.ToggleTagNodeExpansion(nodeIndex);
 
                         if (!isNowExpanded)

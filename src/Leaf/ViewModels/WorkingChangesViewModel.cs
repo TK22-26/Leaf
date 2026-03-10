@@ -736,6 +736,13 @@ public partial class WorkingChangesViewModel : ObservableObject
                 Directory.Delete(fullPath, recursive: true);
             }
 
+            // If the file was staged, remove it from the index too —
+            // otherwise it lingers as a staged entry after disk deletion.
+            if (file.IsStaged)
+            {
+                await _gitService.UnstageFileAsync(_repositoryPath, file.Path);
+            }
+
             await RefreshAndNotifyAsync();
             FileDeletedOrDiscarded?.Invoke(this, new FileDeletedOrDiscardedEventArgs(file.Path));
         }

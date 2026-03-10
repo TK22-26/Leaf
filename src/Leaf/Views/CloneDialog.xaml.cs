@@ -17,7 +17,6 @@ public partial class CloneDialog : Window
     private readonly AzureDevOpsService _azureDevOpsService;
     private readonly GitHubService _gitHubService;
     private readonly SettingsService _settingsService;
-    private readonly string _defaultClonePath;
     private bool _isCloning;
 
     // Azure DevOps repos
@@ -45,7 +44,6 @@ public partial class CloneDialog : Window
         _settingsService = settingsService;
         _azureDevOpsService = new AzureDevOpsService(credentialService);
         _gitHubService = new GitHubService(credentialService);
-        _defaultClonePath = defaultClonePath;
 
         DestinationTextBox.Text = defaultClonePath;
         UpdateCloneButtonState();

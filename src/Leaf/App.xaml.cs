@@ -76,7 +76,6 @@ public partial class App : Application
                     }
 
                     InitialRepoPath = args[i + 1];
-                    i++; // skip the path argument
                     return false; // don't shutdown — launch GUI with this repo
 
                 case "--help":

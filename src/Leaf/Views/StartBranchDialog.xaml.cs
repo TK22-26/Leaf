@@ -79,7 +79,6 @@ public partial class StartBranchDialog : Window
         if (_config == null) return;
 
         GitFlowBranchType type = GetSelectedBranchType();
-        string prefix = GetPrefix(type);
 
         switch (type)
         {

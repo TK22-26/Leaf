@@ -20,7 +20,6 @@ public partial class DiffViewerControl : UserControl
     private DiffViewerViewModel? _viewModel;
     private readonly DiffBackgroundRenderer _renderer = new();
     private ScrollViewer? _blameScrollViewer;
-    private ScrollViewer? _blameEditorScrollViewer;
     private bool _isSyncingBlameScroll;
     private IHighlightingDefinition? _lastHighlighting;
 
@@ -167,7 +166,6 @@ public partial class DiffViewerControl : UserControl
     private void AttachBlameScrollSync()
     {
         _blameScrollViewer = BlameScrollViewer;
-        _blameEditorScrollViewer = FindScrollViewer(BlameEditor);
         if (BlameEditor != null)
         {
             BlameEditor.TextArea.TextView.ScrollOffsetChanged += (_, _) =>

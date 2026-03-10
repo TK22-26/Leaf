@@ -25,12 +25,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // Phase 0/1: Architecture Glue Services
     private readonly IDispatcherService _dispatcherService;
-    private readonly IRepositoryEventHub _eventHub;
     private readonly IDialogService _dialogService;
-    private readonly IRepositorySessionFactory _sessionFactory;
-    private readonly IGitCommandRunner _gitCommandRunner;
     private readonly IClipboardService _clipboardService;
-    private readonly IFileSystemService _fileSystemService;
     private readonly IFolderWatcherService _folderWatcherService;
     private IRepositorySession? _currentSession;
     private bool _disposed;
@@ -262,12 +258,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _autoFetchService = autoFetchService;
         _ownerWindow = ownerWindow;
         _dispatcherService = dispatcherService;
-        _eventHub = eventHub;
         _dialogService = dialogService;
-        _sessionFactory = sessionFactory;
-        _gitCommandRunner = gitCommandRunner;
         _clipboardService = clipboardService;
-        _fileSystemService = fileSystemService;
         _folderWatcherService = folderWatcherService;
         _fileWatcherService = new FileWatcherService();
 

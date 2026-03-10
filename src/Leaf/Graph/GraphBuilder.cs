@@ -193,7 +193,7 @@ public class GraphBuilder
             var commit = commits[row];
 
             // Find which lane this commit should be in
-            int lane = FindLaneForCommit(commit, activeLanes, shaToNode, mainBranchCommits);
+            int lane = FindLaneForCommit(commit, activeLanes, mainBranchCommits);
 
             // Ensure lane tracking lists are large enough
             while (laneBranchNames.Count <= lane)
@@ -450,7 +450,7 @@ public class GraphBuilder
 
     #endregion
 
-    private int FindLaneForCommit(CommitInfo commit, List<string?> activeLanes, Dictionary<string, GitTreeNode> shaToNode, HashSet<string> mainBranchCommits)
+    private int FindLaneForCommit(CommitInfo commit, List<string?> activeLanes, HashSet<string> mainBranchCommits)
     {
         // Check if any active lane is expecting this commit (i.e., this commit is a parent of a previous commit)
         int foundLane = -1;

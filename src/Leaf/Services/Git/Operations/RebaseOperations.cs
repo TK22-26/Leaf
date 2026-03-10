@@ -10,11 +10,8 @@ namespace Leaf.Services.Git.Operations;
 /// </summary>
 internal class RebaseOperations
 {
-    private readonly IGitOperationContext _context;
-
     public RebaseOperations(IGitOperationContext context)
     {
-        _context = context;
     }
 
     /// <summary>

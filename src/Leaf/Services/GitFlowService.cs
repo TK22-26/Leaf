@@ -1006,7 +1006,7 @@ public partial class GitFlowService : IGitFlowService
         {
             MergeStrategy.Squash => await SquashMergeWithCommit(repoPath, branchName),
             MergeStrategy.SquashRebase => await SquashRebaseMerge(repoPath, branchName, progress),
-            MergeStrategy.Rebase => await RebaseMerge(repoPath, branchName, progress),
+            MergeStrategy.Rebase => await RebaseMerge(repoPath, branchName),
             _ => await _gitService.MergeBranchAsync(repoPath, branchName)
         };
     }
@@ -1066,7 +1066,7 @@ public partial class GitFlowService : IGitFlowService
         return squashResult;
     }
 
-    private async Task<MergeResult> RebaseMerge(string repoPath, string branchName, IProgress<string>? progress)
+    private async Task<MergeResult> RebaseMerge(string repoPath, string branchName)
     {
         // For rebase merge, we merge with fast-forward after the caller has rebased
         return await _gitService.MergeBranchAsync(repoPath, branchName);

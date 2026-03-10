@@ -727,7 +727,7 @@ public partial class GitGraphView : UserControl
         if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
             return;
 
-        if (DataContext is not GitGraphViewModel viewModel)
+        if (DataContext is not GitGraphViewModel)
             return;
 
         var menu = new ContextMenu();

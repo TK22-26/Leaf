@@ -12,12 +12,10 @@ namespace Leaf.Services.Git.Operations;
 internal class StashOperations
 {
     private readonly IGitOperationContext _context;
-    private readonly IConflictOperations _conflictOps;
 
     public StashOperations(IGitOperationContext context, IConflictOperations conflictOps)
     {
         _context = context;
-        _conflictOps = conflictOps;
     }
 
     /// <summary>

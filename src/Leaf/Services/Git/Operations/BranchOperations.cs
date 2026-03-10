@@ -217,24 +217,14 @@ internal class BranchOperations
     /// <summary>
     /// Delete a local branch.
     /// </summary>
-    public Task DeleteBranchAsync(string repoPath, string branchName, bool force = false)
+    public async Task DeleteBranchAsync(string repoPath, string branchName, bool force = false)
     {
-        return Task.Run(() =>
+        var flag = force ? "-D" : "-d";
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["branch", flag, branchName]);
+        if (result.ExitCode != 0)
         {
-            using var repo = new Repository(repoPath);
-            var branch = repo.Branches[branchName];
-            if (branch == null)
-            {
-                throw new InvalidOperationException($"Branch '{branchName}' not found.");
-            }
-
-            if (branch.IsCurrentRepositoryHead)
-            {
-                throw new InvalidOperationException("Cannot delete the currently checked out branch.");
-            }
-
-            repo.Branches.Remove(branch);
-        });
+            throw new InvalidOperationException(result.StandardError.Trim());
+        }
     }
 
     /// <summary>

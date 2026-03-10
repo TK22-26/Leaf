@@ -9,8 +9,6 @@ namespace Leaf.Services.Git.Core;
 /// </summary>
 internal class GitCliHelpers
 {
-    private readonly IGitCommandRunner _runner;
-
     /// <summary>
     /// Constant used to identify temporary stashes created during smart pop operations.
     /// </summary>
@@ -18,7 +16,6 @@ internal class GitCliHelpers
 
     public GitCliHelpers(IGitCommandRunner runner)
     {
-        _runner = runner;
     }
 
     /// <summary>

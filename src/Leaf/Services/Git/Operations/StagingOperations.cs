@@ -12,11 +12,8 @@ namespace Leaf.Services.Git.Operations;
 /// </summary>
 internal class StagingOperations : IStagingOperations
 {
-    private readonly IGitOperationContext _context;
-
     public StagingOperations(IGitOperationContext context)
     {
-        _context = context;
     }
 
     /// <summary>
