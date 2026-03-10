@@ -7,7 +7,9 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Editing;
+using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Rendering;
+using Leaf.Helpers;
 using Leaf.Models;
 using Leaf.ViewModels;
 
@@ -20,6 +22,7 @@ public partial class MergedResultEditorControl : UserControl
     private readonly HashSet<MergedLine> _trackedLines = [];
     private int _hoverLine = -1;
     private bool _invalidatePending;
+    private IHighlightingDefinition? _lastHighlighting;
 
     public MergedResultEditorControl()
     {
@@ -27,6 +30,10 @@ public partial class MergedResultEditorControl : UserControl
 
         Editor.TextArea.TextView.Options.EnableVirtualSpace = false;
         Editor.TextArea.TextView.Options.AllowScrollBelowDocument = false;
+        Editor.TextArea.SelectionCornerRadius = 0;
+        Editor.TextArea.SelectionBorder = null;
+        Editor.TextArea.TextView.LinkTextForegroundBrush = new SolidColorBrush(SyntaxHighlightingHelper.KeywordColor);
+        Editor.TextArea.TextView.LinkTextUnderline = false;
         Editor.Loaded += OnEditorLoaded;
         BackgroundLayer.AttachEditor(Editor);
         Editor.TextChanged += OnEditorTextChanged;
@@ -115,6 +122,17 @@ public partial class MergedResultEditorControl : UserControl
         _isUpdatingFromViewModel = true;
         try
         {
+            // Apply syntax highlighting based on file extension
+            var filePath = _viewModel.SelectedConflict?.FilePath ?? string.Empty;
+            var highlighting = HighlightingManager.Instance.GetDefinitionByExtension(
+                System.IO.Path.GetExtension(filePath));
+            if (highlighting != null && !ReferenceEquals(highlighting, _lastHighlighting))
+            {
+                SyntaxHighlightingHelper.ApplyDarkThemeColors(highlighting);
+                _lastHighlighting = highlighting;
+            }
+            Editor.SyntaxHighlighting = highlighting;
+
             Editor.Text = _viewModel.MergedContent ?? string.Empty;
             BackgroundLayer.SetLines(_viewModel.MergedLines);
             TrackLineChanges();
@@ -295,7 +313,7 @@ internal sealed class MergedResultBackground : FrameworkElement
     private static readonly Brush OursHoverBrush = CreateFrozenBrush(Color.FromArgb(0xFF, 0x1E, 0x3A, 0x5F));
     private static readonly Brush TheirsHoverBrush = CreateFrozenBrush(Color.FromArgb(0xFF, 0x14, 0x53, 0x2D));
     private static readonly Brush ManualHoverBrush = CreateFrozenBrush(Color.FromArgb(0xFF, 0x6D, 0x28, 0xD9));
-    private static readonly Brush DefaultHoverBrush = CreateFrozenBrush(Color.FromArgb(0x80, 0xB4, 0x53, 0x09));
+    private static readonly Brush DefaultHoverBrush = CreateFrozenBrush(Color.FromArgb(0x80, 0x55, 0x55, 0x55));
 
     private static Brush CreateFrozenBrush(Color color)
     {

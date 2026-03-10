@@ -81,6 +81,7 @@
                                     Margin="0,6,0,0"/>
                         </StackPanel>
                         <ListBox Grid.Row="1"
+                                 AutomationProperties.AutomationId="ConflictedFilesList"
                                  ItemsSource="{Binding MergeConflictResolutionViewModel.ConflictedConflicts}"
                                  SelectedItem="{Binding MergeConflictResolutionViewModel.SelectedConflict}"
                                  Background="Transparent"
@@ -89,10 +90,13 @@
                                  ScrollViewer.VerticalScrollBarVisibility="Auto">
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem">
+                                    <Setter Property="AutomationProperties.AutomationId" Value="ConflictedFileItem"/>
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding FileName}"/>
                                     <Setter Property="Padding" Value="8,6"/>
                                     <Setter Property="Margin" Value="2"/>
                                     <Setter Property="Cursor" Value="Hand"/>
                                     <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                    <EventSetter Event="MouseDoubleClick" Handler="OnConflictedFileDoubleClick"/>
                                     <Setter Property="Template">
                                         <Setter.Value>
                                             <ControlTemplate TargetType="ListBoxItem">
@@ -130,6 +134,7 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding FileName}"
+                                                       AutomationProperties.AutomationId="ConflictedFileName"
                                                        FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis"
                                                        ToolTip="{Binding FilePath}"/>
@@ -144,14 +149,18 @@
                                                     Orientation="Horizontal"
                                                     VerticalAlignment="Center"
                                                     Visibility="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsMouseOver, Converter={StaticResource BoolToVisibilityConverter}}">
-                                            <Button Command="{Binding DataContext.OpenConflictInLeafCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            <Button AutomationProperties.AutomationId="ResolveInLeafButton"
+                                                    AutomationProperties.Name="Resolve in Leaf"
+                                                    Command="{Binding DataContext.OpenConflictInLeafCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}"
                                                     Padding="6,2"
                                                     Margin="0,0,6,0"
                                                     ToolTip="Resolve in Leaf">
                                                 <ic:SymbolIcon Symbol="Edit" FontSize="12"/>
                                             </Button>
-                                            <Button Command="{Binding DataContext.OpenConflictInVsCodeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            <Button AutomationProperties.AutomationId="ResolveInVsCodeButton"
+                                                    AutomationProperties.Name="Resolve in VS Code"
+                                                    Command="{Binding DataContext.OpenConflictInVsCodeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}"
                                                     Padding="6,2"
                                                     ToolTip="Resolve in VS Code">
@@ -269,6 +278,8 @@
                 </Grid.ColumnDefinitions>
 
                 <Button Grid.Column="0"
+                        AutomationProperties.AutomationId="ApproveMergeButton"
+                        AutomationProperties.Name="Approve"
                         Command="{Binding MergeConflictResolutionViewModel.CompleteMergeCommand}"
                         IsEnabled="{Binding MergeConflictResolutionViewModel.CanCompleteMerge}"
                         Margin="0,0,12,0">
@@ -293,6 +304,8 @@
                 </Button>
 
                 <Button Grid.Column="1"
+                        AutomationProperties.AutomationId="AbortMergeButton"
+                        AutomationProperties.Name="Abort"
                         Command="{Binding AbortMergeCommand}">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource MergeActionButtonStyle}">

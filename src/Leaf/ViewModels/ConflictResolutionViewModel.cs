@@ -1,16 +1,21 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Collections;
+using Leaf.Controls.Merge;
 using Leaf.Models;
+using Leaf.Models.Merge;
 using Leaf.Services;
+using Leaf.Services.Merge;
 
 namespace Leaf.ViewModels;
 
 /// <summary>
-/// ViewModel for the enhanced merge conflict resolution view.
-/// Supports per-hunk and per-line conflict resolution with auto-merge.
+/// ViewModel for the merge conflict resolution view.
+/// Supports per-hunk and per-line conflict resolution with auto-merge,
+/// undo/redo, accept-both, collapse-resolved, and auto-advance.
 /// </summary>
 public partial class ConflictResolutionViewModel : ObservableObject
 {
@@ -18,8 +23,10 @@ public partial class ConflictResolutionViewModel : ObservableObject
     private readonly IClipboardService _clipboardService;
     private readonly IThreeWayMergeService _mergeService;
     private readonly IDispatcherService _dispatcherService;
+    private readonly IMergeUiLogger _logger;
     private readonly string _repoPath;
     private int _currentRegionIndex = -1;
+    private readonly ResolutionUndoStack _undoStack = new();
 
     public event EventHandler<int>? RequestScrollToRegion;
 
@@ -48,6 +55,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasUnresolvedConflicts))]
     [NotifyPropertyChangedFor(nameof(CanMarkResolved))]
     [NotifyPropertyChangedFor(nameof(ConflictRegions))]
+    [NotifyPropertyChangedFor(nameof(CurrentFileRegionCount))]
+    [NotifyPropertyChangedFor(nameof(CurrentFileResolvedRegionCount))]
     private FileMergeResult? _currentMergeResult;
 
     [ObservableProperty]
@@ -58,16 +67,21 @@ public partial class ConflictResolutionViewModel : ObservableObject
     private BulkObservableCollection<MergedLine> _mergedLines = [];
 
     [ObservableProperty]
-    private BulkObservableCollection<ConflictDisplayLine> _oursDisplayLines = [];
+    private ConflictSideLineMapping? _oursLineMapping;
 
     [ObservableProperty]
-    private BulkObservableCollection<ConflictDisplayLine> _theirsDisplayLines = [];
+    private string _oursFileContent = string.Empty;
+
+    [ObservableProperty]
+    private ConflictSideLineMapping? _theirsLineMapping;
+
+    [ObservableProperty]
+    private string _theirsFileContent = string.Empty;
 
     private DispatcherTimer? _mergedContentDebounceTimer;
 
     private readonly HashSet<SelectableLine> _wiredSelectableLines = [];
     private readonly HashSet<MergedLine> _wiredMergedLines = [];
-    private readonly HashSet<SelectableLine> _wiredDisplayLines = [];
     private CancellationTokenSource? _buildMergeCts;
     private string? _lastBuiltFilePath;
 
@@ -80,52 +94,80 @@ public partial class ConflictResolutionViewModel : ObservableObject
     [ObservableProperty]
     private bool _isCompactFileList;
 
+    [ObservableProperty]
+    private bool _isSyncScrollEnabled = true;
+
+    [ObservableProperty]
+    private bool _isBinaryConflict;
+
+    [ObservableProperty]
+    private bool _isLargeFile;
+
+    [ObservableProperty]
+    private int _largeFileLineCount;
+
+    [ObservableProperty]
+    private bool _continueLargeFile;
+
+    [ObservableProperty]
+    private string _conflictNavigationLabel = string.Empty;
+
     /// <summary>
-    /// Number of resolved conflicts.
+    /// Number of resolved files.
     /// </summary>
     public int ResolvedCount => Conflicts.Count(c => c.IsResolved);
 
     /// <summary>
-    /// Total number of conflicts.
+    /// Total number of conflicting files.
     /// </summary>
     public int TotalCount => Conflicts.Count;
 
     /// <summary>
-    /// Number of remaining (unresolved) conflicts.
+    /// Number of remaining (unresolved) files.
     /// </summary>
     public int RemainingCount => TotalCount - ResolvedCount;
 
     /// <summary>
-    /// True if all conflicts have been resolved.
+    /// True if all files have been resolved.
     /// </summary>
     public bool CanCompleteMerge => Conflicts.Count > 0 && Conflicts.All(c => c.IsResolved);
 
-    /// <summary>
-    /// True if a conflict is selected.
-    /// </summary>
     public bool HasSelectedConflict => SelectedConflict != null;
 
-    /// <summary>
-    /// True if there are unresolved conflict regions in the current file.
-    /// </summary>
     public bool HasUnresolvedConflicts => CurrentMergeResult?.UnresolvedCount > 0;
 
     /// <summary>
-    /// Only the conflict regions (not unchanged/auto-merged regions).
-    /// Binding to this instead of CurrentMergeResult.Regions avoids rendering thousands of unchanged lines.
+    /// Only the conflict regions for UI display.
     /// </summary>
     public IEnumerable<MergeRegion> ConflictRegions => CurrentMergeResult?.Regions.Where(r => r.IsConflict) ?? [];
 
     /// <summary>
-    /// True if the current file can be marked as resolved.
+    /// Total conflict regions in current file.
     /// </summary>
+    public int CurrentFileRegionCount => CurrentMergeResult?.ConflictCount ?? 0;
+
+    /// <summary>
+    /// Resolved conflict regions in current file.
+    /// </summary>
+    public int CurrentFileResolvedRegionCount => CurrentMergeResult?.ResolvedCount ?? 0;
+
     public bool CanMarkResolved => (CurrentMergeResult?.IsFullyResolved == true) || IsMergedContentResolved;
 
     private bool IsMergedContentResolved => !string.IsNullOrWhiteSpace(MergedContent) && !ContainsConflictMarkers(MergedContent);
 
+    public bool CanUndo => _undoStack.CanUndo;
+    public bool CanRedo => _undoStack.CanRedo;
+
     /// <summary>
-    /// Event raised when the merge is completed.
+    /// File-level progress as a percentage (0-100).
     /// </summary>
+    public double FileProgressPercent => TotalCount > 0 ? (double)ResolvedCount / TotalCount * 100 : 0;
+
+    /// <summary>
+    /// Region-level progress for current file as percentage.
+    /// </summary>
+    public double RegionProgressPercent => CurrentFileRegionCount > 0 ? (double)CurrentFileResolvedRegionCount / CurrentFileRegionCount * 100 : 0;
+
     public event EventHandler<bool>? MergeCompleted;
 
     public ConflictResolutionViewModel(
@@ -149,40 +191,38 @@ public partial class ConflictResolutionViewModel : ObservableObject
         _mergeService = mergeService;
         _dispatcherService = dispatcherService;
         _repoPath = repoPath;
+        _logger = new MergeUiLogger();
+
+        _undoStack.StackChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+        };
     }
 
-    /// <summary>
-    /// Load conflicts from the repository.
-    /// </summary>
     public async Task LoadConflictsAsync(bool showLoading = true)
     {
         try
         {
             if (showLoading)
-            {
                 IsLoading = true;
-            }
-            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] LoadConflicts: repo={System.IO.Path.GetFileName(_repoPath)}");
+
+            Debug.WriteLine($"[MERGE][UI] LoadConflicts: repo={System.IO.Path.GetFileName(_repoPath)}");
             var latestConflicts = await _gitService.GetConflictsAsync(_repoPath);
             foreach (var conflict in latestConflicts)
-            {
                 conflict.IsResolved = false;
-            }
 
             var resolvedFiles = await _gitService.GetResolvedMergeFilesAsync(_repoPath);
             var latestByPath = new Dictionary<string, ConflictInfo>(StringComparer.OrdinalIgnoreCase);
             foreach (var conflict in latestConflicts)
-            {
                 latestByPath[conflict.FilePath] = conflict;
-            }
 
             foreach (var resolved in resolvedFiles)
             {
                 if (!latestByPath.ContainsKey(resolved.FilePath))
-                {
                     latestByPath[resolved.FilePath] = resolved;
-                }
             }
+
             var existingByPath = Conflicts.ToDictionary(c => c.FilePath, StringComparer.OrdinalIgnoreCase);
 
             foreach (var latest in latestByPath.Values)
@@ -204,38 +244,25 @@ public partial class ConflictResolutionViewModel : ObservableObject
             foreach (var existing in Conflicts)
             {
                 if (!latestByPath.ContainsKey(existing.FilePath))
-                {
                     existing.IsResolved = true;
-                }
             }
 
             if (SelectedConflict == null || !Conflicts.Contains(SelectedConflict))
-            {
                 SelectedConflict = Conflicts.FirstOrDefault(c => !c.IsResolved) ?? Conflicts.FirstOrDefault();
-            }
-
-            // Note: BuildMergeResultForSelectedConflict is called automatically via OnSelectedConflictChanged
-            // when SelectedConflict is set above, so we don't need to call it explicitly here.
 
             UpdateCounts();
             await _gitService.SaveStoredMergeConflictFilesAsync(_repoPath, latestByPath.Keys);
 
-            // Force property notifications for bindings
             OnPropertyChanged(nameof(ConflictedConflicts));
             OnPropertyChanged(nameof(ResolvedConflicts));
         }
         finally
         {
             if (showLoading)
-            {
                 IsLoading = false;
-            }
         }
     }
 
-    /// <summary>
-    /// Build the merge result for the currently selected conflict.
-    /// </summary>
     private async Task BuildMergeResultForSelectedConflict()
     {
         if (SelectedConflict == null)
@@ -244,57 +271,87 @@ public partial class ConflictResolutionViewModel : ObservableObject
             MergedContent = string.Empty;
             MergedLines.Clear();
             _lastBuiltFilePath = null;
+            IsBinaryConflict = false;
+            IsLargeFile = false;
             return;
         }
 
-        // Capture values before going to background thread
         var filePath = SelectedConflict.FilePath;
         var baseContent = SelectedConflict.BaseContent;
         var oursContent = SelectedConflict.OursContent;
         var theirsContent = SelectedConflict.TheirsContent;
 
-        // Skip if we already built this file and haven't changed selection
+        // Skip if already built
         if (_lastBuiltFilePath == filePath && CurrentMergeResult != null)
         {
-            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] BuildMergeResult: skipping redundant build for {filePath}");
+            Debug.WriteLine($"[MERGE][UI] BuildMergeResult: skipping redundant build for {filePath}");
             return;
         }
 
-        // Cancel any previous build in progress
+        // Binary detection
+        if (Utils.ContentUtils.IsBinaryContent(oursContent ?? "") || Utils.ContentUtils.IsBinaryContent(theirsContent ?? ""))
+        {
+            IsBinaryConflict = true;
+            IsLargeFile = false;
+            _logger.BinaryFile(filePath);
+            _lastBuiltFilePath = filePath;
+            CurrentMergeResult = null;
+            MergedContent = string.Empty;
+            MergedLines.Clear();
+            return;
+        }
+
+        IsBinaryConflict = false;
+
+        // Large file detection
+        var totalLines = Utils.ContentUtils.CountLines(oursContent ?? "") + Utils.ContentUtils.CountLines(theirsContent ?? "");
+        if (totalLines > 5000 && !ContinueLargeFile)
+        {
+            IsLargeFile = true;
+            LargeFileLineCount = totalLines;
+            _logger.LargeFile(filePath, totalLines);
+            _lastBuiltFilePath = filePath;
+            CurrentMergeResult = null;
+            MergedContent = string.Empty;
+            MergedLines.Clear();
+            return;
+        }
+
+        IsLargeFile = false;
+
+        // Cancel any previous build
         _buildMergeCts?.Cancel();
         _buildMergeCts = new CancellationTokenSource();
         var ct = _buildMergeCts.Token;
 
-        System.Diagnostics.Debug.WriteLine($"[MERGE][UI] BuildMergeResult: file={filePath} base={baseContent?.Length ?? 0}chars ours={oursContent?.Length ?? 0}chars theirs={theirsContent?.Length ?? 0}chars");
+        Debug.WriteLine($"[MERGE][UI] BuildMergeResult: file={filePath} base={baseContent?.Length ?? 0}chars ours={oursContent?.Length ?? 0}chars theirs={theirsContent?.Length ?? 0}chars");
 
         FileMergeResult result;
         try
         {
-            // Do the heavy computation on a background thread
             result = await Task.Run(() => _mergeService.PerformMerge(filePath, baseContent ?? string.Empty, oursContent ?? string.Empty, theirsContent ?? string.Empty), ct).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
-            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] BuildMergeResult: cancelled for {filePath}");
+            Debug.WriteLine($"[MERGE][UI] BuildMergeResult: cancelled for {filePath}");
             return;
         }
 
-        // Check if cancelled or selection changed while we were computing
         if (ct.IsCancellationRequested || SelectedConflict?.FilePath != filePath)
         {
-            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] BuildMergeResult: discarded (selection changed) for {filePath}");
+            Debug.WriteLine($"[MERGE][UI] BuildMergeResult: discarded (selection changed) for {filePath}");
             return;
         }
 
         _lastBuiltFilePath = filePath;
-        System.Diagnostics.Debug.WriteLine($"[MERGE][UI] BuildMergeResult: {result.Regions.Count} regions, unresolved={result.UnresolvedCount}");
+        Debug.WriteLine($"[MERGE][UI] BuildMergeResult: {result.Regions.Count} regions, unresolved={result.UnresolvedCount}");
 
-        // Update UI on the dispatcher thread (already on UI thread after await)
         CurrentMergeResult = result;
         _currentRegionIndex = result.GetFirstUnresolvedConflictIndex();
+        _undoStack.Clear();
         UpdateResolutionProperties();
         WireConflictLineEvents(result);
-        BuildDisplayLines(result);
+        BuildLineMappings(result);
 
         if (SelectedConflict != null && SelectedConflict.IsResolved && !string.IsNullOrWhiteSpace(SelectedConflict.MergedContent))
         {
@@ -306,24 +363,24 @@ public partial class ConflictResolutionViewModel : ObservableObject
             RefreshMergedLines();
         }
 
-        // Request scroll to first conflict region
+        UpdateConflictNavigationLabel();
+
         if (_currentRegionIndex >= 0)
-        {
             RequestScrollToRegion?.Invoke(this, _currentRegionIndex);
-        }
     }
 
     partial void OnSelectedConflictChanged(ConflictInfo? value)
     {
         if (value != null)
         {
+            ContinueLargeFile = false;
+            _logger.FileTabSelected(value.FileName, value.IsResolved);
             _ = BuildMergeResultForSelectedConflict();
         }
     }
 
-    /// <summary>
-    /// Accept all "ours" for all unresolved conflicts in current file.
-    /// </summary>
+    // --- Resolution Commands ---
+
     [RelayCommand]
     private void AcceptAllOurs()
     {
@@ -331,15 +388,14 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
         foreach (var region in CurrentMergeResult.Regions.Where(r => r.IsConflict && !r.IsResolved))
         {
+            var prev = region.Resolution;
             region.SelectAllOurs();
+            _undoStack.Push(region.Index, prev, region.Resolution);
         }
 
         UpdateResolutionProperties();
     }
 
-    /// <summary>
-    /// Accept all "theirs" for all unresolved conflicts in current file.
-    /// </summary>
     [RelayCommand]
     private void AcceptAllTheirs()
     {
@@ -347,15 +403,120 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
         foreach (var region in CurrentMergeResult.Regions.Where(r => r.IsConflict && !r.IsResolved))
         {
+            var prev = region.Resolution;
             region.SelectAllTheirs();
+            _undoStack.Push(region.Index, prev, region.Resolution);
         }
 
         UpdateResolutionProperties();
     }
 
-    /// <summary>
-    /// Navigate to the next unresolved conflict region.
-    /// </summary>
+    [RelayCommand]
+    private void AcceptAllBoth()
+    {
+        if (CurrentMergeResult == null) return;
+
+        foreach (var region in CurrentMergeResult.Regions.Where(r => r.IsConflict && !r.IsResolved))
+        {
+            var prev = region.Resolution;
+            region.SelectAllBoth();
+            _undoStack.Push(region.Index, prev, region.Resolution);
+            _logger.TakeBothHunk(region.Index, region.OursLines.Count, region.TheirsLines.Count);
+        }
+
+        UpdateResolutionProperties();
+    }
+
+    [RelayCommand]
+    private void TakeOursHunk(MergeRegion? region)
+    {
+        if (region == null) return;
+        var prev = region.Resolution;
+        region.SelectAllOurs();
+        _undoStack.Push(region.Index, prev, region.Resolution);
+        _logger.RegionResolved(region.Index, region.Resolution);
+        UpdateResolutionProperties();
+    }
+
+    [RelayCommand]
+    private void TakeTheirsHunk(MergeRegion? region)
+    {
+        if (region == null) return;
+        var prev = region.Resolution;
+        region.SelectAllTheirs();
+        _undoStack.Push(region.Index, prev, region.Resolution);
+        _logger.RegionResolved(region.Index, region.Resolution);
+        UpdateResolutionProperties();
+    }
+
+    [RelayCommand]
+    private void TakeBothHunk(MergeRegion? region)
+    {
+        if (region == null) return;
+        var prev = region.Resolution;
+        region.SelectAllBoth();
+        _undoStack.Push(region.Index, prev, region.Resolution);
+        _logger.TakeBothHunk(region.Index, region.OursLines.Count, region.TheirsLines.Count);
+        _logger.RegionResolved(region.Index, region.Resolution);
+        UpdateResolutionProperties();
+    }
+
+    // --- Undo/Redo ---
+
+    [RelayCommand]
+    private void Undo()
+    {
+        var action = _undoStack.Undo();
+        if (action == null || CurrentMergeResult == null) return;
+
+        var region = CurrentMergeResult.Regions.FirstOrDefault(r => r.Index == action.RegionIndex);
+        if (region == null) return;
+
+        ApplyResolution(region, action.PreviousChoice);
+        _logger.UndoAction($"region={action.RegionIndex} reverted to {action.PreviousChoice}");
+        UpdateResolutionProperties();
+    }
+
+    [RelayCommand]
+    private void Redo()
+    {
+        var action = _undoStack.Redo();
+        if (action == null || CurrentMergeResult == null) return;
+
+        var region = CurrentMergeResult.Regions.FirstOrDefault(r => r.Index == action.RegionIndex);
+        if (region == null) return;
+
+        ApplyResolution(region, action.NewChoice);
+        _logger.RedoAction($"region={action.RegionIndex} restored to {action.NewChoice}");
+        UpdateResolutionProperties();
+    }
+
+    private static void ApplyResolution(MergeRegion region, ConflictResolution resolution)
+    {
+        switch (resolution)
+        {
+            case ConflictResolution.UseOurs:
+                region.SelectAllOurs();
+                break;
+            case ConflictResolution.UseTheirs:
+                region.SelectAllTheirs();
+                break;
+            case ConflictResolution.UseBoth:
+                region.SelectAllBoth();
+                break;
+            case ConflictResolution.Unresolved:
+                region.InitializeSelectableLines();
+                if (region.OursSelectableLines != null)
+                    foreach (var l in region.OursSelectableLines) l.IsSelected = false;
+                if (region.TheirsSelectableLines != null)
+                    foreach (var l in region.TheirsSelectableLines) l.IsSelected = false;
+                region.Resolution = ConflictResolution.Unresolved;
+                break;
+        }
+    }
+
+    // --- Conflict Navigation ---
+
     [RelayCommand]
     private void NextRegionConflict()
     {
@@ -365,13 +526,11 @@ public partial class ConflictResolutionViewModel : ObservableObject
         if (nextIndex >= 0)
         {
             _currentRegionIndex = nextIndex;
+            UpdateConflictNavigationLabel();
             RequestScrollToRegion?.Invoke(this, nextIndex);
         }
     }
 
-    /// <summary>
-    /// Navigate to the previous unresolved conflict region.
-    /// </summary>
     [RelayCommand]
     private void PreviousRegionConflict()
     {
@@ -381,13 +540,54 @@ public partial class ConflictResolutionViewModel : ObservableObject
         if (prevIndex >= 0)
         {
             _currentRegionIndex = prevIndex;
+            UpdateConflictNavigationLabel();
             RequestScrollToRegion?.Invoke(this, prevIndex);
         }
     }
 
-    /// <summary>
-    /// Copy the merged result to clipboard.
-    /// </summary>
+    private void UpdateConflictNavigationLabel()
+    {
+        if (CurrentMergeResult == null || CurrentFileRegionCount == 0)
+        {
+            ConflictNavigationLabel = string.Empty;
+            return;
+        }
+
+        // Find which conflict number we're on (1-based among conflict regions)
+        var conflictRegions = CurrentMergeResult.Regions.Where(r => r.IsConflict).ToList();
+        var currentPos = _currentRegionIndex >= 0
+            ? conflictRegions.FindIndex(r => r.Index == _currentRegionIndex) + 1
+            : 0;
+
+        ConflictNavigationLabel = currentPos > 0
+            ? $"Conflict {currentPos} of {conflictRegions.Count}"
+            : $"{conflictRegions.Count} conflicts";
+    }
+
+    // --- File Navigation ---
+
+    [RelayCommand]
+    private void PreviousConflict()
+    {
+        if (SelectedConflict == null || Conflicts.Count == 0) return;
+
+        var currentIndex = Conflicts.IndexOf(SelectedConflict);
+        if (currentIndex > 0)
+            SelectedConflict = Conflicts[currentIndex - 1];
+    }
+
+    [RelayCommand]
+    private void NextConflict()
+    {
+        if (SelectedConflict == null || Conflicts.Count == 0) return;
+
+        var currentIndex = Conflicts.IndexOf(SelectedConflict);
+        if (currentIndex < Conflicts.Count - 1)
+            SelectedConflict = Conflicts[currentIndex + 1];
+    }
+
+    // --- File Resolution ---
+
     [RelayCommand]
     private void CopyMergedResult()
     {
@@ -397,9 +597,6 @@ public partial class ConflictResolutionViewModel : ObservableObject
         _clipboardService.SetText(content);
     }
 
-    /// <summary>
-    /// Accept the "ours" (current branch) version for the entire file.
-    /// </summary>
     [RelayCommand]
     private async Task UseOursAsync()
     {
@@ -413,7 +610,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
             SelectedConflict.MergedContent = SelectedConflict.OursContent;
             SelectedConflict.IsResolved = true;
             UpdateCounts();
-
+            AutoAdvanceToNextFile();
         }
         finally
         {
@@ -421,9 +618,6 @@ public partial class ConflictResolutionViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Accept the "theirs" (incoming branch) version for the entire file.
-    /// </summary>
     [RelayCommand]
     private async Task UseTheirsAsync()
     {
@@ -437,7 +631,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
             SelectedConflict.MergedContent = SelectedConflict.TheirsContent;
             SelectedConflict.IsResolved = true;
             UpdateCounts();
-
+            AutoAdvanceToNextFile();
         }
         finally
         {
@@ -445,9 +639,6 @@ public partial class ConflictResolutionViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Mark the selected conflict as resolved with the merged content.
-    /// </summary>
     [RelayCommand]
     private async Task MarkResolvedAsync()
     {
@@ -457,26 +648,22 @@ public partial class ConflictResolutionViewModel : ObservableObject
         try
         {
             IsResolving = true;
-            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] MarkResolved: file={SelectedConflict.FilePath}");
+            Debug.WriteLine($"[MERGE][UI] MarkResolved: file={SelectedConflict.FilePath}");
 
             var mergedContent = MergedContent;
             if (string.IsNullOrWhiteSpace(mergedContent) && CurrentMergeResult != null)
-            {
                 mergedContent = CurrentMergeResult.GetMergedContent();
-            }
 
-            // Write the merged content to the file
             await System.IO.File.WriteAllTextAsync(
                 System.IO.Path.Combine(_repoPath, SelectedConflict.FilePath),
                 mergedContent);
 
-            // Stage the file to mark conflict as resolved
             await _gitService.MarkConflictResolvedAsync(_repoPath, SelectedConflict.FilePath);
 
             SelectedConflict.MergedContent = mergedContent;
             SelectedConflict.IsResolved = true;
             UpdateCounts();
-
+            AutoAdvanceToNextFile();
         }
         finally
         {
@@ -484,39 +671,6 @@ public partial class ConflictResolutionViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Navigate to the previous conflict file.
-    /// </summary>
-    [RelayCommand]
-    private void PreviousConflict()
-    {
-        if (SelectedConflict == null || Conflicts.Count == 0) return;
-
-        var currentIndex = Conflicts.IndexOf(SelectedConflict);
-        if (currentIndex > 0)
-        {
-            SelectedConflict = Conflicts[currentIndex - 1];
-        }
-    }
-
-    /// <summary>
-    /// Navigate to the next conflict file.
-    /// </summary>
-    [RelayCommand]
-    private void NextConflict()
-    {
-        if (SelectedConflict == null || Conflicts.Count == 0) return;
-
-        var currentIndex = Conflicts.IndexOf(SelectedConflict);
-        if (currentIndex < Conflicts.Count - 1)
-        {
-            SelectedConflict = Conflicts[currentIndex + 1];
-        }
-    }
-
-    /// <summary>
-    /// Complete the merge after all conflicts are resolved.
-    /// </summary>
     [RelayCommand]
     private async Task CompleteMergeAsync()
     {
@@ -525,17 +679,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
         try
         {
             IsResolving = true;
-
             var commitMessage = $"Merge branch '{SourceBranch}' into {TargetBranch}";
-            System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] CompleteMerge: message={commitMessage}");
+            Debug.WriteLine($"[MERGE][OPS] CompleteMerge: message={commitMessage}");
             await _gitService.CompleteMergeAsync(_repoPath, commitMessage);
-            System.Diagnostics.Debug.WriteLine("[MERGE][OPS] CompleteMerge: success");
-
+            Debug.WriteLine("[MERGE][OPS] CompleteMerge: success");
             MergeCompleted?.Invoke(this, true);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] CompleteMerge: {ex.Message}");
+            Debug.WriteLine($"[MERGE][ERROR] CompleteMerge: {ex.Message}");
             MergeCompleted?.Invoke(this, false);
             throw;
         }
@@ -545,18 +697,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Abort the merge and return to pre-merge state.
-    /// </summary>
     [RelayCommand]
     private async Task AbortMergeAsync()
     {
         try
         {
             IsResolving = true;
-            System.Diagnostics.Debug.WriteLine("[MERGE][UI] AbortMerge (from ConflictResolutionVM)");
+            Debug.WriteLine("[MERGE][UI] AbortMerge (from ConflictResolutionVM)");
             await _gitService.AbortMergeAsync(_repoPath);
-            System.Diagnostics.Debug.WriteLine("[MERGE][UI] AbortMerge: completed");
+            Debug.WriteLine("[MERGE][UI] AbortMerge: completed");
             MergeCompleted?.Invoke(this, false);
         }
         finally
@@ -565,41 +714,63 @@ public partial class ConflictResolutionViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Select the next unresolved conflict, or stay on current if none.
-    /// </summary>
-    private void SelectNextUnresolvedConflict()
+    [RelayCommand]
+    private async Task ReloadAsync()
     {
-        var nextUnresolved = Conflicts.FirstOrDefault(c => !c.IsResolved);
-        if (nextUnresolved != null)
+        _lastBuiltFilePath = null;
+        await LoadConflictsAsync(showLoading: false);
+    }
+
+    [RelayCommand]
+    private void ContinueLargeFileLoad()
+    {
+        ContinueLargeFile = true;
+        IsLargeFile = false;
+        _lastBuiltFilePath = null;
+        _ = BuildMergeResultForSelectedConflict();
+    }
+
+    [RelayCommand]
+    private async Task UnresolveConflictAsync(ConflictInfo? conflict)
+    {
+        if (conflict == null || !conflict.IsResolved)
+            return;
+
+        try
         {
+            IsResolving = true;
+            await _gitService.ReopenConflictAsync(_repoPath, conflict.FilePath, conflict.BaseContent, conflict.OursContent, conflict.TheirsContent);
+
+            conflict.IsResolved = false;
+            UpdateCounts();
+
+            _lastBuiltFilePath = null;
+
+            if (SelectedConflict != conflict)
+                SelectedConflict = conflict;
+            else
+                await BuildMergeResultForSelectedConflict();
+        }
+        finally
+        {
+            IsResolving = false;
+        }
+    }
+
+    // --- Auto-advance ---
+
+    private void AutoAdvanceToNextFile()
+    {
+        var currentFile = SelectedConflict;
+        var nextUnresolved = Conflicts.FirstOrDefault(c => !c.IsResolved);
+        if (nextUnresolved != null && nextUnresolved != currentFile)
+        {
+            _logger.AutoAdvance(currentFile?.FileName ?? "?", nextUnresolved.FileName);
             SelectedConflict = nextUnresolved;
         }
     }
 
-    /// <summary>
-    /// Update the conflict count properties.
-    /// </summary>
-    private void UpdateCounts()
-    {
-        OnPropertyChanged(nameof(ResolvedCount));
-        OnPropertyChanged(nameof(TotalCount));
-        OnPropertyChanged(nameof(RemainingCount));
-        OnPropertyChanged(nameof(CanCompleteMerge));
-        RefreshConflictBuckets();
-        _ = _gitService.SaveStoredMergeConflictFilesAsync(_repoPath, Conflicts.Select(c => c.FilePath));
-    }
-
-    /// <summary>
-    /// Update resolution-related properties.
-    /// </summary>
-    private void UpdateResolutionProperties()
-    {
-        CurrentMergeResult?.NotifyResolutionChanged();
-        OnPropertyChanged(nameof(HasUnresolvedConflicts));
-        OnPropertyChanged(nameof(CanMarkResolved));
-        RefreshMergedLines();
-    }
+    // --- Merged Line Building ---
 
     private void RefreshMergedLines()
     {
@@ -612,22 +783,19 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
         _wiredMergedLines.Clear();
 
-        // Build all lines first, then replace in bulk (single notification)
         var newLines = new List<MergedLine>();
         foreach (var region in CurrentMergeResult.Regions)
         {
             var lines = GetRegionLines(region);
             foreach (var (line, source) in lines)
-            {
                 newLines.Add(new MergedLine { Content = line, Source = source });
-            }
         }
 
-        // Single ReplaceAll call fires ONE CollectionChanged notification
         MergedLines.ReplaceAll(newLines);
-
-        // Wire events after collection is populated
         UpdateMergedContentFromLines();
+
+        _logger.ProgressUpdate(ResolvedCount, TotalCount,
+            CurrentFileResolvedRegionCount, CurrentFileRegionCount);
     }
 
     private List<(string line, MergedLineSource source)> GetRegionLines(MergeRegion region)
@@ -648,11 +816,20 @@ public partial class ConflictResolutionViewModel : ObservableObject
         {
             ConflictResolution.UseOurs => region.OursLines.Select(l => (l, MergedLineSource.Ours)).ToList(),
             ConflictResolution.UseTheirs => region.TheirsLines.Select(l => (l, MergedLineSource.Theirs)).ToList(),
+            ConflictResolution.UseBoth => GetBothLines(region),
             ConflictResolution.UseCustom => GetCustomSelectedLines(region),
             ConflictResolution.UseManual => SplitLines(region.ManualEditContent)
                 .Select(l => (l, MergedLineSource.Manual)).ToList(),
             _ => GetEmptyConflictLines(region).Select(l => (l, MergedLineSource.None)).ToList()
         };
+    }
+
+    private static List<(string line, MergedLineSource source)> GetBothLines(MergeRegion region)
+    {
+        var lines = new List<(string line, MergedLineSource source)>();
+        lines.AddRange(region.OursLines.Select(l => (l, MergedLineSource.Ours)));
+        lines.AddRange(region.TheirsLines.Select(l => (l, MergedLineSource.Theirs)));
+        return lines;
     }
 
     private static List<(string line, MergedLineSource source)> GetCustomSelectedLines(MergeRegion region)
@@ -682,16 +859,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
     private static List<string> SplitLines(string content)
     {
-        if (content == null)
-        {
-            return [];
-        }
-
-        if (content.Length == 0)
-        {
-            return [string.Empty];
-        }
-
+        if (content == null) return [];
+        if (content.Length == 0) return [string.Empty];
         return content.Split('\n').ToList();
     }
 
@@ -739,36 +908,30 @@ public partial class ConflictResolutionViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    private async Task UnresolveConflictAsync(ConflictInfo? conflict)
+    // --- State Updates ---
+
+    private void UpdateCounts()
     {
-        if (conflict == null || !conflict.IsResolved)
-            return;
+        OnPropertyChanged(nameof(ResolvedCount));
+        OnPropertyChanged(nameof(TotalCount));
+        OnPropertyChanged(nameof(RemainingCount));
+        OnPropertyChanged(nameof(CanCompleteMerge));
+        OnPropertyChanged(nameof(FileProgressPercent));
+        RefreshConflictBuckets();
+        _ = _gitService.SaveStoredMergeConflictFilesAsync(_repoPath, Conflicts.Select(c => c.FilePath));
+    }
 
-        try
-        {
-            IsResolving = true;
-            await _gitService.ReopenConflictAsync(_repoPath, conflict.FilePath, conflict.BaseContent, conflict.OursContent, conflict.TheirsContent);
-
-            conflict.IsResolved = false;
-            UpdateCounts();
-
-            // Force rebuild since content state changed
-            _lastBuiltFilePath = null;
-
-            if (SelectedConflict != conflict)
-            {
-                SelectedConflict = conflict;
-            }
-            else
-            {
-                await BuildMergeResultForSelectedConflict();
-            }
-        }
-        finally
-        {
-            IsResolving = false;
-        }
+    private void UpdateResolutionProperties()
+    {
+        CurrentMergeResult?.NotifyResolutionChanged();
+        OnPropertyChanged(nameof(HasUnresolvedConflicts));
+        OnPropertyChanged(nameof(CanMarkResolved));
+        OnPropertyChanged(nameof(CurrentFileRegionCount));
+        OnPropertyChanged(nameof(CurrentFileResolvedRegionCount));
+        OnPropertyChanged(nameof(RegionProgressPercent));
+        OnPropertyChanged(nameof(ConflictRegions));
+        UpdateConflictNavigationLabel();
+        RefreshMergedLines();
     }
 
     private void UpdateMergedContentFromLines()
@@ -782,10 +945,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
                     if (args.PropertyName == nameof(MergedLine.Content))
                     {
                         if (line.Source != MergedLineSource.Manual)
-                        {
                             line.Source = MergedLineSource.Manual;
-                        }
-                        // Debounce merged content rebuild during rapid edits
                         DebounceMergedContentUpdate();
                     }
                 };
@@ -816,9 +976,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
     {
         var lines = text.Split('\n');
         if (lines.Length == 0)
-        {
             lines = [string.Empty];
-        }
 
         for (int i = 0; i < lines.Length; i++)
         {
@@ -828,230 +986,41 @@ public partial class ConflictResolutionViewModel : ObservableObject
                 {
                     MergedLines[i].Content = lines[i];
                     if (MergedLines[i].Source != MergedLineSource.Manual)
-                    {
                         MergedLines[i].Source = MergedLineSource.Manual;
-                    }
                 }
             }
             else
             {
-                MergedLines.Add(new MergedLine
-                {
-                    Content = lines[i],
-                    Source = MergedLineSource.Manual
-                });
+                MergedLines.Add(new MergedLine { Content = lines[i], Source = MergedLineSource.Manual });
             }
         }
 
         while (MergedLines.Count > lines.Length)
-        {
             MergedLines.RemoveAt(MergedLines.Count - 1);
-        }
 
         MergedContent = text;
         OnPropertyChanged(nameof(CanMarkResolved));
     }
 
-    private const int ContextLineCount = 5;
+    // --- Line Mapping Building ---
 
-    private void BuildDisplayLines(FileMergeResult result)
+    private void BuildLineMappings(FileMergeResult result)
     {
-        // Build all lines into lists first, then replace in bulk
-        var oursLines = new List<ConflictDisplayLine>();
-        var theirsLines = new List<ConflictDisplayLine>();
-        var oursLineNumber = 1;
-        var theirsLineNumber = 1;
+        var (oursMapping, oursContent) = ConflictSideLineMapping.Build(result, ConflictSide.Ours);
+        var (theirsMapping, theirsContent) = ConflictSideLineMapping.Build(result, ConflictSide.Theirs);
 
-        // First pass: build all display lines and track line numbers
-        var regionOursLines = new Dictionary<MergeRegion, List<ConflictDisplayLine>>();
-        var regionTheirsLines = new Dictionary<MergeRegion, List<ConflictDisplayLine>>();
+        // Set content before mappings — the view listens for mapping changes
+        // and reads content at that point, so content must be populated first
+        OursFileContent = oursContent;
+        TheirsFileContent = theirsContent;
+        OursLineMapping = oursMapping;
+        TheirsLineMapping = theirsMapping;
 
-        foreach (var region in result.Regions)
-        {
-            region.OursDisplayLines.Clear();
-            region.TheirsDisplayLines.Clear();
-            regionOursLines[region] = [];
-            regionTheirsLines[region] = [];
-
-            region.OursStartLineNumber = oursLineNumber;
-            region.TheirsStartLineNumber = theirsLineNumber;
-
-            if (!region.IsConflict)
-            {
-                var lines = SplitLines(region.Content);
-                if (region.Type != MergeRegionType.TheirsOnly)
-                {
-                    foreach (var line in lines)
-                    {
-                        var displayLine = new ConflictDisplayLine
-                        {
-                            Content = line,
-                            IsSelectable = false,
-                            LineNumber = oursLineNumber++,
-                            IsContextLine = true // Non-conflict lines are context
-                        };
-                        oursLines.Add(displayLine);
-                        regionOursLines[region].Add(displayLine);
-                    }
-                }
-
-                if (region.Type != MergeRegionType.OursOnly)
-                {
-                    foreach (var line in lines)
-                    {
-                        var displayLine = new ConflictDisplayLine
-                        {
-                            Content = line,
-                            IsSelectable = false,
-                            LineNumber = theirsLineNumber++,
-                            IsContextLine = true
-                        };
-                        theirsLines.Add(displayLine);
-                        regionTheirsLines[region].Add(displayLine);
-                    }
-                }
-
-                continue;
-            }
-
-            region.InitializeSelectableLines();
-
-            if (region.OursSelectableLines != null)
-            {
-                foreach (var line in region.OursSelectableLines)
-                {
-                    var displayLine = new ConflictDisplayLine
-                    {
-                        Content = line.Content,
-                        IsSelectable = true,
-                        IsSelected = line.IsSelected,
-                        SourceLine = line,
-                        LineNumber = oursLineNumber++,
-                        IsContextLine = false // Conflict lines are not context
-                    };
-
-                    if (_wiredDisplayLines.Add(line))
-                    {
-                        line.PropertyChanged += (s, args) =>
-                        {
-                            if (args.PropertyName == nameof(SelectableLine.IsSelected))
-                            {
-                                displayLine.IsSelected = line.IsSelected;
-                                UpdateResolutionProperties();
-                            }
-                        };
-                    }
-
-                    oursLines.Add(displayLine);
-                    regionOursLines[region].Add(displayLine);
-                }
-            }
-
-            if (region.TheirsSelectableLines != null)
-            {
-                foreach (var line in region.TheirsSelectableLines)
-                {
-                    var displayLine = new ConflictDisplayLine
-                    {
-                        Content = line.Content,
-                        IsSelectable = true,
-                        IsSelected = line.IsSelected,
-                        SourceLine = line,
-                        LineNumber = theirsLineNumber++,
-                        IsContextLine = false
-                    };
-
-                    if (_wiredDisplayLines.Add(line))
-                    {
-                        line.PropertyChanged += (s, args) =>
-                        {
-                            if (args.PropertyName == nameof(SelectableLine.IsSelected))
-                            {
-                                displayLine.IsSelected = line.IsSelected;
-                                UpdateResolutionProperties();
-                            }
-                        };
-                    }
-
-                    theirsLines.Add(displayLine);
-                    regionTheirsLines[region].Add(displayLine);
-                }
-            }
-        }
-
-        // Second pass: add context lines to each conflict region
-        for (int i = 0; i < result.Regions.Count; i++)
-        {
-            var region = result.Regions[i];
-            if (!region.IsConflict)
-                continue;
-
-            // Get context from preceding region (last N lines)
-            if (i > 0)
-            {
-                var prevRegion = result.Regions[i - 1];
-                var prevOursLines = regionOursLines[prevRegion];
-                var prevTheirsLines = regionTheirsLines[prevRegion];
-
-                var oursContext = prevOursLines.TakeLast(ContextLineCount).ToList();
-                var theirsContext = prevTheirsLines.TakeLast(ContextLineCount).ToList();
-
-                // Insert context at the beginning
-                for (int j = oursContext.Count - 1; j >= 0; j--)
-                    region.OursDisplayLines.Insert(0, oursContext[j]);
-                for (int j = theirsContext.Count - 1; j >= 0; j--)
-                    region.TheirsDisplayLines.Insert(0, theirsContext[j]);
-            }
-
-            // Add the conflict lines themselves
-            foreach (var line in regionOursLines[region])
-                region.OursDisplayLines.Add(line);
-            foreach (var line in regionTheirsLines[region])
-                region.TheirsDisplayLines.Add(line);
-
-            // Get context from following region (first N lines)
-            if (i < result.Regions.Count - 1)
-            {
-                var nextRegion = result.Regions[i + 1];
-                var nextOursLines = regionOursLines[nextRegion];
-                var nextTheirsLines = regionTheirsLines[nextRegion];
-
-                var oursContext = nextOursLines.Take(ContextLineCount).ToList();
-                var theirsContext = nextTheirsLines.Take(ContextLineCount).ToList();
-
-                foreach (var line in oursContext)
-                    region.OursDisplayLines.Add(line);
-                foreach (var line in theirsContext)
-                    region.TheirsDisplayLines.Add(line);
-            }
-        }
-
-        // Single ReplaceAll call fires ONE CollectionChanged notification each
-        OursDisplayLines.ReplaceAll(oursLines);
-        TheirsDisplayLines.ReplaceAll(theirsLines);
-    }
-
-    [RelayCommand]
-    private void TakeOursHunk(MergeRegion? region)
-    {
-        if (region == null) return;
-        region.SelectAllOurs();
-        UpdateResolutionProperties();
-    }
-
-    [RelayCommand]
-    private void TakeTheirsHunk(MergeRegion? region)
-    {
-        if (region == null) return;
-        region.SelectAllTheirs();
-        UpdateResolutionProperties();
+        Debug.WriteLine($"[MERGE][UI] BuildLineMappings: ours={oursMapping.TotalLines} lines, theirs={theirsMapping.TotalLines} lines, conflicts={oursMapping.AllConflictRanges.Count}");
     }
 
     private static bool ContainsConflictMarkers(string content)
     {
-        // B10 fix: git conflict markers always start at column 0.
-        // Require both <<<<<<< and >>>>>>> to be present (a real conflict block always has both)
-        // to avoid false-positives from string literals or separators like "=======".
         bool hasOurs = false;
         bool hasTheirs = false;
         foreach (var line in content.Split('\n'))
@@ -1075,13 +1044,9 @@ public partial class ConflictResolutionViewModel : ObservableObject
         foreach (var conflict in Conflicts)
         {
             if (conflict.IsResolved)
-            {
                 ResolvedConflicts.Add(conflict);
-            }
             else
-            {
                 ConflictedConflicts.Add(conflict);
-            }
         }
     }
 }

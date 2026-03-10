@@ -1,0 +1,24 @@
+<UserControl x:Class="Leaf.Controls.Merge.ConflictSideEditorControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
+             mc:Ignorable="d">
+    <Grid>
+        <avalonedit:TextEditor x:Name="Editor"
+                               FontFamily="Consolas"
+                               FontSize="12.5"
+                               ShowLineNumbers="False"
+                               LineNumbersForeground="{DynamicResource TextFillColorTertiaryBrush}"
+                               HorizontalScrollBarVisibility="Auto"
+                               VerticalScrollBarVisibility="Auto"
+                               Background="Transparent"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               IsReadOnly="True"
+                               Padding="0"/>
+        <Canvas x:Name="OverlayCanvas"
+                ClipToBounds="True"
+                IsHitTestVisible="True"/>
+    </Grid>
+</UserControl>
