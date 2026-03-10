@@ -215,7 +215,14 @@ internal class StashOperations
             {
                 if (lines[i].Contains(GitCliHelpers.TempStashMessage))
                 {
-                    GitCliHelpers.RunGit(repoPath, $"stash drop {i}");
+                    // Re-query the stash list to guard against index shifts from concurrent
+                    // stash operations between the find and the drop.
+                    var verifyResult = GitCliHelpers.RunGit(repoPath, "stash list");
+                    var verifyLines = verifyResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                    if (i < verifyLines.Length && verifyLines[i].Contains(GitCliHelpers.TempStashMessage))
+                    {
+                        GitCliHelpers.RunGit(repoPath, $"stash drop {i}");
+                    }
                     break;
                 }
             }

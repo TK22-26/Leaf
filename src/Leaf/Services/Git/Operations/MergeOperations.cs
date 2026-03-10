@@ -122,7 +122,7 @@ internal class MergeOperations
         return Task.Run(() =>
         {
             Debug.WriteLine($"[MERGE][OPS] SquashMerge: branch={branchName}");
-            var result = GitCliHelpers.RunGit(repoPath, $"merge --squash \"{branchName}\"");
+            var result = GitCliHelpers.RunGitArgs(repoPath, "merge", "--squash", branchName);
 
             if (result.ExitCode != 0)
             {

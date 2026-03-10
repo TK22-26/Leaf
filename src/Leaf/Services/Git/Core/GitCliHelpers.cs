@@ -56,6 +56,77 @@ internal class GitCliHelpers
     }
 
     /// <summary>
+    /// Run a synchronous git command with individually-escaped arguments.
+    /// Prefer this over RunGit(string) when any argument contains user-controlled data.
+    /// </summary>
+    public static GitResult RunGitArgs(string workingDirectory, params string[] args)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        foreach (var arg in args)
+            startInfo.ArgumentList.Add(arg);
+
+        startInfo.EnvironmentVariables["LC_ALL"] = "C";
+
+        using var process = Process.Start(startInfo);
+        if (process == null)
+        {
+            return new GitResult(-1, "", "Failed to start git process");
+        }
+
+        string output = process.StandardOutput.ReadToEnd();
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        return new GitResult(process.ExitCode, output, error);
+    }
+
+    /// <summary>
+    /// Run a git command with stdin input and individually-escaped arguments.
+    /// </summary>
+    public static GitResult RunGitWithInputArgs(string workingDirectory, string input, params string[] args)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        foreach (var arg in args)
+            startInfo.ArgumentList.Add(arg);
+
+        startInfo.EnvironmentVariables["LC_ALL"] = "C";
+
+        using var process = Process.Start(startInfo);
+        if (process == null)
+        {
+            return new GitResult(-1, "", "Failed to start git process");
+        }
+
+        process.StandardInput.Write(input);
+        process.StandardInput.Close();
+
+        string output = process.StandardOutput.ReadToEnd();
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        return new GitResult(process.ExitCode, output, error);
+    }
+
+    /// <summary>
     /// Run a git command with stdin input.
     /// </summary>
     public static GitResult RunGitWithInput(string workingDirectory, string arguments, string input)
@@ -250,7 +321,7 @@ internal class GitCliHelpers
     /// </summary>
     public static string ReadConflictStage(string repoPath, string filePath, int stage)
     {
-        var result = RunGit(repoPath, $"show :{stage}:\"{filePath}\"");
+        var result = RunGitArgs(repoPath, "show", $":{stage}:{filePath}");
         return result.ExitCode == 0 ? result.Output : string.Empty;
     }
 
@@ -259,7 +330,7 @@ internal class GitCliHelpers
     /// </summary>
     public static string GetRefFileContent(string repoPath, string refName, string filePath)
     {
-        var result = RunGit(repoPath, $"show {refName}:\"{filePath}\"");
+        var result = RunGitArgs(repoPath, "show", $"{refName}:{filePath}");
         return result.ExitCode == 0 ? result.Output : string.Empty;
     }
 

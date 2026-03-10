@@ -52,10 +52,16 @@ public partial class CloneDialog : Window
         // Load repos from both sources on startup (in parallel) so counts are shown immediately
         Loaded += async (s, e) =>
         {
-            // Load both sources in parallel
-            var gitHubTask = LoadGitHubRepositoriesAsync();
-            var azureTask = LoadAzureRepositoriesInBackgroundAsync();
-            await Task.WhenAll(gitHubTask, azureTask);
+            try
+            {
+                var gitHubTask = LoadGitHubRepositoriesAsync();
+                var azureTask = LoadAzureRepositoriesInBackgroundAsync();
+                await Task.WhenAll(gitHubTask, azureTask);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CloneDialog] Background load failed: {ex.Message}");
+            }
         };
     }
 

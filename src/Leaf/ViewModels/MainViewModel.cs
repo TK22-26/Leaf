@@ -271,7 +271,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (watchedFolders.Count > 0)
         {
             _folderWatcherService.StartWatching(watchedFolders);
-            _ = ScanWatchedFoldersAsync(watchedFolders);
+            _ = ScanWatchedFoldersAsync(watchedFolders).ContinueWith(
+                t => System.Diagnostics.Debug.WriteLine($"[FolderWatcher] Scan failed: {t.Exception?.InnerException?.Message}"),
+                TaskContinuationOptions.OnlyOnFaulted);
         }
 
         // Subscribe to auto-fetch completion

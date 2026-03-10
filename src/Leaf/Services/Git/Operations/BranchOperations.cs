@@ -126,7 +126,7 @@ internal class BranchOperations
 
             if (allowConflicts)
             {
-                var result = GitCliHelpers.RunGit(repoPath, $"checkout -m \"{branch.FriendlyName}\"");
+                var result = GitCliHelpers.RunGitArgs(repoPath, "checkout", "-m", branch.FriendlyName);
                 if (result.ExitCode != 0)
                 {
                     throw new InvalidOperationException($"Checkout failed: {result.Error}");

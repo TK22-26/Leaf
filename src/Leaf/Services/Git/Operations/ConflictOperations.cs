@@ -139,7 +139,7 @@ internal class ConflictOperations : IConflictOperations
                             conflictInfo.OursContent = headBlob.GetContentText();
                         }
                     }
-                    catch { /* Ignore - file might be new */ }
+                    catch (Exception ex) { Debug.WriteLine($"[MERGE][WARN] Failed to read HEAD version: {ex.Message}"); }
                 }
 
                 conflicts.Add(conflictInfo);
@@ -158,7 +158,7 @@ internal class ConflictOperations : IConflictOperations
         {
             using var repo = new Repository(repoPath);
 
-            GitCliHelpers.RunGit(repoPath, $"checkout --ours \"{filePath}\"");
+            GitCliHelpers.RunGitArgs(repoPath, "checkout", "--ours", filePath);
             Commands.Stage(repo, filePath);
         });
     }
@@ -172,7 +172,7 @@ internal class ConflictOperations : IConflictOperations
         {
             using var repo = new Repository(repoPath);
 
-            GitCliHelpers.RunGit(repoPath, $"checkout --theirs \"{filePath}\"");
+            GitCliHelpers.RunGitArgs(repoPath, "checkout", "--theirs", filePath);
             Commands.Stage(repo, filePath);
         });
     }
@@ -221,7 +221,7 @@ internal class ConflictOperations : IConflictOperations
                 return;
             }
 
-            GitCliHelpers.RunGit(repoPath, $"checkout --conflict=merge \"{filePath}\"");
+            GitCliHelpers.RunGitArgs(repoPath, "checkout", "--conflict=merge", filePath);
         });
     }
 
@@ -315,10 +315,16 @@ internal class ConflictOperations : IConflictOperations
             var startInfo = new ProcessStartInfo
             {
                 FileName = "code",
-                Arguments = $"-n --wait --merge \"{basePath}\" \"{localPath}\" \"{remotePath}\" \"{mergedPath}\"",
-                UseShellExecute = true,
+                UseShellExecute = false,
                 CreateNoWindow = true
             };
+            startInfo.ArgumentList.Add("-n");
+            startInfo.ArgumentList.Add("--wait");
+            startInfo.ArgumentList.Add("--merge");
+            startInfo.ArgumentList.Add(basePath);
+            startInfo.ArgumentList.Add(localPath);
+            startInfo.ArgumentList.Add(remotePath);
+            startInfo.ArgumentList.Add(mergedPath);
 
             using var process = Process.Start(startInfo);
             if (process == null)
@@ -326,7 +332,16 @@ internal class ConflictOperations : IConflictOperations
                 throw new InvalidOperationException("Failed to launch VS Code.");
             }
 
-            await process.WaitForExitAsync();
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
+            try
+            {
+                await process.WaitForExitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                process.Kill();
+                throw new InvalidOperationException("VS Code merge timed out after 30 minutes.");
+            }
 
             if (process.ExitCode == 0)
             {
@@ -346,7 +361,7 @@ internal class ConflictOperations : IConflictOperations
             {
                 Directory.Delete(tempDir, true);
             }
-            catch { /* Ignore cleanup errors */ }
+            catch (Exception ex) { Debug.WriteLine($"[MERGE][WARN] Failed to clean up temp directory: {ex.Message}"); }
         }
     }
 

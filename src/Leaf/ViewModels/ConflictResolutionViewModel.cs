@@ -694,11 +694,13 @@ public partial class ConflictResolutionViewModel : ObservableObject
             Debug.WriteLine($"[MERGE][OPS] CompleteMerge: message={commitMessage}");
             await _gitService.CompleteMergeAsync(_repoPath, commitMessage);
             Debug.WriteLine("[MERGE][OPS] CompleteMerge: success");
+            Cleanup();
             MergeCompleted?.Invoke(this, true);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[MERGE][ERROR] CompleteMerge: {ex.Message}");
+            Cleanup();
             MergeCompleted?.Invoke(this, false);
             throw;
         }
@@ -717,6 +719,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
             Debug.WriteLine("[MERGE][UI] AbortMerge (from ConflictResolutionVM)");
             await _gitService.AbortMergeAsync(_repoPath);
             Debug.WriteLine("[MERGE][UI] AbortMerge: completed");
+            Cleanup();
             MergeCompleted?.Invoke(this, false);
         }
         finally
@@ -878,6 +881,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
     private void WireConflictLineEvents(FileMergeResult result)
     {
+        _wiredSelectableLines.Clear();
+
         foreach (var region in result.Regions.Where(r => r.IsConflict))
         {
             region.InitializeSelectableLines();
@@ -982,6 +987,19 @@ public partial class ConflictResolutionViewModel : ObservableObject
         _mergedContentDebounceTimer?.Stop();
         MergedContent = string.Join("\n", MergedLines.Select(l => l.Content));
         OnPropertyChanged(nameof(CanMarkResolved));
+    }
+
+    /// <summary>
+    /// Stops and cleans up timer and cancellation token resources.
+    /// Call before raising MergeCompleted to prevent DispatcherTimer rooting the ViewModel.
+    /// </summary>
+    public void Cleanup()
+    {
+        _mergedContentDebounceTimer?.Stop();
+        _mergedContentDebounceTimer = null;
+        _buildMergeCts?.Cancel();
+        _buildMergeCts?.Dispose();
+        _buildMergeCts = null;
     }
 
     public void UpdateMergedLinesFromText(string text)

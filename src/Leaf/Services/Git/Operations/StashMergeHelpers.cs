@@ -18,7 +18,7 @@ internal static class StashMergeHelpers
         Debug.WriteLine("[TryCommitBasedMerge] Starting commit-based merge approach");
 
         // Step 1: Stash local changes temporarily
-        var tempStashResult = GitCliHelpers.RunGit(repoPath, $"stash push -m \"{GitCliHelpers.TempStashMessage}\"");
+        var tempStashResult = GitCliHelpers.RunGitArgs(repoPath, "stash", "push", "-m", GitCliHelpers.TempStashMessage);
         if (tempStashResult.ExitCode != 0)
         {
             Debug.WriteLine($"[TryCommitBasedMerge] Failed to create temp stash: {tempStashResult.Error}");

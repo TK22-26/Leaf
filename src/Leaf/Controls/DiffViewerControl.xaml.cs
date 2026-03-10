@@ -210,28 +210,4 @@ public partial class DiffViewerControl : UserControl
 
     }
 
-    private static ScrollViewer? FindScrollViewer(DependencyObject? root)
-    {
-        if (root == null)
-        {
-            return null;
-        }
-
-        if (root is ScrollViewer viewer)
-        {
-            return viewer;
-        }
-
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            var found = FindScrollViewer(child);
-            if (found != null)
-            {
-                return found;
-            }
-        }
-
-        return null;
-    }
 }

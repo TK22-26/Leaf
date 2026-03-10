@@ -301,13 +301,16 @@ Description: [your description here]";
         var psi = new ProcessStartInfo
         {
             FileName = "codex",
-            Arguments = $"--approval-mode full-auto -q \"{EscapeArg(prompt)}\"",
             WorkingDirectory = workingDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        psi.ArgumentList.Add("--approval-mode");
+        psi.ArgumentList.Add("full-auto");
+        psi.ArgumentList.Add("-q");
+        psi.ArgumentList.Add(prompt);
 
         return await RunProcessAsync(psi, timeoutSeconds);
     }
@@ -320,13 +323,18 @@ Description: [your description here]";
         var psi = new ProcessStartInfo
         {
             FileName = "claude",
-            Arguments = $"-p \"{EscapeArg(prompt)}\" --output-format json --output-schema '{schema}'",
             WorkingDirectory = workingDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        psi.ArgumentList.Add("-p");
+        psi.ArgumentList.Add(prompt);
+        psi.ArgumentList.Add("--output-format");
+        psi.ArgumentList.Add("json");
+        psi.ArgumentList.Add("--output-schema");
+        psi.ArgumentList.Add(schema);
 
         return await RunProcessAsync(psi, timeoutSeconds);
     }
@@ -369,11 +377,6 @@ Description: [your description here]";
         {
             return (false, "", $"Process error: {ex.Message}");
         }
-    }
-
-    private static string EscapeArg(string arg)
-    {
-        return arg.Replace("\\", "\\\\").Replace("\"", "\\\"");
     }
 
     private static bool TryParseCommitResult(string response, out string message, out string description, out string error)
@@ -428,8 +431,9 @@ Description: [your description here]";
 
             return !string.IsNullOrWhiteSpace(message);
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[AutoCommit] JSON parse error: {ex.Message}");
             return false;
         }
     }

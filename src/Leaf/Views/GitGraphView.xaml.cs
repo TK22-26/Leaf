@@ -64,7 +64,9 @@ public partial class GitGraphView : UserControl
                     var currentBranchName = viewModel.WorkingChanges?.BranchName;
                     if (currentBranchName == label.Name)
                     {
-                        _ = mainViewModel.FastForwardBranchLabelAsync(label);
+                        _ = mainViewModel.FastForwardBranchLabelAsync(label).ContinueWith(
+                            t => System.Diagnostics.Debug.WriteLine($"[CHECKOUT] FastForward failed: {t.Exception?.InnerException?.Message}"),
+                            TaskContinuationOptions.OnlyOnFaulted);
                         return;
                     }
                 }
@@ -84,7 +86,9 @@ public partial class GitGraphView : UserControl
                 RemoteName = label.RemoteName,
                 IsCurrent = label.IsCurrent,
                 TipSha = tipShaToUse
-            });
+            }).ContinueWith(
+                t => System.Diagnostics.Debug.WriteLine($"[CHECKOUT] Checkout failed: {t.Exception?.InnerException?.Message}"),
+                TaskContinuationOptions.OnlyOnFaulted);
         }
     }
 
@@ -274,7 +278,9 @@ public partial class GitGraphView : UserControl
                     if (currentBranchName == label.Name)
                     {
                         // Fast-forward current branch to this remote
-                        _ = mainViewModel.FastForwardBranchLabelAsync(label);
+                        _ = mainViewModel.FastForwardBranchLabelAsync(label).ContinueWith(
+                            t => System.Diagnostics.Debug.WriteLine($"[CHECKOUT] FastForward failed: {t.Exception?.InnerException?.Message}"),
+                            TaskContinuationOptions.OnlyOnFaulted);
                         e.Handled = true;
                         return;
                     }
@@ -293,7 +299,9 @@ public partial class GitGraphView : UserControl
                     RemoteName = label.RemoteName,
                     IsCurrent = label.IsCurrent,
                     TipSha = label.TipSha ?? string.Empty
-                });
+                }).ContinueWith(
+                    t => System.Diagnostics.Debug.WriteLine($"[CHECKOUT] Checkout failed: {t.Exception?.InnerException?.Message}"),
+                    TaskContinuationOptions.OnlyOnFaulted);
                 e.Handled = true;
                 return;
             }

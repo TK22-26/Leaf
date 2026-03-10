@@ -74,15 +74,17 @@ internal class GitOutputParser : IGitOutputParser
     /// <inheritdoc />
     public bool IsShaLine(string line)
     {
-        for (int i = 0; i < 40 && i < line.Length; i++)
+        if (line.Length < 40)
+            return false;
+
+        for (int i = 0; i < 40; i++)
         {
             if (!char.IsAsciiHexDigit(line[i]))
-            {
                 return false;
-            }
         }
 
-        return line.Length >= 40;
+        // Must be exactly 40 chars, or the 41st char must be whitespace (not a longer hex string)
+        return line.Length == 40 || char.IsWhiteSpace(line[40]);
     }
 
     /// <inheritdoc />
@@ -93,12 +95,13 @@ internal class GitOutputParser : IGitOutputParser
 
         var msg = mergeMsgContent.Trim();
         // Common format: "Merge branch 'feature' into master"
-        if (msg.StartsWith("Merge branch '") && msg.Contains('\''))
+        const string prefix = "Merge branch '";
+        if (msg.StartsWith(prefix))
         {
-            var parts = msg.Split('\'');
-            if (parts.Length >= 2)
+            var closingQuote = msg.IndexOf('\'', prefix.Length);
+            if (closingQuote > prefix.Length)
             {
-                return parts[1];
+                return msg[prefix.Length..closingQuote];
             }
         }
 

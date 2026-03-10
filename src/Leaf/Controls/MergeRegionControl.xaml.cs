@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using Leaf.Models;
@@ -25,6 +26,8 @@ public partial class MergeRegionControl : UserControl
     /// </summary>
     public event EventHandler? ResolutionChanged;
 
+    private readonly List<(SelectableLine Line, PropertyChangedEventHandler Handler)> _subscribedLines = [];
+
     public MergeRegionControl()
     {
         InitializeComponent();
@@ -33,41 +36,36 @@ public partial class MergeRegionControl : UserControl
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        // Unsubscribe old handlers to prevent memory leaks on DataContext change
+        foreach (var (line, handler) in _subscribedLines)
+            line.PropertyChanged -= handler;
+        _subscribedLines.Clear();
+
         if (e.NewValue is MergeRegion region && region.IsConflict)
         {
             // Initialize selectable lines for conflict regions
             region.InitializeSelectableLines();
 
-            // Subscribe to line selection changes
-            if (region.OursSelectableLines != null)
-            {
-                foreach (var line in region.OursSelectableLines)
-                {
-                    line.PropertyChanged += (s, args) =>
-                    {
-                        if (args.PropertyName == nameof(SelectableLine.IsSelected))
-                        {
-                            region.UpdateResolutionFromSelection();
-                            ResolutionChanged?.Invoke(this, EventArgs.Empty);
-                        }
-                    };
-                }
-            }
+            SubscribeLineChanges(region.OursSelectableLines, region);
+            SubscribeLineChanges(region.TheirsSelectableLines, region);
+        }
+    }
 
-            if (region.TheirsSelectableLines != null)
+    private void SubscribeLineChanges(IEnumerable<SelectableLine>? lines, MergeRegion region)
+    {
+        if (lines == null) return;
+        foreach (var line in lines)
+        {
+            PropertyChangedEventHandler handler = (s, args) =>
             {
-                foreach (var line in region.TheirsSelectableLines)
+                if (args.PropertyName == nameof(SelectableLine.IsSelected))
                 {
-                    line.PropertyChanged += (s, args) =>
-                    {
-                        if (args.PropertyName == nameof(SelectableLine.IsSelected))
-                        {
-                            region.UpdateResolutionFromSelection();
-                            ResolutionChanged?.Invoke(this, EventArgs.Empty);
-                        }
-                    };
+                    region.UpdateResolutionFromSelection();
+                    ResolutionChanged?.Invoke(this, EventArgs.Empty);
                 }
-            }
+            };
+            line.PropertyChanged += handler;
+            _subscribedLines.Add((line, handler));
         }
     }
 

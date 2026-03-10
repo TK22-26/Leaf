@@ -216,14 +216,9 @@ public partial class WorkingChangesViewModel : ObservableObject
         _repositoryPath = repoPath;
         WorkingChanges = workingChanges;
 
-        // Debug: show what data we received
         if (workingChanges == null)
         {
-            ErrorMessage = "SetWorkingChanges: null data received";
-        }
-        else
-        {
-            ErrorMessage = $"Synced: {workingChanges.UnstagedFiles.Count} unstaged, {workingChanges.StagedFiles.Count} staged";
+            System.Diagnostics.Debug.WriteLine("[WorkingChanges] SetWorkingChanges: null data received");
         }
 
         // Force notification for dependent properties

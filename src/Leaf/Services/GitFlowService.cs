@@ -181,13 +181,15 @@ public partial class GitFlowService : IGitFlowService
             var startInfo = new ProcessStartInfo
             {
                 FileName = "git",
-                Arguments = $"config \"{key}\" \"{value}\"",
                 WorkingDirectory = repoPath,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            startInfo.ArgumentList.Add("config");
+            startInfo.ArgumentList.Add(key);
+            startInfo.ArgumentList.Add(value);
 
             using var process = Process.Start(startInfo);
             process?.WaitForExit();
