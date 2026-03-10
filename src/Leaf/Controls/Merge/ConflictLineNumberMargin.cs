@@ -41,8 +41,8 @@ public sealed class ConflictLineNumberMargin : AbstractMargin
             var lineNumber = visualLine.FirstDocumentLine.LineNumber;
             if (lineNumber < 1 || lineNumber > _mapping.TotalLines) continue;
 
-            // Skip header lines entirely
-            if (_mapping.IsHeaderLine(lineNumber)) continue;
+            // Skip header and spacer lines entirely
+            if (_mapping.IsHiddenMarginLine(lineNumber)) continue;
 
             var displayNumber = _mapping.GetDisplayLineNumber(lineNumber);
             if (displayNumber < 1) continue;

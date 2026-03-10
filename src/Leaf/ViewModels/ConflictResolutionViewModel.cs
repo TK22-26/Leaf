@@ -386,12 +386,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
     {
         if (CurrentMergeResult == null) return;
 
-        foreach (var region in CurrentMergeResult.Regions.Where(r => r.IsConflict && !r.IsResolved))
+        var batch = new List<ResolutionAction>();
+        foreach (var region in CurrentMergeResult.Regions.Where(r => r.IsConflict))
         {
             var prev = region.Resolution;
             region.SelectAllOurs();
-            _undoStack.Push(region.Index, prev, region.Resolution);
+            if (prev != region.Resolution)
+                batch.Add(new ResolutionAction(region.Index, prev, region.Resolution));
         }
+        if (batch.Count > 0) _undoStack.PushBatch(batch.ToArray());
 
         UpdateResolutionProperties();
     }
@@ -401,12 +404,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
     {
         if (CurrentMergeResult == null) return;
 
-        foreach (var region in CurrentMergeResult.Regions.Where(r => r.IsConflict && !r.IsResolved))
+        var batch = new List<ResolutionAction>();
+        foreach (var region in CurrentMergeResult.Regions.Where(r => r.IsConflict))
         {
             var prev = region.Resolution;
             region.SelectAllTheirs();
-            _undoStack.Push(region.Index, prev, region.Resolution);
+            if (prev != region.Resolution)
+                batch.Add(new ResolutionAction(region.Index, prev, region.Resolution));
         }
+        if (batch.Count > 0) _undoStack.PushBatch(batch.ToArray());
 
         UpdateResolutionProperties();
     }
@@ -416,13 +422,16 @@ public partial class ConflictResolutionViewModel : ObservableObject
     {
         if (CurrentMergeResult == null) return;
 
-        foreach (var region in CurrentMergeResult.Regions.Where(r => r.IsConflict && !r.IsResolved))
+        var batch = new List<ResolutionAction>();
+        foreach (var region in CurrentMergeResult.Regions.Where(r => r.IsConflict))
         {
             var prev = region.Resolution;
             region.SelectAllBoth();
-            _undoStack.Push(region.Index, prev, region.Resolution);
+            if (prev != region.Resolution)
+                batch.Add(new ResolutionAction(region.Index, prev, region.Resolution));
             _logger.TakeBothHunk(region.Index, region.OursLines.Count, region.TheirsLines.Count);
         }
+        if (batch.Count > 0) _undoStack.PushBatch(batch.ToArray());
 
         UpdateResolutionProperties();
     }
@@ -466,28 +475,32 @@ public partial class ConflictResolutionViewModel : ObservableObject
     [RelayCommand]
     private void Undo()
     {
-        var action = _undoStack.Undo();
-        if (action == null || CurrentMergeResult == null) return;
+        var actions = _undoStack.Undo();
+        if (actions == null || CurrentMergeResult == null) return;
 
-        var region = CurrentMergeResult.Regions.FirstOrDefault(r => r.Index == action.RegionIndex);
-        if (region == null) return;
-
-        ApplyResolution(region, action.PreviousChoice);
-        _logger.UndoAction($"region={action.RegionIndex} reverted to {action.PreviousChoice}");
+        foreach (var action in actions)
+        {
+            var region = CurrentMergeResult.Regions.FirstOrDefault(r => r.Index == action.RegionIndex);
+            if (region != null)
+                ApplyResolution(region, action.PreviousChoice);
+        }
+        _logger.UndoAction($"reverted {actions.Length} region(s)");
         UpdateResolutionProperties();
     }
 
     [RelayCommand]
     private void Redo()
     {
-        var action = _undoStack.Redo();
-        if (action == null || CurrentMergeResult == null) return;
+        var actions = _undoStack.Redo();
+        if (actions == null || CurrentMergeResult == null) return;
 
-        var region = CurrentMergeResult.Regions.FirstOrDefault(r => r.Index == action.RegionIndex);
-        if (region == null) return;
-
-        ApplyResolution(region, action.NewChoice);
-        _logger.RedoAction($"region={action.RegionIndex} restored to {action.NewChoice}");
+        foreach (var action in actions)
+        {
+            var region = CurrentMergeResult.Regions.FirstOrDefault(r => r.Index == action.RegionIndex);
+            if (region != null)
+                ApplyResolution(region, action.NewChoice);
+        }
+        _logger.RedoAction($"restored {actions.Length} region(s)");
         UpdateResolutionProperties();
     }
 
@@ -719,6 +732,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
     {
         _lastBuiltFilePath = null;
         await LoadConflictsAsync(showLoading: false);
+        await BuildMergeResultForSelectedConflict();
     }
 
     [RelayCommand]
@@ -1006,8 +1020,37 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
     private void BuildLineMappings(FileMergeResult result)
     {
-        var (oursMapping, oursContent) = ConflictSideLineMapping.Build(result, ConflictSide.Ours);
-        var (theirsMapping, theirsContent) = ConflictSideLineMapping.Build(result, ConflictSide.Theirs);
+        var (oursMapping, oursContent, theirsMapping, theirsContent) =
+            ConflictSideLineMapping.BuildAligned(result);
+
+        Debug.Assert(oursMapping.TotalLines == theirsMapping.TotalLines,
+            $"Line count mismatch: ours={oursMapping.TotalLines} theirs={theirsMapping.TotalLines}");
+
+        // Row-by-row structural alignment check
+        for (int i = 1; i <= oursMapping.TotalLines; i++)
+        {
+            var oursKind = oursMapping.GetLineKind(i);
+            var theirsKind = theirsMapping.GetLineKind(i);
+
+            if (oursKind == ConflictViewLineKind.Header)
+                Debug.Assert(theirsKind == ConflictViewLineKind.Header,
+                    $"Line {i}: ours=Header but theirs={theirsKind}");
+
+            if (oursKind == ConflictViewLineKind.Spacer)
+            {
+                Debug.Assert(theirsKind == ConflictViewLineKind.Content,
+                    $"Line {i}: ours=Spacer but theirs={theirsKind}");
+                Debug.Assert(oursMapping.GetRegionForLine(i) == theirsMapping.GetRegionForLine(i),
+                    $"Line {i}: Spacer/Content region mismatch");
+            }
+            if (theirsKind == ConflictViewLineKind.Spacer)
+            {
+                Debug.Assert(oursKind == ConflictViewLineKind.Content,
+                    $"Line {i}: theirs=Spacer but ours={oursKind}");
+                Debug.Assert(oursMapping.GetRegionForLine(i) == theirsMapping.GetRegionForLine(i),
+                    $"Line {i}: Content/Spacer region mismatch");
+            }
+        }
 
         // Set content before mappings — the view listens for mapping changes
         // and reads content at that point, so content must be populated first
@@ -1016,7 +1059,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         OursLineMapping = oursMapping;
         TheirsLineMapping = theirsMapping;
 
-        Debug.WriteLine($"[MERGE][UI] BuildLineMappings: ours={oursMapping.TotalLines} lines, theirs={theirsMapping.TotalLines} lines, conflicts={oursMapping.AllConflictRanges.Count}");
+        Debug.WriteLine($"[MERGE][UI] BuildLineMappings: aligned={oursMapping.TotalLines} lines, conflicts={oursMapping.AllConflictRanges.Count}");
     }
 
     private static bool ContainsConflictMarkers(string content)

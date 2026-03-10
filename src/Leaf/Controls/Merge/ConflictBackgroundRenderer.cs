@@ -51,7 +51,7 @@ public sealed class ConflictBackgroundRenderer : IBackgroundRenderer
             var lineNumber = visualLine.FirstDocumentLine.LineNumber;
             if (lineNumber < 1 || lineNumber > _mapping.TotalLines) continue;
 
-            if (_mapping.IsHeaderLine(lineNumber)) continue;
+            if (_mapping.IsHiddenMarginLine(lineNumber)) continue;
             var region = _mapping.GetRegionForLine(lineNumber);
             if (region == null || !region.IsConflict) continue;
 

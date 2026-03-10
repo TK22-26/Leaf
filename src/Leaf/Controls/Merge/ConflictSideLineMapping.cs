@@ -5,6 +5,8 @@ namespace Leaf.Controls.Merge;
 
 public enum ConflictSide { Ours, Theirs }
 
+public enum ConflictViewLineKind { Content, Header, Spacer }
+
 public record ConflictRegionRange(MergeRegion Region, int HeaderLine, int StartLine, int EndLine); // 1-based inclusive
 
 /// <summary>
@@ -16,27 +18,29 @@ public sealed class ConflictSideLineMapping
     private readonly MergeRegion?[] _lineToRegion;
     private readonly SelectableLine?[] _lineToSelectable;
     private readonly IReadOnlyList<ConflictRegionRange> _conflictRanges;
-    private readonly HashSet<int> _headerLines;
+    private readonly ConflictViewLineKind[] _lineKinds;
 
     public int TotalLines { get; }
     public IReadOnlyList<ConflictRegionRange> AllConflictRanges => _conflictRanges;
 
-    /// <summary>
-    /// Returns true if this line is a blank header line inserted before a conflict region.
-    /// </summary>
-    public bool IsHeaderLine(int line) => _headerLines.Contains(line);
+    public ConflictViewLineKind GetLineKind(int line)
+        => line >= 1 && line <= TotalLines ? _lineKinds[line - 1] : ConflictViewLineKind.Content;
+
+    public bool IsHeaderLine(int line) => GetLineKind(line) == ConflictViewLineKind.Header;
+    public bool IsSpacerLine(int line) => GetLineKind(line) == ConflictViewLineKind.Spacer;
+    public bool IsHiddenMarginLine(int line) => GetLineKind(line) != ConflictViewLineKind.Content;
 
     private ConflictSideLineMapping(
         MergeRegion?[] lineToRegion,
         SelectableLine?[] lineToSelectable,
         IReadOnlyList<ConflictRegionRange> conflictRanges,
-        HashSet<int> headerLines,
+        ConflictViewLineKind[] lineKinds,
         int totalLines)
     {
         _lineToRegion = lineToRegion;
         _lineToSelectable = lineToSelectable;
         _conflictRanges = conflictRanges;
-        _headerLines = headerLines;
+        _lineKinds = lineKinds;
         TotalLines = totalLines;
     }
 
@@ -58,21 +62,19 @@ public sealed class ConflictSideLineMapping
     }
 
     /// <summary>
-    /// Returns the display line number for the given editor line, skipping header lines.
-    /// Returns -1 for header lines themselves.
+    /// Returns the display line number for the given editor line, skipping non-content lines.
+    /// Returns -1 for header and spacer lines.
     /// </summary>
     public int GetDisplayLineNumber(int editorLine)
     {
         if (editorLine < 1 || editorLine > TotalLines) return -1;
-        if (_headerLines.Contains(editorLine)) return -1;
+        if (IsHiddenMarginLine(editorLine)) return -1;
 
-        int headerCount = 0;
-        foreach (var h in _headerLines)
-        {
-            if (h <= editorLine)
-                headerCount++;
-        }
-        return editorLine - headerCount;
+        int hiddenCount = 0;
+        for (int i = 0; i < editorLine; i++)
+            if (_lineKinds[i] != ConflictViewLineKind.Content)
+                hiddenCount++;
+        return editorLine - hiddenCount;
     }
 
     public ConflictRegionRange? GetNextConflictRange(int afterLine)
@@ -111,104 +113,203 @@ public sealed class ConflictSideLineMapping
     }
 
     /// <summary>
-    /// Builds the full-file content for one side and the line mapping.
-    /// Returns (mapping, fullFileContent) where fullFileContent is the joined text for the editor.
+    /// Builds aligned line mappings for both sides in a single pass, inserting spacer lines
+    /// so that both sides have identical line counts and structural alignment.
     /// </summary>
-    public static (ConflictSideLineMapping Mapping, string Content) Build(FileMergeResult result, ConflictSide side)
+    public static (ConflictSideLineMapping OursMapping, string OursContent,
+                   ConflictSideLineMapping TheirsMapping, string TheirsContent)
+        BuildAligned(FileMergeResult result)
     {
-        var regionList = new List<MergeRegion?>();
-        var selectableList = new List<SelectableLine?>();
-        var conflictRanges = new List<ConflictRegionRange>();
-        var contentLines = new List<string>();
-        var headerLines = new HashSet<int>();
+        var oursRegions = new List<MergeRegion?>();
+        var oursSelectables = new List<SelectableLine?>();
+        var oursConflictRanges = new List<ConflictRegionRange>();
+        var oursContent = new List<string>();
+        var oursKinds = new List<ConflictViewLineKind>();
+
+        var theirsRegions = new List<MergeRegion?>();
+        var theirsSelectables = new List<SelectableLine?>();
+        var theirsConflictRanges = new List<ConflictRegionRange>();
+        var theirsContent = new List<string>();
+        var theirsKinds = new List<ConflictViewLineKind>();
 
         foreach (var region in result.Regions)
         {
             switch (region.Type)
             {
                 case MergeRegionType.Unchanged:
-                    AddContentLines(region, contentLines, regionList, selectableList);
+                    AddContentLines(region, oursContent, oursRegions, oursSelectables, oursKinds);
+                    AddContentLines(region, theirsContent, theirsRegions, theirsSelectables, theirsKinds);
                     break;
 
                 case MergeRegionType.OursOnly:
-                    if (side == ConflictSide.Ours)
-                        AddContentLines(region, contentLines, regionList, selectableList);
+                {
+                    int lineCount = GetRenderedLineCount(region);
+                    AddContentLines(region, oursContent, oursRegions, oursSelectables, oursKinds);
+                    AddSpacerLines(region, lineCount, theirsContent, theirsRegions, theirsSelectables, theirsKinds);
                     break;
+                }
 
                 case MergeRegionType.TheirsOnly:
-                    if (side == ConflictSide.Theirs)
-                        AddContentLines(region, contentLines, regionList, selectableList);
+                {
+                    int lineCount = GetRenderedLineCount(region);
+                    AddSpacerLines(region, lineCount, oursContent, oursRegions, oursSelectables, oursKinds);
+                    AddContentLines(region, theirsContent, theirsRegions, theirsSelectables, theirsKinds);
                     break;
+                }
 
                 case MergeRegionType.Conflict:
+                {
                     region.InitializeSelectableLines();
-                    var lines = side == ConflictSide.Ours ? region.OursLines : region.TheirsLines;
-                    var selectableLines = side == ConflictSide.Ours
-                        ? region.OursSelectableLines
-                        : region.TheirsSelectableLines;
 
-                    // Insert blank header line before the conflict region
-                    int headerLine = contentLines.Count + 1;
-                    contentLines.Add(string.Empty);
-                    regionList.Add(region);
-                    selectableList.Add(null);
-                    headerLines.Add(headerLine);
+                    // Header line on both sides
+                    oursContent.Add(string.Empty);
+                    oursRegions.Add(region);
+                    oursSelectables.Add(null);
+                    oursKinds.Add(ConflictViewLineKind.Header);
+                    int oursHeaderLine = oursContent.Count;
 
-                    if (lines.Count == 0)
+                    theirsContent.Add(string.Empty);
+                    theirsRegions.Add(region);
+                    theirsSelectables.Add(null);
+                    theirsKinds.Add(ConflictViewLineKind.Header);
+                    int theirsHeaderLine = theirsContent.Count;
+
+                    Debug.Assert(oursHeaderLine == theirsHeaderLine,
+                        $"Header line mismatch: ours={oursHeaderLine} theirs={theirsHeaderLine}");
+
+                    var oursLines = region.OursLines;
+                    var theirsLines = region.TheirsLines;
+                    var oursSelectableLines = region.OursSelectableLines;
+                    var theirsSelectableLines = region.TheirsSelectableLines;
+
+                    int oursCount = oursLines.Count;
+                    int theirsCount = theirsLines.Count;
+                    int maxCount = Math.Max(oursCount, theirsCount);
+
+                    if (maxCount == 0)
                     {
-                        // Empty side — record the range as a zero-width marker at next line position
-                        int emptyLine = contentLines.Count + 1;
-                        conflictRanges.Add(new ConflictRegionRange(region, headerLine, emptyLine, emptyLine - 1));
+                        // Both sides empty — record zero-width marker
+                        int emptyLine = oursContent.Count + 1;
+                        oursConflictRanges.Add(new ConflictRegionRange(region, oursHeaderLine, emptyLine, emptyLine - 1));
+                        theirsConflictRanges.Add(new ConflictRegionRange(region, theirsHeaderLine, emptyLine, emptyLine - 1));
                         break;
                     }
 
-                    int startLine = contentLines.Count + 1;
-                    for (int i = 0; i < lines.Count; i++)
+                    int startLine = oursContent.Count + 1;
+
+                    // Emit content lines for each side, padding the shorter side with spacers
+                    for (int i = 0; i < maxCount; i++)
                     {
-                        contentLines.Add(lines[i]);
-                        regionList.Add(region);
-                        selectableList.Add(selectableLines != null && i < selectableLines.Count
-                            ? selectableLines[i]
-                            : null);
+                        if (i < oursCount)
+                        {
+                            oursContent.Add(oursLines[i]);
+                            oursRegions.Add(region);
+                            oursSelectables.Add(oursSelectableLines != null && i < oursSelectableLines.Count
+                                ? oursSelectableLines[i] : null);
+                            oursKinds.Add(ConflictViewLineKind.Content);
+                        }
+                        else
+                        {
+                            oursContent.Add(string.Empty);
+                            oursRegions.Add(region);
+                            oursSelectables.Add(null);
+                            oursKinds.Add(ConflictViewLineKind.Spacer);
+                        }
+
+                        if (i < theirsCount)
+                        {
+                            theirsContent.Add(theirsLines[i]);
+                            theirsRegions.Add(region);
+                            theirsSelectables.Add(theirsSelectableLines != null && i < theirsSelectableLines.Count
+                                ? theirsSelectableLines[i] : null);
+                            theirsKinds.Add(ConflictViewLineKind.Content);
+                        }
+                        else
+                        {
+                            theirsContent.Add(string.Empty);
+                            theirsRegions.Add(region);
+                            theirsSelectables.Add(null);
+                            theirsKinds.Add(ConflictViewLineKind.Spacer);
+                        }
                     }
-                    int endLine = contentLines.Count;
-                    conflictRanges.Add(new ConflictRegionRange(region, headerLine, startLine, endLine));
+
+                    int endLine = oursContent.Count;
+
+                    // Record conflict ranges — use actual content boundaries for each side
+                    int oursEndContent = startLine + oursCount - 1;
+                    int theirsEndContent = startLine + theirsCount - 1;
+
+                    oursConflictRanges.Add(new ConflictRegionRange(region, oursHeaderLine,
+                        oursCount > 0 ? startLine : startLine,
+                        oursCount > 0 ? oursEndContent : startLine - 1));
+
+                    theirsConflictRanges.Add(new ConflictRegionRange(region, theirsHeaderLine,
+                        theirsCount > 0 ? startLine : startLine,
+                        theirsCount > 0 ? theirsEndContent : startLine - 1));
+
                     break;
+                }
             }
         }
 
-        var totalLines = contentLines.Count;
-        var content = string.Join("\n", contentLines);
+        Debug.Assert(oursContent.Count == theirsContent.Count,
+            $"BuildAligned content count mismatch: ours={oursContent.Count} theirs={theirsContent.Count}");
 
-        // Build-time invariant check
-        var expectedLineCount = content.Length == 0 ? 0 : content.Split('\n').Length;
-        if (totalLines != expectedLineCount && totalLines > 0)
-        {
-            Debug.WriteLine($"[MERGE][WARN] ConflictSideLineMapping: TotalLines={totalLines} != content line count={expectedLineCount} for side={side}");
-        }
+        var oursTotalLines = oursContent.Count;
+        var theirsTotalLines = theirsContent.Count;
+        var oursText = string.Join("\n", oursContent);
+        var theirsText = string.Join("\n", theirsContent);
 
-        var mapping = new ConflictSideLineMapping(
-            regionList.ToArray(),
-            selectableList.ToArray(),
-            conflictRanges,
-            headerLines,
-            totalLines);
+        var oursMapping = new ConflictSideLineMapping(
+            oursRegions.ToArray(),
+            oursSelectables.ToArray(),
+            oursConflictRanges,
+            oursKinds.ToArray(),
+            oursTotalLines);
 
-        return (mapping, content);
+        var theirsMapping = new ConflictSideLineMapping(
+            theirsRegions.ToArray(),
+            theirsSelectables.ToArray(),
+            theirsConflictRanges,
+            theirsKinds.ToArray(),
+            theirsTotalLines);
+
+        return (oursMapping, oursText, theirsMapping, theirsText);
     }
+
+    private static int GetRenderedLineCount(MergeRegion region) => SplitLines(region.Content).Count;
 
     private static void AddContentLines(
         MergeRegion region,
         List<string> contentLines,
         List<MergeRegion?> regionList,
-        List<SelectableLine?> selectableList)
+        List<SelectableLine?> selectableList,
+        List<ConflictViewLineKind> lineKinds)
     {
         var lines = SplitLines(region.Content);
         foreach (var line in lines)
         {
             contentLines.Add(line);
             regionList.Add(region);
-            selectableList.Add(null); // Non-conflict lines are not selectable
+            selectableList.Add(null);
+            lineKinds.Add(ConflictViewLineKind.Content);
+        }
+    }
+
+    private static void AddSpacerLines(
+        MergeRegion region,
+        int count,
+        List<string> contentLines,
+        List<MergeRegion?> regionList,
+        List<SelectableLine?> selectableList,
+        List<ConflictViewLineKind> lineKinds)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            contentLines.Add(string.Empty);
+            regionList.Add(region);
+            selectableList.Add(null);
+            lineKinds.Add(ConflictViewLineKind.Spacer);
         }
     }
 

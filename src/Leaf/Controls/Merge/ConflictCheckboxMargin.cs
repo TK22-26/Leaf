@@ -51,12 +51,11 @@ public sealed class ConflictCheckboxMargin : AbstractMargin
             var lineNumber = visualLine.FirstDocumentLine.LineNumber;
             if (lineNumber < 1 || lineNumber > _mapping.TotalLines) continue;
 
-            if (_mapping.IsHeaderLine(lineNumber)) continue;
+            if (_mapping.IsHiddenMarginLine(lineNumber)) continue;
             var selectable = _mapping.GetSelectableLineForLine(lineNumber);
             if (selectable == null) continue;
 
             var region = _mapping.GetRegionForLine(lineNumber);
-            if (region is { IsResolved: true }) continue; // Don't show checkboxes for resolved regions
 
             var y = visualLine.VisualTop - TextView.VerticalOffset;
             var boxX = (MarginWidth - BoxSize) / 2;
@@ -106,9 +105,6 @@ public sealed class ConflictCheckboxMargin : AbstractMargin
 
         var selectable = _mapping.GetSelectableLineForLine(line);
         if (selectable == null) return;
-
-        var region = _mapping.GetRegionForLine(line);
-        if (region is { IsResolved: true }) return;
 
         selectable.IsSelected = !selectable.IsSelected;
         Debug.WriteLine($"[MERGE][UI] CheckboxToggle: line={line} selected={selectable.IsSelected} side={_side}");

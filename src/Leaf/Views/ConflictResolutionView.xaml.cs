@@ -9,7 +9,6 @@ namespace Leaf.Views;
 public partial class ConflictResolutionView : Window
 {
     private ConflictResolutionViewModel? _viewModel;
-    private bool _isSyncingScroll;
 
     public ConflictResolutionView()
     {
@@ -27,8 +26,9 @@ public partial class ConflictResolutionView : Window
         }
 
         // Detach scroll sync from old editors
-        OursEditor.ScrollRatioChanged -= OnOursScrollRatioChanged;
-        TheirsEditor.ScrollRatioChanged -= OnTheirsScrollRatioChanged;
+        OursEditor.ScrollOffsetChanged -= OnOursScrollOffsetChanged;
+        TheirsEditor.ScrollOffsetChanged -= OnTheirsScrollOffsetChanged;
+        MergedEditor.ScrollOffsetChanged -= OnMergedScrollOffsetChanged;
 
         _viewModel = e.NewValue as ConflictResolutionViewModel;
 
@@ -39,8 +39,9 @@ public partial class ConflictResolutionView : Window
             _viewModel.PropertyChanged += ViewModel_PropertyChanged;
 
             // Attach scroll sync
-            OursEditor.ScrollRatioChanged += OnOursScrollRatioChanged;
-            TheirsEditor.ScrollRatioChanged += OnTheirsScrollRatioChanged;
+            OursEditor.ScrollOffsetChanged += OnOursScrollOffsetChanged;
+            TheirsEditor.ScrollOffsetChanged += OnTheirsScrollOffsetChanged;
+            MergedEditor.ScrollOffsetChanged += OnMergedScrollOffsetChanged;
 
             Debug.WriteLine($"[MERGE][UI] WindowOpened: files={_viewModel.TotalCount} source={_viewModel.SourceBranch} target={_viewModel.TargetBranch}");
 
@@ -115,22 +116,38 @@ public partial class ConflictResolutionView : Window
     }
 
     // --- Scroll sync ---
+    // Uses IsMouseOver to distinguish user-initiated scrolls from programmatic echo events.
+    // When we programmatically scroll Theirs in response to Ours, Theirs fires its own
+    // ScrollOffsetChanged — but the mouse is over Ours, not Theirs, so the echo is ignored.
 
-    private void OnOursScrollRatioChanged(object? sender, double ratio)
+    private void OnOursScrollOffsetChanged(object? sender, double offset)
     {
-        if (_isSyncingScroll || _viewModel?.IsSyncScrollEnabled != true) return;
+        if (_viewModel?.IsSyncScrollEnabled != true) return;
+        if (!OursEditor.IsMouseOver && !OursEditor.IsKeyboardFocusWithin) return;
 
-        _isSyncingScroll = true;
-        TheirsEditor.ApplyScrollRatio(ratio);
-        _isSyncingScroll = false;
+        // Raw offset for structurally aligned Ours↔Theirs
+        TheirsEditor.ApplyScrollOffset(offset);
+        // Ratio for Merged (different content length)
+        MergedEditor.ApplyScrollRatio(OursEditor.GetScrollRatio());
     }
 
-    private void OnTheirsScrollRatioChanged(object? sender, double ratio)
+    private void OnTheirsScrollOffsetChanged(object? sender, double offset)
     {
-        if (_isSyncingScroll || _viewModel?.IsSyncScrollEnabled != true) return;
+        if (_viewModel?.IsSyncScrollEnabled != true) return;
+        if (!TheirsEditor.IsMouseOver && !TheirsEditor.IsKeyboardFocusWithin) return;
 
-        _isSyncingScroll = true;
+        // Raw offset for structurally aligned Theirs↔Ours
+        OursEditor.ApplyScrollOffset(offset);
+        // Ratio for Merged (different content length)
+        MergedEditor.ApplyScrollRatio(TheirsEditor.GetScrollRatio());
+    }
+
+    private void OnMergedScrollOffsetChanged(object? sender, double ratio)
+    {
+        if (_viewModel?.IsSyncScrollEnabled != true) return;
+        if (!MergedEditor.IsMouseOver && !MergedEditor.IsKeyboardFocusWithin) return;
+
         OursEditor.ApplyScrollRatio(ratio);
-        _isSyncingScroll = false;
+        TheirsEditor.ApplyScrollRatio(ratio);
     }
 }

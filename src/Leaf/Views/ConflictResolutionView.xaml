@@ -169,17 +169,21 @@
 
                     <!-- Utility -->
                     <StackPanel Orientation="Horizontal" Margin="2,0">
-                        <Button Style="{StaticResource ToolbarButtonStyle}"
-                                Command="{Binding ReloadCommand}"
-                                ToolTip="Reload conflicts"
-                                AutomationProperties.AutomationId="ReloadButton">
-                            <ic:SymbolIcon Symbol="ArrowSync" FontSize="12"/>
-                        </Button>
                         <ToggleButton IsChecked="{Binding IsSyncScrollEnabled}"
                                       Height="26" MinHeight="26" Padding="6,0"
                                       VerticalAlignment="Center" Margin="1,0"
                                       ToolTip="Synchronized scrolling"
                                       AutomationProperties.AutomationId="SyncScrollToggle">
+                            <ToggleButton.Style>
+                                <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource ResolvedAccentBrush}"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ToggleButton.Style>
                             <ic:SymbolIcon Symbol="LinkMultiple" FontSize="12"/>
                         </ToggleButton>
                         <Button Style="{StaticResource ToolbarButtonStyle}"
@@ -297,7 +301,7 @@
                                         <Run Text=" (editable)" Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
                                     </TextBlock>
                                 </Border>
-                                <controls:MergedResultEditorControl Grid.Row="1"/>
+                                <controls:MergedResultEditorControl x:Name="MergedEditor" Grid.Row="1"/>
                             </Grid>
                         </Border>
                     </Grid>

@@ -150,7 +150,7 @@ public sealed class ConflictRegionOverlay
             CornerRadius = new CornerRadius(0),
             Padding = new Thickness(6, 0, 6, 0),
             Margin = new Thickness(0),
-            IsHitTestVisible = true, // Individual bars receive hits
+            IsHitTestVisible = false,
             SnapsToDevicePixels = true
         };
 
@@ -226,4 +226,5 @@ public sealed class ConflictRegionOverlay
         brush.Freeze();
         return brush;
     }
+
 }

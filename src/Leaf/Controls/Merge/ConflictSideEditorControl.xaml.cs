@@ -24,11 +24,11 @@ public partial class ConflictSideEditorControl : UserControl
     private ConflictResolutionViewModel? _viewModel;
     private readonly HashSet<SelectableLine> _subscribedSelectableLines = [];
     private readonly HashSet<MergeRegion> _subscribedRegions = [];
-    private bool _isSyncingScroll;
     private IHighlightingDefinition? _lastHighlighting;
     private int _hoverLine = -1;
+    private ScrollViewer? _cachedScrollViewer;
 
-    public event EventHandler<double>? ScrollRatioChanged;
+    public event EventHandler<double>? ScrollOffsetChanged;
 
     public static readonly DependencyProperty SideProperty =
         DependencyProperty.Register(nameof(Side), typeof(ConflictSide), typeof(ConflictSideEditorControl),
@@ -162,44 +162,36 @@ public partial class ConflictSideEditorControl : UserControl
         Editor.ScrollToVerticalOffset(targetOffset);
     }
 
+    /// <summary>
+    /// Returns scroll ratio (0..1) for syncing with editors of different content length.
+    /// </summary>
+    public double GetScrollRatio()
+    {
+        var sv = _cachedScrollViewer ??= FindScrollViewer(Editor);
+        if (sv == null) return 0;
+        var max = sv.ExtentHeight - sv.ViewportHeight;
+        return max > 0 ? sv.VerticalOffset / max : 0;
+    }
+
     public void ApplyScrollRatio(double ratio)
     {
-        if (_isSyncingScroll) return;
+        var sv = _cachedScrollViewer ??= FindScrollViewer(Editor);
+        if (sv == null) return;
+        var max = sv.ExtentHeight - sv.ViewportHeight;
+        if (max > 0)
+            Editor.ScrollToVerticalOffset(ratio * max);
+    }
 
-        _isSyncingScroll = true;
-        try
-        {
-            var scrollViewer = FindScrollViewer(Editor);
-            if (scrollViewer != null)
-            {
-                var maxOffset = scrollViewer.ExtentHeight - scrollViewer.ViewportHeight;
-                if (maxOffset > 0)
-                    Editor.ScrollToVerticalOffset(ratio * maxOffset);
-            }
-        }
-        finally
-        {
-            _isSyncingScroll = false;
-        }
+    public void ApplyScrollOffset(double offset)
+    {
+        if (Math.Abs(Editor.VerticalOffset - offset) < 0.5) return;
+        Editor.ScrollToVerticalOffset(offset);
     }
 
     private void OnScrollOffsetChanged(object? sender, EventArgs e)
     {
         _overlay?.ScheduleReposition();
-
-        if (_isSyncingScroll) return;
-
-        // Emit scroll ratio for sync
-        var scrollViewer = FindScrollViewer(Editor);
-        if (scrollViewer != null)
-        {
-            var maxOffset = scrollViewer.ExtentHeight - scrollViewer.ViewportHeight;
-            if (maxOffset > 0)
-            {
-                var ratio = scrollViewer.VerticalOffset / maxOffset;
-                ScrollRatioChanged?.Invoke(this, ratio);
-            }
-        }
+        ScrollOffsetChanged?.Invoke(this, Editor.VerticalOffset);
     }
 
     private void OnVisualLinesChanged(object? sender, EventArgs e)

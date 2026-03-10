@@ -24,6 +24,11 @@ public partial class MergedResultEditorControl : UserControl
     private bool _invalidatePending;
     private IHighlightingDefinition? _lastHighlighting;
 
+    /// <summary>
+    /// Fires when the merged editor scrolls, sending the current scroll ratio (0..1).
+    /// </summary>
+    public event EventHandler<double>? ScrollOffsetChanged;
+
     public MergedResultEditorControl()
     {
         InitializeComponent();
@@ -39,6 +44,7 @@ public partial class MergedResultEditorControl : UserControl
         Editor.TextChanged += OnEditorTextChanged;
         Editor.TextArea.MouseMove += OnEditorMouseMove;
         Editor.TextArea.MouseLeave += OnEditorMouseLeave;
+        Editor.TextArea.TextView.ScrollOffsetChanged += OnEditorScrollOffsetChanged;
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -200,6 +206,44 @@ public partial class MergedResultEditorControl : UserControl
         {
             ScheduleInvalidateVisual();
         }
+    }
+
+    private ScrollViewer? _cachedScrollViewer;
+
+    public void ApplyScrollRatio(double ratio)
+    {
+        var sv = _cachedScrollViewer ??= FindScrollViewer(Editor);
+        if (sv == null) return;
+
+        var maxOffset = sv.ExtentHeight - sv.ViewportHeight;
+        if (maxOffset > 0)
+            Editor.ScrollToVerticalOffset(ratio * maxOffset);
+    }
+
+    private double GetScrollRatio()
+    {
+        var sv = _cachedScrollViewer ??= FindScrollViewer(Editor);
+        if (sv == null) return 0;
+        var max = sv.ExtentHeight - sv.ViewportHeight;
+        return max > 0 ? sv.VerticalOffset / max : 0;
+    }
+
+    private void OnEditorScrollOffsetChanged(object? sender, EventArgs e)
+    {
+        ScrollOffsetChanged?.Invoke(this, GetScrollRatio());
+    }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject? root)
+    {
+        if (root == null) return null;
+        if (root is ScrollViewer viewer) return viewer;
+
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var found = FindScrollViewer(VisualTreeHelper.GetChild(root, i));
+            if (found != null) return found;
+        }
+        return null;
     }
 }
 

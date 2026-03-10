@@ -6,7 +6,13 @@
              xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
              mc:Ignorable="d">
     <Grid>
+        <!-- Canvas behind Editor so scrollbar (inside Editor) renders on top of banners -->
+        <Canvas x:Name="OverlayCanvas"
+                Panel.ZIndex="0"
+                ClipToBounds="True"
+                IsHitTestVisible="False"/>
         <avalonedit:TextEditor x:Name="Editor"
+                               Panel.ZIndex="1"
                                FontFamily="Consolas"
                                FontSize="12.5"
                                ShowLineNumbers="False"
@@ -17,8 +23,5 @@
                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                IsReadOnly="True"
                                Padding="0"/>
-        <Canvas x:Name="OverlayCanvas"
-                ClipToBounds="True"
-                IsHitTestVisible="True"/>
     </Grid>
 </UserControl>
