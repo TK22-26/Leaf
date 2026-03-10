@@ -603,4 +603,18 @@ public partial class MainViewModel
             IsBusy = false;
         }
     }
+
+    [RelayCommand]
+    public void CopyBranchName(BranchInfo branch)
+    {
+        if (branch == null) return;
+        _clipboardService.SetText(branch.Name);
+    }
+
+    [RelayCommand]
+    public void CopyTagName(TagInfo tag)
+    {
+        if (tag == null) return;
+        _clipboardService.SetText(tag.Name);
+    }
 }

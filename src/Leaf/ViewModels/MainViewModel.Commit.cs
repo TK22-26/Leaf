@@ -1,6 +1,7 @@
 using System;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.Views;
 
 namespace Leaf.ViewModels;
@@ -84,34 +85,46 @@ public partial class MainViewModel
     }
 
     [RelayCommand]
-    public async Task ResetCurrentBranchToCommitAsync(CommitInfo commit)
+    public async Task ResetCurrentBranchToCommitAsync(ResetCurrentBranchRequest request)
     {
-        if (SelectedRepository == null || commit == null)
+        if (SelectedRepository == null || request?.Commit == null)
             return;
 
         var branchName = SelectedRepository.CurrentBranch;
-        if (string.IsNullOrWhiteSpace(branchName))
-        {
-            branchName = "HEAD";
-        }
 
-        var confirmed = await _dialogService.ShowConfirmationAsync(
-            $"Reset {branchName} to {commit.ShortSha}?\n\nThis will discard uncommitted changes and move the branch pointer.",
-            "Force Reset Branch");
-
-        if (!confirmed)
+        if (string.IsNullOrWhiteSpace(branchName) || SelectedRepository.IsDetachedHead)
         {
+            StatusMessage = "Cannot reset: no branch is checked out";
             return;
         }
+
+        var (message, title) = request.Mode switch
+        {
+            GitResetMode.Soft => (
+                $"Move {branchName} to {request.Commit.ShortSha} and keep all changes staged.\n\n{request.Commit.MessageShort}",
+                "Reset Branch (Soft)"),
+            GitResetMode.Mixed => (
+                $"Move {branchName} to {request.Commit.ShortSha} and keep changes in your working directory as unstaged.\n\n{request.Commit.MessageShort}",
+                "Reset Branch (Mixed)"),
+            GitResetMode.Hard => (
+                $"Move {branchName} to {request.Commit.ShortSha} and discard all staged and unstaged tracked changes. Untracked files will not be removed.\n\n{request.Commit.MessageShort}",
+                "Hard Reset Branch"),
+            _ => throw new ArgumentOutOfRangeException()
+        };
+
+        if (!await _dialogService.ShowConfirmationAsync(message, title))
+            return;
 
         try
         {
             IsBusy = true;
-            StatusMessage = $"Resetting {branchName} to {commit.ShortSha}...";
+            var modeLabel = request.Mode.ToString().ToLower();
+            StatusMessage = $"Resetting {branchName} to {request.Commit.ShortSha} ({modeLabel})...";
 
-            await _gitService.ResetBranchToCommitAsync(SelectedRepository.Path, branchName, commit.Sha, updateWorkingTree: true);
+            await _gitService.ResetCurrentBranchToCommitAsync(
+                SelectedRepository.Path, request.Commit.Sha, request.Mode);
 
-            StatusMessage = $"Reset {branchName} to {commit.ShortSha}";
+            StatusMessage = $"Reset {branchName} to {request.Commit.ShortSha} ({modeLabel})";
             await RefreshAsync();
         }
         catch (Exception ex)

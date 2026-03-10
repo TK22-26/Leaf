@@ -143,10 +143,13 @@ public partial class MainWindow : Window
         if (DataContext is MainViewModel viewModel)
         {
             var newWidth = viewModel.RepoPaneWidth + e.HorizontalChange;
-            // Clamp to min/max defined in XAML (150-400)
-            newWidth = Math.Max(150, Math.Min(400, newWidth));
+            newWidth = Math.Max(150, newWidth);
             viewModel.RepoPaneWidth = newWidth;
         }
+
+        // GridSplitter's built-in behavior converts Column 0 from Auto to a fixed pixel width.
+        // Reset it so the column sizes to content — critical for collapse to shrink the space.
+        MainPanelGrid.ColumnDefinitions[0].Width = GridLength.Auto;
     }
 
     private void RepoPaneSplitter_DragCompleted(object sender, DragCompletedEventArgs e)

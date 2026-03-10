@@ -169,9 +169,9 @@ public interface IGitService
     Task<bool> RedoCommitAsync(string repoPath);
 
     /// <summary>
-    /// Reset a branch to a specific commit.
+    /// Reset the current branch to a specific commit.
     /// </summary>
-    Task ResetBranchToCommitAsync(string repoPath, string branchName, string commitSha, bool updateWorkingTree);
+    Task ResetCurrentBranchToCommitAsync(string repoPath, string commitSha, GitResetMode mode);
 
     /// <summary>
     /// Checkout a branch.

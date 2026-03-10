@@ -8,6 +8,7 @@ using FluentIcons.Common;
 using FluentIcons.Wpf;
 using Leaf.Controls.GitGraph;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.ViewModels;
 
 namespace Leaf.Views;
@@ -405,15 +406,32 @@ public partial class GitGraphView : UserControl
         menu.Items.Add(createBranchItem);
 
         var currentBranchName = mainViewModel.SelectedRepository?.CurrentBranch;
-        if (!string.IsNullOrWhiteSpace(currentBranchName))
+        if (!string.IsNullOrWhiteSpace(currentBranchName)
+            && mainViewModel.SelectedRepository?.IsDetachedHead != true)
         {
-            var resetItem = new MenuItem
+            var resetMenu = new MenuItem
             {
-                Header = $"Reset {currentBranchName} to this commit...",
-                Command = mainViewModel.ResetCurrentBranchToCommitCommand,
-                CommandParameter = commit
+                Header = $"Reset {currentBranchName} to this commit"
             };
-            menu.Items.Add(resetItem);
+            resetMenu.Items.Add(new MenuItem
+            {
+                Header = "Soft \u2014 keep all changes staged",
+                Command = mainViewModel.ResetCurrentBranchToCommitCommand,
+                CommandParameter = new ResetCurrentBranchRequest(commit, GitResetMode.Soft)
+            });
+            resetMenu.Items.Add(new MenuItem
+            {
+                Header = "Mixed \u2014 keep changes unstaged",
+                Command = mainViewModel.ResetCurrentBranchToCommitCommand,
+                CommandParameter = new ResetCurrentBranchRequest(commit, GitResetMode.Mixed)
+            });
+            resetMenu.Items.Add(new MenuItem
+            {
+                Header = "Hard \u2014 discard tracked changes",
+                Command = mainViewModel.ResetCurrentBranchToCommitCommand,
+                CommandParameter = new ResetCurrentBranchRequest(commit, GitResetMode.Hard)
+            });
+            menu.Items.Add(resetMenu);
         }
 
         var revertItem = new MenuItem
@@ -757,6 +775,17 @@ public partial class GitGraphView : UserControl
             CommandParameter = branchInfo
         };
         menu.Items.Add(createBranchItem);
+
+        menu.Items.Add(new Separator());
+
+        // Copy branch name
+        var copyItem = new MenuItem
+        {
+            Header = "Copy branch name",
+            Command = mainViewModel.CopyBranchNameCommand,
+            CommandParameter = branchInfo
+        };
+        menu.Items.Add(copyItem);
 
         menu.Items.Add(new Separator());
 

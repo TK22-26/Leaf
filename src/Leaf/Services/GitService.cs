@@ -164,8 +164,8 @@ public class GitService : IGitService
     public Task SetUpstreamAsync(string repoPath, string branchName, string remoteName, string remoteBranchName)
         => _branchOps.SetUpstreamAsync(repoPath, branchName, remoteName, remoteBranchName);
 
-    public Task ResetBranchToCommitAsync(string repoPath, string branchName, string commitSha, bool updateWorkingTree)
-        => _branchOps.ResetBranchToCommitAsync(repoPath, branchName, commitSha, updateWorkingTree);
+    public Task ResetCurrentBranchToCommitAsync(string repoPath, string commitSha, GitResetMode mode)
+        => _branchOps.ResetCurrentBranchToCommitAsync(repoPath, commitSha, mode);
 
     #endregion
 

@@ -82,7 +82,7 @@ public class FakeGitService : IGitService
     public Task RevertCommitAsync(string repoPath, string commitSha) => Task.CompletedTask;
     public Task RevertMergeCommitAsync(string repoPath, string commitSha, int parentIndex) => Task.CompletedTask;
     public Task<bool> RedoCommitAsync(string repoPath) => Task.FromResult(false);
-    public Task ResetBranchToCommitAsync(string repoPath, string branchName, string commitSha, bool updateWorkingTree) => Task.CompletedTask;
+    public Task ResetCurrentBranchToCommitAsync(string repoPath, string commitSha, GitResetMode mode) => Task.CompletedTask;
     public Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false) => Task.CompletedTask;
     public Task CheckoutCommitAsync(string repoPath, string commitSha) => Task.CompletedTask;
     public Task CreateBranchAsync(string repoPath, string branchName, bool checkout = true) => Task.CompletedTask;

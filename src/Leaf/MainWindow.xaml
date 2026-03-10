@@ -539,7 +539,7 @@
             </Grid.RowDefinitions>
 
             <!--  Main four-panel layout  -->
-            <Grid Grid.Row="0">
+            <Grid x:Name="MainPanelGrid" Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="250" MinWidth="200" />
@@ -574,7 +574,6 @@
                         <Grid
                             x:Name="RepoPaneGrid"
                             MinWidth="150"
-                            MaxWidth="400"
                             Width="{Binding RepoPaneWidth, Mode=TwoWay}"
                             Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
                             <Grid.RowDefinitions>

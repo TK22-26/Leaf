@@ -284,17 +284,22 @@ internal class BranchOperations
     }
 
     /// <summary>
-    /// Reset a branch to a specific commit.
+    /// Reset the current branch to a specific commit.
     /// </summary>
-    public async Task ResetBranchToCommitAsync(string repoPath, string branchName, string commitSha, bool updateWorkingTree)
+    public async Task ResetCurrentBranchToCommitAsync(string repoPath, string commitSha, GitResetMode mode)
     {
-        var result = updateWorkingTree
-            ? await _context.CommandRunner.RunAsync(repoPath, ["reset", "--hard", commitSha])
-            : await _context.CommandRunner.RunAsync(repoPath, ["branch", "-f", branchName, commitSha]);
-
-        if (!result.Success)
+        // Guard: reject detached HEAD — git symbolic-ref --quiet HEAD exits 1 when detached
+        var headResult = await _context.CommandRunner.RunAsync(repoPath, ["symbolic-ref", "--quiet", "HEAD"]);
+        if (!headResult.Success)
         {
-            throw new InvalidOperationException(result.StandardError);
+            if (string.IsNullOrWhiteSpace(headResult.StandardError))
+                throw new InvalidOperationException("Cannot reset: no branch is checked out (detached HEAD).");
+            throw new InvalidOperationException(headResult.StandardError);
         }
+
+        var command = new ResetCommand { Target = commitSha, Mode = mode };
+        var result = await _context.CommandRunner.RunAsync(repoPath, command);
+        if (!result.Success)
+            throw new InvalidOperationException(result.StandardError);
     }
 }

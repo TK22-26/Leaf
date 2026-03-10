@@ -546,6 +546,11 @@
                                 </MenuItem>
                                 <Separator />
                                 <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.CopyBranchNameCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Copy branch name" />
+                                <Separator />
+                                <MenuItem
                                     Command="{Binding PlacementTarget.Tag.DeleteBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                     CommandParameter="{Binding}"
                                     Foreground="#DC2626"
@@ -670,6 +675,11 @@
                                     Command="{Binding PlacementTarget.Tag.CheckoutTagCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                     CommandParameter="{Binding}"
                                     Header="Checkout (detached HEAD)" />
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.CopyTagNameCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Copy tag name" />
                                 <Separator />
                                 <MenuItem
                                     Command="{Binding PlacementTarget.Tag.DeleteTagCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"

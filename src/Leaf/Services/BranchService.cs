@@ -156,8 +156,9 @@ public class BranchService : IBranchService
         bool updateWorkingTree)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        await _gitService.ResetBranchToCommitAsync(
-            session.RepositoryPath, branchName, commitSha, updateWorkingTree);
+        var mode = updateWorkingTree ? GitResetMode.Hard : GitResetMode.Mixed;
+        await _gitService.ResetCurrentBranchToCommitAsync(
+            session.RepositoryPath, commitSha, mode);
         _eventHub.NotifyBranchesChanged();
         _eventHub.NotifyCommitHistoryChanged();
         if (updateWorkingTree)
