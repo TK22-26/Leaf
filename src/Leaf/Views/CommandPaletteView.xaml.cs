@@ -68,10 +68,9 @@ public partial class CommandPaletteView : UserControl
 
     private void ListBoxItem_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (sender is ListBoxItem item && item.DataContext is CommandPaletteItem)
+        if (sender is ListBoxItem item && item.DataContext is CommandPaletteItem clickedItem)
         {
-            // The ListBox selection binding already updates SelectedResult
-            ViewModel?.Confirm();
+            ViewModel?.ConfirmItem(clickedItem);
             e.Handled = true;
         }
     }

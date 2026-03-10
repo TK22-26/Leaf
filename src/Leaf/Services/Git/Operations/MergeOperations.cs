@@ -31,11 +31,12 @@ internal class MergeOperations
                 args += " --allow-unrelated-histories";
             }
 
-            Debug.WriteLine($"[GitService] Merging {branchName} in {repoPath} (allowUnrelatedHistories={allowUnrelatedHistories})");
+            Debug.WriteLine($"[MERGE][OPS] MergeBranch: branch={branchName} allowUnrelatedHistories={allowUnrelatedHistories}");
+            MergeDebugHelper.LogMergeState("BeforeMerge", repoPath);
             var result = GitCliHelpers.RunGit(repoPath, args);
-            Debug.WriteLine($"[GitService] Merge output: {result.Output}");
-            Debug.WriteLine($"[GitService] Merge error: {result.Error}");
-            Debug.WriteLine($"[GitService] Merge exit code: {result.ExitCode}");
+            Debug.WriteLine($"[MERGE][OPS] MergeBranch: exitCode={result.ExitCode} output={result.Output}");
+            if (!string.IsNullOrEmpty(result.Error))
+                Debug.WriteLine($"[MERGE][ERROR] MergeBranch: {result.Error}");
 
             if (result.ExitCode == 0)
             {
@@ -83,11 +84,11 @@ internal class MergeOperations
             // Use --ff-only to ensure we only fast-forward (no merge commit)
             var args = $"merge --ff-only \"{targetBranchName}\"";
 
-            Debug.WriteLine($"[GitService] Fast-forwarding to {targetBranchName} in {repoPath}");
+            Debug.WriteLine($"[MERGE][OPS] FastForward: target={targetBranchName}");
             var result = GitCliHelpers.RunGit(repoPath, args);
-            Debug.WriteLine($"[GitService] Fast-forward output: {result.Output}");
-            Debug.WriteLine($"[GitService] Fast-forward error: {result.Error}");
-            Debug.WriteLine($"[GitService] Fast-forward exit code: {result.ExitCode}");
+            Debug.WriteLine($"[MERGE][OPS] FastForward: exitCode={result.ExitCode} output={result.Output}");
+            if (!string.IsNullOrEmpty(result.Error))
+                Debug.WriteLine($"[MERGE][ERROR] FastForward: {result.Error}");
 
             if (result.ExitCode == 0)
             {
@@ -120,6 +121,7 @@ internal class MergeOperations
     {
         return Task.Run(() =>
         {
+            Debug.WriteLine($"[MERGE][OPS] SquashMerge: branch={branchName}");
             var result = GitCliHelpers.RunGit(repoPath, $"merge --squash \"{branchName}\"");
 
             if (result.ExitCode != 0)
@@ -147,9 +149,49 @@ internal class MergeOperations
     {
         return Task.Run(() =>
         {
+            Debug.WriteLine($"[MERGE][OPS] CompleteMerge: message={commitMessage}");
+            MergeDebugHelper.LogMergeState("BeforeCompleteMerge", repoPath);
             using var repo = new Repository(repoPath);
+
+            // B8 fix: validate no unmerged entries remain in the index
+            if (repo.Index.Conflicts.Any())
+            {
+                var unmergedFiles = repo.Index.Conflicts
+                    .Select(c => c.Ancestor?.Path ?? c.Ours?.Path ?? c.Theirs?.Path)
+                    .Distinct()
+                    .ToList();
+                Debug.WriteLine($"[MERGE][ERROR] CompleteMerge: {unmergedFiles.Count} unmerged files remain");
+                throw new InvalidOperationException(
+                    $"Cannot complete merge: {unmergedFiles.Count} file(s) still have unresolved conflicts: {string.Join(", ", unmergedFiles)}");
+            }
+
+            // B9 fix: use .git/MERGE_MSG if available (preserves git-generated message)
+            var mergeMsgPath = Path.Combine(repo.Info.Path, "MERGE_MSG");
+            if (File.Exists(mergeMsgPath))
+            {
+                try
+                {
+                    var rawMessage = File.ReadAllText(mergeMsgPath);
+                    // Strip comment lines (starting with #) like git does
+                    var cleanedLines = rawMessage.Split('\n')
+                        .Where(line => !line.TrimStart().StartsWith('#'))
+                        .ToArray();
+                    var gitMessage = string.Join("\n", cleanedLines).TrimEnd();
+                    if (!string.IsNullOrWhiteSpace(gitMessage))
+                    {
+                        Debug.WriteLine($"[MERGE][OPS] CompleteMerge: using MERGE_MSG instead of caller message");
+                        commitMessage = gitMessage;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[MERGE][OPS] CompleteMerge: failed to read MERGE_MSG, using caller message: {ex.Message}");
+                }
+            }
+
             var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
             repo.Commit(commitMessage, signature, signature);
+            MergeDebugHelper.LogMergeState("AfterCompleteMerge", repoPath);
         });
     }
 
@@ -160,25 +202,59 @@ internal class MergeOperations
     {
         return Task.Run(() =>
         {
+            Debug.WriteLine("[MERGE][OPS] AbortMerge: running git merge --abort");
+            MergeDebugHelper.LogMergeState("BeforeAbortMerge", repoPath);
             GitCliHelpers.RunGit(repoPath, "merge --abort");
+            MergeDebugHelper.LogMergeState("AfterAbortMerge", repoPath);
+        });
+    }
+
+    /// <summary>
+    /// Abort an in-progress cherry-pick.
+    /// </summary>
+    public Task AbortCherryPickAsync(string repoPath)
+    {
+        return Task.Run(() =>
+        {
+            Debug.WriteLine("[MERGE][OPS] AbortCherryPick: running git cherry-pick --abort");
+            MergeDebugHelper.LogMergeState("BeforeAbortCherryPick", repoPath);
+            GitCliHelpers.RunGit(repoPath, "cherry-pick --abort");
+            MergeDebugHelper.LogMergeState("AfterAbortCherryPick", repoPath);
+        });
+    }
+
+    /// <summary>
+    /// Abort an in-progress revert.
+    /// </summary>
+    public Task AbortRevertAsync(string repoPath)
+    {
+        return Task.Run(() =>
+        {
+            Debug.WriteLine("[MERGE][OPS] AbortRevert: running git revert --abort");
+            MergeDebugHelper.LogMergeState("BeforeAbortRevert", repoPath);
+            GitCliHelpers.RunGit(repoPath, "revert --abort");
+            MergeDebugHelper.LogMergeState("AfterAbortRevert", repoPath);
         });
     }
 
     /// <summary>
     /// Check if the repository is in an "orphaned conflict" state.
-    /// This occurs when the index has unmerged entries (conflicts) but MERGE_HEAD doesn't exist.
+    /// This occurs when the index has unmerged entries (conflicts) but no operation sentinel exists.
     /// This can happen after a failed checkout operation.
     /// </summary>
     public Task<bool> IsOrphanedConflictStateAsync(string repoPath)
     {
         return Task.Run(() =>
         {
-            var mergeHeadPath = Path.Combine(repoPath, ".git", "MERGE_HEAD");
-            var hasMergeHead = File.Exists(mergeHeadPath);
+            var gitDir = Path.Combine(repoPath, ".git");
 
-            if (hasMergeHead)
+            // If any operation sentinel exists, it's not orphaned
+            if (File.Exists(Path.Combine(gitDir, "MERGE_HEAD"))
+                || File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD"))
+                || File.Exists(Path.Combine(gitDir, "REVERT_HEAD"))
+                || Directory.Exists(Path.Combine(gitDir, "rebase-merge"))
+                || Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
             {
-                // Normal merge in progress, not orphaned
                 return false;
             }
 
@@ -222,16 +298,25 @@ internal class MergeOperations
     /// </summary>
     public async Task<Models.MergeResult> CherryPickAsync(string repoPath, string commitSha)
     {
+        Debug.WriteLine($"[MERGE][OPS] CherryPick: commit={commitSha}");
+        MergeDebugHelper.LogMergeState("BeforeCherryPick", repoPath);
+
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
             ["cherry-pick", commitSha]);
 
         if (result.Success)
         {
+            Debug.WriteLine("[MERGE][OPS] CherryPick: success");
             return new Models.MergeResult { Success = true };
         }
 
         var conflicts = GitCliHelpers.GetConflictFiles(repoPath);
+        Debug.WriteLine($"[MERGE][OPS] CherryPick: failed, conflicts={conflicts.Count}");
+        if (!string.IsNullOrWhiteSpace(result.StandardError))
+            Debug.WriteLine($"[MERGE][ERROR] CherryPick: {result.StandardError}");
+        MergeDebugHelper.LogMergeState("AfterCherryPick", repoPath);
+
         return new Models.MergeResult
         {
             Success = false,

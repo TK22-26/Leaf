@@ -393,9 +393,14 @@ public class ThreeWayMergeService : IThreeWayMergeService
         if (current != null)
             merged.Add(current);
 
-        // Re-index
+        // Re-index and assign 1-based conflict numbers
+        int conflictNumber = 0;
         for (int i = 0; i < merged.Count; i++)
+        {
             merged[i].Index = i;
+            if (merged[i].IsConflict)
+                merged[i].ConflictNumber = ++conflictNumber;
+        }
 
         return merged;
     }

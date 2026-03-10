@@ -7,7 +7,9 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Editing;
+using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Rendering;
+using Leaf.Helpers;
 using Leaf.Models;
 using Leaf.ViewModels;
 
@@ -20,6 +22,12 @@ public partial class MergedResultEditorControl : UserControl
     private readonly HashSet<MergedLine> _trackedLines = [];
     private int _hoverLine = -1;
     private bool _invalidatePending;
+    private IHighlightingDefinition? _lastHighlighting;
+
+    /// <summary>
+    /// Fires when the merged editor scrolls, sending the current scroll ratio (0..1).
+    /// </summary>
+    public event EventHandler<double>? ScrollOffsetChanged;
 
     public MergedResultEditorControl()
     {
@@ -27,11 +35,16 @@ public partial class MergedResultEditorControl : UserControl
 
         Editor.TextArea.TextView.Options.EnableVirtualSpace = false;
         Editor.TextArea.TextView.Options.AllowScrollBelowDocument = false;
+        Editor.TextArea.SelectionCornerRadius = 0;
+        Editor.TextArea.SelectionBorder = null;
+        Editor.TextArea.TextView.LinkTextForegroundBrush = new SolidColorBrush(SyntaxHighlightingHelper.KeywordColor);
+        Editor.TextArea.TextView.LinkTextUnderline = false;
         Editor.Loaded += OnEditorLoaded;
         BackgroundLayer.AttachEditor(Editor);
         Editor.TextChanged += OnEditorTextChanged;
         Editor.TextArea.MouseMove += OnEditorMouseMove;
         Editor.TextArea.MouseLeave += OnEditorMouseLeave;
+        Editor.TextArea.TextView.ScrollOffsetChanged += OnEditorScrollOffsetChanged;
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -115,6 +128,17 @@ public partial class MergedResultEditorControl : UserControl
         _isUpdatingFromViewModel = true;
         try
         {
+            // Apply syntax highlighting based on file extension
+            var filePath = _viewModel.SelectedConflict?.FilePath ?? string.Empty;
+            var highlighting = HighlightingManager.Instance.GetDefinitionByExtension(
+                System.IO.Path.GetExtension(filePath));
+            if (highlighting != null && !ReferenceEquals(highlighting, _lastHighlighting))
+            {
+                SyntaxHighlightingHelper.ApplyDarkThemeColors(highlighting);
+                _lastHighlighting = highlighting;
+            }
+            Editor.SyntaxHighlighting = highlighting;
+
             Editor.Text = _viewModel.MergedContent ?? string.Empty;
             BackgroundLayer.SetLines(_viewModel.MergedLines);
             TrackLineChanges();
@@ -182,6 +206,44 @@ public partial class MergedResultEditorControl : UserControl
         {
             ScheduleInvalidateVisual();
         }
+    }
+
+    private ScrollViewer? _cachedScrollViewer;
+
+    public void ApplyScrollRatio(double ratio)
+    {
+        var sv = _cachedScrollViewer ??= FindScrollViewer(Editor);
+        if (sv == null) return;
+
+        var maxOffset = sv.ExtentHeight - sv.ViewportHeight;
+        if (maxOffset > 0)
+            Editor.ScrollToVerticalOffset(ratio * maxOffset);
+    }
+
+    private double GetScrollRatio()
+    {
+        var sv = _cachedScrollViewer ??= FindScrollViewer(Editor);
+        if (sv == null) return 0;
+        var max = sv.ExtentHeight - sv.ViewportHeight;
+        return max > 0 ? sv.VerticalOffset / max : 0;
+    }
+
+    private void OnEditorScrollOffsetChanged(object? sender, EventArgs e)
+    {
+        ScrollOffsetChanged?.Invoke(this, GetScrollRatio());
+    }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject? root)
+    {
+        if (root == null) return null;
+        if (root is ScrollViewer viewer) return viewer;
+
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var found = FindScrollViewer(VisualTreeHelper.GetChild(root, i));
+            if (found != null) return found;
+        }
+        return null;
     }
 }
 
@@ -295,7 +357,7 @@ internal sealed class MergedResultBackground : FrameworkElement
     private static readonly Brush OursHoverBrush = CreateFrozenBrush(Color.FromArgb(0xFF, 0x1E, 0x3A, 0x5F));
     private static readonly Brush TheirsHoverBrush = CreateFrozenBrush(Color.FromArgb(0xFF, 0x14, 0x53, 0x2D));
     private static readonly Brush ManualHoverBrush = CreateFrozenBrush(Color.FromArgb(0xFF, 0x6D, 0x28, 0xD9));
-    private static readonly Brush DefaultHoverBrush = CreateFrozenBrush(Color.FromArgb(0x80, 0xB4, 0x53, 0x09));
+    private static readonly Brush DefaultHoverBrush = CreateFrozenBrush(Color.FromArgb(0x80, 0x55, 0x55, 0x55));
 
     private static Brush CreateFrozenBrush(Color color)
     {

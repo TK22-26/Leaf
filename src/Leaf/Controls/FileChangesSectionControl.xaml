@@ -28,6 +28,19 @@
                 DataType="{x:Type models:PathTreeNode}"
                 ItemsSource="{Binding Children}">
                 <Grid Background="Transparent">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding IsFile}" Value="True" />
+                                        <Condition Binding="{Binding IsRoot}" Value="True" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Margin" Value="-19,0,0,0" />
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
                     <!--  Folder display  -->
                     <StackPanel
                         Margin="2,1"
@@ -463,7 +476,6 @@
                                     <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=HasItems}" Value="False" />
                                     <Condition Binding="{Binding IsRoot}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter Property="Margin" Value="-19,0,0,0" />
                                 <Setter Property="Padding" Value="0,2" />
                             </MultiDataTrigger>
                         </Style.Triggers>

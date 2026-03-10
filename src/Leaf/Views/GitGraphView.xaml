@@ -32,11 +32,36 @@
             </StackPanel>
         </Border>
 
-        <!-- Error message -->
-        <Border Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+        <!-- Error overlay -->
+        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                 Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibilityConverter}, FallbackValue=Collapsed}"
-                Padding="16">
-            <TextBlock Text="{Binding ErrorMessage}" Foreground="#E81123"/>
+                Panel.ZIndex="99">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="400">
+                <TextBlock Text="&#xE783;"
+                           FontFamily="Segoe Fluent Icons"
+                           FontSize="36"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,12"/>
+                <TextBlock Text="Unable to load repository"
+                           FontSize="16" FontWeight="SemiBold"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           Margin="0,0,0,6"/>
+                <TextBlock Text="{Binding ErrorMessage}"
+                           FontSize="12"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,16"/>
+                <Button Content="Retry"
+                        HorizontalAlignment="Center"
+                        Padding="24,6"
+                        Command="{Binding LoadRepositoryCommand}"
+                        CommandParameter="{Binding RepositoryPath}"
+                        Style="{StaticResource DefaultButtonStyle}"/>
+            </StackPanel>
         </Border>
 
         <!-- Main content: Single ScrollViewer containing graph + commit list -->

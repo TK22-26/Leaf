@@ -291,6 +291,12 @@ public class GitService : IGitService
     public Task AbortMergeAsync(string repoPath)
         => _mergeOps.AbortMergeAsync(repoPath);
 
+    public Task AbortCherryPickAsync(string repoPath)
+        => _mergeOps.AbortCherryPickAsync(repoPath);
+
+    public Task AbortRevertAsync(string repoPath)
+        => _mergeOps.AbortRevertAsync(repoPath);
+
     public Task<bool> IsOrphanedConflictStateAsync(string repoPath)
         => _mergeOps.IsOrphanedConflictStateAsync(repoPath);
 
