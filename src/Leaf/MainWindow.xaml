@@ -203,9 +203,7 @@
                 </Grid.ColumnDefinitions>
 
                 <!--  Left: Repository and Branch info (star columns shrink and trim text)  -->
-                <Grid
-                    Grid.Column="0"
-                    VerticalAlignment="Center">
+                <Grid Grid.Column="0" VerticalAlignment="Center">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
@@ -421,7 +419,10 @@
                 </StackPanel>
 
                 <!--  Right: Search (live search, no button needed)  -->
-                <Grid Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Grid
+                    Grid.Column="2"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center">
                     <TextBox
                         x:Name="CommitSearchBox"
                         Width="200"
@@ -573,8 +574,8 @@
                         <!--  Expanded state: full repo list with collapse button  -->
                         <Grid
                             x:Name="RepoPaneGrid"
-                            MinWidth="150"
                             Width="{Binding RepoPaneWidth, Mode=TwoWay}"
+                            MinWidth="150"
                             Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -637,9 +638,7 @@
                                     </StackPanel>
                                 </Grid>
                             </Border>
-                            <views:RepositoryListView
-                                Grid.Row="1"
-                                DataContext="{Binding}" />
+                            <views:RepositoryListView Grid.Row="1" DataContext="{Binding}" />
                         </Grid>
                     </Grid>
                 </Border>
@@ -653,8 +652,8 @@
                     Panel.ZIndex="1"
                     Background="Transparent"
                     Cursor="SizeWE"
-                    DragDelta="RepoPaneSplitter_DragDelta"
                     DragCompleted="RepoPaneSplitter_DragCompleted"
+                    DragDelta="RepoPaneSplitter_DragDelta"
                     Focusable="False"
                     Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
 
@@ -686,9 +685,7 @@
                     </views:GitGraphView>
 
                     <!--  Pull request detail view  -->
-                    <views:PullRequestDetailView
-                        DataContext="{Binding PullRequestDetailViewModel}"
-                        Visibility="{Binding DataContext.ContentMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ContentModeToVisibilityConverter}, ConverterParameter=PullRequestDetail}" />
+                    <views:PullRequestDetailView DataContext="{Binding PullRequestDetailViewModel}" Visibility="{Binding DataContext.ContentMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ContentModeToVisibilityConverter}, ConverterParameter=PullRequestDetail}" />
                 </Grid>
 
                 <!--  Right panel: Commit details / Working changes / Merge Status (hidden in PR mode)  -->
@@ -727,7 +724,7 @@
                                             </MultiDataTrigger.Conditions>
                                             <Setter Property="Visibility" Value="Visible" />
                                         </MultiDataTrigger>
-                                        <!-- Show when conflicts exist (squash merge, etc.) even without MERGE_HEAD -->
+                                        <!--  Show when conflicts exist (squash merge, etc.) even without MERGE_HEAD  -->
                                         <DataTrigger Binding="{Binding SelectedRepository.ConflictCount, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True">
                                             <Setter Property="Visibility" Value="Visible" />
                                         </DataTrigger>

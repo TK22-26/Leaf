@@ -100,20 +100,29 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Opens the pull request create form.
+    /// Opens the provider's "create pull request" page in the default browser.
     /// </summary>
     [RelayCommand]
     private void OpenCreatePullRequest(string? sourceBranch = null)
     {
-        if (!CanEnterPullRequestMode())
+        if (SelectedRepository == null)
             return;
 
-        ContentMode = ContentMode.PullRequestCreate;
-        IsCommitDetailVisible = false;
-        IsDiffViewerVisible = false;
+        var branch = sourceBranch ?? SelectedRepository.CurrentBranch;
+        if (string.IsNullOrEmpty(branch))
+            return;
 
-        // Create form VM will be added in E1.1.3
-        // For now, just switch the mode so the UI can react
+        var url = _pullRequestService.GetCreatePullRequestUrl(SelectedRepository.Path, branch);
+        if (string.IsNullOrEmpty(url))
+        {
+            _notificationService?.Show(
+                "Create Pull Request",
+                "No supported pull request provider configured for this repository.",
+                Services.NotificationType.Warning);
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
     /// <summary>

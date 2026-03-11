@@ -177,7 +177,7 @@ public partial class MainViewModel
             }
 
             var pullRequests = await pullRequestsTask;
-            if (pullRequests.Count > 0)
+            if (_pullRequestService.IsSupported(repo.Path))
             {
                 var prCategory = new BranchCategory
                 {

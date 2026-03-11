@@ -1,95 +1,120 @@
-<UserControl x:Class="Leaf.Views.RepositoryListView"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:converters="clr-namespace:Leaf.Converters"
-             xmlns:models="clr-namespace:Leaf.Models"
-             xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
-             mc:Ignorable="d"
-             d:DesignHeight="450" d:DesignWidth="220">
+<UserControl
+    x:Class="Leaf.Views.RepositoryListView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="clr-namespace:Leaf.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="clr-namespace:Leaf.Models"
+    d:DesignHeight="450"
+    d:DesignWidth="220"
+    mc:Ignorable="d">
 
     <UserControl.Resources>
-        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
-        <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
-        <converters:IntGreaterThanZeroConverter x:Key="IntGreaterThanZeroConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+        <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+        <converters:IntGreaterThanZeroConverter x:Key="IntGreaterThanZeroConverter" />
+
+        <!-- Custom Clock icon geometry (Fluent UI Icons 20px regular).
+             The FluentIcons.Wpf SymbolIcon for Clock has a clipping bug,
+             so we render our own Path instead. -->
+        <Geometry x:Key="ClockIconGeometry">M10 2C14.4183 2 18 5.58172 18 10C18 14.4183 14.4183 18 10 18C5.58172 18 2 14.4183 2 10C2 5.58172 5.58172 2 10 2ZM10 3C6.13401 3 3 6.13401 3 10C3 13.866 6.13401 17 10 17C13.866 17 17 13.866 17 10C17 6.13401 13.866 3 10 3ZM9.5 5C9.74546 5 9.94961 5.17688 9.99194 5.41012L10 5.5V10H12.5C12.7761 10 13 10.2239 13 10.5C13 10.7455 12.8231 10.9496 12.5899 10.9919L12.5 11H9.5C9.25454 11 9.05039 10.8231 9.00806 10.5899L9 10.5V5.5C9 5.22386 9.22386 5 9.5 5Z</Geometry>
 
         <DataTemplate x:Key="RepositoryItemTemplate" DataType="{x:Type models:RepositoryInfo}">
-            <Border x:Name="RepoBorder"
-                    Padding="2,3"
-                    Background="Transparent"
-                    CornerRadius="2"
-                    Cursor="Hand"
-                    HorizontalAlignment="Stretch"
-                    Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+            <Border
+                x:Name="RepoBorder"
+                Padding="2,3"
+                HorizontalAlignment="Stretch"
+                Background="Transparent"
+                CornerRadius="2"
+                Cursor="Hand"
+                Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
                 <Border.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Header="Pin"
-                                  Command="{Binding PlacementTarget.Tag.TogglePinRepositoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                  CommandParameter="{Binding}"
-                                  Visibility="{Binding IsPinned, Converter={StaticResource InverseBoolConverter}}">
+                        <MenuItem
+                            Command="{Binding PlacementTarget.Tag.TogglePinRepositoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                            CommandParameter="{Binding}"
+                            Header="Pin"
+                            Visibility="{Binding IsPinned, Converter={StaticResource InverseBoolConverter}}">
                             <MenuItem.Icon>
-                                <TextBlock Text="&#xE141;" FontFamily="Segoe Fluent Icons" FontSize="14"/>
+                                <TextBlock
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="14"
+                                    Text="&#xE141;" />
                             </MenuItem.Icon>
                         </MenuItem>
-                        <MenuItem Header="Unpin"
-                                  Command="{Binding PlacementTarget.Tag.TogglePinRepositoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                  CommandParameter="{Binding}"
-                                  Visibility="{Binding IsPinned, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <MenuItem
+                            Command="{Binding PlacementTarget.Tag.TogglePinRepositoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                            CommandParameter="{Binding}"
+                            Header="Unpin"
+                            Visibility="{Binding IsPinned, Converter={StaticResource BoolToVisibilityConverter}}">
                             <MenuItem.Icon>
-                                <TextBlock Text="&#xE141;" FontFamily="Segoe Fluent Icons" FontSize="14"/>
+                                <TextBlock
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="14"
+                                    Text="&#xE141;" />
                             </MenuItem.Icon>
                         </MenuItem>
-                        <Separator/>
-                        <MenuItem Header="Remove"
-                                  Command="{Binding PlacementTarget.Tag.DeleteRepositoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                  CommandParameter="{Binding}">
+                        <Separator />
+                        <MenuItem
+                            Command="{Binding PlacementTarget.Tag.DeleteRepositoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                            CommandParameter="{Binding}"
+                            Header="Remove">
                             <MenuItem.Icon>
-                                <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#E81123"/>
+                                <TextBlock
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="14"
+                                    Foreground="#E81123"
+                                    Text="&#xE74D;" />
                             </MenuItem.Icon>
                         </MenuItem>
                     </ContextMenu>
                 </Border.ContextMenu>
-                <TextBlock Text="{Binding Name}"
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                           VerticalAlignment="Center"
-                           FontSize="12"/>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                    Text="{Binding Name}" />
             </Border>
         </DataTemplate>
     </UserControl.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <TextBlock Grid.Row="0"
-                   Text="REPOSITORIES"
-                   FontWeight="SemiBold"
-                   FontSize="11"
-                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                   Margin="12,12,12,8"/>
+        <!--  Header  -->
+        <TextBlock
+            Grid.Row="0"
+            Margin="12,12,12,8"
+            FontSize="11"
+            FontWeight="SemiBold"
+            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+            Text="REPOSITORIES" />
 
-        <!-- Search box -->
+        <!--  Search box  -->
         <Grid Grid.Row="1" Margin="8,0,8,8">
-            <TextBox x:Name="SearchBox"
-                     VerticalContentAlignment="Center"
-                     Text="{Binding RepositorySearchText, UpdateSourceTrigger=PropertyChanged}"/>
-            <TextBlock Text="Search repositories..."
-                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                       VerticalAlignment="Center"
-                       Margin="12,0,0,0"
-                       IsHitTestVisible="False">
+            <TextBox
+                x:Name="SearchBox"
+                VerticalContentAlignment="Center"
+                Text="{Binding RepositorySearchText, UpdateSourceTrigger=PropertyChanged}" />
+            <TextBlock
+                Margin="12,0,0,0"
+                VerticalAlignment="Center"
+                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                IsHitTestVisible="False"
+                Text="Search repositories...">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
-                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Setter Property="Visibility" Value="Collapsed" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
-                                <Setter Property="Visibility" Value="Visible"/>
+                                <Setter Property="Visibility" Value="Visible" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -97,158 +122,193 @@
             </TextBlock>
         </Grid>
 
-        <!-- Repository tree -->
-        <TreeView Grid.Row="2"
-                  x:Name="RepoTreeView"
-                  ItemsSource="{Binding FilteredRepositoryRootItems}"
-                  BorderThickness="0"
-                  Style="{StaticResource RepoTreeViewStyle}"
-                  SelectedItemChanged="RepoTreeView_SelectedItemChanged">
+        <!--  Repository tree  -->
+        <TreeView
+            x:Name="RepoTreeView"
+            Grid.Row="2"
+            BorderThickness="0"
+            ItemsSource="{Binding FilteredRepositoryRootItems}"
+            SelectedItemChanged="RepoTreeView_SelectedItemChanged"
+            Style="{StaticResource RepoTreeViewStyle}">
             <TreeView.Resources>
-                <!-- Quick access section template (PINNED, MOST RECENT) -->
-                <HierarchicalDataTemplate DataType="{x:Type models:RepositorySection}"
-                                          ItemsSource="{Binding Items}">
-                    <StackPanel Orientation="Horizontal" Margin="0,4">
-                        <ic:SymbolIcon x:Name="SectionIcon"
-                                       Symbol="Pin"
-                                       FontSize="14"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                       VerticalAlignment="Center"
-                                       Margin="0,0,8,0"/>
-                        <TextBlock Text="{Binding Name}"
-                                   FontWeight="SemiBold"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding Items.Count, StringFormat=' ({0})'}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   VerticalAlignment="Center"/>
+                <!--  Quick access section template (PINNED, MOST RECENT)  -->
+                <HierarchicalDataTemplate DataType="{x:Type models:RepositorySection}" ItemsSource="{Binding Items}">
+                    <StackPanel Margin="0,4" Orientation="Horizontal">
+                        <Grid
+                            Width="18"
+                            Height="18"
+                            Margin="0,0,5,0"
+                            VerticalAlignment="Center">
+                            <ic:SymbolIcon
+                                x:Name="SectionIcon"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                FontSize="14"
+                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                Symbol="Pin" />
+                            <Viewbox
+                                x:Name="ClockIcon"
+                                Width="18"
+                                Height="18"
+                                Visibility="Collapsed">
+                                <Path
+                                    Width="20"
+                                    Height="20"
+                                    Data="{StaticResource ClockIconGeometry}"
+                                    Fill="{DynamicResource TextFillColorPrimaryBrush}" />
+                            </Viewbox>
+                        </Grid>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                            Text="{Binding Name}" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="{Binding Items.Count, StringFormat=' ({0})'}" />
                     </StackPanel>
                     <HierarchicalDataTemplate.Triggers>
                         <DataTrigger Binding="{Binding Name}" Value="MOST RECENT">
-                            <Setter TargetName="SectionIcon" Property="Symbol" Value="Clock"/>
+                            <Setter TargetName="SectionIcon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="ClockIcon" Property="Visibility" Value="Visible" />
                         </DataTrigger>
                     </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>
 
-                <!-- Group template (folder containing repos) -->
-                <HierarchicalDataTemplate DataType="{x:Type models:RepositoryGroup}"
-                                          ItemsSource="{Binding Repositories}">
-                    <Border Background="Transparent"
-                            Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                <!--  Group template (folder containing repos)  -->
+                <HierarchicalDataTemplate DataType="{x:Type models:RepositoryGroup}" ItemsSource="{Binding Repositories}">
+                    <Border Background="Transparent" Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
                         <Border.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="Watch Folder"
-                                          Command="{Binding PlacementTarget.Tag.WatchFolderGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                          CommandParameter="{Binding}"
-                                          Visibility="{Binding IsWatched, Converter={StaticResource InverseBoolConverter}}">
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.WatchFolderGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Watch Folder"
+                                    Visibility="{Binding IsWatched, Converter={StaticResource InverseBoolConverter}}">
                                     <MenuItem.Icon>
-                                        <ic:SymbolIcon Symbol="Eye" FontSize="14"/>
+                                        <ic:SymbolIcon FontSize="14" Symbol="Eye" />
                                     </MenuItem.Icon>
                                 </MenuItem>
-                                <MenuItem Header="Stop Watching"
-                                          Command="{Binding PlacementTarget.Tag.UnwatchFolderGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                          CommandParameter="{Binding}"
-                                          Visibility="{Binding IsWatched, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.UnwatchFolderGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Stop Watching"
+                                    Visibility="{Binding IsWatched, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <MenuItem.Icon>
-                                        <ic:SymbolIcon Symbol="EyeOff" FontSize="14"/>
+                                        <ic:SymbolIcon FontSize="14" Symbol="EyeOff" />
                                     </MenuItem.Icon>
                                 </MenuItem>
-                                <Separator/>
-                                <MenuItem Header="Remove All"
-                                          Command="{Binding PlacementTarget.Tag.RemoveAllRepositoriesInGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                          CommandParameter="{Binding}">
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.RemoveAllRepositoriesInGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Remove All">
                                     <MenuItem.Icon>
-                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#E81123"/>
+                                        <TextBlock
+                                            FontFamily="Segoe Fluent Icons"
+                                            FontSize="14"
+                                            Foreground="#E81123"
+                                            Text="&#xE74D;" />
                                     </MenuItem.Icon>
                                 </MenuItem>
                             </ContextMenu>
                         </Border.ContextMenu>
-                        <StackPanel Orientation="Horizontal" Margin="0,4">
-                            <TextBlock Text="&#xE8B7;"
-                                       FontFamily="Segoe Fluent Icons"
-                                       FontSize="14"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                       VerticalAlignment="Center"
-                                       Margin="0,0,8,0"/>
-                            <TextBlock Text="{Binding Name}"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                       VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding Repositories.Count, StringFormat=' ({0})'}"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                       VerticalAlignment="Center"/>
-                            <!-- Watched folder indicator -->
-                            <ic:SymbolIcon Symbol="Eye"
-                                           FontSize="10"
-                                           Opacity="0.6"
-                                           Margin="6,0,0,0"
-                                           VerticalAlignment="Center"
-                                           ToolTip="Watching for new repositories"
-                                           Visibility="{Binding IsWatched, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <StackPanel Margin="0,4" Orientation="Horizontal">
+                            <TextBlock
+                                Margin="0,0,8,0"
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="14"
+                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                Text="&#xE8B7;" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontWeight="SemiBold"
+                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                Text="{Binding Name}" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding Repositories.Count, StringFormat=' ({0})'}" />
+                            <!--  Watched folder indicator  -->
+                            <ic:SymbolIcon
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center"
+                                FontSize="10"
+                                Opacity="0.6"
+                                Symbol="Eye"
+                                ToolTip="Watching for new repositories"
+                                Visibility="{Binding IsWatched, Converter={StaticResource BoolToVisibilityConverter}}" />
                         </StackPanel>
                     </Border>
                 </HierarchicalDataTemplate>
 
-                <!-- QuickAccessItem template - uses same visual as RepositoryInfo but binds to Repository property -->
-                <!-- Only show worktree children if there's more than one worktree -->
-                <HierarchicalDataTemplate DataType="{x:Type models:QuickAccessItem}"
-                                          ItemsSource="{Binding Repository.WorktreesIfMultiple}">
-                    <ContentPresenter Content="{Binding Repository}"
-                                      ContentTemplate="{StaticResource RepositoryItemTemplate}"/>
+                <!--  QuickAccessItem template - uses same visual as RepositoryInfo but binds to Repository property  -->
+                <!--  Only show worktree children if there's more than one worktree  -->
+                <HierarchicalDataTemplate DataType="{x:Type models:QuickAccessItem}" ItemsSource="{Binding Repository.WorktreesIfMultiple}">
+                    <ContentPresenter Content="{Binding Repository}" ContentTemplate="{StaticResource RepositoryItemTemplate}" />
                 </HierarchicalDataTemplate>
 
-                <!-- Repository template (for repos in folder groups) - expandable with worktrees -->
-                <!-- Only show worktree children if there's more than one worktree -->
-                <HierarchicalDataTemplate DataType="{x:Type models:RepositoryInfo}"
-                                          ItemsSource="{Binding WorktreesIfMultiple}">
-                    <ContentPresenter Content="{Binding}"
-                                      ContentTemplate="{StaticResource RepositoryItemTemplate}"/>
+                <!--  Repository template (for repos in folder groups) - expandable with worktrees  -->
+                <!--  Only show worktree children if there's more than one worktree  -->
+                <HierarchicalDataTemplate DataType="{x:Type models:RepositoryInfo}" ItemsSource="{Binding WorktreesIfMultiple}">
+                    <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource RepositoryItemTemplate}" />
                 </HierarchicalDataTemplate>
 
-                <!-- Worktree template (child of repository) -->
+                <!--  Worktree template (child of repository)  -->
                 <DataTemplate DataType="{x:Type models:WorktreeInfo}">
-                    <Border x:Name="WorktreeBorder"
-                            Padding="2,3"
-                            Background="Transparent"
-                            CornerRadius="2"
-                            Cursor="Hand"
-                            HorizontalAlignment="Stretch"
-                            Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                    <Border
+                        x:Name="WorktreeBorder"
+                        Padding="2,3"
+                        HorizontalAlignment="Stretch"
+                        Background="Transparent"
+                        CornerRadius="2"
+                        Cursor="Hand"
+                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
                         <Border.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="Switch to Worktree"
-                                          Command="{Binding PlacementTarget.Tag.SwitchToWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                          CommandParameter="{Binding}"
-                                          IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}">
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.SwitchToWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Switch to Worktree"
+                                    IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}">
                                     <MenuItem.Icon>
-                                        <ic:SymbolIcon Symbol="ArrowSwap" FontSize="14"/>
+                                        <ic:SymbolIcon FontSize="14" Symbol="ArrowSwap" />
                                     </MenuItem.Icon>
                                 </MenuItem>
-                                <Separator/>
-                                <MenuItem Header="Lock"
-                                          Command="{Binding PlacementTarget.Tag.LockWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                          CommandParameter="{Binding}"
-                                          Visibility="{Binding IsLocked, Converter={StaticResource InverseBoolConverter}}">
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.LockWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Lock"
+                                    Visibility="{Binding IsLocked, Converter={StaticResource InverseBoolConverter}}">
                                     <MenuItem.Icon>
-                                        <ic:SymbolIcon Symbol="LockClosed" FontSize="14"/>
+                                        <ic:SymbolIcon FontSize="14" Symbol="LockClosed" />
                                     </MenuItem.Icon>
                                 </MenuItem>
-                                <MenuItem Header="Unlock"
-                                          Command="{Binding PlacementTarget.Tag.UnlockWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                          CommandParameter="{Binding}"
-                                          Visibility="{Binding IsLocked, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.UnlockWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Unlock"
+                                    Visibility="{Binding IsLocked, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <MenuItem.Icon>
-                                        <ic:SymbolIcon Symbol="LockOpen" FontSize="14"/>
+                                        <ic:SymbolIcon FontSize="14" Symbol="LockOpen" />
                                     </MenuItem.Icon>
                                 </MenuItem>
-                                <Separator Visibility="{Binding IsMainWorktree, Converter={StaticResource InverseBoolConverter}}"/>
-                                <MenuItem Header="Remove"
-                                          Command="{Binding PlacementTarget.Tag.RemoveWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                          CommandParameter="{Binding}"
-                                          Visibility="{Binding IsMainWorktree, Converter={StaticResource InverseBoolConverter}}">
+                                <Separator Visibility="{Binding IsMainWorktree, Converter={StaticResource InverseBoolConverter}}" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.RemoveWorktreeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Remove"
+                                    Visibility="{Binding IsMainWorktree, Converter={StaticResource InverseBoolConverter}}">
                                     <MenuItem.Icon>
-                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#E81123"/>
+                                        <TextBlock
+                                            FontFamily="Segoe Fluent Icons"
+                                            FontSize="14"
+                                            Foreground="#E81123"
+                                            Text="&#xE74D;" />
                                     </MenuItem.Icon>
                                 </MenuItem>
                             </ContextMenu>
@@ -266,52 +326,57 @@
                                     Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVisibilityConverter}}" />
                             </Grid>
                             <!--  Worktree icon  -->
-                            <ic:SymbolIcon x:Name="WorktreeIcon"
-                                           Symbol="TreeDeciduous"
-                                           FontSize="12"
-                                           Foreground="#3B82F6"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,6,0"/>
+                            <ic:SymbolIcon
+                                x:Name="WorktreeIcon"
+                                Margin="0,0,6,0"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="#3B82F6"
+                                Symbol="TreeDeciduous" />
                             <!--  Worktree name with branch  -->
-                            <TextBlock Text="{Binding DisplayText}"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                       VerticalAlignment="Center"
-                                       FontSize="11"/>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                Text="{Binding DisplayText}" />
                             <!--  Lock icon  -->
-                            <ic:SymbolIcon Symbol="LockClosed"
-                                           FontSize="10"
-                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                           VerticalAlignment="Center"
-                                           Margin="6,0,0,0"
-                                           ToolTip="{Binding LockReason}"
-                                           Visibility="{Binding IsLocked, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <ic:SymbolIcon
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center"
+                                FontSize="10"
+                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                Symbol="LockClosed"
+                                ToolTip="{Binding LockReason}"
+                                Visibility="{Binding IsLocked, Converter={StaticResource BoolToVisibilityConverter}}" />
                             <!--  Main worktree badge  -->
-                            <Border Background="#3B82F6"
-                                    CornerRadius="2"
-                                    Padding="4,1"
-                                    Margin="6,0,0,0"
-                                    VerticalAlignment="Center"
-                                    Visibility="{Binding IsMainWorktree, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <TextBlock Text="MAIN"
-                                           FontSize="9"
-                                           FontWeight="SemiBold"
-                                           Foreground="White"/>
+                            <Border
+                                Margin="6,0,0,0"
+                                Padding="4,1"
+                                VerticalAlignment="Center"
+                                Background="#3B82F6"
+                                CornerRadius="2"
+                                Visibility="{Binding IsMainWorktree, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock
+                                    FontSize="9"
+                                    FontWeight="SemiBold"
+                                    Foreground="White"
+                                    Text="MAIN" />
                             </Border>
                         </StackPanel>
                     </Border>
                     <DataTemplate.Triggers>
                         <DataTrigger Binding="{Binding IsDetached}" Value="True">
-                            <Setter TargetName="WorktreeIcon" Property="Foreground" Value="#F59E0B"/>
+                            <Setter TargetName="WorktreeIcon" Property="Foreground" Value="#F59E0B" />
                         </DataTrigger>
                     </DataTemplate.Triggers>
                 </DataTemplate>
             </TreeView.Resources>
 
             <TreeView.ItemContainerStyle>
-                <Style TargetType="TreeViewItem" BasedOn="{StaticResource RepoTreeViewItemStyle}">
-                    <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
-                    <Setter Property="Padding" Value="2"/>
-                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                <Style BasedOn="{StaticResource RepoTreeViewItemStyle}" TargetType="TreeViewItem">
+                    <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                    <Setter Property="Padding" Value="2" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                 </Style>
             </TreeView.ItemContainerStyle>
         </TreeView>

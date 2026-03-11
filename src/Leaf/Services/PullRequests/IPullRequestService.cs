@@ -79,4 +79,10 @@ public interface IPullRequestService
     /// <see cref="IsSupported"/> and <see cref="GetCapabilities"/> return correct values.
     /// </summary>
     Task TryResolveAsync(string repoPath);
+
+    /// <summary>
+    /// Returns the web URL for creating a new pull request on the provider's site,
+    /// or null if not supported. Requires prior <see cref="TryResolveAsync"/> call.
+    /// </summary>
+    string? GetCreatePullRequestUrl(string repoPath, string sourceBranch);
 }

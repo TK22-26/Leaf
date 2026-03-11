@@ -105,6 +105,24 @@ public class PullRequestService : IPullRequestService
         return _resolvedRepos.TryGetValue(normalized, out var resolved) && resolved != null;
     }
 
+    public string? GetCreatePullRequestUrl(string repoPath, string sourceBranch)
+    {
+        var normalized = NormalizePath(repoPath);
+        if (!_resolvedRepos.TryGetValue(normalized, out var resolved) || resolved == null)
+            return null;
+
+        var encodedBranch = Uri.EscapeDataString(sourceBranch);
+
+        return resolved.Provider switch
+        {
+            CredentialProvider.GitHub =>
+                $"https://github.com/{resolved.Owner}/{resolved.RepoName}/compare/{encodedBranch}?expand=1",
+            CredentialProvider.AzureDevOps =>
+                $"https://dev.azure.com/{resolved.Owner}/{resolved.RepoName}/_git/{resolved.RepoName}/pullrequestcreate?sourceRef={encodedBranch}",
+            _ => null
+        };
+    }
+
     public async Task TryResolveAsync(string repoPath)
     {
         await ResolveAsync(repoPath);
