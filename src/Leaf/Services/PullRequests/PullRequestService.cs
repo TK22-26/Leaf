@@ -96,6 +96,40 @@ public class PullRequestService : IPullRequestService
         await provider.RequestReviewersAsync(owner, project, repo, number, reviewers);
     }
 
+    public async Task<List<ReviewerInfo>> SearchAssigneesAsync(string repoPath, string searchTerm)
+    {
+        var (provider, owner, project, repo) = await ResolveOrThrowAsync(repoPath);
+        return await provider.SearchAssigneesAsync(owner, project, repo, searchTerm);
+    }
+
+    public async Task AddAssigneesAsync(string repoPath, int number, IEnumerable<string> assignees)
+    {
+        var normalizedAssignees = assignees
+            .Where(assignee => !string.IsNullOrWhiteSpace(assignee))
+            .Select(assignee => assignee.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalizedAssignees.Count == 0)
+            return;
+
+        var (provider, owner, project, repo) = await ResolveOrThrowAsync(repoPath);
+        await provider.AddAssigneesAsync(owner, project, repo, number, normalizedAssignees);
+    }
+
+    public async Task RemoveAssigneeAsync(string repoPath, int number, string assignee)
+    {
+        if (string.IsNullOrWhiteSpace(assignee))
+            return;
+
+        var normalizedAssignee = assignee.Trim();
+        if (normalizedAssignee.Length == 0)
+            return;
+
+        var (provider, owner, project, repo) = await ResolveOrThrowAsync(repoPath);
+        await provider.RemoveAssigneeAsync(owner, project, repo, number, normalizedAssignee);
+    }
+
     public async Task AddLabelsAsync(string repoPath, int number, IEnumerable<string> labels)
     {
         var normalizedLabels = labels

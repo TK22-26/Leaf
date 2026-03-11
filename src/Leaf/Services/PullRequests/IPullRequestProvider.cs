@@ -21,6 +21,9 @@ internal interface IPullRequestProvider
     Task<List<PullRequestFileInfo>> GetPullRequestFilesAsync(string owner, string? project, string repo, int number);
     Task<List<ReviewerInfo>> SearchReviewersAsync(string owner, string? project, string repo, string searchTerm);
     Task RequestReviewersAsync(string owner, string? project, string repo, int number, IEnumerable<ReviewerInfo> reviewers);
+    Task<List<ReviewerInfo>> SearchAssigneesAsync(string owner, string? project, string repo, string searchTerm);
+    Task AddAssigneesAsync(string owner, string? project, string repo, int number, IEnumerable<string> assignees);
+    Task RemoveAssigneeAsync(string owner, string? project, string repo, int number, string assignee);
     Task AddLabelsAsync(string owner, string? project, string repo, int number, IEnumerable<string> labels);
     Task RemoveLabelAsync(string owner, string? project, string repo, int number, string label);
     Task<List<PullRequestStatusCheckInfo>> GetStatusChecksAsync(string owner, string? project, string repo, int number);

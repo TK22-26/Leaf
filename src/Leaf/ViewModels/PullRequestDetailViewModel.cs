@@ -73,6 +73,18 @@ public partial class PullRequestDetailViewModel : ObservableObject
     private string _newLabelText = string.Empty;
 
     [ObservableProperty]
+    private string _assigneeSearchText = string.Empty;
+
+    [ObservableProperty]
+    private ObservableCollection<ReviewerInfo> _assigneeSearchResults = [];
+
+    [ObservableProperty]
+    private bool _isSearchingAssignees;
+
+    [ObservableProperty]
+    private string? _assigneeSearchStatus;
+
+    [ObservableProperty]
     private bool _isRequiredReviewerEditorOpen;
 
     [ObservableProperty]
@@ -81,8 +93,12 @@ public partial class PullRequestDetailViewModel : ObservableObject
     [ObservableProperty]
     private bool _isLabelEditorOpen;
 
+    [ObservableProperty]
+    private bool _isAssigneeEditorOpen;
+
     private CancellationTokenSource? _requiredReviewerSearchCts;
     private CancellationTokenSource? _optionalReviewerSearchCts;
+    private CancellationTokenSource? _assigneeSearchCts;
 
     /// <summary>
     /// Whether the PR is open and can be merged/closed/updated.
@@ -110,9 +126,15 @@ public partial class PullRequestDetailViewModel : ObservableObject
         !string.IsNullOrWhiteSpace(_repoPath) &&
         _pullRequestService.GetCapabilities(_repoPath).HasFlag(PullRequestCapabilities.Labels);
 
+    public bool SupportsAssignees =>
+        !string.IsNullOrWhiteSpace(_repoPath) &&
+        _pullRequestService.GetCapabilities(_repoPath).HasFlag(PullRequestCapabilities.Assignees);
+
     public bool CanManageReviewers => IsOpen && !string.IsNullOrWhiteSpace(_repoPath) && !IsLoading;
 
     public bool CanManageLabels => IsOpen && SupportsLabels && !IsLoading;
+
+    public bool CanManageAssignees => IsOpen && SupportsAssignees && !IsLoading;
 
     public bool SupportsNeutralReviewFeedback =>
         !string.IsNullOrWhiteSpace(_repoPath) &&
@@ -129,6 +151,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
     /// </summary>
     public IReadOnlyList<ReviewerDisplayEntry> OptionalReviewers =>
         BuildReviewerEntries(isRequired: false);
+
+    public IReadOnlyList<ReviewerInfo> Assignees =>
+        Details?.Assignees ?? [];
 
     public bool IsOverviewSelected => SelectedTabIndex == 0;
 
@@ -172,9 +197,13 @@ public partial class PullRequestDetailViewModel : ObservableObject
         OptionalReviewerSearchResults.Clear();
         RequiredReviewerSearchStatus = null;
         OptionalReviewerSearchStatus = null;
+        AssigneeSearchText = string.Empty;
+        AssigneeSearchResults.Clear();
+        AssigneeSearchStatus = null;
         IsRequiredReviewerEditorOpen = false;
         IsOptionalReviewerEditorOpen = false;
         IsLabelEditorOpen = false;
+        IsAssigneeEditorOpen = false;
         SelectedTabIndex = 0;
 
         Log.Info("PR", $"Loading PR #{prNumber} details for {repoPath}");
@@ -195,10 +224,13 @@ public partial class PullRequestDetailViewModel : ObservableObject
             OnPropertyChanged(nameof(SupportsReviews));
             OnPropertyChanged(nameof(SupportsRequiredReviewers));
             OnPropertyChanged(nameof(SupportsLabels));
+            OnPropertyChanged(nameof(SupportsAssignees));
             OnPropertyChanged(nameof(CanManageReviewers));
             OnPropertyChanged(nameof(CanManageLabels));
+            OnPropertyChanged(nameof(CanManageAssignees));
             OnPropertyChanged(nameof(RequiredReviewers));
             OnPropertyChanged(nameof(OptionalReviewers));
+            OnPropertyChanged(nameof(Assignees));
             SubmitReviewCommand.NotifyCanExecuteChanged();
             AddCommentCommand.NotifyCanExecuteChanged();
             AddLabelCommand.NotifyCanExecuteChanged();
@@ -233,9 +265,13 @@ public partial class PullRequestDetailViewModel : ObservableObject
         OptionalReviewerSearchResults.Clear();
         RequiredReviewerSearchStatus = null;
         OptionalReviewerSearchStatus = null;
+        AssigneeSearchText = string.Empty;
+        AssigneeSearchResults.Clear();
+        AssigneeSearchStatus = null;
         IsRequiredReviewerEditorOpen = false;
         IsOptionalReviewerEditorOpen = false;
         IsLabelEditorOpen = false;
+        IsAssigneeEditorOpen = false;
         SelectedTabIndex = 0;
         _repoPath = string.Empty;
         _prNumber = 0;
@@ -310,6 +346,19 @@ public partial class PullRequestDetailViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void ToggleAssigneeEditor()
+    {
+        if (!SupportsAssignees)
+            return;
+
+        IsAssigneeEditorOpen = !IsAssigneeEditorOpen;
+        if (!IsAssigneeEditorOpen)
+        {
+            ResetAssigneeSearch();
+        }
+    }
+
+    [RelayCommand]
     private void ToggleLabelEditor()
     {
         IsLabelEditorOpen = !IsLabelEditorOpen;
@@ -325,6 +374,11 @@ public partial class PullRequestDetailViewModel : ObservableObject
     partial void OnOptionalReviewerSearchTextChanged(string value)
     {
         ScheduleReviewerSearch(ReviewerBucket.Optional, value);
+    }
+
+    partial void OnAssigneeSearchTextChanged(string value)
+    {
+        ScheduleAssigneeSearch(value);
     }
 
     // --- Merge ---
@@ -573,6 +627,60 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    private async Task AddAssigneeAsync(ReviewerInfo? assignee)
+    {
+        if (assignee == null || !CanManageAssignees)
+            return;
+
+        IsLoading = true;
+        ErrorMessage = null;
+
+        try
+        {
+            await _pullRequestService.AddAssigneesAsync(_repoPath, _prNumber, [assignee.Identifier]);
+            ResetAssigneeSearch();
+            IsAssigneeEditorOpen = false;
+            await LoadAsync(_repoPath, _prNumber);
+            MutationCompleted?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to add assignee: {ex.Message}";
+            Log.Error("PR", ErrorMessage);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RemoveAssigneeAsync(ReviewerInfo? assignee)
+    {
+        if (assignee == null || !CanManageAssignees || string.IsNullOrWhiteSpace(assignee.Identifier))
+            return;
+
+        IsLoading = true;
+        ErrorMessage = null;
+
+        try
+        {
+            await _pullRequestService.RemoveAssigneeAsync(_repoPath, _prNumber, assignee.Identifier);
+            await LoadAsync(_repoPath, _prNumber);
+            MutationCompleted?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to remove assignee: {ex.Message}";
+            Log.Error("PR", ErrorMessage);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
     /// <summary>
     /// Opens a status check's target URL in the browser.
     /// </summary>
@@ -647,12 +755,41 @@ public partial class PullRequestDetailViewModel : ObservableObject
         _ = RunDebouncedReviewerSearchAsync(bucket, searchText.Trim(), cts.Token);
     }
 
+    private void ScheduleAssigneeSearch(string searchText)
+    {
+        var cts = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _assigneeSearchCts, cts);
+
+        previous?.Cancel();
+        previous?.Dispose();
+
+        if (string.IsNullOrWhiteSpace(searchText) || !CanManageAssignees)
+        {
+            ClearAssigneeSearch();
+            return;
+        }
+
+        _ = RunDebouncedAssigneeSearchAsync(searchText.Trim(), cts.Token);
+    }
+
     private async Task RunDebouncedReviewerSearchAsync(ReviewerBucket bucket, string searchText, CancellationToken cancellationToken)
     {
         try
         {
             await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
             await SearchReviewersAsync(bucket, searchText, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task RunDebouncedAssigneeSearchAsync(string searchText, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+            await SearchAssigneesAsync(searchText, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -694,6 +831,43 @@ public partial class PullRequestDetailViewModel : ObservableObject
             if (!cancellationToken.IsCancellationRequested)
             {
                 SetSearching(bucket, false);
+            }
+        }
+    }
+
+    private async Task SearchAssigneesAsync(string searchText, CancellationToken cancellationToken)
+    {
+        IsSearchingAssignees = true;
+        AssigneeSearchStatus = null;
+        AssigneeSearchResults = [];
+
+        try
+        {
+            var results = await _pullRequestService.SearchAssigneesAsync(_repoPath, searchText);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var filtered = results
+                .Where(candidate => !(Details?.Assignees.Any(existing =>
+                    existing.Identifier == candidate.Identifier &&
+                    existing.Kind == candidate.Kind) ?? false))
+                .ToList();
+
+            AssigneeSearchResults = new ObservableCollection<ReviewerInfo>(filtered);
+            AssigneeSearchStatus = filtered.Count == 0 ? $"No assignees matching \"{searchText}\"" : null;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            AssigneeSearchStatus = $"Search failed: {ex.Message}";
+            Log.Error("PR", $"Assignee search failed: {ex.Message}");
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                IsSearchingAssignees = false;
             }
         }
     }
@@ -756,6 +930,19 @@ public partial class PullRequestDetailViewModel : ObservableObject
         ClearReviewerSearch(bucket);
     }
 
+    private void ClearAssigneeSearch()
+    {
+        AssigneeSearchResults = [];
+        AssigneeSearchStatus = null;
+        IsSearchingAssignees = false;
+    }
+
+    private void ResetAssigneeSearch()
+    {
+        AssigneeSearchText = string.Empty;
+        ClearAssigneeSearch();
+    }
+
     private void CancelReviewerSearches()
     {
         _requiredReviewerSearchCts?.Cancel();
@@ -765,6 +952,10 @@ public partial class PullRequestDetailViewModel : ObservableObject
         _optionalReviewerSearchCts?.Cancel();
         _optionalReviewerSearchCts?.Dispose();
         _optionalReviewerSearchCts = null;
+
+        _assigneeSearchCts?.Cancel();
+        _assigneeSearchCts?.Dispose();
+        _assigneeSearchCts = null;
     }
 
     partial void OnDetailsChanged(PullRequestDetails? value)
@@ -774,11 +965,14 @@ public partial class PullRequestDetailViewModel : ObservableObject
         OnPropertyChanged(nameof(SupportsReviews));
         OnPropertyChanged(nameof(SupportsRequiredReviewers));
         OnPropertyChanged(nameof(SupportsLabels));
+        OnPropertyChanged(nameof(SupportsAssignees));
         OnPropertyChanged(nameof(SupportsNeutralReviewFeedback));
         OnPropertyChanged(nameof(CanManageReviewers));
         OnPropertyChanged(nameof(CanManageLabels));
+        OnPropertyChanged(nameof(CanManageAssignees));
         OnPropertyChanged(nameof(RequiredReviewers));
         OnPropertyChanged(nameof(OptionalReviewers));
+        OnPropertyChanged(nameof(Assignees));
         AddLabelCommand.NotifyCanExecuteChanged();
         RemoveLabelCommand.NotifyCanExecuteChanged();
     }
@@ -798,6 +992,7 @@ public partial class PullRequestDetailViewModel : ObservableObject
         AddLabelCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanManageReviewers));
         OnPropertyChanged(nameof(CanManageLabels));
+        OnPropertyChanged(nameof(CanManageAssignees));
         RemoveLabelCommand.NotifyCanExecuteChanged();
     }
 

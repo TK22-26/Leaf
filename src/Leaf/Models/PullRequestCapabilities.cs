@@ -16,5 +16,6 @@ public enum PullRequestCapabilities
     TeamReviewers = 64,
     AutoComplete = 128,
     RequiredReviewers = 256,
-    Labels = 512
+    Labels = 512,
+    Assignees = 1024
 }

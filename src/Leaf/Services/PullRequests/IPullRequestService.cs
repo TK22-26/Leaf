@@ -64,6 +64,21 @@ public interface IPullRequestService
     Task RequestReviewersAsync(string repoPath, int number, IEnumerable<ReviewerInfo> reviewers);
 
     /// <summary>
+    /// Searches for assignee candidates matching a search term.
+    /// </summary>
+    Task<List<ReviewerInfo>> SearchAssigneesAsync(string repoPath, string searchTerm);
+
+    /// <summary>
+    /// Adds one or more assignees to a pull request.
+    /// </summary>
+    Task AddAssigneesAsync(string repoPath, int number, IEnumerable<string> assignees);
+
+    /// <summary>
+    /// Removes an assignee from a pull request.
+    /// </summary>
+    Task RemoveAssigneeAsync(string repoPath, int number, string assignee);
+
+    /// <summary>
     /// Adds one or more labels/tags to a pull request.
     /// </summary>
     Task AddLabelsAsync(string repoPath, int number, IEnumerable<string> labels);

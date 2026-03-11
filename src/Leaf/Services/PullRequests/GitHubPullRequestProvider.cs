@@ -25,6 +25,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
     // Reviewer directory caches (per owner/repo key)
     private readonly Dictionary<string, (List<ReviewerInfo> Collaborators, List<ReviewerInfo> Teams, DateTime CachedAt)> _reviewerCache = [];
     private static readonly TimeSpan ReviewerCacheTtl = TimeSpan.FromMinutes(5);
+    private readonly Dictionary<string, string> _authenticatedUserCache = new(StringComparer.OrdinalIgnoreCase);
 
     public PullRequestCapabilities Capabilities =>
         PullRequestCapabilities.DraftPullRequests |
@@ -34,7 +35,8 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         PullRequestCapabilities.StatusChecks |
         PullRequestCapabilities.Reviews |
         PullRequestCapabilities.TeamReviewers |
-        PullRequestCapabilities.Labels;
+        PullRequestCapabilities.Labels |
+        PullRequestCapabilities.Assignees;
 
     public GitHubPullRequestProvider(CredentialService credentialService)
     {
@@ -105,9 +107,10 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         var commentsTask = GetCommentsInternalAsync(owner, repo, number);
         var checksTask = GetStatusChecksAsync(owner, project, repo, number);
         var commitsTask = GetCommitsInternalAsync(owner, repo, number);
-        var labelsTask = GetLabelsInternalAsync(owner, repo, number);
+        var issueTask = GetIssueInternalAsync(owner, repo, number);
 
-        await Task.WhenAll(filesTask, reviewsTask, commentsTask, checksTask, commitsTask, labelsTask);
+        await Task.WhenAll(filesTask, reviewsTask, commentsTask, checksTask, commitsTask, issueTask);
+        var issue = await issueTask;
 
         // Map requested reviewers from the PR DTO
         var requestedReviewers = new List<ReviewerInfo>();
@@ -147,8 +150,19 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
             Comments = await commentsTask,
             StatusChecks = await checksTask,
             RequestedReviewers = requestedReviewers,
+            Assignees = issue?.Assignees?.Where(user => !string.IsNullOrWhiteSpace(user.Login))
+                .Select(user => new ReviewerInfo
+                {
+                    Identifier = user.Login ?? string.Empty,
+                    DisplayName = user.Login ?? string.Empty,
+                    AvatarUrl = user.AvatarUrl,
+                    Kind = ReviewerKind.User
+                })
+                .ToList() ?? [],
             Commits = await commitsTask,
-            Labels = await labelsTask,
+            Labels = issue?.Labels?.Where(l => !string.IsNullOrWhiteSpace(l.Name))
+                .Select(l => new PullRequestLabelInfo { Name = l.Name! })
+                .ToList() ?? [],
             Updates = [],
             WorkItems = [],
             IsMergeable = dto.Mergeable ?? false,
@@ -308,17 +322,56 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
     {
         var userReviewers = new List<string>();
         var teamReviewers = new List<string>();
+        var assignees = new List<string>();
+        var currentUserLogin = await GetAuthenticatedUserLoginAsync(owner);
 
         foreach (var reviewer in reviewers)
         {
             if (reviewer.Kind == ReviewerKind.Team)
+            {
                 teamReviewers.Add(reviewer.Identifier);
+            }
+            else if (!string.IsNullOrWhiteSpace(currentUserLogin) &&
+                     string.Equals(reviewer.Identifier, currentUserLogin, StringComparison.OrdinalIgnoreCase))
+            {
+                assignees.Add(reviewer.Identifier);
+            }
             else
+            {
                 userReviewers.Add(reviewer.Identifier);
+            }
         }
 
-        var payload = new { reviewers = userReviewers, team_reviewers = teamReviewers };
-        await PostAsync<object>($"https://api.github.com/repos/{owner}/{repo}/pulls/{number}/requested_reviewers", owner, payload);
+        if (userReviewers.Count > 0 || teamReviewers.Count > 0)
+        {
+            var payload = new { reviewers = userReviewers, team_reviewers = teamReviewers };
+            await PostAsync<object>($"https://api.github.com/repos/{owner}/{repo}/pulls/{number}/requested_reviewers", owner, payload);
+        }
+
+        if (assignees.Count > 0)
+        {
+            var payload = new { assignees };
+            await PostAsync<object>($"https://api.github.com/repos/{owner}/{repo}/issues/{number}/assignees", owner, payload);
+            Log.Info("PR", $"GitHub self-review fallback: assigned {string.Join(", ", assignees)} to PR #{number}");
+        }
+    }
+
+    public async Task<List<ReviewerInfo>> SearchAssigneesAsync(string owner, string? project, string repo, string searchTerm)
+    {
+        var users = await SearchReviewersAsync(owner, project, repo, searchTerm);
+        return users.Where(candidate => candidate.Kind == ReviewerKind.User).ToList();
+    }
+
+    public async Task AddAssigneesAsync(string owner, string? project, string repo, int number, IEnumerable<string> assignees)
+    {
+        var payload = new { assignees = assignees.ToList() };
+        await PostAsync<GitHubIssueDto>($"https://api.github.com/repos/{owner}/{repo}/issues/{number}/assignees", owner, payload);
+    }
+
+    public async Task RemoveAssigneeAsync(string owner, string? project, string repo, int number, string assignee)
+    {
+        var payload = new { assignees = new[] { assignee } };
+        await DeleteAsync($"https://api.github.com/repos/{owner}/{repo}/issues/{number}/assignees", owner, payload);
     }
 
     public async Task AddLabelsAsync(string owner, string? project, string repo, int number, IEnumerable<string> labels)
@@ -498,10 +551,14 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
     }
 
-    private async Task DeleteAsync(string url, string owner)
+    private async Task DeleteAsync(string url, string owner, object? payload = null)
     {
         var sw = Log.StartTimer();
         using var request = CreateRequest(HttpMethod.Delete, url, owner);
+        if (payload != null)
+        {
+            request.Content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
+        }
         using var response = await _httpClient.SendAsync(request);
 
         if (!response.IsSuccessStatusCode)
@@ -555,6 +612,23 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
             Log.Warn("PR", $"Cannot fetch teams (insufficient PAT scopes): {ex.Message}");
             return [];
         }
+    }
+
+    private async Task<string?> GetAuthenticatedUserLoginAsync(string owner)
+    {
+        if (_authenticatedUserCache.TryGetValue(owner, out var cachedLogin) && !string.IsNullOrWhiteSpace(cachedLogin))
+        {
+            return cachedLogin;
+        }
+
+        var user = await GetAsync<GitHubAuthenticatedUserDto>("https://api.github.com/user", owner);
+        var login = user?.Login;
+        if (!string.IsNullOrWhiteSpace(login))
+        {
+            _authenticatedUserCache[owner] = login;
+        }
+
+        return login;
     }
 
     private static List<ReviewerInfo> FilterReviewers(List<ReviewerInfo> collaborators, List<ReviewerInfo> teams, string searchTerm)
@@ -637,14 +711,10 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         return dtos.Select(MapCommit).ToList();
     }
 
-    private async Task<List<PullRequestLabelInfo>> GetLabelsInternalAsync(string owner, string repo, int number)
+    private async Task<GitHubIssueDto?> GetIssueInternalAsync(string owner, string repo, int number)
     {
-        var dto = await GetAsync<GitHubIssueDto>(
+        return await GetAsync<GitHubIssueDto>(
             $"https://api.github.com/repos/{owner}/{repo}/issues/{number}", owner);
-
-        return dto?.Labels?.Where(l => !string.IsNullOrWhiteSpace(l.Name))
-            .Select(l => new PullRequestLabelInfo { Name = l.Name! })
-            .ToList() ?? [];
     }
 
     // --- Mapping helpers ---
@@ -784,6 +854,11 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         [JsonPropertyName("avatar_url")] public string? AvatarUrl { get; set; }
     }
 
+    private class GitHubAuthenticatedUserDto
+    {
+        [JsonPropertyName("login")] public string? Login { get; set; }
+    }
+
     private class GitHubBranchRefDto
     {
         [JsonPropertyName("ref")] public string? Ref { get; set; }
@@ -886,6 +961,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
     private class GitHubIssueDto
     {
         [JsonPropertyName("labels")] public List<GitHubLabelDto>? Labels { get; set; }
+        [JsonPropertyName("assignees")] public List<GitHubUserDto>? Assignees { get; set; }
     }
 
     private class GitHubLabelDto

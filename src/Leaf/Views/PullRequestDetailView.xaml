@@ -529,6 +529,108 @@
                                 </StackPanel>
                             </Border>
 
+                            <Border Margin="0,0,0,12" Padding="14" Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="8" Visibility="{Binding SupportsAssignees, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="Assignees" />
+                                        <Button
+                                            Grid.Column="1"
+                                            Command="{Binding ToggleAssigneeEditorCommand}"
+                                            Content="Add"
+                                            Style="{StaticResource CardAddButtonStyle}"
+                                            Visibility="{Binding CanManageAssignees, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    </Grid>
+
+                                    <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding Assignees}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,4">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DisplayName}" />
+                                                    <Button
+                                                        Grid.Column="1"
+                                                        Margin="8,0,0,0"
+                                                        Padding="0"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Command="{Binding DataContext.RemoveAssigneeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Cursor="Hand"
+                                                        FocusVisualStyle="{x:Null}"
+                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                        IsEnabled="{Binding DataContext.CanManageAssignees, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        Visibility="{Binding DataContext.CanManageAssignees, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                        <ic:SymbolIcon FontSize="10" Symbol="Dismiss" />
+                                                    </Button>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <TextBlock Margin="0,10,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Assignees.Count, Mode=OneWay}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                        No assignees
+                                    </TextBlock>
+
+                                    <StackPanel Margin="0,10,0,0" Visibility="{Binding IsAssigneeEditorOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock Margin="0,0,0,4" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Add assignee" />
+                                        <TextBox
+                                            Style="{StaticResource PullRequestTextBoxStyle}"
+                                            Text="{Binding AssigneeSearchText, UpdateSourceTrigger=PropertyChanged}" />
+                                        <ProgressBar
+                                            Height="2"
+                                            Margin="0,8,0,0"
+                                            IsIndeterminate="True"
+                                            Visibility="{Binding IsSearchingAssignees, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                        <TextBlock
+                                            Margin="0,8,0,0"
+                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                            Text="{Binding AssigneeSearchStatus}"
+                                            TextWrapping="Wrap"
+                                            Visibility="{Binding AssigneeSearchStatus, Converter={StaticResource NullToVisibilityConverter}}" />
+                                        <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding AssigneeSearchResults}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button
+                                                        Margin="0,0,0,4"
+                                                        Padding="8,6"
+                                                        HorizontalContentAlignment="Left"
+                                                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                                        BorderThickness="0"
+                                                        Command="{Binding DataContext.AddAssigneeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Cursor="Hand">
+                                                        <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DisplayName}" />
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <Button
+                                            Margin="0,8,0,0"
+                                            HorizontalAlignment="Right"
+                                            Command="{Binding ToggleAssigneeEditorCommand}"
+                                            Content="Done"
+                                            Style="{StaticResource CardAddButtonStyle}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
                             <Border Margin="0,0,0,12" Padding="14" Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="8">
                                 <StackPanel>
                                     <Grid>

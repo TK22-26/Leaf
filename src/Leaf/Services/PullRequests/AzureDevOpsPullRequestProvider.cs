@@ -307,6 +307,21 @@ internal sealed class AzureDevOpsPullRequestProvider : IPullRequestProvider
         }
     }
 
+    public Task<List<ReviewerInfo>> SearchAssigneesAsync(string owner, string? project, string repo, string searchTerm)
+    {
+        return Task.FromResult(new List<ReviewerInfo>());
+    }
+
+    public Task AddAssigneesAsync(string owner, string? project, string repo, int number, IEnumerable<string> assignees)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveAssigneeAsync(string owner, string? project, string repo, int number, string assignee)
+    {
+        return Task.CompletedTask;
+    }
+
     public async Task AddLabelsAsync(string owner, string? project, string repo, int number, IEnumerable<string> labels)
     {
         project = RequireProject(project);

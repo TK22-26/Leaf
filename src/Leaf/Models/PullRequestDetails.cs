@@ -41,6 +41,11 @@ public class PullRequestDetails
     public List<ReviewerInfo> RequestedReviewers { get; init; } = [];
 
     /// <summary>
+    /// Users assigned to own/follow the pull request.
+    /// </summary>
+    public List<ReviewerInfo> Assignees { get; init; } = [];
+
+    /// <summary>
     /// Commits included in the pull request.
     /// </summary>
     public List<PullRequestCommitInfo> Commits { get; init; } = [];
