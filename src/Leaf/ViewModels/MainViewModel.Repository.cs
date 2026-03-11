@@ -1,8 +1,10 @@
 using System;
 using System.IO;
+using System.Threading;
 using System.Windows;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.Views;
 using Microsoft.Win32;
 
@@ -14,9 +16,24 @@ namespace Leaf.ViewModels;
 public partial class MainViewModel
 {
     /// <summary>
+    /// Starts startup repository restore after the window has rendered once.
+    /// </summary>
+    public async Task InitializeAfterFirstRenderAsync(bool restoreLastSelection = true)
+    {
+        if (Interlocked.Exchange(ref _startupInitializationStarted, 1) == 1)
+        {
+            return;
+        }
+
+        // Allow the initial frame and plant animation to start before repo restore work begins.
+        await Task.Yield();
+        await LoadSavedRepositoriesAsync(restoreLastSelection);
+    }
+
+    /// <summary>
     /// Load repositories from persistent storage.
     /// </summary>
-    private async void LoadSavedRepositories()
+    private async Task LoadSavedRepositoriesAsync(bool restoreLastSelection)
     {
         // Load UI state from settings
         var settings = _settingsService.LoadSettings();
@@ -28,18 +45,18 @@ public partial class MainViewModel
         // Load repositories via service
         var lastSelectedPath = await _repositoryService.LoadRepositoriesAsync();
 
-        // Eagerly load worktrees for all repositories so they appear in the sidebar
-        await LoadWorktreesForAllReposAsync();
-
         // Restore last selected repository
-        if (!string.IsNullOrEmpty(lastSelectedPath))
+        RepositoryInfo? lastRepo = null;
+        if (restoreLastSelection && !string.IsNullOrEmpty(lastSelectedPath))
         {
-            var lastRepo = _repositoryService.FindRepository(lastSelectedPath);
+            lastRepo = _repositoryService.FindRepository(lastSelectedPath);
 
             // If not found, the saved path may be a secondary worktree that was
             // migrated to its main worktree on load — find the parent repo instead
             if (lastRepo == null)
             {
+                await LoadWorktreesForAllReposAsync();
+
                 var normalizedPath = Path.GetFullPath(lastSelectedPath);
                 lastRepo = RepositoryGroups
                     .SelectMany(g => g.Repositories)
@@ -49,9 +66,14 @@ public partial class MainViewModel
 
             if (lastRepo != null)
             {
-                await SelectRepositoryAsync(lastRepo);
+                Log.Info("Repository", $"Restoring last repo: {lastRepo.Name} ({lastRepo.Path})");
+                await SelectRepositoryAsync(lastRepo, fetchInBackground: false);
                 // Request the View to visually select the repository in the TreeView
+                // Guard: keep _isSwitchingRepository true so TreeView's SelectedItemChanged
+                // doesn't re-trigger SelectRepositoryAsync for the same repo
+                _isSwitchingRepository = true;
                 RequestRepositorySelection?.Invoke(this, lastRepo);
+                _isSwitchingRepository = false;
             }
         }
     }
@@ -77,8 +99,9 @@ public partial class MainViewModel
                 return;
             }
 
-            var repoInfo = await _gitService.GetRepositoryInfoAsync(path);
+            var repoInfo = await _gitService.GetRepositoryInfoFastAsync(path);
             _repositoryService.AddRepository(repoInfo);
+            Log.Info("Repository", $"Added repository: {repoInfo.Name} ({path})");
             await SelectRepositoryAsync(repoInfo);
         }
     }
@@ -101,6 +124,7 @@ public partial class MainViewModel
 
             try
             {
+                Log.Info("Repository", $"Scanning folder for repos: {rootPath}");
                 await BeginBusyAsync("Scanning for repositories...");
 
                 // Find all directories that contain a .git folder
@@ -117,12 +141,13 @@ public partial class MainViewModel
 
                     if (await _gitService.IsValidRepositoryAsync(repoPath))
                     {
-                        var repoInfo = await _gitService.GetRepositoryInfoAsync(repoPath);
+                        var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
                         _repositoryService.AddRepository(repoInfo);
                         addedCount++;
                     }
                 }
 
+                Log.Info("Repository", $"Folder scan complete: added {addedCount} of {gitDirs.Length} found");
                 StatusMessage = addedCount > 0
                     ? $"Added {addedCount} repositor{(addedCount == 1 ? "y" : "ies")}"
                     : "No new repositories found";
@@ -150,8 +175,9 @@ public partial class MainViewModel
 
             if (await _gitService.IsValidRepositoryAsync(repoPath))
             {
-                var repoInfo = await _gitService.GetRepositoryInfoAsync(repoPath);
+                var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
                 _repositoryService.AddRepository(repoInfo);
+                Log.Info("Repository", $"Discovered repository: {repoInfo.Name} ({repoPath})");
 
                 // Mark the parent folder group as watched
                 var parentFolder = Path.GetDirectoryName(repoPath);
@@ -183,7 +209,7 @@ public partial class MainViewModel
 
                 if (await _gitService.IsValidRepositoryAsync(repoPath))
                 {
-                    var repoInfo = await _gitService.GetRepositoryInfoAsync(repoPath);
+                    var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
                     await _dispatcherService.InvokeAsync(() => _repositoryService.AddRepository(repoInfo));
                 }
             }
@@ -221,7 +247,7 @@ public partial class MainViewModel
         if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.ClonedRepositoryPath))
         {
             // Add the cloned repo to the list
-            var repoInfo = await _gitService.GetRepositoryInfoAsync(dialog.ClonedRepositoryPath);
+            var repoInfo = await _gitService.GetRepositoryInfoFastAsync(dialog.ClonedRepositoryPath);
             _repositoryService.AddRepository(repoInfo);
             await SelectRepositoryAsync(repoInfo);
             StatusMessage = $"Cloned {repoInfo.Name} successfully";
@@ -232,11 +258,22 @@ public partial class MainViewModel
     /// Select a repository to view.
     /// </summary>
     [RelayCommand]
-    public Task SelectRepositoryAsync(RepositoryInfo? repository) => SelectRepositoryAsync(repository, fetchInBackground: true);
+    public Task SelectRepositoryAsync(RepositoryInfo? repository) => SelectRepositoryAsync(repository, fetchInBackground: false);
 
     public async Task SelectRepositoryAsync(RepositoryInfo? repository, bool fetchInBackground)
     {
         if (repository == null) return;
+
+        // Fix 3: Prevent double invocation from TreeView SelectedItemChanged cascade
+        if (_isSwitchingRepository)
+        {
+            Log.Info("SelectRepo", $"Skipped duplicate SelectRepositoryAsync for {repository.Name}");
+            return;
+        }
+
+        _isSwitchingRepository = true;
+        var totalSw = Log.StartTimer();
+        var stepSw = Log.StartTimer();
 
         // Close diff viewer when switching repositories
         IsDiffViewerVisible = false;
@@ -244,73 +281,108 @@ public partial class MainViewModel
         try
         {
             await BeginBusyAsync($"Loading {repository.Name}...");
+            Log.Perf("SelectRepo", "BeginBusyAsync", stepSw.ElapsedMilliseconds);
 
-            // Load branches BEFORE setting SelectedRepository to avoid UI flash
-            // (UI binds to SelectedRepository.BranchCategories, so data should be ready)
-            await LoadBranchesForRepoAsync(repository, forceReload: true);
+            var previousRepository = SelectedRepository;
+            bool isRepositorySwitch = previousRepository != null &&
+                !string.Equals(previousRepository.Path, repository.Path, StringComparison.OrdinalIgnoreCase);
+            if (isRepositorySwitch && HasActivePullRequestScreen())
+            {
+                ResetPullRequestViewState(previousRepository);
+            }
 
-            // Now set SelectedRepository - UI will see populated BranchCategories
+            // Step 1: Set selected repo immediately so the graph view can begin loading.
+            stepSw.Restart();
             SelectedRepository = repository;
+            Log.Perf("SelectRepo", "Set SelectedRepository", stepSw.ElapsedMilliseconds);
 
-            // Mark as recently accessed (updates quick access sections)
             _repositoryService.MarkAsRecentlyAccessed(repository);
-
-            // Start watching the new repository for live changes
             _fileWatcherService.WatchRepository(repository.Path);
 
-            // Save as last selected repository
             var settings = _settingsService.LoadSettings();
             settings.LastSelectedRepositoryPath = repository.Path;
             _settingsService.SaveSettings(settings);
 
-            // Load repository into graph view
-            if (GitGraphViewModel != null)
+            // Step 2: Prepare graph color/filter context without waiting for the full sidebar tree load.
+            stepSw.Restart();
+            await PrepareGraphContextAsync(repository.Path);
+            Log.Perf("SelectRepo", "PrepareGraphContextAsync", stepSw.ElapsedMilliseconds);
+
+            var needsBranchFilters = repository.HiddenBranchNames.Count > 0 || repository.SoloBranchNames.Count > 0;
+            var needsBranchSidebarLoad = !repository.BranchesLoaded;
+            var branchLoadTask = needsBranchFilters && needsBranchSidebarLoad
+                ? LoadBranchesForRepoAsync(repository, forceReload: false, skipFilterApplication: true)
+                : null;
+
+              // Step 3: Run graph load and worktrees in parallel, but don't let repo-info
+              // block startup or repo switches indefinitely. The graph already gives us the
+              // visible branch/dirty state we need to make the app usable immediately.
+              stepSw.Restart();
+              var graphTask = GitGraphViewModel?.LoadRepositoryAsync(repository.Path) ?? Task.CompletedTask;
+              var infoTask = _gitService.GetRepositoryInfoFastAsync(repository.Path);
+              var worktreeTask = LoadWorktreesForRepoAsync(repository);
+
+              await Task.WhenAll(graphTask, worktreeTask);
+              Log.Perf("SelectRepo", "Parallel: graph + worktrees", stepSw.ElapsedMilliseconds);
+
+              // Apply graph-dependent working changes sync (must happen after graph loads)
+              if (GitGraphViewModel != null && IsWorkingChangesSelected && WorkingChangesViewModel != null)
+              {
+                  WorkingChangesViewModel.SetWorkingChanges(repository.Path, GitGraphViewModel.WorkingChanges);
+              }
+
+              // Apply repo info results if they arrive quickly; otherwise fall back to the
+              // graph/working-changes snapshot and refresh the remaining fields in background.
+              stepSw.Restart();
+              if (!await TryApplyRepositoryInfoAsync(repository, infoTask, TimeSpan.FromMilliseconds(750)))
+              {
+                  ApplyRepositoryInfoFromGraph(repository);
+                  _ = ContinueApplyingRepositoryInfoAsync(repository, infoTask);
+              }
+              Log.Perf("SelectRepo", "ApplyRepositoryInfo", stepSw.ElapsedMilliseconds);
+
+            // Step 4: Apply filters (depends on graph being loaded)
+            stepSw.Restart();
+            if (needsBranchFilters)
             {
-                await GitGraphViewModel.LoadRepositoryAsync(repository.Path);
-
-                // Sync working changes to the staging view if it's currently selected
-                if (IsWorkingChangesSelected && WorkingChangesViewModel != null)
+                if (branchLoadTask != null)
                 {
-                    WorkingChangesViewModel.SetWorkingChanges(repository.Path, GitGraphViewModel.WorkingChanges);
+                    await branchLoadTask;
                 }
+
+                ApplyBranchFiltersForRepo(repository);
             }
+            else
+            {
+                IsBranchFilterActive = false;
+            }
+            Log.Perf("SelectRepo", "ApplyBranchFiltersForRepo", stepSw.ElapsedMilliseconds);
 
-            // Update status
-            var info = await _gitService.GetRepositoryInfoAsync(repository.Path);
-            repository.CurrentBranch = info.CurrentBranch;
-            repository.IsDirty = info.IsDirty;
-            repository.AheadBy = info.AheadBy;
-            repository.BehindBy = info.BehindBy;
-            repository.IsMergeInProgress = info.IsMergeInProgress;
-            repository.OperationType = info.OperationType;
-            repository.MergingBranch = info.MergingBranch;
-            repository.ConflictCount = info.ConflictCount;
-            repository.IsDetachedHead = info.IsDetachedHead;
-            repository.DetachedHeadSha = info.DetachedHeadSha;
-
-            // Load worktrees for sidebar display (force reload to fix stale IsCurrent flags
-            // that may have been clobbered by UpdateWorktreeCurrentFlags on a different repo)
-            await LoadWorktreesForRepoAsync(repository, forceReload: true);
-
-            ApplyBranchFiltersForRepo(repository);
-
+            stepSw.Restart();
             await RefreshMergeConflictResolutionAsync();
+            Log.Perf("SelectRepo", "RefreshMergeConflictResolutionAsync", stepSw.ElapsedMilliseconds);
 
-            StatusMessage = $"{repository.Name} | {repository.CurrentBranch}" +
-                           (repository.IsDirty ? " | Modified" : "") +
-                           (repository.AheadBy > 0 ? $" | {repository.AheadBy}" : "") +
-                           (repository.BehindBy > 0 ? $" | {repository.BehindBy}" : "");
+              UpdateRepositoryStatusMessage(repository);
 
             if (fetchInBackground)
                 _ = _autoFetchService.FetchAsync(repository.Path);
+
+            if (!needsBranchFilters && needsBranchSidebarLoad)
+            {
+                _ = LoadBranchesForRepoAsync(repository, forceReload: false, skipFilterApplication: true);
+            }
+
+            Log.Perf("SelectRepo", $"TOTAL for {repository.Name}", totalSw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
             StatusMessage = $"Error: {ex.Message}";
+            Log.Error("SelectRepo", $"FAILED after {totalSw.ElapsedMilliseconds}ms", ex);
         }
         finally
         {
             IsBusy = false;
+            _isSwitchingRepository = false;
         }
     }
 
@@ -318,6 +390,71 @@ public partial class MainViewModel
     public void TogglePinRepository(RepositoryInfo repo)
     {
         _repositoryService.TogglePinRepository(repo);
+    }
+
+    private async Task<bool> TryApplyRepositoryInfoAsync(
+        RepositoryInfo repository,
+        Task<RepositoryInfo> infoTask,
+        TimeSpan timeout)
+    {
+        try
+        {
+            var info = await infoTask.WaitAsync(timeout);
+            ApplyRepositoryInfo(repository, info);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            Log.Warn("SelectRepo", $"Timed out waiting for repository info for {repository.Name}; continuing with graph snapshot");
+            return false;
+        }
+    }
+
+    private async Task ContinueApplyingRepositoryInfoAsync(RepositoryInfo repository, Task<RepositoryInfo> infoTask)
+    {
+        try
+        {
+            var info = await infoTask.ConfigureAwait(false);
+            await _dispatcherService.InvokeAsync(() =>
+            {
+                if (SelectedRepository == null ||
+                    !string.Equals(SelectedRepository.Path, repository.Path, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                ApplyRepositoryInfo(repository, info);
+                UpdateRepositoryStatusMessage(repository);
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("SelectRepo", $"Deferred repository info refresh failed for {repository.Name}: {ex.Message}");
+        }
+    }
+
+    private void ApplyRepositoryInfoFromGraph(RepositoryInfo repository)
+    {
+        var workingChanges = GitGraphViewModel?.WorkingChanges;
+        if (workingChanges == null)
+        {
+            return;
+        }
+
+        repository.CurrentBranch = workingChanges.IsDetachedHead
+            ? $"HEAD ({workingChanges.DetachedHeadSha?[..7] ?? "detached"})"
+            : (string.IsNullOrWhiteSpace(workingChanges.BranchName) ? repository.CurrentBranch : workingChanges.BranchName);
+        repository.IsDirty = workingChanges.HasChanges;
+        repository.IsDetachedHead = workingChanges.IsDetachedHead;
+        repository.DetachedHeadSha = workingChanges.DetachedHeadSha;
+    }
+
+    private void UpdateRepositoryStatusMessage(RepositoryInfo repository)
+    {
+        StatusMessage = $"{repository.Name} | {repository.CurrentBranch}" +
+                       (repository.IsDirty ? " | Modified" : "") +
+                       (repository.AheadBy > 0 ? $" | {repository.AheadBy}" : "") +
+                       (repository.BehindBy > 0 ? $" | {repository.BehindBy}" : "");
     }
 
     [RelayCommand]

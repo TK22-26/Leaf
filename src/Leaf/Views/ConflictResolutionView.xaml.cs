@@ -1,6 +1,6 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Windows;
+using Leaf.Services;
 using Leaf.Controls.Merge;
 using Leaf.ViewModels;
 
@@ -43,7 +43,7 @@ public partial class ConflictResolutionView : Window
             TheirsEditor.ScrollOffsetChanged += OnTheirsScrollOffsetChanged;
             MergedEditor.ScrollOffsetChanged += OnMergedScrollOffsetChanged;
 
-            Debug.WriteLine($"[MERGE][UI] WindowOpened: files={_viewModel.TotalCount} source={_viewModel.SourceBranch} target={_viewModel.TargetBranch}");
+            Log.Info("MergeUI", $"WindowOpened: files={_viewModel.TotalCount} source={_viewModel.SourceBranch} target={_viewModel.TargetBranch}");
 
             // If mappings were already built before we subscribed, push them now
             if (_viewModel.OursLineMapping != null || _viewModel.TheirsLineMapping != null)
@@ -54,7 +54,7 @@ public partial class ConflictResolutionView : Window
     protected override void OnClosed(EventArgs e)
     {
         if (_viewModel != null)
-            Debug.WriteLine($"[MERGE][UI] WindowClosed: filesResolved={_viewModel.ResolvedCount}/{_viewModel.TotalCount}");
+            Log.Info("MergeUI", $"WindowClosed: filesResolved={_viewModel.ResolvedCount}/{_viewModel.TotalCount}");
 
         OursEditor.ClearContent();
         TheirsEditor.ClearContent();

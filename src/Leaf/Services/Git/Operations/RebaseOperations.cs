@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.IO;
+using Leaf.Services;
 using Leaf.Services.Git.Core;
 using LibGit2Sharp;
 
@@ -21,7 +21,7 @@ internal class RebaseOperations
     {
         return Task.Run(() =>
         {
-            Debug.WriteLine($"[MERGE][OPS] Rebase: onto={ontoBranch}");
+            Log.Info("Rebase", $"Rebase: onto={ontoBranch}");
             MergeDebugHelper.LogMergeState("BeforeRebase", repoPath);
             using var repo = new Repository(repoPath);
 
@@ -38,7 +38,7 @@ internal class RebaseOperations
 
             var rebaseResult = repo.Rebase.Start(repo.Head, targetBranch, targetBranch, new Identity(signature.Name, signature.Email), options);
 
-            Debug.WriteLine($"[MERGE][OPS] Rebase: status={rebaseResult.Status}");
+            Log.Info("Rebase", $"Rebase: status={rebaseResult.Status}");
             MergeDebugHelper.LogMergeState("AfterRebase", repoPath);
 
             return rebaseResult.Status switch
@@ -57,7 +57,7 @@ internal class RebaseOperations
     {
         return Task.Run(() =>
         {
-            Debug.WriteLine("[MERGE][OPS] AbortRebase: running git rebase --abort");
+            Log.Info("Rebase", "AbortRebase: running git rebase --abort");
             MergeDebugHelper.LogMergeState("BeforeAbortRebase", repoPath);
             GitCliHelpers.RunGit(repoPath, "rebase --abort");
             MergeDebugHelper.LogMergeState("AfterAbortRebase", repoPath);
@@ -71,7 +71,7 @@ internal class RebaseOperations
     {
         return Task.Run(() =>
         {
-            Debug.WriteLine("[MERGE][OPS] ContinueRebase");
+            Log.Info("Rebase", "ContinueRebase");
             MergeDebugHelper.LogMergeState("BeforeContinueRebase", repoPath);
             using var repo = new Repository(repoPath);
             var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
@@ -79,7 +79,7 @@ internal class RebaseOperations
 
             var result = repo.Rebase.Continue(new Identity(signature.Name, signature.Email), options);
 
-            Debug.WriteLine($"[MERGE][OPS] ContinueRebase: status={result.Status}");
+            Log.Info("Rebase", $"ContinueRebase: status={result.Status}");
             MergeDebugHelper.LogMergeState("AfterContinueRebase", repoPath);
 
             return result.Status switch
@@ -98,7 +98,7 @@ internal class RebaseOperations
     {
         return Task.Run(() =>
         {
-            Debug.WriteLine("[MERGE][OPS] SkipRebaseCommit");
+            Log.Info("Rebase", "SkipRebaseCommit");
             var result = GitCliHelpers.RunGit(repoPath, "rebase --skip");
             return new Models.MergeResult
             {
@@ -118,7 +118,7 @@ internal class RebaseOperations
             var rebaseApplyPath = Path.Combine(repoPath, ".git", "rebase-apply");
             var rebaseMergePath = Path.Combine(repoPath, ".git", "rebase-merge");
             var inProgress = Directory.Exists(rebaseApplyPath) || Directory.Exists(rebaseMergePath);
-            Debug.WriteLine($"[MERGE][STATE] IsRebaseInProgress: {inProgress} (apply={Directory.Exists(rebaseApplyPath)}, merge={Directory.Exists(rebaseMergePath)})");
+            Log.Info("Rebase", $"IsRebaseInProgress: {inProgress} (apply={Directory.Exists(rebaseApplyPath)}, merge={Directory.Exists(rebaseMergePath)})");
             return inProgress;
         });
     }

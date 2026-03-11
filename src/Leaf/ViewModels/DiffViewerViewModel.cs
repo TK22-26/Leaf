@@ -218,7 +218,7 @@ public partial class DiffViewerViewModel : ObservableObject
         CancelActiveLoad();
         IsLoading = false;
         Mode = ViewerMode.Diff;
-        Debug.WriteLine("[DiffViewer] Mode=Diff (cancel active load).");
+        Log.Info("DiffViewer", "Mode=Diff (cancel active load)");
     }
 
     [RelayCommand]
@@ -228,7 +228,7 @@ public partial class DiffViewerViewModel : ObservableObject
             return;
 
         IsHunkMode = !IsHunkMode;
-        Debug.WriteLine($"[DiffViewer] HunkMode={IsHunkMode}");
+        Log.Info("DiffViewer", $"HunkMode={IsHunkMode}");
     }
 
     /// <summary>
@@ -249,7 +249,7 @@ public partial class DiffViewerViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[DiffViewer] RevertHunk failed: {ex.Message}");
+            Log.Error("DiffViewer", "RevertHunk failed", ex);
         }
         finally
         {
@@ -271,12 +271,12 @@ public partial class DiffViewerViewModel : ObservableObject
             IsLoading = true;
             var loadId = Interlocked.Increment(ref _loadSequence);
             var sw = Stopwatch.StartNew();
-            Debug.WriteLine($"[DiffViewer] Blame start #{loadId} path={FilePath}");
+            Log.Info("DiffViewer", $"Blame start #{loadId} path={FilePath}");
 
             var lines = await _gitService.GetFileBlameAsync(RepositoryPath, FilePath);
             if (token.IsCancellationRequested)
             {
-                Debug.WriteLine($"[DiffViewer] Blame canceled #{loadId}");
+                Log.Info("DiffViewer", $"Blame canceled #{loadId}");
                 return;
             }
             MarkBlameChunks(lines);
@@ -285,7 +285,7 @@ public partial class DiffViewerViewModel : ObservableObject
             BlameContent = string.Join('\n', lines.Select(l => l.Content));
 
             sw.Stop();
-            Debug.WriteLine($"[DiffViewer] Blame done #{loadId} lines={lines.Count} ms={sw.ElapsedMilliseconds}");
+            Log.Perf("DiffViewer", $"Blame done #{loadId} lines={lines.Count}", sw.ElapsedMilliseconds);
         }
         finally
         {
@@ -310,18 +310,18 @@ public partial class DiffViewerViewModel : ObservableObject
             IsLoading = true;
             var loadId = Interlocked.Increment(ref _loadSequence);
             var sw = Stopwatch.StartNew();
-            Debug.WriteLine($"[DiffViewer] History start #{loadId} path={FilePath}");
+            Log.Info("DiffViewer", $"History start #{loadId} path={FilePath}");
 
             var commits = await _gitService.GetFileHistoryAsync(RepositoryPath, FilePath);
             if (token.IsCancellationRequested)
             {
-                Debug.WriteLine($"[DiffViewer] History canceled #{loadId}");
+                Log.Info("DiffViewer", $"History canceled #{loadId}");
                 return;
             }
             HistoryCommits = new ObservableCollection<CommitInfo>(commits);
 
             sw.Stop();
-            Debug.WriteLine($"[DiffViewer] History done #{loadId} commits={commits.Count} ms={sw.ElapsedMilliseconds}");
+            Log.Perf("DiffViewer", $"History done #{loadId} commits={commits.Count}", sw.ElapsedMilliseconds);
         }
         finally
         {

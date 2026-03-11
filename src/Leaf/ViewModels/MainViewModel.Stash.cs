@@ -1,5 +1,6 @@
 using System;
 using CommunityToolkit.Mvvm.Input;
+using Leaf.Services;
 
 namespace Leaf.ViewModels;
 
@@ -51,7 +52,7 @@ public partial class MainViewModel
         var selectedStash = GitGraphViewModel?.SelectedStash;
         if (selectedStash == null) return;
 
-        System.Diagnostics.Debug.WriteLine($"[MainVM.PopStash] Starting pop for stash index {selectedStash.Index}");
+        Log.Info("Stash", $"PopStash: starting pop for stash index {selectedStash.Index}");
 
         try
         {
@@ -60,23 +61,23 @@ public partial class MainViewModel
 
             var result = await _gitService.PopStashAsync(SelectedRepository.Path, selectedStash.Index);
 
-            System.Diagnostics.Debug.WriteLine($"[MainVM.PopStash] Service returned: Success={result.Success}, HasConflicts={result.HasConflicts}, Error={result.ErrorMessage}");
+            Log.Info("Stash", $"PopStash: Success={result.Success}, HasConflicts={result.HasConflicts}, Error={result.ErrorMessage}");
 
             // Clear stash selection before refresh so preservation logic doesn't re-select
             GitGraphViewModel?.SelectStash(null);
 
             if (result.Success)
             {
-                System.Diagnostics.Debug.WriteLine("[MainVM.PopStash] SUCCESS branch - refreshing");
+                Log.Info("Stash", "PopStash: success, refreshing");
                 StatusMessage = "Stash popped";
                 await RefreshAsync();
             }
             else if (result.HasConflicts)
             {
-                System.Diagnostics.Debug.WriteLine("[MainVM.PopStash] CONFLICTS branch - checking for actual conflicts");
+                Log.Warn("Stash", "PopStash: conflicts detected, checking for actual conflicts");
                 // Load conflicts first to check if there are actually any
                 var conflicts = await _gitService.GetConflictsAsync(SelectedRepository.Path);
-                System.Diagnostics.Debug.WriteLine($"[MainVM.PopStash] Actual conflicts found: {conflicts.Count}");
+                Log.Info("Stash", $"PopStash: actual conflicts found: {conflicts.Count}");
 
                 if (conflicts.Count == 0)
                 {

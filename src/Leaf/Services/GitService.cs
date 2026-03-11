@@ -62,7 +62,12 @@ public class GitService : IGitService
         => _repositoryOps.IsValidRepositoryAsync(path);
 
     public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath)
+#pragma warning disable CS0618 // Obsolete — kept for callers that need LibGit2Sharp fallback
         => _repositoryOps.GetRepositoryInfoAsync(repoPath);
+#pragma warning restore CS0618
+
+    public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath)
+        => _repositoryOps.GetRepositoryInfoFastAsync(repoPath);
 
     #endregion
 
@@ -132,6 +137,9 @@ public class GitService : IGitService
 
     public Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha)
         => _diffOps.GetCommitToWorkingTreeDiffAsync(repoPath, commitSha);
+
+    public Task<string> GetRefToRefDiffAsync(string repoPath, string baseRef, string headRef, string? filePath = null)
+        => _diffOps.GetRefToRefDiffAsync(repoPath, baseRef, headRef, filePath);
 
     #endregion
 

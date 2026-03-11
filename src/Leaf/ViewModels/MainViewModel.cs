@@ -1,10 +1,12 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Services.PullRequests;
 using Leaf.Views;
 
 namespace Leaf.ViewModels;
@@ -28,6 +30,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IDialogService _dialogService;
     private readonly IClipboardService _clipboardService;
     private readonly IFolderWatcherService _folderWatcherService;
+    private readonly IPullRequestService _pullRequestService;
+    private readonly INotificationService? _notificationService;
     private IRepositorySession? _currentSession;
     private bool _disposed;
 
@@ -232,6 +236,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private bool _isRenameBranchInput;
     private string? _pendingRenameBranchName;
+    private int _isGitDirectoryChangeRunning;
+    private bool _isSwitchingRepository;
+    private int _startupInitializationStarted;
 
     public MainViewModel(
         IGitService gitService,
@@ -248,7 +255,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IGitCommandRunner gitCommandRunner,
         IClipboardService clipboardService,
         IFileSystemService fileSystemService,
-        IFolderWatcherService folderWatcherService)
+        IFolderWatcherService folderWatcherService,
+        IPullRequestService pullRequestService,
+        INotificationService? notificationService = null)
     {
         _gitService = gitService;
         _gitFlowService = gitFlowService;
@@ -261,6 +270,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _dialogService = dialogService;
         _clipboardService = clipboardService;
         _folderWatcherService = folderWatcherService;
+        _pullRequestService = pullRequestService;
+        _notificationService = notificationService;
         _fileWatcherService = new FileWatcherService();
 
         // Subscribe to folder watcher for new repository discovery
@@ -272,7 +283,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             _folderWatcherService.StartWatching(watchedFolders);
             _ = ScanWatchedFoldersAsync(watchedFolders).ContinueWith(
-                t => System.Diagnostics.Debug.WriteLine($"[FolderWatcher] Scan failed: {t.Exception?.InnerException?.Message}"),
+                t => Log.Error("FolderWatcher", $"Scan failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
                 TaskContinuationOptions.OnlyOnFaulted);
         }
 
@@ -298,93 +309,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _terminalViewModel.CommandExecuted += OnTerminalCommandExecuted;
 
         // Wire up file watcher events
-        _fileWatcherService.WorkingDirectoryChanged += async (s, e) =>
-        {
-            await _dispatcherService.InvokeAsync(async () =>
-            {
-                // Refresh working changes in graph view
-                if (_gitGraphViewModel != null)
-                {
-                    await _gitGraphViewModel.RefreshWorkingChangesAsync();
-
-                    // Sync to staging view if visible
-                    if (_workingChangesViewModel != null && SelectedRepository != null && IsWorkingChangesSelected)
-                    {
-                        _workingChangesViewModel.SetWorkingChanges(
-                            SelectedRepository.Path,
-                            _gitGraphViewModel.WorkingChanges);
-                    }
-
-                    // Close diff viewer if the viewed file is no longer in working changes
-                    if (IsDiffViewerVisible && IsWorkingChangesSelected && _diffViewerViewModel != null)
-                    {
-                        var viewedPath = _diffViewerViewModel.FilePath?.Replace('\\', '/');
-                        if (!string.IsNullOrEmpty(viewedPath))
-                        {
-                            var wc = _gitGraphViewModel.WorkingChanges;
-                            var stillPresent = wc != null && (
-                                wc.StagedFiles.Any(f => string.Equals(f.Path, viewedPath, StringComparison.OrdinalIgnoreCase)) ||
-                                wc.UnstagedFiles.Any(f => string.Equals(f.Path, viewedPath, StringComparison.OrdinalIgnoreCase)));
-
-                            if (!stillPresent)
-                            {
-                                CloseDiffViewer();
-                            }
-                        }
-                    }
-                }
-            });
-        };
-
-        _fileWatcherService.GitDirectoryChanged += async (s, e) =>
-        {
-            await _dispatcherService.InvokeAsync(async () =>
-            {
-                // Full refresh of git graph for commit changes
-                if (_gitGraphViewModel != null && SelectedRepository != null)
-                {
-                    await _gitGraphViewModel.LoadRepositoryAsync(SelectedRepository.Path);
-                }
-
-                if (_workingChangesViewModel != null && SelectedRepository != null && IsWorkingChangesSelected)
-                {
-                    _workingChangesViewModel.SetWorkingChanges(
-                        SelectedRepository.Path,
-                        _gitGraphViewModel?.WorkingChanges);
-                }
-
-                // Close diff viewer if the viewed file is no longer in working changes
-                if (IsDiffViewerVisible && IsWorkingChangesSelected && _diffViewerViewModel != null && _gitGraphViewModel != null)
-                {
-                    var viewedPath = _diffViewerViewModel.FilePath?.Replace('\\', '/');
-                    if (!string.IsNullOrEmpty(viewedPath))
-                    {
-                        var wc = _gitGraphViewModel.WorkingChanges;
-                        var stillPresent = wc != null && (
-                            wc.StagedFiles.Any(f => string.Equals(f.Path, viewedPath, StringComparison.OrdinalIgnoreCase)) ||
-                            wc.UnstagedFiles.Any(f => string.Equals(f.Path, viewedPath, StringComparison.OrdinalIgnoreCase)));
-
-                        if (!stillPresent)
-                        {
-                            CloseDiffViewer();
-                        }
-                    }
-                }
-
-                if (SelectedRepository != null)
-                {
-                    var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
-                    SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
-                    SelectedRepository.OperationType = info.OperationType;
-                    SelectedRepository.MergingBranch = info.MergingBranch;
-                    SelectedRepository.ConflictCount = info.ConflictCount;
-                    SelectedRepository.IsDetachedHead = info.IsDetachedHead;
-                    SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
-
-                    await RefreshMergeConflictResolutionAsync();
-                }
-            });
-        };
+        _fileWatcherService.WorkingDirectoryChanged += (s, e) => _ = HandleWorkingDirectoryChangedAsync();
+        _fileWatcherService.GitDirectoryChanged += (s, e) => _ = HandleGitDirectoryChangedAsync();
 
         // Wire up selection changes
         _gitGraphViewModel.PropertyChanged += (s, e) =>
@@ -450,14 +376,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         };
 
-        // Load saved repositories on startup
-        LoadSavedRepositories();
-
         // Start auto-fetch timer
         StartAutoFetchTimer();
 
         // Check for updates silently on startup
         _ = CheckForUpdatesSilentlyAsync();
+
+        Log.Info("App", "MainViewModel initialized");
     }
 
     partial void OnSelectedRepositoryChanged(RepositoryInfo? value)
@@ -485,6 +410,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             WorkingChangesViewModel?.ClearWorkingChanges();
             IsWorkingChangesSelected = false;
             IsDiffViewerVisible = false;
+            ResetPullRequestViewState();
             StatusMessage = "Select a repository";
         }
     }

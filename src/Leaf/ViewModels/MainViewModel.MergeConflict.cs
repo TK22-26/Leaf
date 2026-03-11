@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Services;
 
 namespace Leaf.ViewModels;
 
@@ -92,11 +93,11 @@ public partial class MainViewModel
         try
         {
             IsBusy = true;
-            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: repo={SelectedRepository.Name}");
+            Log.Info("Merge", $"AbortMerge: repo={SelectedRepository.Name}");
 
             // Check if we're in an orphaned conflict state (conflicts without MERGE_HEAD)
             var isOrphaned = await _gitService.IsOrphanedConflictStateAsync(SelectedRepository.Path);
-            System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: isOrphaned={isOrphaned}");
+            Log.Info("Merge", $"AbortMerge: isOrphaned={isOrphaned}");
 
             if (isOrphaned)
             {
@@ -157,7 +158,7 @@ public partial class MainViewModel
             {
                 // Route to correct abort command based on operation type
                 var opType = SelectedRepository.OperationType;
-                System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: running abort for {opType}");
+                Log.Info("Merge", $"AbortMerge: running abort for {opType}");
 
                 switch (opType)
                 {
@@ -186,7 +187,7 @@ public partial class MainViewModel
                         break;
                 }
 
-                System.Diagnostics.Debug.WriteLine("[MERGE][UI] AbortMerge: completed");
+                Log.Info("Merge", "AbortMerge: completed");
             }
 
             // Clean up the stored merge conflict file immediately after abort
@@ -196,14 +197,14 @@ public partial class MainViewModel
             }
             catch (Exception clearEx)
             {
-                System.Diagnostics.Debug.WriteLine($"[MERGE][UI] AbortMerge: failed to clear stored conflicts: {clearEx.Message}");
+                Log.Warn("Merge", $"AbortMerge: failed to clear stored conflicts: {clearEx.Message}");
             }
 
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] AbortMerge: {ex.Message}");
+            Log.Error("Merge", "AbortMerge failed", ex);
             StatusMessage = $"Abort failed: {ex.Message}";
         }
         finally
@@ -273,7 +274,7 @@ public partial class MainViewModel
         }
 
         var hasMergeConflicts = SelectedRepository.IsMergeInProgress || SelectedRepository.ConflictCount > 0;
-        System.Diagnostics.Debug.WriteLine($"[MERGE][UI] RefreshMergeConflictResolution: merge={SelectedRepository.IsMergeInProgress} conflictCount={SelectedRepository.ConflictCount}");
+        Log.Info("Merge", $"RefreshMergeConflictResolution: merge={SelectedRepository.IsMergeInProgress} conflictCount={SelectedRepository.ConflictCount}");
         if (!hasMergeConflicts)
         {
             if (MergeConflictResolutionViewModel != null)
@@ -283,13 +284,15 @@ public partial class MainViewModel
 
             MergeConflictResolutionViewModel = null;
             _mergeConflictRepoPath = null;
-            await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path);
+            _ = _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path).ContinueWith(
+                t => Log.Error("Merge", "Failed to clear stored merge conflicts", t.Exception?.InnerException ?? t.Exception),
+                TaskContinuationOptions.OnlyOnFaulted);
             return;
         }
 
         if (string.IsNullOrEmpty(SelectedRepository.MergingBranch))
         {
-            var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path);
             SelectedRepository.MergingBranch = info.MergingBranch;
         }
 
@@ -330,7 +333,7 @@ public partial class MainViewModel
 
     private async void OnMergeConflictResolutionCompleted(object? sender, bool success)
     {
-        System.Diagnostics.Debug.WriteLine($"[MERGE][UI] OnMergeConflictResolutionCompleted: success={success}");
+        Log.Info("Merge", $"OnMergeConflictResolutionCompleted: success={success}");
         StatusMessage = success ? "Merge completed successfully" : "Merge aborted";
         await RefreshAsync();
     }

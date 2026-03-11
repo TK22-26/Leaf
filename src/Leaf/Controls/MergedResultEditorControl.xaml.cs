@@ -11,6 +11,7 @@ using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Rendering;
 using Leaf.Helpers;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.ViewModels;
 
 namespace Leaf.Controls;
@@ -287,7 +288,7 @@ internal sealed class MergedResultBackground : FrameworkElement
         _renderCount++;
         if (_renderCount % 100 == 0)
         {
-            System.Diagnostics.Debug.WriteLine($"[MergedResultBackground] OnRender called {_renderCount} times");
+            Log.Perf("MergedResultBackground", $"OnRender called {_renderCount} times");
         }
 
         if (_lines == null || _editor == null)
@@ -296,7 +297,7 @@ internal sealed class MergedResultBackground : FrameworkElement
         // Guard against render loops
         if (_isRendering)
         {
-            System.Diagnostics.Debug.WriteLine($"[MergedResultBackground] Prevented re-entrant render!");
+            Log.Warn("MergedResultBackground", "Prevented re-entrant render!");
             return;
         }
 

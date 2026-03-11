@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using Leaf.Models;
 
@@ -28,6 +29,7 @@ public class RepositoryManagementService : IRepositoryManagementService
 
     public Task<string?> LoadRepositoriesAsync()
     {
+        var sw = Log.StartTimer();
         var data = _settingsService.LoadRepositories();
         var needsSave = false;
 
@@ -83,6 +85,8 @@ public class RepositoryManagementService : IRepositoryManagementService
         {
             SaveRepositories();
         }
+
+        Log.Perf("RepoMgmt", $"Loaded {RepositoryGroups.SelectMany(g => g.Repositories).Count()} repositories", sw.ElapsedMilliseconds);
 
         // Return the last selected repository path
         var settings = _settingsService.LoadSettings();
@@ -168,13 +172,17 @@ public class RepositoryManagementService : IRepositoryManagementService
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Log.Warn("RepoMgmt", $"Failed to resolve worktree path for '{path}': {ex.Message}");
+            }
         }
         return path;
     }
 
     public void RemoveRepository(RepositoryInfo repo)
     {
+        Log.Info("RepoMgmt", $"Repository removed: {repo.Name} ({repo.Path})");
         RemoveRepositoryFromGroups(repo);
         RepositoryRemoved?.Invoke(this, repo);
     }
@@ -213,9 +221,9 @@ public class RepositoryManagementService : IRepositoryManagementService
         {
             path = Path.GetFullPath(path);
         }
-        catch
+        catch (Exception ex)
         {
-            // If GetFullPath fails, just continue with the original
+            Log.Warn("RepoMgmt", $"Path normalization failed for '{path}': {ex.Message}");
         }
 
         // Remove trailing directory separators
@@ -341,6 +349,7 @@ public class RepositoryManagementService : IRepositoryManagementService
 
             if (raiseEvent)
             {
+                Log.Info("RepoMgmt", $"Repository added: {repo.Name} ({repo.Path})");
                 RepositoryAdded?.Invoke(this, repo);
             }
         }

@@ -3,7 +3,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
-    Width="380"
+    Width="400"
+    MinHeight="104"
     Opacity="0">
 
     <UserControl.RenderTransform>
@@ -46,33 +47,39 @@
                 Grid.Column="1"
                 Width="20"
                 Height="20"
-                Margin="12,12,8,12"
+                Margin="12,14,8,14"
                 VerticalAlignment="Top"
                 Foreground="{DynamicResource SystemFillColorCriticalBrush}"
                 Symbol="ErrorCircle" />
 
             <!--  Title + Description  -->
-            <StackPanel
+            <Grid
                 Grid.Column="2"
-                Margin="0,10,8,10"
-                VerticalAlignment="Center">
+                Margin="0,14,8,14"
+                VerticalAlignment="Top">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <TextBlock
                     x:Name="TitleText"
+                    Grid.Row="0"
                     FontSize="13"
                     FontWeight="SemiBold"
                     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                    Margin="0,0,0,6"
                     Text="Error"
                     TextTrimming="CharacterEllipsis" />
                 <TextBlock
                     x:Name="DescriptionText"
-                    Margin="0,2,0,0"
+                    Grid.Row="1"
                     FontSize="12"
                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    MaxHeight="100"
+                    MaxHeight="54"
                     Text=""
                     TextTrimming="CharacterEllipsis"
                     TextWrapping="Wrap" />
-            </StackPanel>
+            </Grid>
 
             <!--  Close button  -->
             <Button

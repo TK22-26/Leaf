@@ -57,6 +57,10 @@ public partial class BranchListView : UserControl
         // Single click - select this branch (Ctrl toggles multi-select)
         SelectBranch(viewModel.SelectedRepository, branch, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
 
+        // Restore graph mode if in PR view
+        if (!viewModel.IsGraphMode)
+            viewModel.ClosePullRequestViewCommand.Execute(null);
+
         // Navigate to branch tip in git graph
         if (!string.IsNullOrEmpty(branch.TipSha))
         {
@@ -101,6 +105,11 @@ public partial class BranchListView : UserControl
 
         // Single click - select this tag (Ctrl toggles multi-select)
         SelectTag(viewModel.SelectedRepository, tag, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+
+        // Restore graph mode if in PR view
+        if (!viewModel.IsGraphMode)
+            viewModel.ClosePullRequestViewCommand.Execute(null);
+
         e.Handled = true;
     }
 
@@ -123,8 +132,9 @@ public partial class BranchListView : UserControl
 
     private static void SelectTag(RepositoryInfo repo, TagInfo tag, bool toggle)
     {
-        // Clear any branch selection first
+        // Clear branch and PR selections
         repo.ClearBranchSelection();
+        repo.ClearPullRequestSelection();
 
         if (toggle)
         {
@@ -164,6 +174,11 @@ public partial class BranchListView : UserControl
 
         // Single click - select this worktree
         SelectWorktree(viewModel.SelectedRepository, worktree, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+
+        // Restore graph mode if in PR view
+        if (!viewModel.IsGraphMode)
+            viewModel.ClosePullRequestViewCommand.Execute(null);
+
         e.Handled = true;
     }
 
@@ -186,8 +201,9 @@ public partial class BranchListView : UserControl
 
     private static void SelectWorktree(RepositoryInfo repo, WorktreeInfo worktree, bool toggle)
     {
-        // Clear any branch selection first to avoid mixed selections
+        // Clear branch and PR selections to avoid mixed selections
         repo.ClearBranchSelection();
+        repo.ClearPullRequestSelection();
 
         if (toggle)
         {
@@ -215,7 +231,8 @@ public partial class BranchListView : UserControl
     /// </summary>
     private static void SelectBranch(RepositoryInfo repo, BranchInfo branch, bool toggle)
     {
-        // Clear any worktree selection first to avoid mixed selections
+        // Clear worktree and PR selections to avoid mixed selections
+        repo.ClearPullRequestSelection();
         foreach (var category in repo.BranchCategories)
         {
             if (category.IsWorktreesCategory)
@@ -850,6 +867,60 @@ public partial class BranchListView : UserControl
         BranchNameBox.IsEnabled = true;
         BranchCreateButton.IsEnabled = !string.IsNullOrWhiteSpace(BranchNameBox.Text);
         BranchCreateProgress.Visibility = Visibility.Collapsed;
+    }
+
+    #endregion
+
+    #region Pull Requests
+
+    private void PullRequest_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not PullRequestInfo pr)
+            return;
+
+        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+            return;
+
+        // Select and open detail view
+        SelectPullRequest(viewModel.SelectedRepository, pr);
+        viewModel.SelectPullRequestCommand.Execute(pr);
+        e.Handled = true;
+    }
+
+    private void PullRequest_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not PullRequestInfo pr)
+            return;
+
+        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+            return;
+
+        if (!pr.IsSelected)
+        {
+            SelectPullRequest(viewModel.SelectedRepository, pr);
+        }
+
+        // Don't mark handled - let context menu open
+    }
+
+    private static void SelectPullRequest(RepositoryInfo repo, PullRequestInfo pr)
+    {
+        // Clear branch and worktree selections
+        repo.ClearBranchSelection();
+
+        // Clear other PR selections
+        repo.ClearPullRequestSelection();
+
+        pr.IsSelected = true;
+        repo.SelectedPullRequest = pr;
+    }
+
+    private void CreatePRButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+        {
+            viewModel.OpenCreatePullRequestCommand.Execute(null);
+        }
     }
 
     #endregion

@@ -1,7 +1,10 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
+using System.Windows.Threading;
 using Leaf.Models;
+using Leaf.Services;
 
 namespace Leaf.ViewModels;
 
@@ -10,6 +13,25 @@ namespace Leaf.ViewModels;
 /// </summary>
 public partial class MainViewModel
 {
+    private async Task PrepareGraphContextAsync(string repoPath)
+    {
+        var sw = Log.StartTimer();
+        var remotesTask = _gitService.GetRemotesAsync(repoPath);
+        var gitFlowConfigTask = _gitFlowService.GetConfigAsync(repoPath);
+
+        await Task.WhenAll(remotesTask, gitFlowConfigTask).ConfigureAwait(false);
+
+        var remotes = await remotesTask.ConfigureAwait(false);
+        var gitFlowConfig = await gitFlowConfigTask.ConfigureAwait(false);
+
+        await _dispatcherService.InvokeAsync(() =>
+        {
+            GitGraphViewModel?.SetGitFlowContext(gitFlowConfig, remotes.Select(r => r.Name).ToList());
+        });
+
+        Log.Perf("LoadBranches", "PrepareGraphContextAsync", sw.ElapsedMilliseconds);
+    }
+
     /// <summary>
     /// Load branches for a repository.
     /// </summary>
@@ -17,21 +39,29 @@ public partial class MainViewModel
     {
         if (repo.BranchesLoaded && !forceReload) return;
 
+        var previousStates = repo.BranchCategories.Count > 0
+            ? repo.BranchCategories.ToDictionary(c => c.Name, c => c.IsExpanded)
+            : null;
+
         try
         {
+            var branchLoadSw = Log.StartTimer();
+
             // Fetch all git data in parallel (each runs on background thread)
-            var branchesTask = _gitService.GetBranchesAsync(repo.Path);
-            var remotesTask = _gitService.GetRemotesAsync(repo.Path);
-            var defaultRemoteTask = _gitService.GetConfigAsync(repo.Path, "leaf.defaultremote");
-            var gitFlowConfigTask = _gitFlowService.GetConfigAsync(repo.Path);
-            var worktreesTask = _gitService.GetWorktreesAsync(repo.Path);
-            var tagsTask = _gitService.GetTagsAsync(repo.Path);
+            var branchesTask = TimedTask("GetBranchesAsync", _gitService.GetBranchesAsync(repo.Path));
+            var remotesTask = TimedTask("GetRemotesAsync", _gitService.GetRemotesAsync(repo.Path));
+            var defaultRemoteTask = TimedTask("GetConfigAsync(leaf.defaultremote)", _gitService.GetConfigAsync(repo.Path, "leaf.defaultremote"));
+            var gitFlowConfigTask = TimedTask("GetGitFlowConfigAsync", _gitFlowService.GetConfigAsync(repo.Path));
+            var worktreesTask = TimedTask("GetWorktreesAsync", _gitService.GetWorktreesAsync(repo.Path));
+            var tagsTask = TimedTask("GetTagsAsync", _gitService.GetTagsAsync(repo.Path));
+            var pullRequestsTask = TimedTask("LoadPullRequestsForRepoAsync", LoadPullRequestsForRepoAsync(repo, forceReload));
 
-            await Task.WhenAll(branchesTask, remotesTask, defaultRemoteTask, gitFlowConfigTask, worktreesTask, tagsTask);
+            await Task.WhenAll(branchesTask, remotesTask, defaultRemoteTask, gitFlowConfigTask, worktreesTask, tagsTask, pullRequestsTask)
+                .ConfigureAwait(false);
+            Log.Perf("LoadBranches", "All parallel tasks completed", branchLoadSw.ElapsedMilliseconds);
 
-            var branches = await branchesTask;
-            var remotes = await remotesTask;
-            var remoteUrlLookup = remotes.ToDictionary(r => r.Name, r => r.Url, StringComparer.OrdinalIgnoreCase);
+            var branches = await branchesTask.ConfigureAwait(false);
+            var remotes = await remotesTask.ConfigureAwait(false);
 
             var localBranches = branches.Where(b => !b.IsRemote).OrderBy(b => b.Name).ToList();
             // Filter out HEAD from remote branches (it's a symbolic reference, not a real branch)
@@ -40,19 +70,7 @@ public partial class MainViewModel
                 .OrderBy(b => b.Name)
                 .ToList();
 
-            repo.LocalBranches.Clear();
-            foreach (var branch in localBranches)
-            {
-                repo.LocalBranches.Add(branch);
-            }
-
-            repo.RemoteBranches.Clear();
-            foreach (var branch in remoteBranches)
-            {
-                repo.RemoteBranches.Add(branch);
-            }
-
-            var defaultRemoteName = await defaultRemoteTask ?? "origin";
+            var defaultRemoteName = await defaultRemoteTask.ConfigureAwait(false) ?? "origin";
 
             // Group remote branches by remote name
             var branchesByRemote = remoteBranches
@@ -90,12 +108,9 @@ public partial class MainViewModel
                 .OrderBy(g => g.Name)
                 .ToList();
 
-            // Build all categories first, then assign as a new collection (atomic operation)
-            var categories = new ObservableCollection<BranchCategory>();
-
             // GITFLOW category (if initialized - always show when GitFlow is active)
-            var gitFlowConfig = await gitFlowConfigTask;
-            GitGraphViewModel?.SetGitFlowContext(gitFlowConfig, remotes.Select(r => r.Name).ToList());
+            var gitFlowConfig = await gitFlowConfigTask.ConfigureAwait(false);
+            var categories = new ObservableCollection<BranchCategory>();
             if (gitFlowConfig?.IsInitialized == true)
             {
                 // Classify all branches by GitFlow type for proper coloring
@@ -148,7 +163,7 @@ public partial class MainViewModel
             }
             categories.Add(remoteCategory);
 
-            var worktrees = await worktreesTask;
+            var worktrees = await worktreesTask.ConfigureAwait(false);
             if (worktrees.Count > 0)
             {
                 // Mark the current worktree (use GetFullPath to normalize paths - handles separators, casing, etc.)
@@ -175,7 +190,24 @@ public partial class MainViewModel
                 categories.Add(worktreesCategory);
             }
 
-            var tags = await tagsTask;
+            var pullRequests = await pullRequestsTask.ConfigureAwait(false);
+            if (_pullRequestService.IsSupported(repo.Path))
+            {
+                var prCategory = new BranchCategory
+                {
+                    Name = "PULL REQUESTS",
+                    Icon = "\uE8A3",
+                    BranchCount = pullRequests.Count,
+                    IsExpanded = false
+                };
+                foreach (var pr in pullRequests)
+                {
+                    prCategory.PullRequests.Add(pr);
+                }
+                categories.Add(prCategory);
+            }
+
+            var tags = await tagsTask.ConfigureAwait(false);
             if (tags.Count > 0)
             {
                 var tagsCategory = new BranchCategory
@@ -192,10 +224,8 @@ public partial class MainViewModel
                 categories.Add(tagsCategory);
             }
 
-            // Preserve expanded/collapsed state from previous load
-            if (repo.BranchCategories.Count > 0)
+            if (previousStates != null)
             {
-                var previousStates = repo.BranchCategories.ToDictionary(c => c.Name, c => c.IsExpanded);
                 foreach (var category in categories)
                 {
                     if (previousStates.TryGetValue(category.Name, out var wasExpanded))
@@ -205,32 +235,51 @@ public partial class MainViewModel
                 }
             }
 
-            // Assign new collection (replaces entire collection atomically)
-            repo.BranchCategories = categories;
-
-            // Auto-select the current branch
             var currentBranch = localBranches.FirstOrDefault(b => b.IsCurrent);
-            if (currentBranch != null)
+            var remoteNames = remotes.Select(r => r.Name).ToList();
+            var applySw = Log.StartTimer();
+            var applyPriority = skipFilterApplication ? DispatcherPriority.ContextIdle : DispatcherPriority.Normal;
+
+            await _dispatcherService.InvokeAsync(() =>
             {
+                GitGraphViewModel?.SetGitFlowContext(gitFlowConfig, remoteNames);
+                repo.LocalBranches = new ObservableCollection<BranchInfo>(localBranches);
+                repo.RemoteBranches = new ObservableCollection<BranchInfo>(remoteBranches);
+                repo.BranchCategories = categories;
+
                 repo.ClearBranchSelection();
-                currentBranch.IsSelected = true;
-                repo.SelectedBranches.Add(currentBranch);
-            }
+                if (currentBranch != null)
+                {
+                    currentBranch.IsSelected = true;
+                    repo.SelectedBranches.Add(currentBranch);
+                }
 
-            repo.BranchesLoaded = true;
-            UpdateBranchFilterFlags(repo);
+                repo.BranchesLoaded = true;
+                UpdateBranchFilterFlags(repo);
 
-            if (!skipFilterApplication &&
-                SelectedRepository != null &&
-                string.Equals(SelectedRepository.Path, repo.Path, StringComparison.OrdinalIgnoreCase))
-            {
-                ApplyBranchFiltersForRepo(repo);
-            }
+                if (!skipFilterApplication &&
+                    SelectedRepository != null &&
+                    string.Equals(SelectedRepository.Path, repo.Path, StringComparison.OrdinalIgnoreCase))
+                {
+                    ApplyBranchFiltersForRepo(repo);
+                }
+            }, applyPriority);
+
+            Log.Perf("LoadBranches", "ApplyBranchCollectionsOnUi", applySw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
             StatusMessage = $"Failed to load branches: {ex.Message}";
+            Log.Error("LoadBranches", $"Failed to load branches for {repo.Name}", ex);
         }
+    }
+
+    private static async Task<T> TimedTask<T>(string name, Task<T> task)
+    {
+        var sw = Log.StartTimer();
+        var result = await task;
+        Log.Perf("LoadBranches", name, sw.ElapsedMilliseconds);
+        return result;
     }
 
     private static string GetRemoteBranchShortName(string branchName, string remoteName)

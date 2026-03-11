@@ -71,6 +71,7 @@ public class FakeGitService : IGitService
     public Task SetConfigAsync(string repoPath, string key, string value) => Task.CompletedTask;
     public Task<string?> GetConfigAsync(string repoPath, string key) => Task.FromResult<string?>(null);
     public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath) => Task.FromResult(new RepositoryInfo());
+    public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath) => Task.FromResult(new RepositoryInfo());
     public Task<string> CloneAsync(string url, string localPath, string? username = null, string? password = null, IProgress<string>? progress = null) => Task.FromResult("");
     public Task FetchAsync(string repoPath, string remoteName = "origin", string? username = null, string? password = null, IProgress<string>? progress = null) => Task.CompletedTask;
     public Task PullAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null) => Task.CompletedTask;

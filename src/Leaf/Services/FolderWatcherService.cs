@@ -35,6 +35,7 @@ public class FolderWatcherService : IFolderWatcherService
         if (_watchers.ContainsKey(folderPath))
             return;
 
+        Log.Info("FolderWatcher", $"Adding watched folder: {folderPath}");
         try
         {
             var watcher = new FileSystemWatcher(folderPath)
@@ -61,14 +62,15 @@ public class FolderWatcherService : IFolderWatcherService
                 watcher.Dispose();
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Silently fail if we can't watch the directory
+            Log.Error("FolderWatcher", $"Failed to create watcher for {folderPath}", ex);
         }
     }
 
     public void RemoveWatchedFolder(string folderPath)
     {
+        Log.Info("FolderWatcher", $"Removing watched folder: {folderPath}");
         if (_watchers.TryRemove(folderPath, out var watcher))
         {
             watcher.EnableRaisingEvents = false;
@@ -118,9 +120,9 @@ public class FolderWatcherService : IFolderWatcherService
                 }
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Ignore access errors during scan
+            Log.Error("FolderWatcher", $"Scan failed for {folderPath}", ex);
         }
 
         return repos;

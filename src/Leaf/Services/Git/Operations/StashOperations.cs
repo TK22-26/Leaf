@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.Services.Git.Core;
 using Leaf.Services.Git.Interfaces;
 using LibGit2Sharp;
@@ -63,42 +63,42 @@ internal class StashOperations
         {
             var result = new Models.MergeResult();
 
-            Debug.WriteLine($"[PopStash] Starting smart pop for stash index {stashIndex} in {repoPath}");
+            Log.Info("Stash",$"[PopStash] Starting smart pop for stash index {stashIndex} in {repoPath}");
 
             // Step 1: Check if there are uncommitted changes
             bool hasChanges = GitCliHelpers.HasUncommittedChanges(repoPath);
-            Debug.WriteLine($"[PopStash] Has uncommitted changes: {hasChanges}");
+            Log.Info("Stash",$"[PopStash] Has uncommitted changes: {hasChanges}");
 
             if (!hasChanges)
             {
                 // Simple case - no local changes, pop directly
-                Debug.WriteLine("[PopStash] No local changes - using simple pop");
+                Log.Info("Stash","[PopStash] No local changes - using simple pop");
                 return StashMergeHelpers.SimplePopStash(repoPath, stashIndex);
             }
 
             // Smart pop: Patch-based approach
-            Debug.WriteLine("[PopStash] Local changes detected - using patch-based approach");
+            Log.Info("Stash","[PopStash] Local changes detected - using patch-based approach");
 
             // Step 2: Get the stash diff as a patch
             var stashRef = $"stash@{{{stashIndex}}}";
             var patchResult = GitCliHelpers.RunGit(repoPath, $"stash show -p {stashRef}");
-            Debug.WriteLine($"[PopStash] Patch result: exit={patchResult.ExitCode}, length={patchResult.Output.Length}");
+            Log.Info("Stash",$"[PopStash] Patch result: exit={patchResult.ExitCode}, length={patchResult.Output.Length}");
 
             if (patchResult.ExitCode != 0 || string.IsNullOrWhiteSpace(patchResult.Output))
             {
                 result.ErrorMessage = $"Failed to get stash patch: {patchResult.Error}";
-                Debug.WriteLine($"[PopStash] ERROR: {result.ErrorMessage}");
+                Log.Error("Stash", $"PopStash: {result.ErrorMessage}");
                 return result;
             }
 
             // Step 3: Apply the patch using 'patch' with fuzz for fuzzy matching
             var applyResult = GitCliHelpers.RunPatchWithInput(repoPath, patchResult.Output);
-            Debug.WriteLine($"[PopStash] Patch apply result: exit={applyResult.ExitCode}, output={applyResult.Output}, error={applyResult.Error}");
+            Log.Info("Stash",$"[PopStash] Patch apply result: exit={applyResult.ExitCode}, output={applyResult.Output}, error={applyResult.Error}");
 
             // Check if patch.exe wasn't found
             if (applyResult.ExitCode == -1 && applyResult.Error.Contains("patch.exe"))
             {
-                Debug.WriteLine("[PopStash] patch.exe not found - Git for Windows required");
+                Log.Error("Stash", "PopStash: patch.exe not found - Git for Windows required");
                 result.ErrorMessage = applyResult.Error;
                 return result;
             }
@@ -109,7 +109,7 @@ internal class StashOperations
             if (applyResult.ExitCode == 0 && !hasRejections)
             {
                 // Success! Patch applied cleanly - now drop the stash
-                Debug.WriteLine("[PopStash] Patch applied cleanly - dropping stash");
+                Log.Info("Stash","[PopStash] Patch applied cleanly - dropping stash");
                 GitCliHelpers.RunGit(repoPath, $"stash drop {stashIndex}");
 
                 result.Success = true;
@@ -119,7 +119,7 @@ internal class StashOperations
             // Patch failed with rejections - try commit-based merge to get proper conflict markers
             if (hasRejections)
             {
-                Debug.WriteLine("[PopStash] Patch has rejections - attempting commit-based merge for conflict resolution");
+                Log.Info("Stash","[PopStash] Patch has rejections - attempting commit-based merge for conflict resolution");
 
                 // Clean up any .rej files created by patch
                 GitCliHelpers.CleanupRejectFiles(repoPath);
@@ -140,7 +140,7 @@ internal class StashOperations
             var conflicts = GitCliHelpers.GetConflictFiles(repoPath);
             if (conflicts.Count > 0)
             {
-                Debug.WriteLine("[PopStash] CONFLICTS: Merge conflicts detected - dropping stash");
+                Log.Info("Stash","[PopStash] CONFLICTS: Merge conflicts detected - dropping stash");
                 GitCliHelpers.RunGit(repoPath, $"stash drop {stashIndex}");
 
                 result.HasConflicts = true;
@@ -150,7 +150,7 @@ internal class StashOperations
             }
 
             // Patch failed for unknown reason - fall back to simple pop for error message
-            Debug.WriteLine("[PopStash] Patch apply failed - falling back to simple pop for error message");
+            Log.Info("Stash","[PopStash] Patch apply failed - falling back to simple pop for error message");
             return StashMergeHelpers.SimplePopStash(repoPath, stashIndex);
         });
     }

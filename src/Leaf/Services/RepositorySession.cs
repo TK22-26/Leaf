@@ -128,9 +128,9 @@ public sealed class RepositorySession : IRepositorySession
                     _cts.Dispose();
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Suppress exceptions during disposal - we're shutting down
+                Log.Warn("RepoSession", $"Exception during disposal of {RepositoryPath}: {ex.Message}");
             }
         });
     }

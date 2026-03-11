@@ -48,6 +48,11 @@ public class BranchCategory
     public ObservableCollection<WorktreeInfo> Worktrees { get; set; } = [];
 
     /// <summary>
+    /// Pull requests (used for PULL REQUESTS category).
+    /// </summary>
+    public ObservableCollection<PullRequestInfo> PullRequests { get; set; } = [];
+
+    /// <summary>
     /// Whether this is the LOCAL category (for template selection).
     /// </summary>
     public bool IsLocalCategory => Name == "LOCAL";
@@ -71,6 +76,11 @@ public class BranchCategory
     /// Whether this is the WORKTREES category (for template selection).
     /// </summary>
     public bool IsWorktreesCategory => Name == "WORKTREES";
+
+    /// <summary>
+    /// Whether this is the PULL REQUESTS category (for template selection).
+    /// </summary>
+    public bool IsPullRequestsCategory => Name == "PULL REQUESTS";
 
     /// <summary>
     /// Categories are never "current" - this silences binding warnings in TreeView.

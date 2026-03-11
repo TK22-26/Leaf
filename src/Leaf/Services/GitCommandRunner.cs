@@ -45,7 +45,7 @@ public class GitCommandRunner : IGitCommandRunner
             startInfo.ArgumentList.Add(arg);
         }
 
-        Debug.WriteLine($"Running git command: git {string.Join(" ", arguments)}");
+        Log.Info("Git", $"Running: git {string.Join(" ", arguments)}");
 
         using var process = new Process { StartInfo = startInfo };
         process.Start();
@@ -57,7 +57,7 @@ public class GitCommandRunner : IGitCommandRunner
             {
                 if (!process.HasExited)
                 {
-                    Debug.WriteLine("Killing git process due to cancellation");
+                    Log.Warn("Git", "Killing git process due to cancellation");
                     process.Kill(entireProcessTree: true);
                 }
             }
@@ -112,7 +112,7 @@ public class GitCommandRunner : IGitCommandRunner
         // Only log failures with actual error content (not expected failures like missing config keys)
         if (!result.Success && !string.IsNullOrWhiteSpace(result.StandardError))
         {
-            Debug.WriteLine($"Git command failed (exit code {result.ExitCode}): {result.StandardError}");
+            Log.Error("Git", $"Command failed (exit code {result.ExitCode}): {result.StandardError}");
         }
 
         return result;
