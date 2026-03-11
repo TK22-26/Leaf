@@ -389,6 +389,19 @@ public partial class MainViewModel
         return vm;
     }
 
+    [RelayCommand]
+    private async Task TogglePullRequestFilterAsync()
+    {
+        if (SelectedRepository == null)
+            return;
+
+        SelectedRepository.ShowAllPullRequests = !SelectedRepository.ShowAllPullRequests;
+        SelectedRepository.PullRequestsLoaded = false;
+
+        Log.Info("PR", $"Toggled PR filter for {SelectedRepository.Name}: {(SelectedRepository.ShowAllPullRequests ? "all" : "open")}");
+        await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
+    }
+
     /// <summary>
     /// Loads pull requests for a repository. Returns the list for category building.
     /// </summary>
@@ -413,7 +426,8 @@ public partial class MainViewModel
             }
 
             var listSw = Log.StartTimer();
-            var prs = await _pullRequestService.ListPullRequestsAsync(repo.Path);
+            var filter = repo.ShowAllPullRequests ? PullRequestState.All : PullRequestState.Open;
+            var prs = await _pullRequestService.ListPullRequestsAsync(repo.Path, filter);
             Log.Perf("LoadPRs", $"ListPullRequestsAsync returned {prs.Count} PRs", listSw.ElapsedMilliseconds);
 
             repo.PullRequestsLoaded = true;

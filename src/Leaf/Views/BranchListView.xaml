@@ -300,26 +300,45 @@
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Symbol="Add" />
                         </Button>
-                        <!--  Create PR button (PULL REQUESTS category)  -->
-                        <Button
-                            x:Name="CreatePRButton"
+                        <!--  Pull request actions (PULL REQUESTS category)  -->
+                        <StackPanel
+                            x:Name="PullRequestHeaderActions"
                             Grid.Column="1"
-                            Margin="0"
-                            Padding="4"
-                            VerticalAlignment="Center"
-                            HorizontalContentAlignment="Center"
-                            VerticalContentAlignment="Center"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Click="CreatePRButton_Click"
-                            Cursor="Hand"
-                            ToolTip="Create pull request"
+                            Orientation="Horizontal"
                             Visibility="Collapsed">
-                            <ic:SymbolIcon
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Symbol="Add" />
-                        </Button>
+                            <Button
+                                Margin="0,0,2,0"
+                                Padding="6,2"
+                                VerticalAlignment="Center"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{Binding DataContext.TogglePullRequestFilterCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                Cursor="Hand"
+                                ToolTip="{Binding DataContext.SelectedRepository.PullRequestFilterToolTip, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                <TextBlock
+                                    FontSize="10"
+                                    FontWeight="SemiBold"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding DataContext.SelectedRepository.PullRequestFilterLabel, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                            </Button>
+                            <Button
+                                x:Name="CreatePRButton"
+                                Margin="0"
+                                Padding="4"
+                                VerticalAlignment="Center"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Click="CreatePRButton_Click"
+                                Cursor="Hand"
+                                ToolTip="Create pull request">
+                                <ic:SymbolIcon
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Symbol="Add" />
+                            </Button>
+                        </StackPanel>
                     </Grid>
                     <HierarchicalDataTemplate.Triggers>
                         <DataTrigger Binding="{Binding IsGitFlowCategory}" Value="True">
@@ -331,6 +350,7 @@
                         <DataTrigger Binding="{Binding IsTagsCategory}" Value="True">
                             <Setter TargetName="CategoryIcon" Property="Symbol" Value="Tag" />
                             <Setter TargetName="CategoryIcon" Property="Foreground" Value="#F59E0B" />
+                            <Setter TargetName="CategoryIcon" Property="Margin" Value="-1,1,7,0" />
                             <Setter TargetName="CategoryName" Property="Foreground" Value="#F59E0B" />
                         </DataTrigger>
                         <DataTrigger Binding="{Binding IsLocalCategory}" Value="True">
@@ -349,7 +369,7 @@
                             <Setter TargetName="CategoryIcon" Property="Symbol" Value="BranchRequest" />
                             <Setter TargetName="CategoryIcon" Property="Foreground" Value="#8250DF" />
                             <Setter TargetName="CategoryName" Property="Foreground" Value="#8250DF" />
-                            <Setter TargetName="CreatePRButton" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="PullRequestHeaderActions" Property="Visibility" Value="Visible" />
                         </DataTrigger>
                     </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>

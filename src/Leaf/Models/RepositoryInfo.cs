@@ -259,6 +259,27 @@ public partial class RepositoryInfo : ObservableObject
     public bool PullRequestsLoaded { get; set; }
 
     /// <summary>
+    /// Whether the pull request category should show all pull requests or only open ones.
+    /// </summary>
+    [ObservableProperty]
+    [property: JsonIgnore]
+    private bool _showAllPullRequests;
+
+    /// <summary>
+    /// Label for the pull request filter toggle.
+    /// </summary>
+    [JsonIgnore]
+    public string PullRequestFilterLabel => ShowAllPullRequests ? "All" : "Open";
+
+    /// <summary>
+    /// Tooltip for the pull request filter toggle.
+    /// </summary>
+    [JsonIgnore]
+    public string PullRequestFilterToolTip => ShowAllPullRequests
+        ? "Showing all pull requests"
+        : "Showing open pull requests only";
+
+    /// <summary>
     /// Currently selected pull request in the tree view.
     /// </summary>
     [ObservableProperty]
@@ -344,5 +365,11 @@ public partial class RepositoryInfo : ObservableObject
                     pr.IsSelected = false;
             }
         }
+    }
+
+    partial void OnShowAllPullRequestsChanged(bool value)
+    {
+        OnPropertyChanged(nameof(PullRequestFilterLabel));
+        OnPropertyChanged(nameof(PullRequestFilterToolTip));
     }
 }
