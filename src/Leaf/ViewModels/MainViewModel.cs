@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Services.PullRequests;
 using Leaf.Views;
 
 namespace Leaf.ViewModels;
@@ -28,6 +29,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IDialogService _dialogService;
     private readonly IClipboardService _clipboardService;
     private readonly IFolderWatcherService _folderWatcherService;
+    private readonly IPullRequestService _pullRequestService;
+    private readonly INotificationService? _notificationService;
     private IRepositorySession? _currentSession;
     private bool _disposed;
 
@@ -248,7 +251,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IGitCommandRunner gitCommandRunner,
         IClipboardService clipboardService,
         IFileSystemService fileSystemService,
-        IFolderWatcherService folderWatcherService)
+        IFolderWatcherService folderWatcherService,
+        IPullRequestService pullRequestService,
+        INotificationService? notificationService = null)
     {
         _gitService = gitService;
         _gitFlowService = gitFlowService;
@@ -261,6 +266,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _dialogService = dialogService;
         _clipboardService = clipboardService;
         _folderWatcherService = folderWatcherService;
+        _pullRequestService = pullRequestService;
+        _notificationService = notificationService;
         _fileWatcherService = new FileWatcherService();
 
         // Subscribe to folder watcher for new repository discovery
@@ -485,6 +492,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             WorkingChangesViewModel?.ClearWorkingChanges();
             IsWorkingChangesSelected = false;
             IsDiffViewerVisible = false;
+            ContentMode = ContentMode.Graph;
+            PullRequestDetailViewModel?.Clear();
             StatusMessage = "Select a repository";
         }
     }

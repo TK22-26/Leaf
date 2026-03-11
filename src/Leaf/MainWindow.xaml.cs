@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using Leaf.Services;
+using Leaf.Services.PullRequests;
 using Leaf.ViewModels;
 
 namespace Leaf;
@@ -46,6 +47,7 @@ public partial class MainWindow : Window
         var repositoryService = new RepositoryManagementService(settingsService);
         var autoFetchService = new AutoFetchService(gitService, credentialService);
         var folderWatcherService = new FolderWatcherService();
+        var pullRequestService = new PullRequestService(credentialService, gitService);
 
         // ViewModelFactory for transient ViewModel creation
         var viewModelFactory = new ViewModelFactory(gitService, dialogService, repositoryEventHub, clipboardService, fileSystemService);
@@ -66,7 +68,9 @@ public partial class MainWindow : Window
             gitCommandRunner,
             clipboardService,
             fileSystemService,
-            folderWatcherService);
+            folderWatcherService,
+            pullRequestService,
+            notificationService);
 
         viewModel.CommandPaletteViewModel = new ViewModels.CommandPaletteViewModel(
             repositoryService,

@@ -36,6 +36,9 @@ public class RepositoryEventHub : IRepositoryEventHub
     public void NotifyConflictStateChanged() => QueueRefresh(RefreshScope.Conflicts);
 
     /// <inheritdoc />
+    public void NotifyPullRequestsChanged() => QueueRefresh(RefreshScope.PullRequests);
+
+    /// <inheritdoc />
     public void RequestRefresh(RefreshScope scope) => QueueRefresh(scope);
 
     private void QueueRefresh(RefreshScope scope)

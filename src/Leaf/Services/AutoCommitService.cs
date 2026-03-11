@@ -302,17 +302,59 @@ Description: [your description here]";
         {
             FileName = "codex",
             WorkingDirectory = workingDir,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        psi.ArgumentList.Add("--approval-mode");
-        psi.ArgumentList.Add("full-auto");
-        psi.ArgumentList.Add("-q");
-        psi.ArgumentList.Add(prompt);
+        psi.ArgumentList.Add("exec");
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add("model_reasoning_effort=low");
+        psi.ArgumentList.Add("-m");
+        psi.ArgumentList.Add("gpt-5.1-codex-mini");
+        psi.ArgumentList.Add("--full-auto");
+        psi.ArgumentList.Add("--color");
+        psi.ArgumentList.Add("never");
+        psi.ArgumentList.Add("--json");
+        psi.ArgumentList.Add("-");
 
-        return await RunProcessAsync(psi, timeoutSeconds);
+        try
+        {
+            using var process = Process.Start(psi);
+            if (process == null)
+                return (false, "", "Failed to start codex process.");
+
+            await process.StandardInput.WriteAsync(prompt);
+            process.StandardInput.Close();
+
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+
+            var completed = await Task.WhenAny(
+                process.WaitForExitAsync(),
+                Task.Delay(TimeSpan.FromSeconds(timeoutSeconds)));
+
+            if (!process.HasExited)
+            {
+                process.Kill();
+                return (false, "", $"Codex timed out after {timeoutSeconds}s.");
+            }
+
+            var output = await outputTask;
+            var error = await errorTask;
+
+            if (process.ExitCode != 0)
+                return (false, "", $"Codex exited with code {process.ExitCode}: {error}");
+
+            // Extract message from JSONL output
+            output = CommitMessageParser.ExtractCodexJsonlMessage(output);
+            return (true, output, "");
+        }
+        catch (Exception ex)
+        {
+            return (false, "", $"Codex error: {ex.Message}");
+        }
     }
 
     private static async Task<(bool Success, string Output, string Detail)> RunClaudeAsync(

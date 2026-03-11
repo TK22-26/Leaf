@@ -253,6 +253,19 @@ public partial class RepositoryInfo : ObservableObject
     public bool WorktreesLoaded { get; set; }
 
     /// <summary>
+    /// Whether pull requests have been loaded for this repository.
+    /// </summary>
+    [JsonIgnore]
+    public bool PullRequestsLoaded { get; set; }
+
+    /// <summary>
+    /// Currently selected pull request in the tree view.
+    /// </summary>
+    [ObservableProperty]
+    [property: JsonIgnore]
+    private PullRequestInfo? _selectedPullRequest;
+
+    /// <summary>
     /// True if a merge, cherry-pick, revert, or rebase is currently in progress.
     /// </summary>
     [ObservableProperty]
@@ -310,5 +323,26 @@ public partial class RepositoryInfo : ObservableObject
             branch.IsSelected = false;
         }
         SelectedBranches.Clear();
+    }
+
+    /// <summary>
+    /// Clears the pull request selection.
+    /// </summary>
+    public void ClearPullRequestSelection()
+    {
+        if (SelectedPullRequest != null)
+        {
+            SelectedPullRequest.IsSelected = false;
+            SelectedPullRequest = null;
+        }
+
+        foreach (var category in BranchCategories)
+        {
+            if (category.IsPullRequestsCategory)
+            {
+                foreach (var pr in category.PullRequests)
+                    pr.IsSelected = false;
+            }
+        }
     }
 }

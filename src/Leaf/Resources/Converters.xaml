@@ -8,6 +8,7 @@
     <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
     <converters:NullToVisibilityInverseConverter x:Key="NullToVisibilityInverseConverter" />
     <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+    <converters:ContentModeToVisibilityConverter x:Key="ContentModeToVisibilityConverter" />
     <converters:EmptyToVisibilityConverter x:Key="EmptyToVisibilityConverter" />
     <converters:FileStatusToBrushConverter x:Key="FileStatusToBrushConverter" />
     <converters:IdenticonConverter x:Key="IdenticonConverter" />

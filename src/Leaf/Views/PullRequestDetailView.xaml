@@ -1,0 +1,249 @@
+<UserControl
+    x:Class="Leaf.Views.PullRequestDetailView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+    xmlns:converters="clr-namespace:Leaf.Converters"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    d:DesignHeight="600"
+    d:DesignWidth="800"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <converters:IntGreaterThanZeroToVisibilityConverter x:Key="IntGreaterThanZeroToVisibilityConverter" />
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Loading overlay -->
+        <Grid Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibilityConverter}}">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ProgressBar
+                    Width="200"
+                    Height="4"
+                    IsIndeterminate="True" />
+                <TextBlock
+                    Margin="0,8,0,0"
+                    HorizontalAlignment="Center"
+                    FontSize="12"
+                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                    Text="Loading pull request..." />
+            </StackPanel>
+        </Grid>
+
+        <!-- Error state -->
+        <StackPanel
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibilityConverter}}">
+            <ic:SymbolIcon
+                HorizontalAlignment="Center"
+                FontSize="32"
+                Foreground="#CF222E"
+                Symbol="ErrorCircle" />
+            <TextBlock
+                Margin="0,8,0,0"
+                HorizontalAlignment="Center"
+                FontSize="12"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="{Binding ErrorMessage}"
+                TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!-- Detail content -->
+        <Grid Visibility="{Binding Details, Converter={StaticResource NullToVisibilityConverter}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <Border
+                Grid.Row="0"
+                Padding="16,12"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="0,0,0,1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Back button -->
+                    <Button
+                        Grid.Column="0"
+                        Margin="0,0,12,0"
+                        Padding="6,4"
+                        VerticalAlignment="Center"
+                        Click="BackButton_Click"
+                        ToolTip="Back to graph">
+                        <ic:SymbolIcon FontSize="14" Symbol="ArrowLeft" />
+                    </Button>
+
+                    <!-- Title and metadata -->
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                Text="{Binding Details.Summary.Title}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                Margin="8,0,0,0"
+                                VerticalAlignment="Center"
+                                FontSize="14"
+                                Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                <Run Text="#" /><Run Text="{Binding Details.Summary.Number, Mode=OneWay}" />
+                            </TextBlock>
+                        </StackPanel>
+                        <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                            <!-- State badge -->
+                            <Border
+                                x:Name="StateBadge"
+                                Padding="6,2"
+                                Background="#28A745"
+                                CornerRadius="10">
+                                <TextBlock
+                                    FontSize="10"
+                                    FontWeight="SemiBold"
+                                    Foreground="White"
+                                    Text="Open" />
+                            </Border>
+                            <TextBlock
+                                Margin="8,0,0,0"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                <Run Text="{Binding Details.Summary.SourceBranch, Mode=OneWay}" />
+                                <Run Text=" → " />
+                                <Run Text="{Binding Details.Summary.TargetBranch, Mode=OneWay}" />
+                            </TextBlock>
+                            <TextBlock
+                                Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                <Run Text="by " />
+                                <Run Text="{Binding Details.Summary.AuthorLogin, Mode=OneWay}" />
+                            </TextBlock>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Open in browser -->
+                    <Button
+                        Grid.Column="2"
+                        Padding="8,4"
+                        VerticalAlignment="Center"
+                        Command="{Binding OpenInBrowserCommand}"
+                        ToolTip="Open in browser">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon
+                                Margin="0,0,4,0"
+                                FontSize="12"
+                                Symbol="Open" />
+                            <TextBlock FontSize="11" Text="Open in browser" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- Body and files -->
+            <ScrollViewer
+                Grid.Row="1"
+                Padding="16"
+                VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <!-- Description -->
+                    <TextBlock
+                        Margin="0,0,0,16"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding Details.Body}"
+                        TextWrapping="Wrap" />
+
+                    <!-- Files section -->
+                    <TextBlock
+                        Margin="0,0,0,8"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                        <Run Text="Files changed (" /><Run Text="{Binding Details.Files.Count, Mode=OneWay}" /><Run Text=")" />
+                    </TextBlock>
+
+                    <ItemsControl ItemsSource="{Binding Details.Files}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border
+                                    Margin="0,1"
+                                    Padding="8,4"
+                                    Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="4">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Grid.Column="0"
+                                            FontFamily="Cascadia Code, Consolas, monospace"
+                                            FontSize="11"
+                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                            Text="{Binding Path}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            Orientation="Horizontal">
+                                            <TextBlock
+                                                Margin="8,0,0,0"
+                                                FontSize="10"
+                                                Foreground="#28A745">
+                                                <Run Text="+" /><Run Text="{Binding Additions, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock
+                                                Margin="6,0,0,0"
+                                                FontSize="10"
+                                                Foreground="#CF222E">
+                                                <Run Text="-" /><Run Text="{Binding Deletions, Mode=OneWay}" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Reviewers section -->
+                    <TextBlock
+                        Margin="0,16,0,8"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        Text="Reviewers"
+                        Visibility="{Binding Details.RequestedReviewers, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                    <ItemsControl
+                        ItemsSource="{Binding Details.RequestedReviewers}"
+                        Visibility="{Binding Details.RequestedReviewers.Count, Converter={StaticResource IntGreaterThanZeroToVisibilityConverter}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,2" Orientation="Horizontal">
+                                    <ic:SymbolIcon
+                                        Margin="0,0,6,0"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                        Symbol="Person" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="{Binding DisplayName}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>

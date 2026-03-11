@@ -26,8 +26,9 @@ public partial class MainViewModel
             var gitFlowConfigTask = _gitFlowService.GetConfigAsync(repo.Path);
             var worktreesTask = _gitService.GetWorktreesAsync(repo.Path);
             var tagsTask = _gitService.GetTagsAsync(repo.Path);
+            var pullRequestsTask = LoadPullRequestsForRepoAsync(repo, forceReload);
 
-            await Task.WhenAll(branchesTask, remotesTask, defaultRemoteTask, gitFlowConfigTask, worktreesTask, tagsTask);
+            await Task.WhenAll(branchesTask, remotesTask, defaultRemoteTask, gitFlowConfigTask, worktreesTask, tagsTask, pullRequestsTask);
 
             var branches = await branchesTask;
             var remotes = await remotesTask;
@@ -173,6 +174,23 @@ public partial class MainViewModel
                     worktreesCategory.Worktrees.Add(worktree);
                 }
                 categories.Add(worktreesCategory);
+            }
+
+            var pullRequests = await pullRequestsTask;
+            if (pullRequests.Count > 0)
+            {
+                var prCategory = new BranchCategory
+                {
+                    Name = "PULL REQUESTS",
+                    Icon = "\uE8A3",
+                    BranchCount = pullRequests.Count,
+                    IsExpanded = true
+                };
+                foreach (var pr in pullRequests)
+                {
+                    prCategory.PullRequests.Add(pr);
+                }
+                categories.Add(prCategory);
             }
 
             var tags = await tagsTask;

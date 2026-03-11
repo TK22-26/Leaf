@@ -300,6 +300,26 @@
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Symbol="Add" />
                         </Button>
+                        <!--  Create PR button (PULL REQUESTS category)  -->
+                        <Button
+                            x:Name="CreatePRButton"
+                            Grid.Column="1"
+                            Margin="0"
+                            Padding="4"
+                            VerticalAlignment="Center"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="CreatePRButton_Click"
+                            Cursor="Hand"
+                            ToolTip="Create pull request"
+                            Visibility="Collapsed">
+                            <ic:SymbolIcon
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Symbol="Add" />
+                        </Button>
                     </Grid>
                     <HierarchicalDataTemplate.Triggers>
                         <DataTrigger Binding="{Binding IsGitFlowCategory}" Value="True">
@@ -324,6 +344,12 @@
                             <Setter TargetName="CategoryIcon" Property="Foreground" Value="#3B82F6" />
                             <Setter TargetName="CategoryName" Property="Foreground" Value="#3B82F6" />
                             <Setter TargetName="AddWorktreeButton" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsPullRequestsCategory}" Value="True">
+                            <Setter TargetName="CategoryIcon" Property="Symbol" Value="BranchRequest" />
+                            <Setter TargetName="CategoryIcon" Property="Foreground" Value="#8250DF" />
+                            <Setter TargetName="CategoryName" Property="Foreground" Value="#8250DF" />
+                            <Setter TargetName="CreatePRButton" Property="Visibility" Value="Visible" />
                         </DataTrigger>
                     </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>
@@ -861,6 +887,92 @@
                             </StackPanel>
                         </Grid>
                     </Border>
+                </DataTemplate>
+
+                <!--  Pull Request item template  -->
+                <DataTemplate DataType="{x:Type models:PullRequestInfo}">
+                    <Border
+                        Padding="2,3"
+                        Background="Transparent"
+                        CornerRadius="2"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="PullRequest_MouseLeftButtonDown"
+                        MouseRightButtonDown="PullRequest_MouseRightButtonDown"
+                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.OpenPullRequestInBrowserCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Open in Browser">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon FontSize="14" Symbol="Open" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.CopyPullRequestUrlCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Copy PR URL">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon FontSize="14" Symbol="Copy" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <!--  PR state icon  -->
+                            <ic:SymbolIcon
+                                x:Name="PrIcon"
+                                Grid.Column="0"
+                                Margin="0,0,6,0"
+                                FontSize="12"
+                                Foreground="#28A745"
+                                Symbol="BranchRequest" />
+                            <!--  Title and metadata  -->
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock
+                                    FontSize="11"
+                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                    Text="{Binding Title}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <TextBlock FontSize="10" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                    <Run Text="#" /><Run Text="{Binding Number, Mode=OneWay}" />
+                                    <Run Text=" by " /><Run Text="{Binding AuthorLogin, Mode=OneWay}" />
+                                </TextBlock>
+                            </StackPanel>
+                            <!--  Draft badge  -->
+                            <Border
+                                x:Name="DraftBadge"
+                                Grid.Column="2"
+                                Padding="4,1"
+                                VerticalAlignment="Center"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="4"
+                                Visibility="Collapsed">
+                                <TextBlock
+                                    FontSize="9"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="Draft" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsDraft}" Value="True">
+                            <Setter TargetName="DraftBadge" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="PrIcon" Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding State}" Value="Merged">
+                            <Setter TargetName="PrIcon" Property="Foreground" Value="#8250DF" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding State}" Value="Closed">
+                            <Setter TargetName="PrIcon" Property="Foreground" Value="#CF222E" />
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
                 </DataTemplate>
             </TreeView.Resources>
 

@@ -125,6 +125,7 @@ public class AiCommitMessageService : IAiCommitMessageService
                 var escapedArgs = args.Select(a => a.Contains(' ') || a.Contains('"') ? $"\"{a.Replace("\"", "\\\"")}\"" : a);
                 psi.Arguments = $"/c \"{executablePath}\" {string.Join(" ", escapedArgs)}";
                 Debug.WriteLine($"[AiCommitService] Batch file detected, using: {cmdPath}");
+                Debug.WriteLine($"[AiCommitService] Full arguments: {psi.Arguments}");
             }
             else
             {
@@ -156,15 +157,31 @@ public class AiCommitMessageService : IAiCommitMessageService
                 return (false, string.Empty, "Failed to start AI process");
             }
 
+            // Start reading output streams before writing stdin to avoid deadlocks
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+
             // Send prompt via stdin if needed, then close stdin
             if (useStdin)
             {
-                await process.StandardInput.WriteAsync(prompt);
+                try
+                {
+                    await process.StandardInput.WriteAsync(prompt);
+                }
+                catch (IOException stdinEx)
+                {
+                    // Process exited before we finished writing - read its output to find out why
+                    Debug.WriteLine($"[AiCommitService] Stdin write failed: {stdinEx.Message}");
+                    await process.WaitForExitAsync();
+                    var stderrOutput = (await outputTask + await errorTask).Trim();
+                    Debug.WriteLine($"[AiCommitService] Process stderr after pipe break: {TrimDetail(stderrOutput)}");
+                    var detail = string.IsNullOrWhiteSpace(stderrOutput)
+                        ? stdinEx.Message
+                        : TrimDetail(stderrOutput);
+                    return (false, string.Empty, detail);
+                }
             }
             process.StandardInput.Close();
-
-            var outputTask = process.StandardOutput.ReadToEndAsync();
-            var errorTask = process.StandardError.ReadToEndAsync();
 
             var exitTask = process.WaitForExitAsync();
             var timeoutTask = Task.Delay(timeoutSeconds * 1000, cancellationToken);
@@ -315,6 +332,7 @@ Description:
             return ("codex", new List<string>
             {
                 "exec",
+                "-c", "model_reasoning_effort=low",
                 "-m", "gpt-5.1-codex-mini",
                 "--full-auto",
                 "--color", "never",
