@@ -1,49 +1,49 @@
-using System.Diagnostics;
 using Leaf.Models;
+using Leaf.Services;
 
 namespace Leaf.Services.Merge;
 
 /// <summary>
-/// Debug.WriteLine-based implementation of merge UI logging.
+/// Log-based implementation of merge UI logging.
 /// </summary>
 public sealed class MergeUiLogger : IMergeUiLogger
 {
     public void RegionResolved(int index, ConflictResolution choice)
-        => Debug.WriteLine($"[MERGE][UI] RegionResolved: region={index} resolution={choice}");
+        => Log.Info("MergeUI", $"RegionResolved: region={index} resolution={choice}");
 
     public void FileTabSelected(string fileName, bool isResolved)
-        => Debug.WriteLine($"[MERGE][UI] FileTabSelected: file={fileName} isResolved={isResolved}");
+        => Log.Info("MergeUI", $"FileTabSelected: file={fileName} isResolved={isResolved}");
 
     public void ProgressUpdate(int filesResolved, int filesTotal, int regionsResolved, int regionsTotal)
-        => Debug.WriteLine($"[MERGE][UI] ProgressUpdate: files={filesResolved}/{filesTotal} regions={regionsResolved}/{regionsTotal}");
+        => Log.Info("MergeUI", $"ProgressUpdate: files={filesResolved}/{filesTotal} regions={regionsResolved}/{regionsTotal}");
 
     public void AutoAdvance(string from, string to)
-        => Debug.WriteLine($"[MERGE][UI] AutoAdvance: from={from} to={to}");
+        => Log.Info("MergeUI", $"AutoAdvance: from={from} to={to}");
 
     public void ScrollSync(string direction, double offset)
-        => Debug.WriteLine($"[MERGE][UI] ScrollSync: {direction} offset={offset:F0}");
+        => Log.Info("MergeUI", $"ScrollSync: {direction} offset={offset:F0}");
 
     public void WindowOpened(int fileCount, string source, string target)
-        => Debug.WriteLine($"[MERGE][UI] WindowOpened: files={fileCount} source={source} target={target}");
+        => Log.Info("MergeUI", $"WindowOpened: files={fileCount} source={source} target={target}");
 
     public void WindowClosed(int resolved, int total)
-        => Debug.WriteLine($"[MERGE][UI] WindowClosed: filesResolved={resolved}/{total}");
+        => Log.Info("MergeUI", $"WindowClosed: filesResolved={resolved}/{total}");
 
     public void BinaryFile(string filePath)
-        => Debug.WriteLine($"[MERGE][UI] BinaryFile: {filePath}");
+        => Log.Info("MergeUI", $"BinaryFile: {filePath}");
 
     public void LargeFile(string filePath, int lineCount)
-        => Debug.WriteLine($"[MERGE][UI] LargeFile: {filePath} totalLines={lineCount}");
+        => Log.Info("MergeUI", $"LargeFile: {filePath} totalLines={lineCount}");
 
     public void ContentDivergence(int editorLen, int modelLen)
-        => Debug.WriteLine($"[MERGE][UI] ContentDivergence: editorLen={editorLen} modelLen={modelLen}");
+        => Log.Warn("MergeUI", $"ContentDivergence: editorLen={editorLen} modelLen={modelLen}");
 
     public void UndoAction(string description)
-        => Debug.WriteLine($"[MERGE][UI] UndoAction: {description}");
+        => Log.Info("MergeUI", $"UndoAction: {description}");
 
     public void RedoAction(string description)
-        => Debug.WriteLine($"[MERGE][UI] RedoAction: {description}");
+        => Log.Info("MergeUI", $"RedoAction: {description}");
 
     public void TakeBothHunk(int regionIndex, int oursLines, int theirsLines)
-        => Debug.WriteLine($"[MERGE][UI] TakeBothHunk: region={regionIndex} oursLines={oursLines} theirsLines={theirsLines}");
+        => Log.Info("MergeUI", $"TakeBothHunk: region={regionIndex} oursLines={oursLines} theirsLines={theirsLines}");
 }

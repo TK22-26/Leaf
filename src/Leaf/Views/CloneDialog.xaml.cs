@@ -60,7 +60,7 @@ public partial class CloneDialog : Window
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                System.Diagnostics.Debug.WriteLine($"[CloneDialog] Background load failed: {ex.Message}");
+                Log.Error("CloneDialog", $"Background load failed: {ex.Message}", ex);
             }
         };
     }

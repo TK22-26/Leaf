@@ -545,7 +545,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="250" MinWidth="200" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="350" MinWidth="0" />
+                    <ColumnDefinition x:Name="RightPanelColumn" Width="350" MinWidth="0" />
                 </Grid.ColumnDefinitions>
 
                 <!--  Left panel: Repository list (collapsible + resizable)  -->
@@ -686,6 +686,9 @@
 
                     <!--  Pull request detail view  -->
                     <views:PullRequestDetailView DataContext="{Binding PullRequestDetailViewModel}" Visibility="{Binding DataContext.ContentMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ContentModeToVisibilityConverter}, ConverterParameter=PullRequestDetail}" />
+
+                    <!--  Pull request create form  -->
+                    <views:CreatePullRequestView DataContext="{Binding CreatePullRequestViewModel}" Visibility="{Binding DataContext.ContentMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ContentModeToVisibilityConverter}, ConverterParameter=PullRequestCreate}" />
                 </Grid>
 
                 <!--  Right panel: Commit details / Working changes / Merge Status (hidden in PR mode)  -->
@@ -798,8 +801,18 @@
                     Cursor="SizeWE"
                     Focusable="False"
                     ResizeBehavior="PreviousAndCurrent"
-                    ResizeDirection="Columns"
-                    Visibility="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    ResizeDirection="Columns">
+                    <GridSplitter.Style>
+                        <Style TargetType="GridSplitter">
+                            <Setter Property="Visibility" Value="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsGraphMode}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </GridSplitter.Style>
+                </GridSplitter>
 
                 <!--  Diff Viewer Overlay (center panel only)  -->
                 <controls:DiffViewerControl

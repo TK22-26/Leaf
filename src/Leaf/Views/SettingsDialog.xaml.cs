@@ -59,6 +59,9 @@ public partial class SettingsDialog : Window
             new("Multi-Remote", "Settings for repositories with multiple remotes", "Remotes", Symbol.Cloud),
             new("Compact File List", "Show only file names without directory paths", "Display", Symbol.Options),
             new("File Display", "Configure how files are displayed in change lists", "Display", Symbol.Options),
+            new("Logging", "Configure diagnostic logging for troubleshooting", "Logging", Symbol.Bug),
+            new("Log Level", "Set log verbosity: off, normal, or verbose", "Logging", Symbol.Bug),
+            new("Diagnostics", "Enable diagnostic logging to file", "Logging", Symbol.Bug),
         };
 
         // Configure UserControls
@@ -93,6 +96,7 @@ public partial class SettingsDialog : Window
         ContentDisplay.Visibility = Visibility.Collapsed;
         ContentWatchedFolders.Visibility = Visibility.Collapsed;
         ContentRemotes.Visibility = Visibility.Collapsed;
+        ContentLogging.Visibility = Visibility.Collapsed;
         ContentTerminal.Visibility = Visibility.Collapsed;
         ContentAuthGeneral.Visibility = Visibility.Collapsed;
         AzureDevOpsSettings.Visibility = Visibility.Collapsed;
@@ -116,6 +120,9 @@ public partial class SettingsDialog : Window
                 break;
             case "Remotes":
                 ContentRemotes.Visibility = Visibility.Visible;
+                break;
+            case "Logging":
+                ContentLogging.Visibility = Visibility.Visible;
                 break;
             case "Terminal":
                 ContentTerminal.Visibility = Visibility.Visible;
@@ -188,6 +195,7 @@ public partial class SettingsDialog : Window
         ContentDisplay.Visibility = Visibility.Collapsed;
         ContentWatchedFolders.Visibility = Visibility.Collapsed;
         ContentRemotes.Visibility = Visibility.Collapsed;
+        ContentLogging.Visibility = Visibility.Collapsed;
         ContentTerminal.Visibility = Visibility.Collapsed;
         ContentAuthGeneral.Visibility = Visibility.Collapsed;
         AzureDevOpsSettings.Visibility = Visibility.Collapsed;
@@ -236,6 +244,7 @@ public partial class SettingsDialog : Window
             "Gemini" => NavGemini,
             "Codex" => NavCodex,
             "Ollama" => NavOllama,
+            "Logging" => NavLogging,
             "GitFlow" => NavGitFlow,
             _ => null
         };
@@ -259,6 +268,16 @@ public partial class SettingsDialog : Window
         TerminalLogGitCommandsCheckBox.IsChecked = _settings.TerminalLogGitCommands;
         SyncAllRemotesCheckBox.IsChecked = _settings.SyncAllRemotes;
         CompactFileListCheckBox.IsChecked = _settings.CompactFileList;
+
+        // Logging
+        LogFilePathTextBox.Text = Log.FilePath;
+        var logLevelIndex = _settings.LogLevel switch
+        {
+            "Off" => 0,
+            "Verbose" => 2,
+            _ => 1 // Normal
+        };
+        LogLevelComboBox.SelectedIndex = logLevelIndex;
 
         // Load settings into UserControls
         AzureDevOpsSettings.LoadSettings(_settings, _credentialService);
@@ -304,6 +323,10 @@ public partial class SettingsDialog : Window
         _settings.SyncAllRemotes = SyncAllRemotesCheckBox.IsChecked == true;
         _settings.CompactFileList = CompactFileListCheckBox.IsChecked == true;
 
+        // Logging
+        if (LogLevelComboBox.SelectedItem is ComboBoxItem logItem && logItem.Tag is string logTag)
+            _settings.LogLevel = logTag;
+
         // Save settings from UserControls
         AzureDevOpsSettings.SaveSettings(_settings, _credentialService);
         GitHubSettings.SaveSettings(_settings, _credentialService);
@@ -348,6 +371,19 @@ public partial class SettingsDialog : Window
             "Credentials Cleared",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
+    }
+
+    private void OpenLogFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dir = System.IO.Path.GetDirectoryName(Log.FilePath);
+        if (dir != null && System.IO.Directory.Exists(dir))
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = dir,
+                UseShellExecute = true
+            });
+        }
     }
 
     #region Watched Folders

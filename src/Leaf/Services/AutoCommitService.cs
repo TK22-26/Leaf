@@ -475,7 +475,7 @@ Description: [your description here]";
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[AutoCommit] JSON parse error: {ex.Message}");
+            Log.Error("AutoCommit", $"JSON parse error: {ex.Message}");
             return false;
         }
     }

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using Leaf.Services;
 
 namespace Leaf.Services.Git.Core;
 
@@ -240,11 +241,27 @@ internal class GitCliHelpers
 
     /// <summary>
     /// Check if there are uncommitted changes.
+    /// Uses git diff-index which exits immediately on first difference,
+    /// much faster than 'git status --porcelain' on repos with many changes.
     /// </summary>
     public static bool HasUncommittedChanges(string repoPath)
     {
-        var result = RunGit(repoPath, "status --porcelain");
-        return !string.IsNullOrWhiteSpace(result.Output);
+        // Fast: diff-index --quiet HEAD checks staged + unstaged tracked files.
+        // Exits immediately on first difference (exit code 1 = dirty).
+        var result = RunGit(repoPath, "diff-index --quiet HEAD --");
+        if (result.ExitCode == 1)
+            return true;
+
+        if (result.ExitCode != 0)
+        {
+            // No HEAD (empty repo) or other error — fall back to status
+            var fallback = RunGit(repoPath, "status --porcelain");
+            return !string.IsNullOrWhiteSpace(fallback.Output);
+        }
+
+        // Tracked files are clean; check for untracked files
+        var untracked = RunGit(repoPath, "ls-files --others --exclude-standard");
+        return !string.IsNullOrWhiteSpace(untracked.Output);
     }
 
     /// <summary>
@@ -257,12 +274,12 @@ internal class GitCliHelpers
             foreach (var rejFile in Directory.GetFiles(repoPath, "*.rej", SearchOption.AllDirectories))
             {
                 File.Delete(rejFile);
-                Debug.WriteLine($"[CleanupRejectFiles] Deleted {rejFile}");
+                Log.Info("Git", $"CleanupRejectFiles: Deleted {rejFile}");
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CleanupRejectFiles] Error cleaning up .rej files: {ex.Message}");
+            Log.Error("Git", $"CleanupRejectFiles: Error cleaning up .rej files: {ex.Message}");
         }
     }
 

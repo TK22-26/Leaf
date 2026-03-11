@@ -103,7 +103,6 @@ public partial class GitGraphCanvas
         // Pass 0: Draw pass-through lane lines for connections beyond the culling range
         DrawPassThroughLanes(dc, rowOffset, minNodeIndex, viewportTop, viewportBottom);
 
-        // Use cached dictionary for efficient parent finding
         var nodesBySha = _cacheService.GetNodesBySha(nodes);
 
         // First pass: Draw gradient trails (behind everything)
@@ -355,7 +354,7 @@ public partial class GitGraphCanvas
         }
     }
 
-    private void DrawConnections(DrawingContext dc, GitTreeNode node, Dictionary<string, GitTreeNode> nodesBySha, int rowOffset = 0)
+    private void DrawConnections(DrawingContext dc, GitTreeNode node, IReadOnlyDictionary<string, GitTreeNode> nodesBySha, int rowOffset = 0)
     {
         double nodeX = GetXForColumn(node.ColumnIndex);
         double nodeY = GetYForRow(node.RowIndex + rowOffset);

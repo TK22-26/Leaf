@@ -14,5 +14,6 @@ public enum PullRequestCapabilities
     StatusChecks = 16,
     Reviews = 32,
     TeamReviewers = 64,
-    AutoComplete = 128
+    AutoComplete = 128,
+    RequiredReviewers = 256
 }

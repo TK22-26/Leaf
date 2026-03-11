@@ -62,7 +62,12 @@ public class GitService : IGitService
         => _repositoryOps.IsValidRepositoryAsync(path);
 
     public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath)
+#pragma warning disable CS0618 // Obsolete — kept for callers that need LibGit2Sharp fallback
         => _repositoryOps.GetRepositoryInfoAsync(repoPath);
+#pragma warning restore CS0618
+
+    public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath)
+        => _repositoryOps.GetRepositoryInfoFastAsync(repoPath);
 
     #endregion
 

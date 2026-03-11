@@ -19,7 +19,7 @@ public class FileWatcherService : IDisposable
 
     // Debounce intervals in milliseconds
     private const int WorkingDirDebounceMs = 200;
-    private const int GitDirDebounceMs = 500;
+    private const int GitDirDebounceMs = 2000;
 
     /// <summary>
     /// Raised when files in the working directory change (staged/unstaged changes).
@@ -43,6 +43,7 @@ public class FileWatcherService : IDisposable
         StopWatching();
 
         _currentRepoPath = repoPath;
+        Log.Info("FileWatcher", $"Starting watch on {repoPath}");
 
         // Watch working directory for file changes
         try
@@ -62,9 +63,9 @@ public class FileWatcherService : IDisposable
             _workingDirWatcher.Deleted += OnWorkingDirChanged;
             _workingDirWatcher.Renamed += OnWorkingDirRenamed;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Silently fail if we can't watch the directory
+            Log.Error("FileWatcher", $"Failed to create working directory watcher for {repoPath}", ex);
         }
 
         // Watch .git directory for history changes
@@ -87,9 +88,9 @@ public class FileWatcherService : IDisposable
                 _gitDirWatcher.Deleted += OnGitDirChanged;
                 _gitDirWatcher.Renamed += OnGitDirRenamed;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Silently fail if we can't watch the directory
+                Log.Error("FileWatcher", $"Failed to create .git directory watcher for {repoPath}", ex);
             }
         }
 
@@ -112,6 +113,8 @@ public class FileWatcherService : IDisposable
     /// </summary>
     public void StopWatching()
     {
+        if (_currentRepoPath != null)
+            Log.Info("FileWatcher", $"Stopping watch on {_currentRepoPath}");
         if (_workingDirWatcher != null)
         {
             _workingDirWatcher.EnableRaisingEvents = false;

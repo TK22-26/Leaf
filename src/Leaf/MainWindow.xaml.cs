@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -15,6 +16,12 @@ public partial class MainWindow : Window
 {
     private DateTime _lastSpacePress = DateTime.MinValue;
     private static readonly TimeSpan DoubleTapThreshold = TimeSpan.FromMilliseconds(300);
+    private GridLength _savedRightPanelWidth = new(350);
+    private readonly TaskCompletionSource<object?> _firstRenderTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly GitService _gitService;
+    private readonly RepositoryManagementService _repositoryService;
+    private readonly MainViewModel _viewModel;
+    private Task? _startupInitializationTask;
 
     public MainWindow()
     {
@@ -78,27 +85,50 @@ public partial class MainWindow : Window
             repo => viewModel.SelectRepositoryCommand.Execute(repo),
             branch => viewModel.CheckoutBranchCommand.Execute(branch));
 
+        _gitService = gitService;
+        _repositoryService = repositoryService;
+        _viewModel = viewModel;
+
         DataContext = viewModel;
+        viewModel.PropertyChanged += ViewModel_PropertyChanged;
 
         NotificationHostControl.NotificationService = notificationService;
 
-        // Handle --repo command-line flag: open the specified repository after window loads
-        if (App.InitialRepoPath is { } initialRepo)
+        ContentRendered += OnContentRendered;
+    }
+
+    public Task InitializeStartupAsync()
+    {
+        _startupInitializationTask ??= InitializeStartupCoreAsync();
+        return _startupInitializationTask;
+    }
+
+    public Task WaitForFirstRenderAsync() => _firstRenderTcs.Task;
+
+    private async Task InitializeStartupCoreAsync()
+    {
+        try
         {
-            Loaded += async (_, _) =>
+            await _viewModel.InitializeAfterFirstRenderAsync(restoreLastSelection: App.InitialRepoPath is null);
+
+            if (App.InitialRepoPath is { } initialRepo)
             {
-                try
-                {
-                    var repoInfo = await gitService.GetRepositoryInfoAsync(initialRepo);
-                    repositoryService.AddRepository(repoInfo);
-                    await viewModel.SelectRepositoryAsync(repoInfo);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[APP] Failed to open --repo path: {ex.Message}");
-                }
-            };
+                Log.Info("App", $"Opening repository from --repo flag: {initialRepo}");
+                var repoInfo = await _gitService.GetRepositoryInfoFastAsync(initialRepo);
+                _repositoryService.AddRepository(repoInfo);
+                await _viewModel.SelectRepositoryAsync(repoInfo, fetchInBackground: false);
+            }
         }
+        catch (Exception ex)
+        {
+            Log.Error("App", $"Startup initialization failed: {ex.Message}", ex);
+            throw;
+        }
+    }
+
+    private void OnContentRendered(object? sender, EventArgs e)
+    {
+        _firstRenderTcs.TrySetResult(null);
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -154,6 +184,23 @@ public partial class MainWindow : Window
         // GridSplitter's built-in behavior converts Column 0 from Auto to a fixed pixel width.
         // Reset it so the column sizes to content — critical for collapse to shrink the space.
         MainPanelGrid.ColumnDefinitions[0].Width = GridLength.Auto;
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is "IsGraphMode" && sender is MainViewModel vm)
+        {
+            if (vm.IsGraphMode)
+            {
+                RightPanelColumn.Width = _savedRightPanelWidth;
+            }
+            else
+            {
+                if (RightPanelColumn.Width.Value > 0)
+                    _savedRightPanelWidth = RightPanelColumn.Width;
+                RightPanelColumn.Width = new GridLength(0);
+            }
+        }
     }
 
     private void RepoPaneSplitter_DragCompleted(object sender, DragCompletedEventArgs e)

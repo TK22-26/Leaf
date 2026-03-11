@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using Leaf.Services;
 using Leaf.Services.Git.Core;
 using LibGit2Sharp;
 
@@ -39,7 +39,7 @@ internal class CommitOperations
     /// </summary>
     public async Task RevertCommitAsync(string repoPath, string commitSha)
     {
-        Debug.WriteLine($"[MERGE][OPS] RevertCommit: commit={commitSha}");
+        Log.Info("Merge", $"RevertCommit: commit={commitSha}");
         MergeDebugHelper.LogMergeState("BeforeRevert", repoPath);
 
         var result = await _context.CommandRunner.RunAsync(
@@ -50,11 +50,11 @@ internal class CommitOperations
 
         if (!result.Success)
         {
-            Debug.WriteLine($"[MERGE][ERROR] RevertCommit: {result.StandardError}");
+            Log.Error("Merge", $"RevertCommit: {result.StandardError}");
             throw new InvalidOperationException(result.StandardError);
         }
 
-        Debug.WriteLine("[MERGE][OPS] RevertCommit: success");
+        Log.Info("Merge", "RevertCommit: success");
     }
 
     /// <summary>
@@ -62,7 +62,7 @@ internal class CommitOperations
     /// </summary>
     public async Task RevertMergeCommitAsync(string repoPath, string commitSha, int parentIndex)
     {
-        Debug.WriteLine($"[MERGE][OPS] RevertMergeCommit: commit={commitSha} parent={parentIndex}");
+        Log.Info("Merge", $"RevertMergeCommit: commit={commitSha} parent={parentIndex}");
         MergeDebugHelper.LogMergeState("BeforeRevertMerge", repoPath);
 
         var result = await _context.CommandRunner.RunAsync(
@@ -73,11 +73,11 @@ internal class CommitOperations
 
         if (!result.Success)
         {
-            Debug.WriteLine($"[MERGE][ERROR] RevertMergeCommit: {result.StandardError}");
+            Log.Error("Merge", $"RevertMergeCommit: {result.StandardError}");
             throw new InvalidOperationException(result.StandardError);
         }
 
-        Debug.WriteLine("[MERGE][OPS] RevertMergeCommit: success");
+        Log.Info("Merge", "RevertMergeCommit: success");
     }
 
     /// <summary>

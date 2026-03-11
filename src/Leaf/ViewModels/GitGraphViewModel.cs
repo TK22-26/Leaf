@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Graph;
@@ -34,7 +35,7 @@ public partial class GitGraphViewModel : ObservableObject
     private HashSet<string> _loadedCommitShas = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? _graphBuildCts;
     private const int BatchSize = 1000;  // Large batch to minimize O(n) skip cost
-    private const int InitialBatchSize = 500;
+    private const int InitialBatchSize = 200;
 
     [ObservableProperty]
     private string? _repositoryPath;
@@ -61,7 +62,7 @@ public partial class GitGraphViewModel : ObservableObject
     private bool _isSearchActive;
 
     [ObservableProperty]
-    private bool _isLoading;
+    private bool _isLoading = true;
 
     [ObservableProperty]
     private bool _isLoadingMore;
@@ -237,6 +238,9 @@ public partial class GitGraphViewModel : ObservableObject
         if (string.IsNullOrEmpty(path))
             return;
 
+        Log.Info("Graph", $"Loading repository graph: {path}");
+        var sw = Log.StartTimer();
+
         try
         {
             if (!string.Equals(RepositoryPath, path, StringComparison.OrdinalIgnoreCase))
@@ -368,6 +372,7 @@ public partial class GitGraphViewModel : ObservableObject
         }
         finally
         {
+            Log.Perf("Graph", $"LoadRepositoryAsync for {path}", sw.ElapsedMilliseconds);
             IsLoading = false;
         }
     }

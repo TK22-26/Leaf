@@ -218,7 +218,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         if (workingChanges == null)
         {
-            System.Diagnostics.Debug.WriteLine("[WorkingChanges] SetWorkingChanges: null data received");
+            Log.Warn("WorkingChanges", "SetWorkingChanges: null data received");
         }
 
         // Force notification for dependent properties
@@ -905,18 +905,18 @@ exit /b %errorlevel%
             _aiCancellationTokenSource = new CancellationTokenSource();
             var cancellationToken = _aiCancellationTokenSource.Token;
 
-            Debug.WriteLine($"[WorkingChanges] AutoFill start: repo={_repositoryPath}");
+            Log.Info("WorkingChanges", $"AutoFill start: repo={_repositoryPath}");
 
             // Get staged diff summary
             var summary = await _gitService.GetStagedSummaryAsync(_repositoryPath);
             if (summary.Length > MaxSummaryChars)
             {
                 ErrorMessage = $"Staged summary is too large to send ({summary.Length} chars).";
-                Debug.WriteLine($"[WorkingChanges] AutoFill blocked: summary length {summary.Length} exceeds limit {MaxSummaryChars}.");
+                Log.Warn("WorkingChanges", $"AutoFill blocked: summary length {summary.Length} exceeds limit {MaxSummaryChars}.");
                 return;
             }
 
-            Debug.WriteLine($"[WorkingChanges] AutoFill summary length: {summary.Length}");
+            Log.Info("WorkingChanges", $"AutoFill summary length: {summary.Length}");
 
             var (message, description, error) = await _aiCommitService.GenerateCommitMessageAsync(
                 summary, _repositoryPath, cancellationToken);

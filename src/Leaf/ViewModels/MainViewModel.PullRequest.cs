@@ -2,6 +2,7 @@ using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.Services.PullRequests;
 
 namespace Leaf.ViewModels;
@@ -16,6 +17,9 @@ public partial class MainViewModel
 
     [ObservableProperty]
     private PullRequestDetailViewModel? _pullRequestDetailViewModel;
+
+    [ObservableProperty]
+    private CreatePullRequestViewModel? _createPullRequestViewModel;
 
     /// <summary>
     /// True when the main content area is showing the git graph (default mode).
@@ -52,7 +56,7 @@ public partial class MainViewModel
             _notificationService?.Show(
                 "Cannot open pull requests",
                 "Resolve the current merge or conflict state before working with pull requests.",
-                Services.NotificationType.Warning);
+                NotificationType.Warning);
             return false;
         }
 
@@ -68,6 +72,8 @@ public partial class MainViewModel
         if (pr == null || SelectedRepository == null || !CanEnterPullRequestMode())
             return;
 
+        Log.Info("PR", $"Selecting PR #{pr.Number}: {pr.Title}");
+
         // Clear all other selections
         SelectedRepository.ClearBranchSelection();
         SelectedRepository.ClearPullRequestSelection();
@@ -82,7 +88,7 @@ public partial class MainViewModel
         IsDiffViewerVisible = false;
 
         // Load details
-        PullRequestDetailViewModel ??= new PullRequestDetailViewModel(_pullRequestService);
+        PullRequestDetailViewModel ??= CreatePullRequestDetailViewModel();
         await PullRequestDetailViewModel.LoadAsync(SelectedRepository.Path, pr.Number);
     }
 
@@ -97,32 +103,69 @@ public partial class MainViewModel
 
         SelectedRepository?.ClearPullRequestSelection();
         PullRequestDetailViewModel?.Clear();
+        CreatePullRequestViewModel = null;
     }
 
     /// <summary>
-    /// Opens the provider's "create pull request" page in the default browser.
+    /// Opens the pull request create form in the main content area.
     /// </summary>
     [RelayCommand]
-    private void OpenCreatePullRequest(string? sourceBranch = null)
+    private async Task OpenCreatePullRequestAsync(string? sourceBranch = null)
     {
-        if (SelectedRepository == null)
+        if (SelectedRepository == null || !CanEnterPullRequestMode())
             return;
+
+        Log.Info("PR", $"Opening create PR form (source: {sourceBranch ?? SelectedRepository.CurrentBranch})");
+
+        // Create and initialize the form VM
+        var vm = new CreatePullRequestViewModel(_pullRequestService, _gitService, _notificationService);
+        vm.CreateCompleted += OnCreatePullRequestCompleted;
+        vm.CreateCancelled += OnCreatePullRequestCancelled;
+        vm.PullRequestCreated += OnPullRequestCreated;
+
+        CreatePullRequestViewModel = vm;
+
+        // Switch content mode
+        ContentMode = ContentMode.PullRequestCreate;
+        IsCommitDetailVisible = false;
+        IsDiffViewerVisible = false;
 
         var branch = sourceBranch ?? SelectedRepository.CurrentBranch;
-        if (string.IsNullOrEmpty(branch))
-            return;
+        await vm.InitializeAsync(SelectedRepository.Path, branch);
+    }
 
-        var url = _pullRequestService.GetCreatePullRequestUrl(SelectedRepository.Path, branch);
-        if (string.IsNullOrEmpty(url))
+    private void OnCreatePullRequestCompleted(object? sender, EventArgs e)
+    {
+        // Return to graph and refresh
+        ClosePullRequestView();
+        if (SelectedRepository != null)
         {
-            _notificationService?.Show(
-                "Create Pull Request",
-                "No supported pull request provider configured for this repository.",
-                Services.NotificationType.Warning);
-            return;
+            SelectedRepository.PullRequestsLoaded = false;
+            _ = LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
         }
+    }
 
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    private void OnCreatePullRequestCancelled(object? sender, EventArgs e)
+    {
+        ClosePullRequestView();
+    }
+
+    private void OnPullRequestCreated(object? sender, PullRequestInfo pr)
+    {
+        Log.Info("PR", $"PR created: #{pr.Number} {pr.Title}");
+        _notificationService?.Show(
+            "Pull Request Created",
+            $"#{pr.Number} {pr.Title}",
+            NotificationType.Success,
+            new NotificationAction("Open in browser", () =>
+            {
+                if (!string.IsNullOrEmpty(pr.Url))
+                    Process.Start(new ProcessStartInfo(pr.Url) { UseShellExecute = true });
+            }),
+            new NotificationAction("View in Leaf", () =>
+            {
+                _ = SelectPullRequestAsync(pr);
+            }));
     }
 
     /// <summary>
@@ -133,7 +176,7 @@ public partial class MainViewModel
     {
         if (pr != null && !string.IsNullOrEmpty(pr.Url))
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(pr.Url) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(pr.Url) { UseShellExecute = true });
         }
     }
 
@@ -150,28 +193,151 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Finds a pull request associated with a commit SHA and navigates to it.
+    /// </summary>
+    [RelayCommand]
+    private async Task FindPullRequestForCommitAsync(CommitInfo? commit)
+    {
+        if (commit == null || SelectedRepository == null)
+            return;
+
+        if (!_pullRequestService.IsSupported(SelectedRepository.Path))
+        {
+            _notificationService?.Show(
+                "Not available",
+                "No pull request provider configured for this repository.",
+                NotificationType.Warning);
+            return;
+        }
+
+        try
+        {
+            StatusMessage = "Searching for pull request...";
+
+            var pr = await _pullRequestService.FindPullRequestForCommitAsync(
+                SelectedRepository.Path, commit.Sha);
+
+            if (pr == null)
+            {
+                // Try squash-merge heuristic: check commit message for PR number pattern
+                pr = await TrySquashMergeHeuristicAsync(commit);
+            }
+
+            if (pr == null)
+            {
+                _notificationService?.Show(
+                    "No pull request found",
+                    $"No pull request is associated with commit {commit.ShortSha}.",
+                    NotificationType.Information);
+                StatusMessage = "Ready";
+                return;
+            }
+
+            StatusMessage = "Ready";
+            await SelectPullRequestAsync(pr);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Ready";
+            _notificationService?.Show(
+                "Error",
+                $"Failed to find pull request: {ex.Message}",
+                NotificationType.Error);
+        }
+    }
+
+    /// <summary>
+    /// Heuristic: look for PR number in squash-merge commit messages
+    /// (e.g., "... (#123)" or "Merge pull request #123").
+    /// </summary>
+    private async Task<PullRequestInfo?> TrySquashMergeHeuristicAsync(CommitInfo commit)
+    {
+        if (SelectedRepository == null || string.IsNullOrEmpty(commit.Message))
+            return null;
+
+        // Pattern: (#123) at end of first line, or "pull request #123"
+        var message = commit.Message;
+        var patterns = new[]
+        {
+            @"\(#(\d+)\)",
+            @"[Pp]ull [Rr]equest #(\d+)",
+            @"[Mm]erge.*#(\d+)"
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(message, pattern);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var prNumber))
+            {
+                try
+                {
+                    var details = await _pullRequestService.GetPullRequestAsync(
+                        SelectedRepository.Path, prNumber);
+                    if (details != null)
+                        return details.Summary;
+                }
+                catch
+                {
+                    // Heuristic failed — continue trying other patterns
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Creates and configures a PullRequestDetailViewModel with event wiring.
+    /// </summary>
+    private PullRequestDetailViewModel CreatePullRequestDetailViewModel()
+    {
+        var vm = new PullRequestDetailViewModel(_pullRequestService);
+        vm.MutationCompleted += (_, _) =>
+        {
+            // Refresh PR list after merge/close/update
+            if (SelectedRepository != null)
+            {
+                SelectedRepository.PullRequestsLoaded = false;
+                _ = LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
+            }
+        };
+        return vm;
+    }
+
+    /// <summary>
     /// Loads pull requests for a repository. Returns the list for category building.
     /// </summary>
     private async Task<List<PullRequestInfo>> LoadPullRequestsForRepoAsync(RepositoryInfo repo, bool forceReload = false)
     {
         if (repo.PullRequestsLoaded && !forceReload)
+        {
+            Log.Perf("LoadPRs", "Skipped (already loaded)");
             return [];
+        }
 
+        var sw = Log.StartTimer();
         try
         {
-            // Resolve the provider first (warm-up)
             await _pullRequestService.TryResolveAsync(repo.Path);
+            Log.Perf("LoadPRs", "TryResolveAsync", sw.ElapsedMilliseconds);
 
             if (!_pullRequestService.IsSupported(repo.Path))
+            {
+                Log.Perf("LoadPRs", "Not supported, returning empty", sw.ElapsedMilliseconds);
                 return [];
+            }
 
+            var listSw = Log.StartTimer();
             var prs = await _pullRequestService.ListPullRequestsAsync(repo.Path);
+            Log.Perf("LoadPRs", $"ListPullRequestsAsync returned {prs.Count} PRs", listSw.ElapsedMilliseconds);
+
             repo.PullRequestsLoaded = true;
+            Log.Perf("LoadPRs", "TOTAL", sw.ElapsedMilliseconds);
             return prs;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[PR] Failed to load pull requests: {ex.Message}");
+            Log.Error("LoadPRs", $"Failed after {sw.ElapsedMilliseconds}ms", ex);
             return [];
         }
     }

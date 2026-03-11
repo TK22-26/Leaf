@@ -24,10 +24,9 @@ public interface IGitGraphCacheService
     Pen GetConnectionPen(Brush brush, double width = 2.0);
 
     /// <summary>
-    /// Gets a dictionary mapping SHA to GitTreeNode, caching based on the nodes reference.
-    /// The returned dictionary is a fresh copy owned by the caller.
+    /// Gets a cached dictionary mapping SHA to GitTreeNode, keyed by the current nodes reference.
     /// </summary>
-    Dictionary<string, GitTreeNode> GetNodesBySha(IReadOnlyList<GitTreeNode> nodes);
+    IReadOnlyDictionary<string, GitTreeNode> GetNodesBySha(IReadOnlyList<GitTreeNode> nodes);
 
     /// <summary>
     /// Clears the node lookup cache. Call when Nodes property changes.

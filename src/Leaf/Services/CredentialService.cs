@@ -13,6 +13,7 @@ public class CredentialService : ICredentialService
 
     public void StorePat(string organization, string pat)
     {
+        Log.Info("Credentials", $"Storing PAT for {organization}");
         var targetName = GetTargetName(organization);
         WriteCredential(targetName, "git", pat);
     }
@@ -20,11 +21,15 @@ public class CredentialService : ICredentialService
     public string? GetPat(string organization)
     {
         var targetName = GetTargetName(organization);
-        return ReadCredential(targetName);
+        var result = ReadCredential(targetName);
+        if (result == null)
+            Log.Warn("Credentials", $"PAT retrieval failed for {organization}");
+        return result;
     }
 
     public void RemovePat(string organization)
     {
+        Log.Info("Credentials", $"Removing PAT for {organization}");
         var targetName = GetTargetName(organization);
         DeleteCredentialInternal(targetName);
     }
@@ -65,6 +70,7 @@ public class CredentialService : ICredentialService
     /// </summary>
     public void SaveCredential(string name, string username, string password)
     {
+        Log.Info("Credentials", $"Storing credential for {name}");
         var targetName = GetTargetName(name);
         WriteCredential(targetName, username, password);
     }
@@ -75,7 +81,10 @@ public class CredentialService : ICredentialService
     public string? GetCredential(string name)
     {
         var targetName = GetTargetName(name);
-        return ReadCredential(targetName);
+        var result = ReadCredential(targetName);
+        if (result == null)
+            Log.Warn("Credentials", $"Credential retrieval failed for {name}");
+        return result;
     }
 
     /// <summary>
@@ -83,6 +92,7 @@ public class CredentialService : ICredentialService
     /// </summary>
     public void DeleteCredential(string name)
     {
+        Log.Info("Credentials", $"Removing credential for {name}");
         var targetName = GetTargetName(name);
         CredDeleteW(targetName, CRED_TYPE_GENERIC, 0);
     }

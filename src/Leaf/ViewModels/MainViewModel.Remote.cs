@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.Utils;
 using Leaf.Views;
 
@@ -234,7 +235,7 @@ public partial class MainViewModel
                 catch (Exception ex)
                 {
                     // Log but continue with other remotes
-                    System.Diagnostics.Debug.WriteLine($"Fetch failed for {remote.Name}: {ex.Message}");
+                    Log.Error("Remote", $"Fetch failed for {remote.Name}", ex);
                 }
             }
 

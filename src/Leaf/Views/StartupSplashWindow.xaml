@@ -1,0 +1,67 @@
+<Window
+    x:Class="Leaf.Views.StartupSplashWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:plant="clr-namespace:Leaf.Controls.PlantAnimation"
+    Title="Leaf"
+    Width="420"
+    Height="520"
+    AllowsTransparency="True"
+    Background="Transparent"
+    ResizeMode="NoResize"
+    ShowInTaskbar="False"
+    Topmost="True"
+    WindowStartupLocation="CenterScreen"
+    WindowStyle="None"
+    mc:Ignorable="d">
+
+    <Border
+        Background="#101A13"
+        BorderBrush="#2D4633"
+        BorderThickness="1"
+        CornerRadius="18">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Margin="28,28,28,0">
+                <TextBlock
+                    FontSize="28"
+                    FontWeight="SemiBold"
+                    Foreground="#E6F2E8"
+                    Text="Leaf" />
+                <TextBlock
+                    Margin="0,8,0,0"
+                    FontSize="13"
+                    Foreground="#9EB2A3"
+                    Text="Opening your last repository and warming the graph." />
+            </StackPanel>
+
+            <Grid Grid.Row="1" Margin="22,18,22,12">
+                <Border
+                    Background="#162119"
+                    BorderBrush="#203225"
+                    BorderThickness="1"
+                    CornerRadius="14" />
+                <Border
+                    Margin="10"
+                    Background="#0E1711"
+                    CornerRadius="10"
+                    Opacity="0.9" />
+                <plant:PlantCanvas Margin="8,10,8,8" ClipToBounds="True" />
+            </Grid>
+
+            <StackPanel Grid.Row="2" Margin="28,0,28,28">
+                <ProgressBar
+                    Height="4"
+                    IsIndeterminate="True"
+                    Foreground="#67C587" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using Leaf.Models;
 using Leaf.Utils;
 
@@ -181,7 +180,7 @@ public class PullRequestService : IPullRequestService
             var pat = _credentialService.GetPat($"{providerType}:{org}");
             if (string.IsNullOrEmpty(pat))
             {
-                Debug.WriteLine($"[PR] No PAT configured for {providerType}:{org}");
+                Log.Warn("PR", $"No PAT configured for {providerType}:{org}");
                 _resolvedRepos.TryAdd(normalized, null);
                 return null;
             }
@@ -192,7 +191,7 @@ public class PullRequestService : IPullRequestService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[PR] Failed to resolve provider for {repoPath}: {ex.Message}");
+            Log.Error("PR", $"Failed to resolve provider for {repoPath}: {ex.Message}");
             _resolvedRepos.TryAdd(normalized, null);
             return null;
         }

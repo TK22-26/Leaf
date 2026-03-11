@@ -50,23 +50,23 @@ public class AiCommitMessageService : IAiCommitMessageService
             ? BuildOllamaPrompt(diffText)
             : BuildPrompt(repoPath ?? ".", diffText, includeContext: true);
 
-        Debug.WriteLine($"[AiCommitService] Generating with provider={provider}, timeout={timeoutSeconds}s, promptLen={prompt.Length}");
+        Log.Info("AiCommit", $"Generating with provider={provider}, timeout={timeoutSeconds}s, promptLen={prompt.Length}");
 
         try
         {
             var (success, output, detail) = await RunAiPromptAsync(provider, prompt, timeoutSeconds, repoPath, cancellationToken);
             if (!success)
             {
-                Debug.WriteLine($"[AiCommitService] Provider failed: {detail}");
+                Log.Error("AiCommit", $"Provider failed: {detail}");
                 return (null, null, $"AI request failed: {detail}");
             }
 
-            Debug.WriteLine($"[AiCommitService] Output length: {output.Length}");
+            Log.Info("AiCommit", $"Output length: {output.Length}");
 
             var (message, description, parseError) = _parser.Parse(output);
             if (parseError != null)
             {
-                Debug.WriteLine($"[AiCommitService] Parse error: {parseError}");
+                Log.Error("AiCommit", $"Parse error: {parseError}");
                 return (null, null, $"AI response invalid: {parseError}");
             }
 
@@ -102,7 +102,7 @@ public class AiCommitMessageService : IAiCommitMessageService
 
         var (resolvedPath, combinedPath) = ResolveCommandPath(command);
         var executablePath = resolvedPath ?? command;
-        Debug.WriteLine($"[AiCommitService] Command '{command}' resolved to: {executablePath}");
+        Log.Info("AiCommit", $"Command '{command}' resolved to: {executablePath}");
 
         try
         {
@@ -124,8 +124,8 @@ public class AiCommitMessageService : IAiCommitMessageService
                 psi.FileName = cmdPath;
                 var escapedArgs = args.Select(a => a.Contains(' ') || a.Contains('"') ? $"\"{a.Replace("\"", "\\\"")}\"" : a);
                 psi.Arguments = $"/c \"{executablePath}\" {string.Join(" ", escapedArgs)}";
-                Debug.WriteLine($"[AiCommitService] Batch file detected, using: {cmdPath}");
-                Debug.WriteLine($"[AiCommitService] Full arguments: {psi.Arguments}");
+                Log.Info("AiCommit", $"Batch file detected, using: {cmdPath}");
+                Log.Info("AiCommit", $"Full arguments: {psi.Arguments}");
             }
             else
             {
@@ -171,10 +171,10 @@ public class AiCommitMessageService : IAiCommitMessageService
                 catch (IOException stdinEx)
                 {
                     // Process exited before we finished writing - read its output to find out why
-                    Debug.WriteLine($"[AiCommitService] Stdin write failed: {stdinEx.Message}");
+                    Log.Error("AiCommit", $"Stdin write failed: {stdinEx.Message}");
                     await process.WaitForExitAsync();
                     var stderrOutput = (await outputTask + await errorTask).Trim();
-                    Debug.WriteLine($"[AiCommitService] Process stderr after pipe break: {TrimDetail(stderrOutput)}");
+                    Log.Error("AiCommit", $"Process stderr after pipe break: {TrimDetail(stderrOutput)}");
                     var detail = string.IsNullOrWhiteSpace(stderrOutput)
                         ? stdinEx.Message
                         : TrimDetail(stderrOutput);
@@ -236,7 +236,7 @@ public class AiCommitMessageService : IAiCommitMessageService
         }
         catch (System.ComponentModel.Win32Exception ex)
         {
-            Debug.WriteLine($"[AiCommitService] Win32Exception: {ex.Message} (NativeErrorCode: {ex.NativeErrorCode})");
+            Log.Error("AiCommit", $"Win32Exception: {ex.Message} (NativeErrorCode: {ex.NativeErrorCode})");
             return (false, string.Empty, $"command error: {ex.Message}");
         }
         catch (Exception ex)

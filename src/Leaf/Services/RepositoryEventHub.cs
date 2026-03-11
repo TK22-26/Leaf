@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Leaf.Services;
 
 /// <summary>
@@ -80,7 +78,7 @@ public class RepositoryEventHub : IRepositoryEventHub
                         catch (Exception ex)
                         {
                             // Log to debug output - subscriber exceptions shouldn't crash the app
-                            Debug.WriteLine($"Subscriber threw during RefreshRequested: {ex.Message}");
+                            Log.Error("EventHub", $"Subscriber threw during RefreshRequested: {ex.Message}");
                             // Continue to other subscribers
                         }
                     }
@@ -93,7 +91,7 @@ public class RepositoryEventHub : IRepositoryEventHub
                 {
                     if (t.IsFaulted && t.Exception != null)
                     {
-                        Debug.WriteLine($"Dispatcher invocation faulted: {t.Exception.Message}");
+                        Log.Error("EventHub", $"Dispatcher invocation faulted: {t.Exception.Message}");
                     }
                 },
                 TaskContinuationOptions.OnlyOnFaulted);
@@ -101,7 +99,7 @@ public class RepositoryEventHub : IRepositoryEventHub
         catch (Exception ex) when (ex is TaskCanceledException or ObjectDisposedException)
         {
             // Dispatcher shutting down - drop ALL pending refreshes
-            Debug.WriteLine("Dispatcher unavailable, dropping all pending refresh notifications");
+            Log.Warn("EventHub", "Dispatcher unavailable, dropping all pending refresh notifications");
             lock (_lock)
             {
                 _pendingRefresh = RefreshScope.None;

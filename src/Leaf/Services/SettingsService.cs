@@ -33,6 +33,7 @@ public class SettingsService
 
     public AppSettings LoadSettings()
     {
+        Log.Info("Settings", $"Loading settings from {SettingsFile}");
         try
         {
             if (File.Exists(SettingsFile))
@@ -40,10 +41,14 @@ public class SettingsService
                 var json = File.ReadAllText(SettingsFile);
                 return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
             }
+            else
+            {
+                Log.Warn("Settings", "Settings file not found, using defaults");
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // Return defaults on error
+            Log.Warn("Settings", $"Settings file corrupt or unreadable, using defaults: {ex.Message}");
         }
 
         return new AppSettings();
@@ -56,9 +61,9 @@ public class SettingsService
             var json = JsonSerializer.Serialize(settings, JsonOptions);
             File.WriteAllText(SettingsFile, json);
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore save errors
+            Log.Error("Settings", "Failed to save settings", ex);
         }
     }
 
@@ -72,10 +77,13 @@ public class SettingsService
         if (settings.CredentialVersion >= 1)
             return;
 
+        Log.Info("Settings", "Starting credential migration from v0 to v1");
+
         // Migrate legacy GitHub credential (Leaf:GitHub -> Leaf:GitHub:{username})
         var legacyGitHub = credentialService.GetCredential("GitHub");
         if (!string.IsNullOrEmpty(legacyGitHub) && !string.IsNullOrEmpty(settings.GitHubUsername))
         {
+            Log.Info("Settings", $"Migrating GitHub credential for {settings.GitHubUsername}");
             credentialService.StorePat($"GitHub:{settings.GitHubUsername}", legacyGitHub);
             credentialService.DeleteCredential("GitHub");
             credentialService.DeleteRefreshToken("GitHub");
@@ -85,6 +93,7 @@ public class SettingsService
         var legacyAdo = credentialService.GetCredential("AzureDevOps");
         if (!string.IsNullOrEmpty(legacyAdo) && !string.IsNullOrEmpty(settings.AzureDevOpsOrganization))
         {
+            Log.Info("Settings", $"Migrating Azure DevOps credential for {settings.AzureDevOpsOrganization}");
             credentialService.StorePat($"AzureDevOps:{settings.AzureDevOpsOrganization}", legacyAdo);
             credentialService.DeleteCredential("AzureDevOps");
             credentialService.DeleteRefreshToken("AzureDevOps");
@@ -92,6 +101,7 @@ public class SettingsService
 
         settings.CredentialVersion = 1;
         SaveSettings(settings);
+        Log.Info("Settings", "Credential migration to v1 complete");
     }
 
     #endregion
@@ -108,9 +118,9 @@ public class SettingsService
                 return JsonSerializer.Deserialize<RepositoryData>(json, JsonOptions) ?? new RepositoryData();
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Return defaults on error
+            Log.Warn("Settings", $"Repositories file corrupt or unreadable, using defaults: {ex.Message}");
         }
 
         return new RepositoryData();
@@ -123,9 +133,9 @@ public class SettingsService
             var json = JsonSerializer.Serialize(data, JsonOptions);
             File.WriteAllText(RepositoriesFile, json);
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore save errors
+            Log.Error("Settings", "Failed to save repositories", ex);
         }
     }
 
@@ -188,6 +198,9 @@ public class AppSettings
 
     // UI display
     public bool CompactFileList { get; set; } = false;
+
+    // Logging
+    public string LogLevel { get; set; } = "Normal";
 }
 
 /// <summary>

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.Services.Git.Core;
 using Leaf.Services.Git.Interfaces;
 using LibGit2Sharp;
@@ -38,7 +39,7 @@ internal class ConflictOperations : IConflictOperations
     {
         return Task.Run(() =>
         {
-            Debug.WriteLine($"[MERGE][STATE] GetConflictsAsync repo={Path.GetFileName(repoPath)}");
+            Log.Info("Merge", $"GetConflictsAsync repo={Path.GetFileName(repoPath)}");
             var conflicts = new List<ConflictInfo>();
             var conflictPaths = new List<string>();
 
@@ -48,7 +49,7 @@ internal class ConflictOperations : IConflictOperations
             {
                 conflictPaths.AddRange(result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries));
             }
-            Debug.WriteLine($"[MERGE][STATE] diff --name-only --diff-filter=U => {conflictPaths.Count}");
+            Log.Info("Merge", $"diff --name-only --diff-filter=U => {conflictPaths.Count}");
 
             if (conflictPaths.Count == 0)
             {
@@ -58,7 +59,7 @@ internal class ConflictOperations : IConflictOperations
                     conflictPaths.AddRange(_context.OutputParser.ParseConflictFilesFromPorcelain(statusResult.Output));
                 }
             }
-            Debug.WriteLine($"[MERGE][STATE] status --porcelain U => {conflictPaths.Count}");
+            Log.Info("Merge", $"status --porcelain U => {conflictPaths.Count}");
 
             using var repo = new Repository(repoPath);
 
@@ -69,7 +70,7 @@ internal class ConflictOperations : IConflictOperations
                     .Where(p => !string.IsNullOrWhiteSpace(p))
                     .Select(p => p!));
             }
-            Debug.WriteLine($"[MERGE][STATE] index conflicts => {conflictPaths.Count}");
+            Log.Info("Merge", $"index conflicts => {conflictPaths.Count}");
 
             foreach (var filePath in conflictPaths.Distinct(StringComparer.OrdinalIgnoreCase))
             {
@@ -139,7 +140,7 @@ internal class ConflictOperations : IConflictOperations
                             conflictInfo.OursContent = headBlob.GetContentText();
                         }
                     }
-                    catch (Exception ex) { Debug.WriteLine($"[MERGE][WARN] Failed to read HEAD version: {ex.Message}"); }
+                    catch (Exception ex) { Log.Warn("Merge", $"Failed to read HEAD version: {ex.Message}"); }
                 }
 
                 conflicts.Add(conflictInfo);
@@ -202,7 +203,7 @@ internal class ConflictOperations : IConflictOperations
 
             if (baseResult.ExitCode != 0 || oursResult.ExitCode != 0 || theirsResult.ExitCode != 0)
             {
-                Debug.WriteLine($"[MERGE][ERROR] ReopenConflict: failed to create blobs: {baseResult.Error} {oursResult.Error} {theirsResult.Error}");
+                Log.Error("Merge", $"ReopenConflict: failed to create blobs: {baseResult.Error} {oursResult.Error} {theirsResult.Error}");
                 return;
             }
 
@@ -217,7 +218,7 @@ internal class ConflictOperations : IConflictOperations
             var indexResult = GitCliHelpers.RunGitWithInput(repoPath, "update-index --index-info", indexInfo);
             if (indexResult.ExitCode != 0)
             {
-                Debug.WriteLine($"[MERGE][ERROR] ReopenConflict: failed to restore index: {indexResult.Error}");
+                Log.Error("Merge", $"ReopenConflict: failed to restore index: {indexResult.Error}");
                 return;
             }
 
@@ -361,7 +362,7 @@ internal class ConflictOperations : IConflictOperations
             {
                 Directory.Delete(tempDir, true);
             }
-            catch (Exception ex) { Debug.WriteLine($"[MERGE][WARN] Failed to clean up temp directory: {ex.Message}"); }
+            catch (Exception ex) { Log.Warn("Merge", $"Failed to clean up temp directory: {ex.Message}"); }
         }
     }
 
@@ -400,8 +401,7 @@ internal class ConflictOperations : IConflictOperations
 
     private static string GetStoredMergeConflictPath(string repoPath)
     {
-        using var repo = new Repository(repoPath);
-        return Path.Combine(repo.Info.Path, "leaf-merge-conflicts.txt");
+        return Path.Combine(GetGitDirectoryPath(repoPath), "leaf-merge-conflicts.txt");
     }
 
     private static List<string> GetStoredMergeConflictFiles(string repoPath)
@@ -422,7 +422,7 @@ internal class ConflictOperations : IConflictOperations
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MERGE][ERROR] Failed to read stored merge conflicts: {ex.Message}");
+            Log.Error("Merge", $"Failed to read stored merge conflicts: {ex.Message}");
             return [];
         }
     }
@@ -441,7 +441,7 @@ internal class ConflictOperations : IConflictOperations
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MERGE][ERROR] Failed to store merge conflicts: {ex.Message}");
+            Log.Error("Merge", $"Failed to store merge conflicts: {ex.Message}");
         }
     }
 
@@ -449,8 +449,7 @@ internal class ConflictOperations : IConflictOperations
     {
         try
         {
-            using var repo = new Repository(repoPath);
-            var mergeMessagePath = Path.Combine(repo.Info.Path, "MERGE_MSG");
+            var mergeMessagePath = Path.Combine(GetGitDirectoryPath(repoPath), "MERGE_MSG");
             if (!File.Exists(mergeMessagePath))
             {
                 return [];
@@ -489,9 +488,45 @@ internal class ConflictOperations : IConflictOperations
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MERGE][ERROR] Failed to read MERGE_MSG: {ex.Message}");
+            Log.Error("Merge", $"Failed to read MERGE_MSG: {ex.Message}");
             return [];
         }
+    }
+
+    private static string GetGitDirectoryPath(string repoPath)
+    {
+        var gitPath = Path.Combine(repoPath, ".git");
+        if (Directory.Exists(gitPath))
+        {
+            return gitPath;
+        }
+
+        if (!File.Exists(gitPath))
+        {
+            return gitPath;
+        }
+
+        try
+        {
+            var firstLine = File.ReadLines(gitPath).FirstOrDefault()?.Trim();
+            const string prefix = "gitdir:";
+            if (!string.IsNullOrWhiteSpace(firstLine) &&
+                firstLine.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var gitDir = firstLine[prefix.Length..].Trim();
+                if (!string.IsNullOrEmpty(gitDir))
+                {
+                    return Path.GetFullPath(
+                        Path.IsPathRooted(gitDir) ? gitDir : Path.Combine(repoPath, gitDir));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Merge", $"Failed to resolve git dir from {gitPath}: {ex.Message}");
+        }
+
+        return gitPath;
     }
 
     #endregion

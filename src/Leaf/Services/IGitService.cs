@@ -109,6 +109,12 @@ public interface IGitService
     Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath);
 
     /// <summary>
+    /// Get repository status information using fast git CLI commands.
+    /// Prefer this over <see cref="GetRepositoryInfoAsync"/> for performance-critical paths.
+    /// </summary>
+    Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath);
+
+    /// <summary>
     /// Clone a remote repository.
     /// </summary>
     Task<string> CloneAsync(string url, string localPath, string? username = null, string? password = null, IProgress<string>? progress = null);

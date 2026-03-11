@@ -16,4 +16,16 @@ public class NotificationService : INotificationService
         var message = new NotificationMessage { Title = title, Description = description, Type = type };
         _dispatcher.InvokeAsync(() => NotificationRequested?.Invoke(message));
     }
+
+    public void Show(string title, string description, NotificationType type, params NotificationAction[] actions)
+    {
+        var message = new NotificationMessage
+        {
+            Title = title,
+            Description = description,
+            Type = type,
+            Actions = actions
+        };
+        _dispatcher.InvokeAsync(() => NotificationRequested?.Invoke(message));
+    }
 }

@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Leaf.Models;
+using Leaf.Services;
 
 namespace Leaf.Services.PullRequests;
 
@@ -314,7 +315,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         }
         catch (HttpRequestException ex)
         {
-            Debug.WriteLine($"[PR] Failed to fetch check runs: {ex.Message}");
+            Log.Error("PR", $"Failed to fetch check runs: {ex.Message}");
         }
 
         // Fetch legacy commit statuses
@@ -338,7 +339,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         }
         catch (HttpRequestException ex)
         {
-            Debug.WriteLine($"[PR] Failed to fetch commit statuses: {ex.Message}");
+            Log.Error("PR", $"Failed to fetch commit statuses: {ex.Message}");
         }
 
         return results;
@@ -355,7 +356,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         }
         catch (HttpRequestException ex)
         {
-            Debug.WriteLine($"[PR] Failed to find PR for commit {sha}: {ex.Message}");
+            Log.Error("PR", $"Failed to find PR for commit {sha}: {ex.Message}");
         }
 
         return null;
@@ -376,6 +377,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
 
     private async Task<T?> GetAsync<T>(string url, string owner) where T : class
     {
+        var sw = Log.StartTimer();
         using var request = CreateRequest(HttpMethod.Get, url, owner);
         using var response = await _httpClient.SendAsync(request);
 
@@ -386,11 +388,13 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         }
 
         var json = await response.Content.ReadAsStringAsync();
+        Log.Perf("GitHub", $"GET {url}", sw.ElapsedMilliseconds);
         return JsonSerializer.Deserialize<T>(json, JsonOptions);
     }
 
     private async Task<T> PostAsync<T>(string url, string owner, object payload) where T : class
     {
+        var sw = Log.StartTimer();
         using var request = CreateRequest(HttpMethod.Post, url, owner);
         request.Content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
 
@@ -403,11 +407,13 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         }
 
         var json = await response.Content.ReadAsStringAsync();
+        Log.Perf("GitHub", $"POST {url}", sw.ElapsedMilliseconds);
         return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
     }
 
     private async Task<T> PatchAsync<T>(string url, string owner, object payload) where T : class
     {
+        var sw = Log.StartTimer();
         using var request = CreateRequest(HttpMethod.Patch, url, owner);
         request.Content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
 
@@ -420,11 +426,13 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         }
 
         var json = await response.Content.ReadAsStringAsync();
+        Log.Perf("GitHub", $"PATCH {url}", sw.ElapsedMilliseconds);
         return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
     }
 
     private async Task<T> PutAsync<T>(string url, string owner, object payload) where T : class
     {
+        var sw = Log.StartTimer();
         using var request = CreateRequest(HttpMethod.Put, url, owner);
         request.Content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
 
@@ -437,6 +445,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         }
 
         var json = await response.Content.ReadAsStringAsync();
+        Log.Perf("GitHub", $"PUT {url}", sw.ElapsedMilliseconds);
         return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
     }
 
@@ -458,7 +467,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         }
         catch (HttpRequestException ex) when (ex.Message.Contains("403"))
         {
-            Debug.WriteLine($"[PR] Cannot fetch collaborators (insufficient PAT scopes): {ex.Message}");
+            Log.Warn("PR", $"Cannot fetch collaborators (insufficient PAT scopes): {ex.Message}");
             return [];
         }
     }
@@ -479,7 +488,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         }
         catch (HttpRequestException ex) when (ex.Message.Contains("403"))
         {
-            Debug.WriteLine($"[PR] Cannot fetch teams (insufficient PAT scopes): {ex.Message}");
+            Log.Warn("PR", $"Cannot fetch teams (insufficient PAT scopes): {ex.Message}");
             return [];
         }
     }

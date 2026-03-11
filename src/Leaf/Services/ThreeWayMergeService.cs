@@ -23,7 +23,7 @@ public class ThreeWayMergeService : IThreeWayMergeService
     public FileMergeResult PerformMerge(string filePath, string baseContent, string oursContent,
         string theirsContent, bool ignoreWhitespace = false)
     {
-        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] PerformMerge starting for {filePath}");
+        Log.Info("ThreeWayMerge", $"PerformMerge starting for {filePath}");
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         var result = new FileMergeResult { FilePath = filePath };
@@ -32,24 +32,24 @@ public class ThreeWayMergeService : IThreeWayMergeService
         baseContent = NormalizeLineEndings(baseContent);
         oursContent = NormalizeLineEndings(oursContent);
         theirsContent = NormalizeLineEndings(theirsContent);
-        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] Normalized in {sw.ElapsedMilliseconds}ms");
+        Log.Perf("ThreeWayMerge", $"Normalized", sw.ElapsedMilliseconds);
 
         // Split into lines
         var baseLines = SplitLines(baseContent);
         var oursLines = SplitLines(oursContent);
         var theirsLines = SplitLines(theirsContent);
-        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] Split: base={baseLines.Length}, ours={oursLines.Length}, theirs={theirsLines.Length} in {sw.ElapsedMilliseconds}ms");
+        Log.Perf("ThreeWayMerge", $"Split: base={baseLines.Length}, ours={oursLines.Length}, theirs={theirsLines.Length}", sw.ElapsedMilliseconds);
 
         // Get diffs using DiffPlex
         var oursDiff = InlineDiffBuilder.Diff(baseContent, oursContent, ignoreWhitespace);
-        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] oursDiff in {sw.ElapsedMilliseconds}ms");
+        Log.Perf("ThreeWayMerge", "oursDiff", sw.ElapsedMilliseconds);
         var theirsDiff = InlineDiffBuilder.Diff(baseContent, theirsContent, ignoreWhitespace);
-        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] theirsDiff in {sw.ElapsedMilliseconds}ms");
+        Log.Perf("ThreeWayMerge", "theirsDiff", sw.ElapsedMilliseconds);
 
         // Build change maps: baseLineIndex -> what happened
         // Walk through and build merge regions
         var regions = BuildMergeRegions(baseLines, oursLines, theirsLines);
-        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] BuildMergeRegions returned {regions.Count} regions in {sw.ElapsedMilliseconds}ms");
+        Log.Perf("ThreeWayMerge", $"BuildMergeRegions returned {regions.Count} regions", sw.ElapsedMilliseconds);
 
         foreach (var region in regions)
         {
@@ -57,7 +57,7 @@ public class ThreeWayMergeService : IThreeWayMergeService
         }
 
         result.CalculateLineNumbers();
-        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] PerformMerge complete in {sw.ElapsedMilliseconds}ms, {result.Regions.Count} regions");
+        Log.Perf("ThreeWayMerge", $"PerformMerge complete, {result.Regions.Count} regions", sw.ElapsedMilliseconds);
         return result;
     }
 
@@ -103,7 +103,7 @@ public class ThreeWayMergeService : IThreeWayMergeService
             loopCount++;
             if (loopCount % 1000 == 0)
             {
-                System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] BuildMergeRegions loop {loopCount}: baseIdx={baseIdx}/{baseLines.Length}, oursIdx={oursIdx}/{oursLines.Length}, theirsIdx={theirsIdx}/{theirsLines.Length}, regions={regions.Count}, elapsed={sw.ElapsedMilliseconds}ms");
+                Log.Perf("ThreeWayMerge", $"BuildMergeRegions loop {loopCount}: baseIdx={baseIdx}/{baseLines.Length}, oursIdx={oursIdx}/{oursLines.Length}, theirsIdx={theirsIdx}/{theirsLines.Length}, regions={regions.Count}", sw.ElapsedMilliseconds);
             }
 
             // If we've exhausted base lines but still have remaining lines in ours/theirs, break to handle them
@@ -234,7 +234,7 @@ public class ThreeWayMergeService : IThreeWayMergeService
         var oursRemaining = oursIdx < oursLines.Length ? oursLines.Skip(oursIdx).ToList() : [];
         var theirsRemaining = theirsIdx < theirsLines.Length ? theirsLines.Skip(theirsIdx).ToList() : [];
 
-        System.Diagnostics.Debug.WriteLine($"[ThreeWayMerge] Remaining lines: ours={oursRemaining.Count}, theirs={theirsRemaining.Count}");
+        Log.Info("ThreeWayMerge", $"Remaining lines: ours={oursRemaining.Count}, theirs={theirsRemaining.Count}");
 
         if (oursRemaining.Count > 0 && theirsRemaining.Count > 0)
         {

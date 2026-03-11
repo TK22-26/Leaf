@@ -535,6 +535,11 @@
                                     CommandParameter="{Binding}"
                                     Header="Rename branch..."
                                     IsEnabled="{Binding IsRemote, Converter={StaticResource InverseBoolConverter}}" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.OpenCreatePullRequestCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding Name}"
+                                    Header="Create Pull Request..."
+                                    IsEnabled="{Binding IsRemote, Converter={StaticResource InverseBoolConverter}}" />
                                 <MenuItem Header="GitFlow" Visibility="{Binding GitFlowType, Converter={StaticResource GitFlowTypeToVisibilityConverter}, ConverterParameter=Finishable}">
                                     <MenuItem
                                         Command="{Binding PlacementTarget.Tag.FinishGitFlowBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"

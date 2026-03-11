@@ -3,7 +3,6 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="clr-namespace:Leaf"
-    StartupUri="MainWindow.xaml"
     ThemeMode="System">
     <Application.Resources>
         <ResourceDictionary>

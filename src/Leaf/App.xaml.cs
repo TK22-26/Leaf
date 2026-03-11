@@ -15,7 +15,18 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
         base.OnStartup(e);
+
+        if (TryGetStartupSplashArgs(e.Args, out var splashCloseEventName, out var splashReadyEventName))
+        {
+            RunStartupSplashMode(splashCloseEventName, splashReadyEventName);
+            return;
+        }
+
+        var settings = new SettingsService().LoadSettings();
+        var logLevel = Enum.TryParse<LogLevel>(settings.LogLevel, true, out var parsed) ? parsed : LogLevel.Normal;
+        Log.Init(logLevel);
 
         // Check for command-line arguments
         if (e.Args.Length > 0)
@@ -28,7 +39,110 @@ public partial class App : Application
             }
         }
 
-        // Normal startup - MainWindow is created via StartupUri in App.xaml
+        StartupSplashHost? splashHost = null;
+
+        try
+        {
+            splashHost = new StartupSplashHost();
+            await splashHost.ShowAsync();
+
+            var mainWindow = new MainWindow();
+
+            MainWindow = mainWindow;
+            await mainWindow.InitializeStartupAsync();
+
+            mainWindow.Show();
+            await mainWindow.WaitForFirstRenderAsync();
+            await Task.Delay(500);
+            await splashHost.CloseAsync();
+            mainWindow.Activate();
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("App", $"Startup failed: {ex.Message}", ex);
+
+            if (splashHost != null)
+            {
+                await splashHost.CloseAsync();
+            }
+
+            Shutdown();
+        }
+    }
+
+    private void RunStartupSplashMode(string splashCloseEventName, string splashReadyEventName)
+    {
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
+
+        EventWaitHandle? closeEvent = null;
+        EventWaitHandle? readyEvent = null;
+        RegisteredWaitHandle? waitRegistration = null;
+
+        try
+        {
+            closeEvent = EventWaitHandle.OpenExisting(splashCloseEventName);
+            readyEvent = EventWaitHandle.OpenExisting(splashReadyEventName);
+        }
+        catch (WaitHandleCannotBeOpenedException)
+        {
+            Shutdown();
+            return;
+        }
+
+        var splashWindow = new Views.StartupSplashWindow();
+        MainWindow = splashWindow;
+
+        waitRegistration = ThreadPool.RegisterWaitForSingleObject(
+            closeEvent,
+            static (state, _) =>
+            {
+                var window = (Window)state!;
+                window.Dispatcher.BeginInvoke(() =>
+                {
+                    window.Close();
+                });
+            },
+            splashWindow,
+            Timeout.Infinite,
+            executeOnlyOnce: true);
+
+        splashWindow.Closed += (_, _) =>
+        {
+            waitRegistration?.Unregister(null);
+            readyEvent.Dispose();
+            closeEvent.Dispose();
+        };
+
+        splashWindow.Loaded += (_, _) =>
+        {
+            try
+            {
+                readyEvent.Set();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        };
+
+        splashWindow.Show();
+    }
+
+    private static bool TryGetStartupSplashArgs(string[] args, out string closeEventName, out string readyEventName)
+    {
+        for (int i = 0; i < args.Length - 2; i++)
+        {
+            if (string.Equals(args[i], "--startup-splash", StringComparison.OrdinalIgnoreCase))
+            {
+                closeEventName = args[i + 1];
+                readyEventName = args[i + 2];
+                return !string.IsNullOrWhiteSpace(closeEventName) && !string.IsNullOrWhiteSpace(readyEventName);
+            }
+        }
+
+        closeEventName = string.Empty;
+        readyEventName = string.Empty;
+        return false;
     }
 
     private static async Task<bool> HandleCommandLineArgsAsync(string[] args)
@@ -91,6 +205,7 @@ public partial class App : Application
 
     private static async Task<(bool Success, string Message)> RunAutoCommitAsync(string repoNameOrPath)
     {
+        Log.Info("App", $"Auto-commit mode started for: {repoNameOrPath}");
         Console.WriteLine($"Auto-commit for repository: {repoNameOrPath}");
         Console.WriteLine();
 
@@ -107,6 +222,12 @@ public partial class App : Application
         {
             return (false, $"Unexpected error: {ex.Message}");
         }
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        Log.Shutdown();
+        base.OnExit(e);
     }
 
     private static void PrintHelp()

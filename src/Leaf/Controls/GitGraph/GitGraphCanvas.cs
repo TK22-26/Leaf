@@ -378,7 +378,19 @@ public partial class GitGraphCanvas : FrameworkElement
 
         var scrollViewer = FindParentScrollViewer();
         if (scrollViewer == null)
-            return (0, nodes.Count - 1); // Fallback to all nodes
+        {
+            double fallbackViewportHeight = Window.GetWindow(this)?.ActualHeight ?? 900;
+            if (fallbackViewportHeight <= 0 || double.IsNaN(fallbackViewportHeight))
+                fallbackViewportHeight = 900;
+
+            // Avoid a full-history first paint before the ScrollViewer is attached.
+            return _layoutService.GetVisibleNodeRange(
+                nodes.Count,
+                scrollOffset: 0,
+                viewportHeight: fallbackViewportHeight,
+                rowHeight: RowHeight,
+                rowOffset: rowOffset);
+        }
 
         return _layoutService.GetVisibleNodeRange(
             nodes.Count,

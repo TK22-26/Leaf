@@ -1,8 +1,10 @@
 using System;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.Services.Git.Operations;
 
 namespace Leaf.ViewModels;
@@ -19,9 +21,10 @@ public partial class MainViewModel
     {
         if (repo.WorktreesLoaded && !forceReload) return;
 
+        var sw = Log.StartTimer();
         try
         {
-            var worktrees = await _gitService.GetWorktreesAsync(repo.Path);
+            var worktrees = await _gitService.GetWorktreesAsync(repo.Path).ConfigureAwait(false);
 
             // Mark the current worktree
             var normalizedRepoPath = Path.GetFullPath(repo.Path);
@@ -31,18 +34,32 @@ public partial class MainViewModel
                 wt.IsCurrent = string.Equals(normalizedWtPath, normalizedRepoPath, StringComparison.OrdinalIgnoreCase);
             }
 
-            // Update the collection
-            repo.Worktrees.Clear();
-            foreach (var wt in worktrees.OrderBy(w => w.IsMainWorktree ? 0 : 1).ThenBy(w => w.DisplayName))
-            {
-                repo.Worktrees.Add(wt);
-            }
+            var orderedWorktrees = worktrees
+                .OrderBy(w => w.IsMainWorktree ? 0 : 1)
+                .ThenBy(w => w.DisplayName)
+                .ToList();
 
-            repo.WorktreesLoaded = true;
+            var sidebarWorktrees = orderedWorktrees.Count > 1
+                ? orderedWorktrees
+                : [];
+
+            await _dispatcherService.InvokeAsync(() =>
+            {
+                if (sidebarWorktrees.Count > 0 || repo.Worktrees.Count > 0)
+                {
+                    repo.Worktrees = new ObservableCollection<WorktreeInfo>(sidebarWorktrees);
+                }
+
+                repo.WorktreesLoaded = true;
+            });
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to load worktrees: {ex.Message}");
+            Log.Error("Worktree", "Failed to load worktrees", ex);
+        }
+        finally
+        {
+            Log.Perf("Worktree", $"LoadWorktreesForRepoAsync for {repo.Name}", sw.ElapsedMilliseconds);
         }
     }
 
@@ -57,7 +74,7 @@ public partial class MainViewModel
 
         foreach (var repo in allRepos)
         {
-            await LoadWorktreesForRepoAsync(repo);
+            await LoadWorktreesForRepoAsync(repo).ConfigureAwait(false);
         }
     }
 
@@ -103,7 +120,7 @@ public partial class MainViewModel
             else
             {
                 // Add worktree as a repository
-                targetRepo = await _gitService.GetRepositoryInfoAsync(worktree.Path);
+                targetRepo = await _gitService.GetRepositoryInfoFastAsync(worktree.Path);
                 _repositoryService.AddRepository(targetRepo);
             }
 
