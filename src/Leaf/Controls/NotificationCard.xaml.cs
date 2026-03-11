@@ -10,6 +10,10 @@ namespace Leaf.Controls;
 public partial class NotificationCard : UserControl
 {
     private static readonly Brush ErrorIconBrush = new SolidColorBrush(Color.FromRgb(0xD1, 0x34, 0x38));
+    private static readonly Brush ErrorAccentBrush = new SolidColorBrush(Color.FromRgb(0xD1, 0x34, 0x38));
+    private static readonly Brush WarningAccentBrush = new SolidColorBrush(Color.FromRgb(0xE3, 0xA3, 0x3B));
+    private static readonly Brush SuccessAccentBrush = new SolidColorBrush(Color.FromRgb(0x28, 0xA7, 0x45));
+    private static readonly Brush InfoAccentBrush = new SolidColorBrush(Color.FromRgb(0x28, 0xA7, 0x45));
     private ICommand? _clickCommand;
     private object? _clickCommandParameter;
     private NotificationAction? _primaryAction;
@@ -19,6 +23,10 @@ public partial class NotificationCard : UserControl
     static NotificationCard()
     {
         ErrorIconBrush.Freeze();
+        ErrorAccentBrush.Freeze();
+        WarningAccentBrush.Freeze();
+        SuccessAccentBrush.Freeze();
+        InfoAccentBrush.Freeze();
     }
 
     public NotificationCard()
@@ -47,21 +55,25 @@ public partial class NotificationCard : UserControl
             case NotificationType.Error:
                 TypeIcon.Symbol = Symbol.ErrorCircle;
                 TypeIcon.Foreground = ErrorIconBrush;
+                AccentStrip.Background = ErrorAccentBrush;
                 break;
             case NotificationType.Warning:
                 TypeIcon.Symbol = Symbol.Warning;
                 TypeIcon.Foreground = TryFindResource("SystemFillColorCautionBrush") as Brush
                     ?? Brushes.Orange;
+                AccentStrip.Background = WarningAccentBrush;
                 break;
             case NotificationType.Success:
                 TypeIcon.Symbol = Symbol.CheckmarkCircle;
                 TypeIcon.Foreground = TryFindResource("SystemFillColorSuccessBrush") as Brush
                     ?? Brushes.Green;
+                AccentStrip.Background = SuccessAccentBrush;
                 break;
             case NotificationType.Information:
                 TypeIcon.Symbol = Symbol.Info;
                 TypeIcon.Foreground = TryFindResource("AccentFillColorDefaultBrush") as Brush
                     ?? Brushes.DodgerBlue;
+                AccentStrip.Background = InfoAccentBrush;
                 break;
         }
     }

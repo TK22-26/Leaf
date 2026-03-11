@@ -17,6 +17,7 @@ namespace Leaf.ViewModels;
 public partial class PullRequestDetailViewModel : ObservableObject
 {
     private readonly IPullRequestService _pullRequestService;
+    private readonly INotificationService? _notificationService;
 
     private string _repoPath = string.Empty;
     private int _prNumber;
@@ -163,6 +164,8 @@ public partial class PullRequestDetailViewModel : ObservableObject
 
     public bool IsCommitsSelected => SelectedTabIndex == 3;
 
+    public bool ShowErrorOverlay => !string.IsNullOrWhiteSpace(ErrorMessage) && Details == null;
+
     /// <summary>
     /// Raised when a merge/close completes and the caller should refresh.
     /// </summary>
@@ -173,9 +176,10 @@ public partial class PullRequestDetailViewModel : ObservableObject
     /// </summary>
     public event EventHandler<PullRequestFileInfo>? FileSelected;
 
-    public PullRequestDetailViewModel(IPullRequestService pullRequestService)
+    public PullRequestDetailViewModel(IPullRequestService pullRequestService, INotificationService? notificationService = null)
     {
         _pullRequestService = pullRequestService;
+        _notificationService = notificationService;
     }
 
     /// <summary>
@@ -183,6 +187,7 @@ public partial class PullRequestDetailViewModel : ObservableObject
     /// </summary>
     public async Task LoadAsync(string repoPath, int prNumber)
     {
+        var hadExistingDetails = Details != null;
         _repoPath = repoPath;
         _prNumber = prNumber;
         IsLoading = true;
@@ -237,8 +242,17 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to load PR #{prNumber}: {ex.Message}";
-            Log.Error("PR", ErrorMessage);
+            var message = $"Failed to load PR #{prNumber}: {ex.Message}";
+            Log.Error("PR", message);
+            if (hadExistingDetails)
+            {
+                ErrorMessage = null;
+                ShowNonFatalError("Pull Request Error", message);
+            }
+            else
+            {
+                ErrorMessage = message;
+            }
         }
         finally
         {
@@ -398,7 +412,7 @@ public partial class PullRequestDetailViewModel : ObservableObject
 
             if (!result.Success)
             {
-                ErrorMessage = $"Merge failed: {result.ErrorMessage}";
+                ShowNonFatalError("Merge Failed", $"Merge failed: {result.ErrorMessage}");
                 return;
             }
 
@@ -408,8 +422,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Merge failed: {ex.Message}";
-            Log.Error("PR", ErrorMessage);
+            var message = $"Merge failed: {ex.Message}";
+            Log.Error("PR", message);
+            ShowNonFatalError("Merge Failed", message);
         }
         finally
         {
@@ -435,8 +450,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to close PR: {ex.Message}";
-            Log.Error("PR", ErrorMessage);
+            var message = $"Failed to close PR: {ex.Message}";
+            Log.Error("PR", message);
+            ShowNonFatalError("Close Pull Request Failed", message);
         }
         finally
         {
@@ -482,8 +498,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to update PR: {ex.Message}";
-            Log.Error("PR", ErrorMessage);
+            var message = $"Failed to update PR: {ex.Message}";
+            Log.Error("PR", message);
+            ShowNonFatalError("Update Pull Request Failed", message);
         }
         finally
         {
@@ -518,8 +535,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to submit review: {ex.Message}";
-            Log.Error("PR", ErrorMessage);
+            var message = $"Failed to submit review: {ex.Message}";
+            Log.Error("PR", message);
+            ShowNonFatalError("Review Failed", message);
         }
         finally
         {
@@ -545,8 +563,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to add comment: {ex.Message}";
-            Log.Error("PR", ErrorMessage);
+            var message = $"Failed to add comment: {ex.Message}";
+            Log.Error("PR", message);
+            ShowNonFatalError("Add Comment Failed", message);
         }
         finally
         {
@@ -575,7 +594,7 @@ public partial class PullRequestDetailViewModel : ObservableObject
         var label = NewLabelText.Trim();
         if (Details?.Labels.Any(existing => string.Equals(existing.Name, label, StringComparison.OrdinalIgnoreCase)) == true)
         {
-            ErrorMessage = $"Tag '{label}' is already on this pull request.";
+            ShowNonFatalError("Tag Already Added", $"Tag '{label}' is already on this pull request.");
             return;
         }
 
@@ -592,8 +611,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to add tag: {ex.Message}";
-            Log.Error("PR", ErrorMessage);
+            var message = $"Failed to add tag: {ex.Message}";
+            Log.Error("PR", message);
+            ShowNonFatalError("Add Tag Failed", message);
         }
         finally
         {
@@ -618,8 +638,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to remove tag: {ex.Message}";
-            Log.Error("PR", ErrorMessage);
+            var message = $"Failed to remove tag: {ex.Message}";
+            Log.Error("PR", message);
+            ShowNonFatalError("Remove Tag Failed", message);
         }
         finally
         {
@@ -646,8 +667,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to add assignee: {ex.Message}";
-            Log.Error("PR", ErrorMessage);
+            var message = $"Failed to add assignee: {ex.Message}";
+            Log.Error("PR", message);
+            ShowNonFatalError("Add Assignee Failed", message);
         }
         finally
         {
@@ -672,8 +694,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to remove assignee: {ex.Message}";
-            Log.Error("PR", ErrorMessage);
+            var message = $"Failed to remove assignee: {ex.Message}";
+            Log.Error("PR", message);
+            ShowNonFatalError("Remove Assignee Failed", message);
         }
         finally
         {
@@ -727,8 +750,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to add reviewer: {ex.Message}";
-            Log.Error("PR", ErrorMessage);
+            var message = $"Failed to add reviewer: {ex.Message}";
+            Log.Error("PR", message);
+            ShowNonFatalError("Add Reviewer Failed", message);
         }
         finally
         {
@@ -960,6 +984,7 @@ public partial class PullRequestDetailViewModel : ObservableObject
 
     partial void OnDetailsChanged(PullRequestDetails? value)
     {
+        OnPropertyChanged(nameof(ShowErrorOverlay));
         OnPropertyChanged(nameof(IsOpen));
         OnPropertyChanged(nameof(CanMerge));
         OnPropertyChanged(nameof(SupportsReviews));
@@ -994,6 +1019,11 @@ public partial class PullRequestDetailViewModel : ObservableObject
         OnPropertyChanged(nameof(CanManageLabels));
         OnPropertyChanged(nameof(CanManageAssignees));
         RemoveLabelCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnErrorMessageChanged(string? value)
+    {
+        OnPropertyChanged(nameof(ShowErrorOverlay));
     }
 
     partial void OnNewCommentTextChanged(string value)
@@ -1082,5 +1112,11 @@ public partial class PullRequestDetailViewModel : ObservableObject
         public string DisplayName => Reviewer.DisplayName;
 
         public PullRequestReviewState State { get; }
+    }
+
+    private void ShowNonFatalError(string title, string description)
+    {
+        ErrorMessage = null;
+        _notificationService?.Show(title, description, NotificationType.Error);
     }
 }

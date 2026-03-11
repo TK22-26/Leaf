@@ -87,7 +87,7 @@
             </StackPanel>
         </Grid>
 
-        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibilityConverter}}">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowErrorOverlay, Converter={StaticResource BoolToVisibilityConverter}}">
             <ic:SymbolIcon HorizontalAlignment="Center" FontSize="32" Foreground="#CF222E" Symbol="ErrorCircle" />
             <TextBlock Margin="0,8,0,0" HorizontalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding ErrorMessage}" TextWrapping="Wrap" />
         </StackPanel>

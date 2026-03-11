@@ -375,7 +375,7 @@ public partial class MainViewModel
     /// </summary>
     private PullRequestDetailViewModel CreatePullRequestDetailViewModel()
     {
-        var vm = new PullRequestDetailViewModel(_pullRequestService);
+        var vm = new PullRequestDetailViewModel(_pullRequestService, _notificationService);
         vm.FileSelected += OnPullRequestFileSelected;
         vm.MutationCompleted += (_, _) =>
         {
