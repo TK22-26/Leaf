@@ -138,6 +138,9 @@ public class GitService : IGitService
     public Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha)
         => _diffOps.GetCommitToWorkingTreeDiffAsync(repoPath, commitSha);
 
+    public Task<string> GetRefToRefDiffAsync(string repoPath, string baseRef, string headRef, string? filePath = null)
+        => _diffOps.GetRefToRefDiffAsync(repoPath, baseRef, headRef, filePath);
+
     #endregion
 
     #region Branch Operations

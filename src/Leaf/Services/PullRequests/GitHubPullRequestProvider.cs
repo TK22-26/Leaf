@@ -18,6 +18,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
     private readonly HttpClient _httpClient;
     private readonly CredentialService _credentialService;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private const string ApiVersion = "2022-11-28";
     private const int PerPage = 100;
     private const int MaxPages = 50;
 
@@ -32,7 +33,8 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         PullRequestCapabilities.MergeCommit |
         PullRequestCapabilities.StatusChecks |
         PullRequestCapabilities.Reviews |
-        PullRequestCapabilities.TeamReviewers;
+        PullRequestCapabilities.TeamReviewers |
+        PullRequestCapabilities.Labels;
 
     public GitHubPullRequestProvider(CredentialService credentialService)
     {
@@ -41,7 +43,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Leaf", "1.0"));
     }
 
-    public async Task<List<PullRequestInfo>> ListPullRequestsAsync(string owner, string repo, PullRequestState filter)
+    public async Task<List<PullRequestInfo>> ListPullRequestsAsync(string owner, string? project, string repo, PullRequestState filter)
     {
         var stateParam = filter switch
         {
@@ -89,7 +91,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         return allPrs;
     }
 
-    public async Task<PullRequestDetails?> GetPullRequestAsync(string owner, string repo, int number)
+    public async Task<PullRequestDetails?> GetPullRequestAsync(string owner, string? project, string repo, int number)
     {
         var dto = await GetAsync<GitHubPullRequestDto>($"https://api.github.com/repos/{owner}/{repo}/pulls/{number}", owner);
         if (dto == null)
@@ -97,13 +99,15 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
 
         var summary = MapPullRequestInfo(dto);
 
-        // Fetch files, reviews, and comments in parallel
-        var filesTask = GetPullRequestFilesAsync(owner, repo, number);
+        // Fetch detail sections in parallel
+        var filesTask = GetPullRequestFilesAsync(owner, project, repo, number);
         var reviewsTask = GetReviewsInternalAsync(owner, repo, number);
         var commentsTask = GetCommentsInternalAsync(owner, repo, number);
-        var checksTask = GetStatusChecksAsync(owner, repo, number);
+        var checksTask = GetStatusChecksAsync(owner, project, repo, number);
+        var commitsTask = GetCommitsInternalAsync(owner, repo, number);
+        var labelsTask = GetLabelsInternalAsync(owner, repo, number);
 
-        await Task.WhenAll(filesTask, reviewsTask, commentsTask, checksTask);
+        await Task.WhenAll(filesTask, reviewsTask, commentsTask, checksTask, commitsTask, labelsTask);
 
         // Map requested reviewers from the PR DTO
         var requestedReviewers = new List<ReviewerInfo>();
@@ -143,20 +147,26 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
             Comments = await commentsTask,
             StatusChecks = await checksTask,
             RequestedReviewers = requestedReviewers,
+            Commits = await commitsTask,
+            Labels = await labelsTask,
+            Updates = [],
+            WorkItems = [],
             IsMergeable = dto.Mergeable ?? false,
+            HasConflicts = string.Equals(dto.MergeableState, "dirty", StringComparison.OrdinalIgnoreCase),
+            MergeStatusMessage = dto.MergeableState,
             HeadSha = dto.Head?.Sha ?? string.Empty,
             BaseSha = dto.Base?.Sha ?? string.Empty
         };
     }
 
-    public async Task<PullRequestInfo> CreatePullRequestAsync(string owner, string repo, string title, string body, string sourceBranch, string targetBranch, bool isDraft)
+    public async Task<PullRequestInfo> CreatePullRequestAsync(string owner, string? project, string repo, string title, string body, string sourceBranch, string targetBranch, bool isDraft)
     {
         var payload = new { title, body, head = sourceBranch, @base = targetBranch, draft = isDraft };
         var dto = await PostAsync<GitHubPullRequestDto>($"https://api.github.com/repos/{owner}/{repo}/pulls", owner, payload);
         return MapPullRequestInfo(dto);
     }
 
-    public async Task<PullRequestInfo> UpdatePullRequestAsync(string owner, string repo, int number, string? title, string? body)
+    public async Task<PullRequestInfo> UpdatePullRequestAsync(string owner, string? project, string repo, int number, string? title, string? body)
     {
         var payload = new Dictionary<string, string>();
         if (title != null) payload["title"] = title;
@@ -166,7 +176,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         return MapPullRequestInfo(dto);
     }
 
-    public async Task<PullRequestMergeResult> MergePullRequestAsync(string owner, string repo, int number, MergeMethod method, string? commitTitle)
+    public async Task<PullRequestMergeResult> MergePullRequestAsync(string owner, string? project, string repo, int number, MergeMethod method, string? commitTitle)
     {
         var mergeMethod = method switch
         {
@@ -198,7 +208,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         }
     }
 
-    public async Task ClosePullRequestAsync(string owner, string repo, int number)
+    public async Task ClosePullRequestAsync(string owner, string? project, string repo, int number)
     {
         await PatchAsync<GitHubPullRequestDto>(
             $"https://api.github.com/repos/{owner}/{repo}/pulls/{number}",
@@ -206,7 +216,34 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
             new { state = "closed" });
     }
 
-    public async Task<List<PullRequestFileInfo>> GetPullRequestFilesAsync(string owner, string repo, int number)
+    public async Task SubmitReviewAsync(string owner, string? project, string repo, int number, PullRequestReviewState state, string? body)
+    {
+        var eventName = state switch
+        {
+            PullRequestReviewState.Approved => "APPROVE",
+            PullRequestReviewState.ChangesRequested => "REQUEST_CHANGES",
+            _ => "COMMENT"
+        };
+
+        await PostAsync<object>(
+            $"https://api.github.com/repos/{owner}/{repo}/pulls/{number}/reviews",
+            owner,
+            new
+            {
+                body = body ?? string.Empty,
+                @event = eventName
+            });
+    }
+
+    public async Task AddCommentAsync(string owner, string? project, string repo, int number, string body)
+    {
+        await PostAsync<object>(
+            $"https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments",
+            owner,
+            new { body });
+    }
+
+    public async Task<List<PullRequestFileInfo>> GetPullRequestFilesAsync(string owner, string? project, string repo, int number)
     {
         var allFiles = new List<PullRequestFileInfo>();
         var page = 1;
@@ -242,7 +279,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         return allFiles;
     }
 
-    public async Task<List<ReviewerInfo>> SearchReviewersAsync(string owner, string repo, string searchTerm)
+    public async Task<List<ReviewerInfo>> SearchReviewersAsync(string owner, string? project, string repo, string searchTerm)
     {
         var cacheKey = $"{owner}/{repo}";
         var now = DateTime.UtcNow;
@@ -267,7 +304,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         return FilterReviewers(collaborators, teams, searchTerm);
     }
 
-    public async Task RequestReviewersAsync(string owner, string repo, int number, IEnumerable<ReviewerInfo> reviewers)
+    public async Task RequestReviewersAsync(string owner, string? project, string repo, int number, IEnumerable<ReviewerInfo> reviewers)
     {
         var userReviewers = new List<string>();
         var teamReviewers = new List<string>();
@@ -284,7 +321,18 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         await PostAsync<object>($"https://api.github.com/repos/{owner}/{repo}/pulls/{number}/requested_reviewers", owner, payload);
     }
 
-    public async Task<List<PullRequestStatusCheckInfo>> GetStatusChecksAsync(string owner, string repo, int number)
+    public async Task AddLabelsAsync(string owner, string? project, string repo, int number, IEnumerable<string> labels)
+    {
+        var payload = new { labels = labels.ToList() };
+        await PostAsync<List<GitHubLabelDto>>($"https://api.github.com/repos/{owner}/{repo}/issues/{number}/labels", owner, payload);
+    }
+
+    public async Task RemoveLabelAsync(string owner, string? project, string repo, int number, string label)
+    {
+        await DeleteAsync($"https://api.github.com/repos/{owner}/{repo}/issues/{number}/labels/{Uri.EscapeDataString(label)}", owner);
+    }
+
+    public async Task<List<PullRequestStatusCheckInfo>> GetStatusChecksAsync(string owner, string? project, string repo, int number)
     {
         // First get the PR to find the head SHA
         var pr = await GetAsync<GitHubPullRequestDto>($"https://api.github.com/repos/{owner}/{repo}/pulls/{number}", owner);
@@ -345,7 +393,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         return results;
     }
 
-    public async Task<PullRequestInfo?> FindPullRequestForCommitAsync(string owner, string repo, string sha)
+    public async Task<PullRequestInfo?> FindPullRequestForCommitAsync(string owner, string? project, string repo, string sha)
     {
         try
         {
@@ -372,6 +420,7 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         var request = new HttpRequestMessage(method, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pat);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        request.Headers.Add("X-GitHub-Api-Version", ApiVersion);
         return request;
     }
 
@@ -449,14 +498,29 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
     }
 
+    private async Task DeleteAsync(string url, string owner)
+    {
+        var sw = Log.StartTimer();
+        using var request = CreateRequest(HttpMethod.Delete, url, owner);
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException($"GitHub API error ({response.StatusCode}): {error}");
+        }
+
+        Log.Perf("GitHub", $"DELETE {url}", sw.ElapsedMilliseconds);
+    }
+
     // --- Reviewer helpers ---
 
     private async Task<List<ReviewerInfo>> FetchCollaboratorsAsync(string owner, string repo)
     {
         try
         {
-            var dtos = await GetAsync<List<GitHubCollaboratorDto>>(
-                $"https://api.github.com/repos/{owner}/{repo}/collaborators?per_page={PerPage}", owner);
+            var dtos = await GetAllPagesAsync<GitHubCollaboratorDto>(
+                $"https://api.github.com/repos/{owner}/{repo}/collaborators", owner);
             return dtos?.Select(c => new ReviewerInfo
             {
                 Identifier = c.Login ?? string.Empty,
@@ -476,8 +540,8 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
     {
         try
         {
-            var dtos = await GetAsync<List<GitHubTeamDto>>(
-                $"https://api.github.com/repos/{owner}/{repo}/teams?per_page={PerPage}", owner);
+            var dtos = await GetAllPagesAsync<GitHubTeamDto>(
+                $"https://api.github.com/repos/{owner}/{repo}/teams", owner);
             return dtos?.Select(t => new ReviewerInfo
             {
                 Identifier = t.Slug ?? string.Empty,
@@ -505,6 +569,27 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
             r.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
             r.Identifier.Contains(term, StringComparison.OrdinalIgnoreCase) ||
             (r.SecondaryText?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private async Task<List<T>> GetAllPagesAsync<T>(string baseUrl, string owner) where T : class
+    {
+        var results = new List<T>();
+
+        for (var page = 1; page <= MaxPages; page++)
+        {
+            var separator = baseUrl.Contains('?') ? "&" : "?";
+            var pageUrl = $"{baseUrl}{separator}per_page={PerPage}&page={page}";
+            var dtos = await GetAsync<List<T>>(pageUrl, owner);
+            if (dtos == null || dtos.Count == 0)
+                break;
+
+            results.AddRange(dtos);
+
+            if (dtos.Count < PerPage)
+                break;
+        }
+
+        return results;
     }
 
     // --- Internal API fetches for detail loading ---
@@ -542,6 +627,24 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
             FilePath = c.Path,
             Line = c.Line
         }).ToList() ?? [];
+    }
+
+    private async Task<List<PullRequestCommitInfo>> GetCommitsInternalAsync(string owner, string repo, int number)
+    {
+        var dtos = await GetAllPagesAsync<GitHubPullRequestCommitDto>(
+            $"https://api.github.com/repos/{owner}/{repo}/pulls/{number}/commits", owner);
+
+        return dtos.Select(MapCommit).ToList();
+    }
+
+    private async Task<List<PullRequestLabelInfo>> GetLabelsInternalAsync(string owner, string repo, int number)
+    {
+        var dto = await GetAsync<GitHubIssueDto>(
+            $"https://api.github.com/repos/{owner}/{repo}/issues/{number}", owner);
+
+        return dto?.Labels?.Where(l => !string.IsNullOrWhiteSpace(l.Name))
+            .Select(l => new PullRequestLabelInfo { Name = l.Name! })
+            .ToList() ?? [];
     }
 
     // --- Mapping helpers ---
@@ -585,6 +688,25 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
             "renamed" => PullRequestFileStatus.Renamed,
             "copied" => PullRequestFileStatus.Copied,
             _ => PullRequestFileStatus.Modified
+        };
+    }
+
+    private static PullRequestCommitInfo MapCommit(GitHubPullRequestCommitDto dto)
+    {
+        var fullMessage = dto.Commit?.Message ?? string.Empty;
+        var splitIndex = fullMessage.IndexOf('\n');
+        var message = splitIndex >= 0 ? fullMessage[..splitIndex] : fullMessage;
+        var description = splitIndex >= 0 ? fullMessage[(splitIndex + 1)..].Trim() : null;
+
+        return new PullRequestCommitInfo
+        {
+            Sha = dto.Sha ?? string.Empty,
+            Message = message,
+            Description = string.IsNullOrWhiteSpace(description) ? null : description,
+            AuthorDisplayName = dto.Commit?.Author?.Name ?? dto.Author?.Login ?? string.Empty,
+            AuthorIdentity = dto.Commit?.Author?.Email ?? dto.Author?.Login,
+            Timestamp = dto.Commit?.Author?.Date ?? DateTimeOffset.MinValue,
+            Url = dto.HtmlUrl
         };
     }
 
@@ -715,6 +837,27 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
         [JsonPropertyName("summary")] public string? Summary { get; set; }
     }
 
+    private class GitHubPullRequestCommitDto
+    {
+        [JsonPropertyName("sha")] public string? Sha { get; set; }
+        [JsonPropertyName("html_url")] public string? HtmlUrl { get; set; }
+        [JsonPropertyName("author")] public GitHubUserDto? Author { get; set; }
+        [JsonPropertyName("commit")] public GitHubCommitDto? Commit { get; set; }
+    }
+
+    private class GitHubCommitDto
+    {
+        [JsonPropertyName("message")] public string? Message { get; set; }
+        [JsonPropertyName("author")] public GitHubCommitAuthorDto? Author { get; set; }
+    }
+
+    private class GitHubCommitAuthorDto
+    {
+        [JsonPropertyName("name")] public string? Name { get; set; }
+        [JsonPropertyName("email")] public string? Email { get; set; }
+        [JsonPropertyName("date")] public DateTimeOffset Date { get; set; }
+    }
+
     private class GitHubCombinedStatusDto
     {
         [JsonPropertyName("statuses")] public List<GitHubStatusDto>? Statuses { get; set; }
@@ -738,6 +881,16 @@ internal class GitHubPullRequestProvider : IPullRequestProvider
     {
         [JsonPropertyName("name")] public string? Name { get; set; }
         [JsonPropertyName("slug")] public string? Slug { get; set; }
+    }
+
+    private class GitHubIssueDto
+    {
+        [JsonPropertyName("labels")] public List<GitHubLabelDto>? Labels { get; set; }
+    }
+
+    private class GitHubLabelDto
+    {
+        [JsonPropertyName("name")] public string? Name { get; set; }
     }
 
     private class GitHubMergeResultDto

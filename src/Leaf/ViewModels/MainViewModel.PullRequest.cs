@@ -43,6 +43,36 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(IsPullRequestCreateMode));
     }
 
+    private bool HasActivePullRequestScreen() =>
+        ContentMode is ContentMode.PullRequestDetail or ContentMode.PullRequestCreate ||
+        CreatePullRequestViewModel != null ||
+        PullRequestDetailViewModel?.Details != null;
+
+    private void DetachCreatePullRequestViewModel(CreatePullRequestViewModel? viewModel)
+    {
+        if (viewModel == null)
+            return;
+
+        viewModel.CreateCompleted -= OnCreatePullRequestCompleted;
+        viewModel.CreateCancelled -= OnCreatePullRequestCancelled;
+        viewModel.PullRequestCreated -= OnPullRequestCreated;
+    }
+
+    private void ResetPullRequestViewState(RepositoryInfo? repositoryToClearSelection = null)
+    {
+        ContentMode = ContentMode.Graph;
+        IsCommitDetailVisible = true;
+
+        repositoryToClearSelection?.ClearPullRequestSelection();
+        PullRequestDetailViewModel?.Clear();
+
+        if (CreatePullRequestViewModel != null)
+        {
+            DetachCreatePullRequestViewModel(CreatePullRequestViewModel);
+            CreatePullRequestViewModel = null;
+        }
+    }
+
     /// <summary>
     /// Checks whether PR mode can be entered (blocked by merge/conflict state).
     /// </summary>
@@ -98,26 +128,36 @@ public partial class MainViewModel
     [RelayCommand]
     private void ClosePullRequestView()
     {
-        ContentMode = ContentMode.Graph;
-        IsCommitDetailVisible = true;
-
-        SelectedRepository?.ClearPullRequestSelection();
-        PullRequestDetailViewModel?.Clear();
-        CreatePullRequestViewModel = null;
+        ResetPullRequestViewState(SelectedRepository);
     }
 
     /// <summary>
     /// Opens the pull request create form in the main content area.
     /// </summary>
     [RelayCommand]
-    private async Task OpenCreatePullRequestAsync(string? sourceBranch = null)
+    private async Task OpenCreatePullRequestAsync(object? parameter = null)
     {
         if (SelectedRepository == null || !CanEnterPullRequestMode())
             return;
 
-        Log.Info("PR", $"Opening create PR form (source: {sourceBranch ?? SelectedRepository.CurrentBranch})");
+        var request = parameter switch
+        {
+            CreatePullRequestRequest createRequest => createRequest,
+            string sourceBranchName => new CreatePullRequestRequest(SourceBranch: sourceBranchName),
+            _ => new CreatePullRequestRequest(SourceBranch: SelectedRepository.CurrentBranch)
+        };
+
+        var sourceBranch = request.SourceBranch ?? SelectedRepository.CurrentBranch;
+        var targetBranch = request.TargetBranch;
+
+        Log.Info("PR", $"Opening create PR form (source: {sourceBranch}, target: {targetBranch ?? "<auto>"})");
 
         // Create and initialize the form VM
+        if (CreatePullRequestViewModel != null)
+        {
+            DetachCreatePullRequestViewModel(CreatePullRequestViewModel);
+        }
+
         var vm = new CreatePullRequestViewModel(_pullRequestService, _gitService, _notificationService);
         vm.CreateCompleted += OnCreatePullRequestCompleted;
         vm.CreateCancelled += OnCreatePullRequestCancelled;
@@ -130,8 +170,7 @@ public partial class MainViewModel
         IsCommitDetailVisible = false;
         IsDiffViewerVisible = false;
 
-        var branch = sourceBranch ?? SelectedRepository.CurrentBranch;
-        await vm.InitializeAsync(SelectedRepository.Path, branch);
+        await vm.InitializeAsync(SelectedRepository.Path, sourceBranch, targetBranch);
     }
 
     private void OnCreatePullRequestCompleted(object? sender, EventArgs e)
@@ -157,6 +196,8 @@ public partial class MainViewModel
             "Pull Request Created",
             $"#{pr.Number} {pr.Title}",
             NotificationType.Success,
+            OpenPullRequestInBrowserCommand,
+            pr,
             new NotificationAction("Open in browser", () =>
             {
                 if (!string.IsNullOrEmpty(pr.Url))
@@ -189,6 +230,49 @@ public partial class MainViewModel
         if (pr != null && !string.IsNullOrEmpty(pr.Url))
         {
             _clipboardService.SetText(pr.Url);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeletePullRequestAsync(PullRequestInfo? pr)
+    {
+        if (SelectedRepository == null || pr == null)
+            return;
+
+        var confirmed = await _dialogService.ShowConfirmationAsync(
+            $"Are you sure you want to delete pull request #{pr.Number} \"{pr.Title}\"?\n\nThis will close the pull request on the remote provider.",
+            "Confirm Delete Pull Request");
+
+        if (!confirmed)
+            return;
+
+        try
+        {
+            await _pullRequestService.ClosePullRequestAsync(SelectedRepository.Path, pr.Number);
+
+            if (SelectedRepository.SelectedPullRequest?.Number == pr.Number)
+            {
+                SelectedRepository.ClearPullRequestSelection();
+                PullRequestDetailViewModel?.Clear();
+                if (ContentMode == ContentMode.PullRequestDetail)
+                    ClosePullRequestView();
+            }
+
+            SelectedRepository.PullRequestsLoaded = false;
+            await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
+
+            _notificationService?.Show(
+                "Pull Request Closed",
+                $"#{pr.Number} {pr.Title}",
+                NotificationType.Information);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("PR", $"Failed to delete PR #{pr.Number}: {ex.Message}", ex);
+            _notificationService?.Show(
+                "Error",
+                $"Failed to delete pull request: {ex.Message}",
+                NotificationType.Error);
         }
     }
 
@@ -292,6 +376,7 @@ public partial class MainViewModel
     private PullRequestDetailViewModel CreatePullRequestDetailViewModel()
     {
         var vm = new PullRequestDetailViewModel(_pullRequestService);
+        vm.FileSelected += OnPullRequestFileSelected;
         vm.MutationCompleted += (_, _) =>
         {
             // Refresh PR list after merge/close/update

@@ -164,4 +164,36 @@ internal class DiffOperations
 
         return result.StandardOutput;
     }
+
+    /// <summary>
+    /// Get a unified diff between two refs.
+    /// </summary>
+    public async Task<string> GetRefToRefDiffAsync(string repoPath, string baseRef, string headRef, string? filePath = null)
+    {
+        var args = new List<string>
+        {
+            "diff",
+            "--find-renames",
+            "--unified=3",
+            $"{baseRef}...{headRef}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(filePath))
+        {
+            args.Add("--");
+            args.Add(filePath.TrimStart('/', '\\'));
+        }
+
+        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+
+        if (!result.Success)
+        {
+            var message = string.IsNullOrWhiteSpace(result.StandardError)
+                ? result.StandardOutput
+                : result.StandardError;
+            throw new InvalidOperationException(message);
+        }
+
+        return result.StandardOutput;
+    }
 }

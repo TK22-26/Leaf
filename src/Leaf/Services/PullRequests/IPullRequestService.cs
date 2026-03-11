@@ -39,6 +39,16 @@ public interface IPullRequestService
     Task ClosePullRequestAsync(string repoPath, int number);
 
     /// <summary>
+    /// Submits a high-level review action for a pull request.
+    /// </summary>
+    Task SubmitReviewAsync(string repoPath, int number, PullRequestReviewState state, string? body = null);
+
+    /// <summary>
+    /// Adds a pull request-level comment.
+    /// </summary>
+    Task AddCommentAsync(string repoPath, int number, string body);
+
+    /// <summary>
     /// Gets the changed files for a pull request.
     /// </summary>
     Task<List<PullRequestFileInfo>> GetPullRequestFilesAsync(string repoPath, int number);
@@ -52,6 +62,16 @@ public interface IPullRequestService
     /// Requests reviewers on a pull request.
     /// </summary>
     Task RequestReviewersAsync(string repoPath, int number, IEnumerable<ReviewerInfo> reviewers);
+
+    /// <summary>
+    /// Adds one or more labels/tags to a pull request.
+    /// </summary>
+    Task AddLabelsAsync(string repoPath, int number, IEnumerable<string> labels);
+
+    /// <summary>
+    /// Removes a label/tag from a pull request.
+    /// </summary>
+    Task RemoveLabelAsync(string repoPath, int number, string label);
 
     /// <summary>
     /// Gets CI/CD status checks for a pull request's head commit.

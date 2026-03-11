@@ -98,7 +98,7 @@ public partial class GitGraphCanvas
         // Resolve viewport bounds for pass-through lane drawing
         var scrollViewer = FindParentScrollViewer();
         double viewportTop = scrollViewer?.VerticalOffset ?? 0;
-        double viewportBottom = viewportTop + (scrollViewer?.ViewportHeight ?? ActualHeight);
+        double viewportBottom = viewportTop + GetEffectiveViewportHeight(scrollViewer);
 
         // Pass 0: Draw pass-through lane lines for connections beyond the culling range
         DrawPassThroughLanes(dc, rowOffset, minNodeIndex, viewportTop, viewportBottom);

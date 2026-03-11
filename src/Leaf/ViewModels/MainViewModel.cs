@@ -410,8 +410,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             WorkingChangesViewModel?.ClearWorkingChanges();
             IsWorkingChangesSelected = false;
             IsDiffViewerVisible = false;
-            ContentMode = ContentMode.Graph;
-            PullRequestDetailViewModel?.Clear();
+            ResetPullRequestViewState();
             StatusMessage = "Select a repository";
         }
     }

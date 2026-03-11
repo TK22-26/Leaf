@@ -786,6 +786,19 @@ public partial class GitGraphView : UserControl
         };
         menu.Items.Add(mergeItem);
 
+        if (label.IsLocal && !label.IsCurrent)
+        {
+            var createPullRequestItem = new MenuItem
+            {
+                Header = $"Create PR into {label.Name}...",
+                Command = mainViewModel.OpenCreatePullRequestCommand,
+                CommandParameter = new CreatePullRequestRequest(
+                    SourceBranch: mainViewModel.SelectedRepository?.CurrentBranch,
+                    TargetBranch: label.Name)
+            };
+            menu.Items.Add(createPullRequestItem);
+        }
+
         // Create branch here
         var createBranchItem = new MenuItem
         {

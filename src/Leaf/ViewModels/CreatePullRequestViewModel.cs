@@ -1,4 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
@@ -22,22 +25,29 @@ public partial class CreatePullRequestViewModel : ObservableObject
     [ObservableProperty] private bool _isDraft;
     [ObservableProperty] private string _sourceBranch = string.Empty;
     [ObservableProperty] private string _targetBranch = string.Empty;
-    [ObservableProperty] private string _reviewerSearchText = string.Empty;
+    [ObservableProperty] private string _requiredReviewerSearchText = string.Empty;
+    [ObservableProperty] private string _optionalReviewerSearchText = string.Empty;
 
     // Branch lists for dropdowns
     [ObservableProperty] private ObservableCollection<string> _availableBranches = [];
 
     // Reviewer search
-    [ObservableProperty] private ObservableCollection<ReviewerInfo> _reviewerSearchResults = [];
+    [ObservableProperty] private ObservableCollection<ReviewerInfo> _requiredReviewerSearchResults = [];
+    [ObservableProperty] private ObservableCollection<ReviewerInfo> _optionalReviewerSearchResults = [];
     [ObservableProperty] private ObservableCollection<ReviewerInfo> _selectedReviewers = [];
 
     // State
     [ObservableProperty] private bool _isSubmitting;
-    [ObservableProperty] private bool _isSearchingReviewers;
+    [ObservableProperty] private bool _isSearchingRequiredReviewers;
+    [ObservableProperty] private bool _isSearchingOptionalReviewers;
     [ObservableProperty] private string? _errorMessage;
-    [ObservableProperty] private string? _reviewerSearchStatus;
+    [ObservableProperty] private string? _requiredReviewerSearchStatus;
+    [ObservableProperty] private string? _optionalReviewerSearchStatus;
     [ObservableProperty] private bool _supportsDraft;
     [ObservableProperty] private bool _supportsRequiredReviewers;
+
+    private CancellationTokenSource? _requiredReviewerSearchCts;
+    private CancellationTokenSource? _optionalReviewerSearchCts;
 
     // Events
     public event EventHandler? CreateCompleted; // Fired after successful create
@@ -52,12 +62,14 @@ public partial class CreatePullRequestViewModel : ObservableObject
         _pullRequestService = pullRequestService;
         _gitService = gitService;
         _notificationService = notificationService;
+
+        SelectedReviewers.CollectionChanged += OnSelectedReviewersCollectionChanged;
     }
 
     /// <summary>
     /// Initialize form for a given repository. Loads branch lists and capabilities.
     /// </summary>
-    public async Task InitializeAsync(string repoPath, string? preselectedSourceBranch = null)
+    public async Task InitializeAsync(string repoPath, string? preselectedSourceBranch = null, string? preselectedTargetBranch = null)
     {
         _repoPath = repoPath;
         ErrorMessage = null;
@@ -65,8 +77,13 @@ public partial class CreatePullRequestViewModel : ObservableObject
         Body = string.Empty;
         IsDraft = false;
         SelectedReviewers.Clear();
-        ReviewerSearchResults.Clear();
-        ReviewerSearchText = string.Empty;
+        CancelReviewerSearches();
+        RequiredReviewerSearchResults.Clear();
+        OptionalReviewerSearchResults.Clear();
+        RequiredReviewerSearchText = string.Empty;
+        OptionalReviewerSearchText = string.Empty;
+        RequiredReviewerSearchStatus = null;
+        OptionalReviewerSearchStatus = null;
 
         try
         {
@@ -80,20 +97,23 @@ public partial class CreatePullRequestViewModel : ObservableObject
 
             AvailableBranches = new ObservableCollection<string>(branchNames);
 
-            // Set source branch
-            SourceBranch = preselectedSourceBranch ?? branchNames.FirstOrDefault() ?? string.Empty;
+            SourceBranch = ResolveBranchSelection(branchNames, preselectedSourceBranch)
+                ?? branchNames.FirstOrDefault()
+                ?? string.Empty;
 
-            // Default target to main/master/develop
-            TargetBranch = branchNames.FirstOrDefault(b => b == "main")
-                ?? branchNames.FirstOrDefault(b => b == "master")
-                ?? branchNames.FirstOrDefault(b => b == "develop")
+            TargetBranch = ResolveBranchSelection(branchNames, preselectedTargetBranch, SourceBranch)
+                ?? branchNames.FirstOrDefault(b => b == "main" && b != SourceBranch)
+                ?? branchNames.FirstOrDefault(b => b == "master" && b != SourceBranch)
+                ?? branchNames.FirstOrDefault(b => b == "develop" && b != SourceBranch)
+                ?? branchNames.FirstOrDefault(b => b != SourceBranch)
                 ?? branchNames.FirstOrDefault()
                 ?? string.Empty;
 
             // Check capabilities
             var caps = _pullRequestService.GetCapabilities(repoPath);
             SupportsDraft = caps.HasFlag(PullRequestCapabilities.DraftPullRequests);
-            SupportsRequiredReviewers = caps.HasFlag(PullRequestCapabilities.RequiredReviewers);
+            SupportsRequiredReviewers = caps.HasFlag(PullRequestCapabilities.RequiredReviewers)
+                || await IsAzureDevOpsRepositoryAsync(repoPath);
 
             // Auto-populate title/body from single commit
             if (!string.IsNullOrEmpty(SourceBranch) && !string.IsNullOrEmpty(TargetBranch) && SourceBranch != TargetBranch)
@@ -138,57 +158,36 @@ public partial class CreatePullRequestViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    private async Task SearchReviewersAsync()
+    private static string? ResolveBranchSelection(IEnumerable<string> branchNames, string? preferredBranch, string? excludeBranch = null)
     {
-        if (string.IsNullOrWhiteSpace(ReviewerSearchText) || string.IsNullOrWhiteSpace(_repoPath))
-        {
-            ReviewerSearchResults.Clear();
-            ReviewerSearchStatus = null;
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(preferredBranch))
+            return null;
 
-        IsSearchingReviewers = true;
-        ReviewerSearchStatus = null;
-        ReviewerSearchResults.Clear();
+        return branchNames.FirstOrDefault(branch =>
+            string.Equals(branch, preferredBranch, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(branch, excludeBranch, StringComparison.OrdinalIgnoreCase));
+    }
 
-        try
-        {
-            var results = await _pullRequestService.SearchReviewersAsync(_repoPath, ReviewerSearchText);
-            // Exclude already selected reviewers
-            var filtered = results
-                .Where(r => !SelectedReviewers.Any(s => s.Identifier == r.Identifier && s.Kind == r.Kind))
-                .ToList();
-            ReviewerSearchResults = new ObservableCollection<ReviewerInfo>(filtered);
-            ReviewerSearchStatus = filtered.Count == 0 ? $"No collaborators matching \"{ReviewerSearchText}\"" : null;
-        }
-        catch (Exception ex) when (ex.Message.Contains("No GitHub PAT", StringComparison.OrdinalIgnoreCase)
-                                || ex.Message.Contains("No PAT", StringComparison.OrdinalIgnoreCase))
-        {
-            ReviewerSearchStatus = "Reviewer search requires a GitHub PAT. Configure it in Settings.";
-            Log.Warn("PR", $"Reviewer search failed: {ex.Message}");
-        }
-        catch (Exception ex)
-        {
-            ReviewerSearchStatus = $"Search failed: {ex.Message}";
-            Log.Error("PR", $"Reviewer search failed: {ex.Message}");
-        }
-        finally
-        {
-            IsSearchingReviewers = false;
-        }
+    partial void OnRequiredReviewerSearchTextChanged(string value)
+    {
+        ScheduleReviewerSearch(ReviewerBucket.Required, value);
+    }
+
+    partial void OnOptionalReviewerSearchTextChanged(string value)
+    {
+        ScheduleReviewerSearch(ReviewerBucket.Optional, value);
     }
 
     [RelayCommand]
-    private void AddReviewer(ReviewerInfo? reviewer)
+    private void AddRequiredReviewer(ReviewerInfo? reviewer)
     {
-        if (reviewer == null) return;
-        if (!SelectedReviewers.Any(r => r.Identifier == reviewer.Identifier && r.Kind == reviewer.Kind))
-        {
-            SelectedReviewers.Add(reviewer);
-        }
-        ReviewerSearchResults.Clear();
-        ReviewerSearchText = string.Empty;
+        AddReviewerToBucket(reviewer, ReviewerBucket.Required);
+    }
+
+    [RelayCommand]
+    private void AddOptionalReviewer(ReviewerInfo? reviewer)
+    {
+        AddReviewerToBucket(reviewer, ReviewerBucket.Optional);
     }
 
     [RelayCommand]
@@ -196,13 +195,6 @@ public partial class CreatePullRequestViewModel : ObservableObject
     {
         if (reviewer != null)
             SelectedReviewers.Remove(reviewer);
-    }
-
-    [RelayCommand]
-    private void ToggleReviewerRequired(ReviewerInfo? reviewer)
-    {
-        if (reviewer != null)
-            reviewer.IsRequired = !reviewer.IsRequired;
     }
 
     [RelayCommand]
@@ -271,5 +263,240 @@ public partial class CreatePullRequestViewModel : ObservableObject
     private void Cancel()
     {
         CreateCancelled?.Invoke(this, EventArgs.Empty);
+    }
+
+    public IEnumerable<ReviewerInfo> RequiredSelectedReviewers =>
+        SelectedReviewers.Where(r => r.IsRequired);
+
+    public IEnumerable<ReviewerInfo> OptionalSelectedReviewers =>
+        SelectedReviewers.Where(r => !r.IsRequired);
+
+    public bool HasRequiredSelectedReviewers => SelectedReviewers.Any(r => r.IsRequired);
+
+    public bool HasOptionalSelectedReviewers => SelectedReviewers.Any(r => !r.IsRequired);
+
+    private async Task<bool> IsAzureDevOpsRepositoryAsync(string repoPath)
+    {
+        var remotes = await _gitService.GetRemotesAsync(repoPath);
+        var defaultRemote = remotes.FirstOrDefault(r => r.Name == "origin") ?? remotes.FirstOrDefault();
+        return defaultRemote?.IsAzureDevOps == true;
+    }
+
+    private void OnSelectedReviewersCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems != null)
+        {
+            foreach (ReviewerInfo reviewer in e.OldItems)
+            {
+                reviewer.PropertyChanged -= OnSelectedReviewerPropertyChanged;
+            }
+        }
+
+        if (e.NewItems != null)
+        {
+            foreach (ReviewerInfo reviewer in e.NewItems)
+            {
+                reviewer.PropertyChanged += OnSelectedReviewerPropertyChanged;
+            }
+        }
+
+        NotifyReviewerBucketsChanged();
+    }
+
+    private void OnSelectedReviewerPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ReviewerInfo.IsRequired))
+        {
+            NotifyReviewerBucketsChanged();
+        }
+    }
+
+    private void NotifyReviewerBucketsChanged()
+    {
+        OnPropertyChanged(nameof(RequiredSelectedReviewers));
+        OnPropertyChanged(nameof(OptionalSelectedReviewers));
+        OnPropertyChanged(nameof(HasRequiredSelectedReviewers));
+        OnPropertyChanged(nameof(HasOptionalSelectedReviewers));
+    }
+
+    private void AddReviewerToBucket(ReviewerInfo? reviewer, ReviewerBucket bucket)
+    {
+        if (reviewer == null)
+            return;
+
+        var isRequired = bucket == ReviewerBucket.Required;
+        var existing = SelectedReviewers.FirstOrDefault(r => r.Identifier == reviewer.Identifier && r.Kind == reviewer.Kind);
+
+        if (existing != null)
+        {
+            existing.IsRequired = isRequired;
+        }
+        else
+        {
+            SelectedReviewers.Add(new ReviewerInfo
+            {
+                Identifier = reviewer.Identifier,
+                DisplayName = reviewer.DisplayName,
+                SecondaryText = reviewer.SecondaryText,
+                AvatarUrl = reviewer.AvatarUrl,
+                Kind = reviewer.Kind,
+                IsRequired = isRequired
+            });
+        }
+
+        ResetReviewerSearch(bucket);
+        NotifyReviewerBucketsChanged();
+    }
+
+    private void ScheduleReviewerSearch(ReviewerBucket bucket, string searchText)
+    {
+        var cts = new CancellationTokenSource();
+        var previous = bucket == ReviewerBucket.Required
+            ? Interlocked.Exchange(ref _requiredReviewerSearchCts, cts)
+            : Interlocked.Exchange(ref _optionalReviewerSearchCts, cts);
+
+        previous?.Cancel();
+        previous?.Dispose();
+
+        if (string.IsNullOrWhiteSpace(searchText) || string.IsNullOrWhiteSpace(_repoPath))
+        {
+            ClearReviewerSearch(bucket);
+            return;
+        }
+
+        _ = RunDebouncedReviewerSearchAsync(bucket, searchText.Trim(), cts.Token);
+    }
+
+    private async Task RunDebouncedReviewerSearchAsync(ReviewerBucket bucket, string searchText, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+            await SearchReviewersAsync(bucket, searchText, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task SearchReviewersAsync(ReviewerBucket bucket, string searchText, CancellationToken cancellationToken)
+    {
+        SetSearching(bucket, true);
+        SetSearchStatus(bucket, null);
+        SetSearchResults(bucket, []);
+
+        try
+        {
+            var results = await _pullRequestService.SearchReviewersAsync(_repoPath, searchText);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var targetIsRequired = bucket == ReviewerBucket.Required;
+            var filtered = results
+                .Where(r => !SelectedReviewers.Any(s =>
+                    s.Identifier == r.Identifier &&
+                    s.Kind == r.Kind &&
+                    s.IsRequired == targetIsRequired))
+                .ToList();
+
+            SetSearchResults(bucket, filtered);
+            SetSearchStatus(bucket, filtered.Count == 0 ? $"No reviewers matching \"{searchText}\"" : null);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex) when (ex.Message.Contains("No GitHub PAT", StringComparison.OrdinalIgnoreCase)
+                                || ex.Message.Contains("No Azure DevOps PAT", StringComparison.OrdinalIgnoreCase)
+                                || ex.Message.Contains("No PAT", StringComparison.OrdinalIgnoreCase))
+        {
+            SetSearchStatus(bucket, "Reviewer search requires provider credentials in Settings.");
+            Log.Warn("PR", $"Reviewer search failed: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            SetSearchStatus(bucket, $"Search failed: {ex.Message}");
+            Log.Error("PR", $"Reviewer search failed: {ex.Message}");
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                SetSearching(bucket, false);
+            }
+        }
+    }
+
+    private void SetSearchResults(ReviewerBucket bucket, IEnumerable<ReviewerInfo> results)
+    {
+        var collection = new ObservableCollection<ReviewerInfo>(results);
+        if (bucket == ReviewerBucket.Required)
+        {
+            RequiredReviewerSearchResults = collection;
+        }
+        else
+        {
+            OptionalReviewerSearchResults = collection;
+        }
+    }
+
+    private void SetSearchStatus(ReviewerBucket bucket, string? status)
+    {
+        if (bucket == ReviewerBucket.Required)
+        {
+            RequiredReviewerSearchStatus = status;
+        }
+        else
+        {
+            OptionalReviewerSearchStatus = status;
+        }
+    }
+
+    private void SetSearching(ReviewerBucket bucket, bool value)
+    {
+        if (bucket == ReviewerBucket.Required)
+        {
+            IsSearchingRequiredReviewers = value;
+        }
+        else
+        {
+            IsSearchingOptionalReviewers = value;
+        }
+    }
+
+    private void ClearReviewerSearch(ReviewerBucket bucket)
+    {
+        SetSearchResults(bucket, []);
+        SetSearchStatus(bucket, null);
+        SetSearching(bucket, false);
+    }
+
+    private void ResetReviewerSearch(ReviewerBucket bucket)
+    {
+        if (bucket == ReviewerBucket.Required)
+        {
+            RequiredReviewerSearchText = string.Empty;
+        }
+        else
+        {
+            OptionalReviewerSearchText = string.Empty;
+        }
+
+        ClearReviewerSearch(bucket);
+    }
+
+    private void CancelReviewerSearches()
+    {
+        _requiredReviewerSearchCts?.Cancel();
+        _requiredReviewerSearchCts?.Dispose();
+        _requiredReviewerSearchCts = null;
+
+        _optionalReviewerSearchCts?.Cancel();
+        _optionalReviewerSearchCts?.Dispose();
+        _optionalReviewerSearchCts = null;
+    }
+
+    private enum ReviewerBucket
+    {
+        Required,
+        Optional
     }
 }

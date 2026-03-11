@@ -897,7 +897,7 @@
                 <!--  Pull Request item template  -->
                 <DataTemplate DataType="{x:Type models:PullRequestInfo}">
                     <Border
-                        Padding="2,3"
+                        Padding="4,3,2,3"
                         Background="Transparent"
                         CornerRadius="2"
                         Cursor="Hand"
@@ -922,6 +922,16 @@
                                         <ic:SymbolIcon FontSize="14" Symbol="Copy" />
                                     </MenuItem.Icon>
                                 </MenuItem>
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.DeletePullRequestCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Foreground="#DC2626"
+                                    Header="Delete">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon FontSize="14" Symbol="Delete" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
                             </ContextMenu>
                         </Border.ContextMenu>
                         <Grid>
@@ -938,18 +948,26 @@
                                 FontSize="12"
                                 Foreground="#28A745"
                                 Symbol="BranchRequest" />
-                            <!--  Title and metadata  -->
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <!--  PR title  -->
+                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock
+                                    Grid.Column="0"
                                     FontSize="11"
                                     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                    Text="{Binding Title}"
-                                    TextTrimming="CharacterEllipsis" />
-                                <TextBlock FontSize="10" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
-                                    <Run Text="#" /><Run Text="{Binding Number, Mode=OneWay}" />
-                                    <Run Text=" by " /><Run Text="{Binding AuthorLogin, Mode=OneWay}" />
+                                    Text="{Binding Number, Mode=OneWay, StringFormat='#{0}'}" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Margin="4,0,0,0"
+                                    FontSize="11"
+                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                    Text="{Binding Title, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis">
                                 </TextBlock>
-                            </StackPanel>
+                            </Grid>
                             <!--  Draft badge  -->
                             <Border
                                 x:Name="DraftBadge"

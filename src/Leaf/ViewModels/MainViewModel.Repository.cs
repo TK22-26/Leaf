@@ -283,6 +283,14 @@ public partial class MainViewModel
             await BeginBusyAsync($"Loading {repository.Name}...");
             Log.Perf("SelectRepo", "BeginBusyAsync", stepSw.ElapsedMilliseconds);
 
+            var previousRepository = SelectedRepository;
+            bool isRepositorySwitch = previousRepository != null &&
+                !string.Equals(previousRepository.Path, repository.Path, StringComparison.OrdinalIgnoreCase);
+            if (isRepositorySwitch && HasActivePullRequestScreen())
+            {
+                ResetPullRequestViewState(previousRepository);
+            }
+
             // Step 1: Set selected repo immediately so the graph view can begin loading.
             stepSw.Restart();
             SelectedRepository = repository;
@@ -306,33 +314,32 @@ public partial class MainViewModel
                 ? LoadBranchesForRepoAsync(repository, forceReload: false, skipFilterApplication: true)
                 : null;
 
-            // Step 3: Run graph load, repo info, and worktrees in parallel (all independent)
-            stepSw.Restart();
-            var graphTask = GitGraphViewModel?.LoadRepositoryAsync(repository.Path) ?? Task.CompletedTask;
-            var infoTask = _gitService.GetRepositoryInfoFastAsync(repository.Path);
-            var worktreeTask = LoadWorktreesForRepoAsync(repository);
+              // Step 3: Run graph load and worktrees in parallel, but don't let repo-info
+              // block startup or repo switches indefinitely. The graph already gives us the
+              // visible branch/dirty state we need to make the app usable immediately.
+              stepSw.Restart();
+              var graphTask = GitGraphViewModel?.LoadRepositoryAsync(repository.Path) ?? Task.CompletedTask;
+              var infoTask = _gitService.GetRepositoryInfoFastAsync(repository.Path);
+              var worktreeTask = LoadWorktreesForRepoAsync(repository);
 
-            await Task.WhenAll(graphTask, infoTask, worktreeTask);
-            Log.Perf("SelectRepo", "Parallel: graph + info + worktrees", stepSw.ElapsedMilliseconds);
+              await Task.WhenAll(graphTask, worktreeTask);
+              Log.Perf("SelectRepo", "Parallel: graph + worktrees", stepSw.ElapsedMilliseconds);
 
-            // Apply graph-dependent working changes sync (must happen after graph loads)
-            if (GitGraphViewModel != null && IsWorkingChangesSelected && WorkingChangesViewModel != null)
-            {
-                WorkingChangesViewModel.SetWorkingChanges(repository.Path, GitGraphViewModel.WorkingChanges);
-            }
+              // Apply graph-dependent working changes sync (must happen after graph loads)
+              if (GitGraphViewModel != null && IsWorkingChangesSelected && WorkingChangesViewModel != null)
+              {
+                  WorkingChangesViewModel.SetWorkingChanges(repository.Path, GitGraphViewModel.WorkingChanges);
+              }
 
-            // Apply repo info results
-            var info = await infoTask;
-            repository.CurrentBranch = info.CurrentBranch;
-            repository.IsDirty = info.IsDirty;
-            repository.AheadBy = info.AheadBy;
-            repository.BehindBy = info.BehindBy;
-            repository.IsMergeInProgress = info.IsMergeInProgress;
-            repository.OperationType = info.OperationType;
-            repository.MergingBranch = info.MergingBranch;
-            repository.ConflictCount = info.ConflictCount;
-            repository.IsDetachedHead = info.IsDetachedHead;
-            repository.DetachedHeadSha = info.DetachedHeadSha;
+              // Apply repo info results if they arrive quickly; otherwise fall back to the
+              // graph/working-changes snapshot and refresh the remaining fields in background.
+              stepSw.Restart();
+              if (!await TryApplyRepositoryInfoAsync(repository, infoTask, TimeSpan.FromMilliseconds(750)))
+              {
+                  ApplyRepositoryInfoFromGraph(repository);
+                  _ = ContinueApplyingRepositoryInfoAsync(repository, infoTask);
+              }
+              Log.Perf("SelectRepo", "ApplyRepositoryInfo", stepSw.ElapsedMilliseconds);
 
             // Step 4: Apply filters (depends on graph being loaded)
             stepSw.Restart();
@@ -355,10 +362,7 @@ public partial class MainViewModel
             await RefreshMergeConflictResolutionAsync();
             Log.Perf("SelectRepo", "RefreshMergeConflictResolutionAsync", stepSw.ElapsedMilliseconds);
 
-            StatusMessage = $"{repository.Name} | {repository.CurrentBranch}" +
-                           (repository.IsDirty ? " | Modified" : "") +
-                           (repository.AheadBy > 0 ? $" | {repository.AheadBy}" : "") +
-                           (repository.BehindBy > 0 ? $" | {repository.BehindBy}" : "");
+              UpdateRepositoryStatusMessage(repository);
 
             if (fetchInBackground)
                 _ = _autoFetchService.FetchAsync(repository.Path);
@@ -386,6 +390,71 @@ public partial class MainViewModel
     public void TogglePinRepository(RepositoryInfo repo)
     {
         _repositoryService.TogglePinRepository(repo);
+    }
+
+    private async Task<bool> TryApplyRepositoryInfoAsync(
+        RepositoryInfo repository,
+        Task<RepositoryInfo> infoTask,
+        TimeSpan timeout)
+    {
+        try
+        {
+            var info = await infoTask.WaitAsync(timeout);
+            ApplyRepositoryInfo(repository, info);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            Log.Warn("SelectRepo", $"Timed out waiting for repository info for {repository.Name}; continuing with graph snapshot");
+            return false;
+        }
+    }
+
+    private async Task ContinueApplyingRepositoryInfoAsync(RepositoryInfo repository, Task<RepositoryInfo> infoTask)
+    {
+        try
+        {
+            var info = await infoTask.ConfigureAwait(false);
+            await _dispatcherService.InvokeAsync(() =>
+            {
+                if (SelectedRepository == null ||
+                    !string.Equals(SelectedRepository.Path, repository.Path, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                ApplyRepositoryInfo(repository, info);
+                UpdateRepositoryStatusMessage(repository);
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("SelectRepo", $"Deferred repository info refresh failed for {repository.Name}: {ex.Message}");
+        }
+    }
+
+    private void ApplyRepositoryInfoFromGraph(RepositoryInfo repository)
+    {
+        var workingChanges = GitGraphViewModel?.WorkingChanges;
+        if (workingChanges == null)
+        {
+            return;
+        }
+
+        repository.CurrentBranch = workingChanges.IsDetachedHead
+            ? $"HEAD ({workingChanges.DetachedHeadSha?[..7] ?? "detached"})"
+            : (string.IsNullOrWhiteSpace(workingChanges.BranchName) ? repository.CurrentBranch : workingChanges.BranchName);
+        repository.IsDirty = workingChanges.HasChanges;
+        repository.IsDetachedHead = workingChanges.IsDetachedHead;
+        repository.DetachedHeadSha = workingChanges.DetachedHeadSha;
+    }
+
+    private void UpdateRepositoryStatusMessage(RepositoryInfo repository)
+    {
+        StatusMessage = $"{repository.Name} | {repository.CurrentBranch}" +
+                       (repository.IsDirty ? " | Modified" : "") +
+                       (repository.AheadBy > 0 ? $" | {repository.AheadBy}" : "") +
+                       (repository.BehindBy > 0 ? $" | {repository.BehindBy}" : "");
     }
 
     [RelayCommand]

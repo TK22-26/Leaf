@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Leaf.Models;
 using Leaf.Services;
 
@@ -112,6 +113,105 @@ public partial class MainViewModel
         {
             await ShowUnstagedFileDiffAsync(e.File);
         }
+    }
+
+    private void OnPullRequestFileSelected(object? sender, PullRequestFileInfo file)
+    {
+        if (SelectedRepository == null || DiffViewerViewModel == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(file.PatchContent))
+        {
+            _notificationService?.Show(
+                "Diff unavailable",
+                $"Leaf could not load the diff for {file.FileName}.",
+                NotificationType.Warning);
+            return;
+        }
+
+        DiffViewerViewModel.IsLoading = true;
+        IsDiffViewerVisible = true;
+
+        try
+        {
+            var diffResult = BuildPullRequestPatchResult(file.PatchContent, file.Path);
+            DiffViewerViewModel.RepositoryPath = SelectedRepository.Path;
+            DiffViewerViewModel.LoadDiff(diffResult);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to load pull request diff: {ex.Message}";
+            IsDiffViewerVisible = false;
+        }
+        finally
+        {
+            DiffViewerViewModel.IsLoading = false;
+        }
+    }
+
+    private static FileDiffResult BuildPullRequestPatchResult(string patchText, string filePath)
+    {
+        var normalizedPath = string.IsNullOrWhiteSpace(filePath)
+            ? "pull-request.diff"
+            : filePath.Replace('\\', '/').TrimStart('/');
+
+        var result = new FileDiffResult
+        {
+            FileName = Path.GetFileName(normalizedPath),
+            FilePath = normalizedPath,
+            IsFileBacked = false
+        };
+
+        var inlineLines = new List<string>();
+        var inHunkBody = false;
+        var added = 0;
+        var deleted = 0;
+
+        foreach (var rawLine in patchText.Split('\n'))
+        {
+            var line = rawLine.TrimEnd('\r');
+
+            if (line.StartsWith("@@", StringComparison.Ordinal))
+            {
+                inHunkBody = true;
+                continue;
+            }
+
+            if (!inHunkBody)
+                continue;
+
+            if (line.StartsWith("\\ No newline at end of file", StringComparison.Ordinal))
+                continue;
+
+            var type = DiffLineType.Unchanged;
+
+            if (line.StartsWith("+", StringComparison.Ordinal) && !line.StartsWith("+++", StringComparison.Ordinal))
+            {
+                type = DiffLineType.Added;
+                added++;
+            }
+            else if (line.StartsWith("-", StringComparison.Ordinal) && !line.StartsWith("---", StringComparison.Ordinal))
+            {
+                type = DiffLineType.Deleted;
+                deleted++;
+            }
+            else if (!line.StartsWith(" ", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            inlineLines.Add(line);
+            result.Lines.Add(new DiffLine
+            {
+                Text = line,
+                Type = type
+            });
+        }
+
+        result.InlineContent = string.Join('\n', inlineLines);
+        result.LinesAddedCount = added;
+        result.LinesDeletedCount = deleted;
+        return result;
     }
 
     private static FileDiffResult BuildUnifiedDiffResult(string diffText, string title)

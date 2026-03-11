@@ -2,14 +2,13 @@
     x:Class="Leaf.Views.PullRequestDetailView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:behaviors="clr-namespace:Leaf.Behaviors"
     xmlns:converters="clr-namespace:Leaf.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:behaviors="clr-namespace:Leaf.Behaviors"
-    xmlns:models="clr-namespace:Leaf.Models"
-    d:DesignHeight="600"
-    d:DesignWidth="800"
+    d:DesignHeight="720"
+    d:DesignWidth="1100"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -18,551 +17,781 @@
         <converters:PullRequestStateToColorConverter x:Key="StateToColorConverter" />
         <converters:PullRequestStateToTextConverter x:Key="StateToTextConverter" />
         <converters:MarkdownToFlowDocumentConverter x:Key="MarkdownConverter" />
+        <converters:CheckStatusToColorConverter x:Key="CheckStatusToColorConverter" />
+        <converters:CheckStatusToIconConverter x:Key="CheckStatusToIconConverter" />
+        <converters:ReviewStateToColorConverter x:Key="ReviewStateToColorConverter" />
+        <converters:ReviewStateToTextConverter x:Key="ReviewStateToTextConverter" />
+
+        <Style x:Key="SectionButtonStyle" BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,18,0" />
+            <Setter Property="Padding" Value="0,12,0,10" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Background="Transparent">
+                            <ContentPresenter
+                                Margin="0,0,0,10"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            <Border
+                                Height="2"
+                                VerticalAlignment="Bottom"
+                                Background="{TemplateBinding BorderBrush}" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PullRequestTextBoxStyle" BasedOn="{StaticResource {x:Type TextBox}}" TargetType="TextBox">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CaretBrush" Value="#28A745" />
+            <Setter Property="SelectionBrush" Value="#6628A745" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="#28A745" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ActionButtonStyle" BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
+
+        <Style x:Key="ActionIconButtonStyle" BasedOn="{StaticResource ActionButtonStyle}" TargetType="Button">
+            <Setter Property="MinWidth" Value="38" />
+            <Setter Property="Padding" Value="10,6" />
+        </Style>
+
+        <Style x:Key="CardAddButtonStyle" BasedOn="{StaticResource ActionButtonStyle}" TargetType="Button">
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Padding" Value="10,4" />
+        </Style>
     </UserControl.Resources>
 
     <Grid>
-        <!--  Loading overlay  -->
         <Grid Panel.ZIndex="10" Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibilityConverter}}">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                <ProgressBar
-                    Width="200"
-                    Height="4"
-                    IsIndeterminate="True" />
-                <TextBlock
-                    Margin="0,8,0,0"
-                    HorizontalAlignment="Center"
-                    FontSize="12"
-                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                    Text="Loading pull request..." />
+                <ProgressBar Width="220" Height="4" IsIndeterminate="True" />
+                <TextBlock Margin="0,10,0,0" HorizontalAlignment="Center" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Loading pull request..." />
             </StackPanel>
         </Grid>
 
-        <!--  Error state  -->
-        <StackPanel
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibilityConverter}}">
-            <ic:SymbolIcon
-                HorizontalAlignment="Center"
-                FontSize="32"
-                Foreground="#CF222E"
-                Symbol="ErrorCircle" />
-            <TextBlock
-                Margin="0,8,0,0"
-                HorizontalAlignment="Center"
-                FontSize="12"
-                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                Text="{Binding ErrorMessage}"
-                TextWrapping="Wrap" />
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibilityConverter}}">
+            <ic:SymbolIcon HorizontalAlignment="Center" FontSize="32" Foreground="#CF222E" Symbol="ErrorCircle" />
+            <TextBlock Margin="0,8,0,0" HorizontalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding ErrorMessage}" TextWrapping="Wrap" />
         </StackPanel>
 
-        <!--  Detail content  -->
         <Grid Visibility="{Binding Details, Converter={StaticResource NullToVisibilityConverter}}">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!--  Header  -->
-            <Border
-                Grid.Row="0"
-                Padding="16,12"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="0,0,0,1">
+            <Border Grid.Row="0" Padding="18,14" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
                 <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <!--  Back button  -->
-                    <Button
-                        Grid.Row="0"
-                        Grid.RowSpan="2"
-                        Grid.Column="0"
-                        Margin="0,0,12,0"
-                        Padding="6,4"
-                        VerticalAlignment="Center"
-                        Click="BackButton_Click"
-                        ToolTip="Back to graph">
+                    <Button Grid.Column="0" Margin="0,0,14,0" Padding="6,4" VerticalAlignment="Top" Click="BackButton_Click">
                         <ic:SymbolIcon FontSize="14" Symbol="ArrowLeft" />
                     </Button>
 
-                    <!--  Title row  -->
-                    <StackPanel
-                        Grid.Row="0"
-                        Grid.Column="1"
-                        Orientation="Horizontal">
-                        <!--  Display title (non-editing)  -->
-                        <TextBlock
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="{Binding Details.Summary.Title}"
-                            TextTrimming="CharacterEllipsis"
-                            Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
-                        <!--  Edit title  -->
-                        <TextBox
-                            Width="400"
-                            FontSize="14"
-                            Text="{Binding EditTitle, UpdateSourceTrigger=PropertyChanged}"
-                            Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibilityConverter}}" />
-                        <TextBlock
-                            Margin="8,0,0,0"
-                            VerticalAlignment="Center"
-                            FontSize="14"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
-                            <Run Text="#" /><Run Text="{Binding Details.Summary.Number, Mode=OneWay}" />
-                        </TextBlock>
-                    </StackPanel>
-
-                    <!--  Metadata row  -->
-                    <StackPanel
-                        Grid.Row="1"
-                        Grid.Column="1"
-                        Margin="0,4,0,0"
-                        Orientation="Horizontal">
-                        <!--  State badge (dynamic)  -->
-                        <Border
-                            Padding="6,2"
-                            Background="{Binding Details.Summary.State, Converter={StaticResource StateToColorConverter}}"
-                            CornerRadius="10">
-                            <TextBlock
-                                FontSize="10"
-                                FontWeight="SemiBold"
-                                Foreground="White"
-                                Text="{Binding Details.Summary.State, Converter={StaticResource StateToTextConverter}}" />
-                        </Border>
-                        <!--  Draft badge  -->
-                        <Border
-                            Margin="4,0,0,0"
-                            Padding="6,2"
-                            Background="#6E7781"
-                            CornerRadius="10"
-                            Visibility="{Binding Details.Summary.IsDraft, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <TextBlock
-                                FontSize="10"
-                                FontWeight="SemiBold"
-                                Foreground="White"
-                                Text="Draft" />
-                        </Border>
-                        <TextBlock
-                            Margin="8,0,0,0"
-                            VerticalAlignment="Center"
-                            FontSize="11"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
-                            <Run Text="{Binding Details.Summary.SourceBranch, Mode=OneWay}" />
-                            <Run Text=" → " />
-                            <Run Text="{Binding Details.Summary.TargetBranch, Mode=OneWay}" />
-                        </TextBlock>
-                        <TextBlock
-                            Margin="12,0,0,0"
-                            VerticalAlignment="Center"
-                            FontSize="11"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
-                            <Run Text="by " />
-                            <Run Text="{Binding Details.Summary.AuthorLogin, Mode=OneWay}" />
-                        </TextBlock>
-                    </StackPanel>
-
-                    <!--  Action buttons  -->
-                    <StackPanel
-                        Grid.Row="0"
-                        Grid.RowSpan="2"
-                        Grid.Column="2"
-                        VerticalAlignment="Center"
-                        Orientation="Horizontal">
-                        <!--  Edit button (non-editing mode, open PRs only)  -->
-                        <Button
-                            Margin="4,0"
-                            Padding="6,4"
-                            Command="{Binding StartEditCommand}"
-                            ToolTip="Edit title and description"
-                            Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <ic:SymbolIcon FontSize="12" Symbol="Edit" />
-                        </Button>
-                        <!--  Save/Cancel edit  -->
-                        <StackPanel
-                            Orientation="Horizontal"
-                            Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <Button
-                                Margin="4,0"
-                                Padding="8,4"
-                                Command="{Binding SaveEditCommand}"
-                                Content="Save" />
-                            <Button
-                                Margin="4,0"
-                                Padding="8,4"
-                                Command="{Binding CancelEditCommand}"
-                                Content="Cancel" />
+                    <StackPanel Grid.Column="1">
+                        <TextBlock FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding Details.Summary.Title}" Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                        <TextBox Width="560" FontSize="16" Style="{StaticResource PullRequestTextBoxStyle}" Text="{Binding EditTitle, UpdateSourceTrigger=PropertyChanged}" Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                            <Border Padding="8,3" Background="{Binding Details.Summary.State, Converter={StaticResource StateToColorConverter}}" CornerRadius="12">
+                                <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="White" Text="{Binding Details.Summary.State, Converter={StaticResource StateToTextConverter}}" />
+                            </Border>
+                            <Border Margin="6,0,0,0" Padding="8,3" Background="#6E7781" CornerRadius="12" Visibility="{Binding Details.Summary.IsDraft, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="White" Text="Draft" />
+                            </Border>
+                            <Border Margin="6,0,0,0" Padding="8,3" Background="#CF222E" CornerRadius="12" Visibility="{Binding Details.HasConflicts, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="White" Text="Conflicts" />
+                            </Border>
+                            <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                <Run Text="#" />
+                                <Run Text="{Binding Details.Summary.Number}" />
+                                <Run Text="  " />
+                                <Run Text="{Binding Details.Summary.AuthorLogin}" />
+                                <Run Text=" proposes to merge " />
+                                <Run Foreground="#28A745" Text="{Binding Details.Summary.SourceBranch}" />
+                                <Run Text=" → " />
+                                <Run Foreground="#28A745" Text="{Binding Details.Summary.TargetBranch}" />
+                            </TextBlock>
                         </StackPanel>
-                        <!--  Merge button  -->
-                        <Button
-                            x:Name="MergeButton"
-                            Margin="4,0"
-                            Padding="8,4"
-                            Click="MergeButton_Click"
-                            IsEnabled="{Binding CanMerge}"
-                            ToolTip="Merge pull request"
-                            Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <StackPanel Orientation="Horizontal">
-                                <ic:SymbolIcon
-                                    Margin="0,0,4,0"
-                                    FontSize="12"
-                                    Symbol="Merge" />
-                                <TextBlock FontSize="11" Text="Merge" />
-                            </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
+                        <Grid Margin="4,0" Visibility="{Binding SupportsReviews, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Click="ApprovePrimaryButton_Click" Style="{StaticResource ActionButtonStyle}">
+                                <TextBlock FontWeight="SemiBold" Text="Approve" />
+                            </Button>
+                            <Button Grid.Column="1" Click="ApproveMenuButton_Click" Style="{StaticResource ActionIconButtonStyle}">
+                                <ic:SymbolIcon FontSize="12" Symbol="ChevronDown" />
+                            </Button>
+                        </Grid>
+                        <Button Margin="4,0" Click="CompleteButton_Click" IsEnabled="{Binding CanMerge}" Style="{StaticResource ActionButtonStyle}" Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock FontWeight="SemiBold" Text="Complete" />
                         </Button>
-                        <!--  Close button  -->
-                        <Button
-                            Margin="4,0"
-                            Padding="8,4"
-                            Click="CloseButton_Click"
-                            ToolTip="Close without merging"
-                            Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <StackPanel Orientation="Horizontal">
-                                <ic:SymbolIcon
-                                    Margin="0,0,4,0"
-                                    FontSize="12"
-                                    Foreground="#CF222E"
-                                    Symbol="DismissCircle" />
-                                <TextBlock FontSize="11" Text="Close" />
-                            </StackPanel>
-                        </Button>
-                        <!--  Open in browser  -->
-                        <Button
-                            Margin="4,0"
-                            Padding="8,4"
-                            Command="{Binding OpenInBrowserCommand}"
-                            ToolTip="Open in browser">
-                            <StackPanel Orientation="Horizontal">
-                                <ic:SymbolIcon
-                                    Margin="0,0,4,0"
-                                    FontSize="12"
-                                    Symbol="Open" />
-                                <TextBlock FontSize="11" Text="Open in browser" />
-                            </StackPanel>
+                        <Button Margin="4,0" Click="MoreButton_Click" Style="{StaticResource ActionIconButtonStyle}">
+                            <ic:SymbolIcon FontSize="14" Symbol="MoreVertical" />
                         </Button>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!--  Body, files, reviews, comments, checks  -->
-            <ScrollViewer
-                Grid.Row="1"
-                Padding="16"
-                VerticalScrollBarVisibility="Auto">
-                <StackPanel>
-                    <!--  Description (markdown)  -->
-                    <RichTextBox
-                        Margin="0,0,0,16"
-                        behaviors:RichTextBoxHelper.Document="{Binding Details.Body, Converter={StaticResource MarkdownConverter}}"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        IsReadOnly="True"
-                        Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
-                    <!--  Edit body  -->
-                    <TextBox
-                        Height="200"
-                        Margin="0,0,0,16"
-                        AcceptsReturn="True"
-                        Text="{Binding EditBody, UpdateSourceTrigger=PropertyChanged}"
-                        TextWrapping="Wrap"
-                        VerticalScrollBarVisibility="Auto"
-                        Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <Border Grid.Row="1" Padding="18,0,18,0" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal">
+                    <Button Command="{Binding ShowOverviewCommand}">
+                        <Button.Style>
+                            <Style BasedOn="{StaticResource SectionButtonStyle}" TargetType="Button">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsOverviewSelected}" Value="True">
+                                        <Setter Property="BorderBrush" Value="#28A745" />
+                                        <Setter Property="Foreground" Value="#28A745" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <TextBlock Text="Overview" />
+                    </Button>
 
-                    <!--  Status Checks section  -->
-                    <StackPanel Visibility="{Binding Details.StatusChecks.Count, Converter={StaticResource IntGreaterThanZeroToVisibilityConverter}}">
-                        <TextBlock
-                            Margin="0,0,0,8"
-                            FontSize="13"
-                            FontWeight="SemiBold"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="Status Checks" />
-                        <ItemsControl ItemsSource="{Binding Details.StatusChecks}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type models:PullRequestStatusCheckInfo}">
-                                    <Border
-                                        Margin="0,1"
-                                        Padding="8,4"
-                                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                        CornerRadius="4"
-                                        Cursor="Hand"
-                                        MouseLeftButtonDown="CheckItem_Click">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <ic:SymbolIcon
-                                                Grid.Column="0"
-                                                Margin="0,0,8,0"
-                                                FontSize="14"
-                                                Foreground="{Binding Status, Converter={StaticResource CheckStatusToColorConverter}}"
-                                                Symbol="{Binding Status, Converter={StaticResource CheckStatusToIconConverter}}" />
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                VerticalAlignment="Center"
-                                                FontSize="11"
-                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                                Text="{Binding Name}" />
-                                            <TextBlock
-                                                Grid.Column="2"
-                                                VerticalAlignment="Center"
-                                                FontSize="10"
-                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                Text="{Binding Description}"
-                                                TextTrimming="CharacterEllipsis" />
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <Separator Margin="0,12" />
-                    </StackPanel>
+                    <Button Command="{Binding ShowFilesCommand}">
+                        <Button.Style>
+                            <Style BasedOn="{StaticResource SectionButtonStyle}" TargetType="Button">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFilesSelected}" Value="True">
+                                        <Setter Property="BorderBrush" Value="#28A745" />
+                                        <Setter Property="Foreground" Value="#28A745" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <TextBlock Text="Files" />
+                    </Button>
 
-                    <!--  Files section  -->
-                    <TextBlock
-                        Margin="0,0,0,8"
-                        FontSize="13"
-                        FontWeight="SemiBold"
-                        Foreground="{DynamicResource TextFillColorPrimaryBrush}">
-                        <Run Text="Files changed (" /><Run Text="{Binding Details.Files.Count, Mode=OneWay}" /><Run Text=")" />
-                    </TextBlock>
-                    <ItemsControl ItemsSource="{Binding Details.Files}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="{x:Type models:PullRequestFileInfo}">
-                                <Border
-                                    Margin="0,1"
-                                    Padding="8,4"
-                                    Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                    CornerRadius="4"
-                                    Cursor="Hand"
-                                    MouseLeftButtonDown="FileItem_Click">
+                    <Button Command="{Binding ShowUpdatesCommand}">
+                        <Button.Style>
+                            <Style BasedOn="{StaticResource SectionButtonStyle}" TargetType="Button">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsUpdatesSelected}" Value="True">
+                                        <Setter Property="BorderBrush" Value="#28A745" />
+                                        <Setter Property="Foreground" Value="#28A745" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <TextBlock Text="Updates" />
+                    </Button>
+
+                    <Button Command="{Binding ShowCommitsCommand}">
+                        <Button.Style>
+                            <Style BasedOn="{StaticResource SectionButtonStyle}" TargetType="Button">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsCommitsSelected}" Value="True">
+                                        <Setter Property="BorderBrush" Value="#28A745" />
+                                        <Setter Property="Foreground" Value="#28A745" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <TextBlock Text="Commits" />
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="2">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsOverviewSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid Margin="18,16,18,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="290" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <Border Margin="0,0,0,12" Padding="14" Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="8">
+                                <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <!--  Status indicator  -->
-                                        <TextBlock
-                                            x:Name="StatusIndicator"
-                                            Grid.Column="0"
-                                            Width="16"
-                                            Margin="0,0,6,0"
-                                            HorizontalAlignment="Center"
-                                            FontFamily="Cascadia Code, Consolas, monospace"
-                                            FontSize="10"
-                                            FontWeight="Bold"
-                                            Foreground="#28A745"
-                                            Text="M" />
-                                        <TextBlock
-                                            Grid.Column="1"
-                                            FontFamily="Cascadia Code, Consolas, monospace"
-                                            FontSize="11"
-                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                            Text="{Binding Path}"
-                                            TextTrimming="CharacterEllipsis" />
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal">
-                                            <TextBlock
-                                                Margin="8,0,0,0"
-                                                FontSize="10"
-                                                Foreground="#28A745">
-                                                <Run Text="+" /><Run Text="{Binding Additions, Mode=OneWay}" />
-                                            </TextBlock>
-                                            <TextBlock
-                                                Margin="6,0,0,0"
-                                                FontSize="10"
-                                                Foreground="#CF222E">
-                                                <Run Text="-" /><Run Text="{Binding Deletions, Mode=OneWay}" />
-                                            </TextBlock>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-                                <DataTemplate.Triggers>
-                                    <DataTrigger Binding="{Binding Status}" Value="Added">
-                                        <Setter TargetName="StatusIndicator" Property="Text" Value="A" />
-                                        <Setter TargetName="StatusIndicator" Property="Foreground" Value="#28A745" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding Status}" Value="Modified">
-                                        <Setter TargetName="StatusIndicator" Property="Text" Value="M" />
-                                        <Setter TargetName="StatusIndicator" Property="Foreground" Value="#DBAB09" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding Status}" Value="Deleted">
-                                        <Setter TargetName="StatusIndicator" Property="Text" Value="D" />
-                                        <Setter TargetName="StatusIndicator" Property="Foreground" Value="#CF222E" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding Status}" Value="Renamed">
-                                        <Setter TargetName="StatusIndicator" Property="Text" Value="R" />
-                                        <Setter TargetName="StatusIndicator" Property="Foreground" Value="#8250DF" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding Status}" Value="Copied">
-                                        <Setter TargetName="StatusIndicator" Property="Text" Value="C" />
-                                        <Setter TargetName="StatusIndicator" Property="Foreground" Value="#3B82F6" />
-                                    </DataTrigger>
-                                </DataTemplate.Triggers>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
 
-                    <!--  Reviews section  -->
-                    <StackPanel Visibility="{Binding Details.Reviews.Count, Converter={StaticResource IntGreaterThanZeroToVisibilityConverter}}">
-                        <Separator Margin="0,12" />
-                        <TextBlock
-                            Margin="0,0,0,8"
-                            FontSize="13"
-                            FontWeight="SemiBold"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}">
-                            <Run Text="Reviews (" /><Run Text="{Binding Details.Reviews.Count, Mode=OneWay}" /><Run Text=")" />
-                        </TextBlock>
-                        <ItemsControl ItemsSource="{Binding Details.Reviews}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type models:PullRequestReviewInfo}">
-                                    <Border
-                                        Margin="0,2"
-                                        Padding="8,6"
-                                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                        CornerRadius="4">
+                                        <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="Description" />
+                                        <Button Grid.Column="1" Padding="8,4" Command="{Binding StartEditCommand}" Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <ic:SymbolIcon Margin="0,0,6,0" FontSize="12" Foreground="#28A745" Symbol="Edit" />
+                                                <TextBlock Text="Edit" />
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+
+                                    <FlowDocumentScrollViewer
+                                        Margin="0,10,0,0"
+                                        Background="Transparent"
+                                        Document="{Binding Details.Body, Converter={StaticResource MarkdownConverter}}"
+                                        BorderBrush="Transparent"
+                                        BorderThickness="0"
+                                        IsToolBarVisible="False"
+                                        Focusable="False"
+                                        IsHitTestVisible="True"
+                                        PreviewMouseWheel="DescriptionDocument_PreviewMouseWheel"
+                                        VerticalScrollBarVisibility="Hidden"
+                                        Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+
+                                    <StackPanel Margin="0,10,0,0" Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBox MinHeight="180" AcceptsReturn="True" Style="{StaticResource PullRequestTextBoxStyle}" Text="{Binding EditBody, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                                        <StackPanel Margin="0,10,0,0" HorizontalAlignment="Right" Orientation="Horizontal">
+                                            <Button Margin="0,0,8,0" Padding="14,6" Command="{Binding CancelEditCommand}" Content="Cancel" />
+                                            <Button Padding="14,6" Command="{Binding SaveEditCommand}" Content="Save" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Margin="0,0,0,12" Padding="14" Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="8" Visibility="{Binding Details.StatusChecks.Count, Mode=OneWay, Converter={StaticResource IntGreaterThanZeroToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                                        <Run Text="Checks (" />
+                                        <Run Text="{Binding Details.StatusChecks.Count, Mode=OneWay}" />
+                                        <Run Text=")" />
+                                    </TextBlock>
+
+                                    <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding Details.StatusChecks}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,0,0,6" Padding="10,8" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Cursor="Hand" MouseLeftButtonDown="CheckItem_Click">
+                                                    <DockPanel>
+                                                        <ic:SymbolIcon DockPanel.Dock="Left" Margin="0,0,8,0" FontSize="12" Foreground="{Binding Status, Converter={StaticResource CheckStatusToColorConverter}}" Symbol="{Binding Status, Converter={StaticResource CheckStatusToIconConverter}}" />
+                                                        <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding Name}" />
+                                                        <TextBlock DockPanel.Dock="Right" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="{Binding Description}" TextTrimming="CharacterEllipsis" />
+                                                    </DockPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Padding="14" Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="8">
+                                <StackPanel>
+                                    <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                                        <Run Text="Comments (" />
+                                        <Run Text="{Binding Details.Comments.Count, Mode=OneWay}" />
+                                        <Run Text=")" />
+                                    </TextBlock>
+
+                                    <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding Details.Comments}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,0,0,6" Padding="10,8" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <TextBlock
+                                                            Grid.Row="0"
+                                                            Grid.Column="0"
+                                                            Margin="0,0,20,0"
+                                                            FontWeight="SemiBold"
+                                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                            Text="{Binding AuthorDisplayName}" />
+                                                        <TextBlock
+                                                            Grid.Row="0"
+                                                            Grid.Column="1"
+                                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                            Text="{Binding CreatedAt, StringFormat='{}{0:MMM d, yyyy h:mm tt}'}" />
+                                                        <TextBlock
+                                                            Grid.Row="1"
+                                                            Grid.ColumnSpan="2"
+                                                            Margin="0,10,0,0"
+                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                            Text="{Binding Body}"
+                                                            TextWrapping="Wrap" />
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <TextBlock Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Details.Comments.Count, Mode=OneWay}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                        No comments yet.
+                                    </TextBlock>
+
+                                    <TextBox Margin="0,12,0,0" MinHeight="88" AcceptsReturn="True" Style="{StaticResource PullRequestTextBoxStyle}" Text="{Binding NewCommentText, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                                    <Button Margin="0,10,0,0" HorizontalAlignment="Right" Padding="14,6" Command="{Binding AddCommentCommand}" Content="Add comment" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1">
+                            <Border Margin="0,0,0,12" Padding="14" Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="8">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="Reviewers" />
+                                        <Button
+                                            Grid.Column="1"
+                                            Click="AddReviewerButton_Click"
+                                            Content="Add"
+                                            Style="{StaticResource CardAddButtonStyle}"
+                                            Visibility="{Binding CanManageReviewers, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    </Grid>
+
+                                    <StackPanel Margin="0,10,0,0" Visibility="{Binding SupportsRequiredReviewers, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock FontWeight="SemiBold" Foreground="#D29922" Text="Required" />
+                                        <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding RequiredReviewers}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,0,0,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DisplayName}" />
+                                                        <TextBlock
+                                                            Grid.Column="1"
+                                                            Margin="12,0,0,0"
+                                                            Foreground="{Binding State, Converter={StaticResource ReviewStateToColorConverter}}"
+                                                            Text="{Binding State, Converter={StaticResource ReviewStateToTextConverter}}" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding RequiredReviewers.Count, Mode=OneWay}" Value="0">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                            No required reviewers
+                                        </TextBlock>
+                                    </StackPanel>
+
+                                    <StackPanel Margin="0,12,0,0">
+                                        <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="Optional" />
+                                        <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding OptionalReviewers}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,0,0,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DisplayName}" />
+                                                        <TextBlock
+                                                            Grid.Column="1"
+                                                            Margin="12,0,0,0"
+                                                            Foreground="{Binding State, Converter={StaticResource ReviewStateToColorConverter}}"
+                                                            Text="{Binding State, Converter={StaticResource ReviewStateToTextConverter}}" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding OptionalReviewers.Count, Mode=OneWay}" Value="0">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                            No optional reviewers
+                                        </TextBlock>
+                                    </StackPanel>
+
+                                    <StackPanel Margin="0,12,0,0" Visibility="{Binding IsRequiredReviewerEditorOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock Margin="0,0,0,4" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Add required reviewer" />
+                                        <TextBox
+                                            Style="{StaticResource PullRequestTextBoxStyle}"
+                                            Text="{Binding RequiredReviewerSearchText, UpdateSourceTrigger=PropertyChanged}" />
+                                        <ProgressBar
+                                            Height="2"
+                                            Margin="0,8,0,0"
+                                            IsIndeterminate="True"
+                                            Visibility="{Binding IsSearchingRequiredReviewers, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                        <TextBlock
+                                            Margin="0,8,0,0"
+                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                            Text="{Binding RequiredReviewerSearchStatus}"
+                                            TextWrapping="Wrap"
+                                            Visibility="{Binding RequiredReviewerSearchStatus, Converter={StaticResource NullToVisibilityConverter}}" />
+                                        <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding RequiredReviewerSearchResults}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        Margin="0,0,0,4"
+                                                        Padding="8,6"
+                                                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                                        CornerRadius="6"
+                                                        Cursor="Hand"
+                                                        MouseLeftButtonDown="ReviewerResult_Click"
+                                                        Tag="Required">
+                                                        <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DisplayName}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <Button
+                                            Margin="0,8,0,0"
+                                            HorizontalAlignment="Right"
+                                            Command="{Binding CloseReviewerEditorsCommand}"
+                                            Content="Done"
+                                            Style="{StaticResource CardAddButtonStyle}" />
+                                    </StackPanel>
+
+                                    <StackPanel Margin="0,12,0,0" Visibility="{Binding IsOptionalReviewerEditorOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock Margin="0,0,0,4" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Add optional reviewer" />
+                                        <TextBox
+                                            Style="{StaticResource PullRequestTextBoxStyle}"
+                                            Text="{Binding OptionalReviewerSearchText, UpdateSourceTrigger=PropertyChanged}" />
+                                        <ProgressBar
+                                            Height="2"
+                                            Margin="0,8,0,0"
+                                            IsIndeterminate="True"
+                                            Visibility="{Binding IsSearchingOptionalReviewers, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                        <TextBlock
+                                            Margin="0,8,0,0"
+                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                            Text="{Binding OptionalReviewerSearchStatus}"
+                                            TextWrapping="Wrap"
+                                            Visibility="{Binding OptionalReviewerSearchStatus, Converter={StaticResource NullToVisibilityConverter}}" />
+                                        <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding OptionalReviewerSearchResults}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        Margin="0,0,0,4"
+                                                        Padding="8,6"
+                                                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                                        CornerRadius="6"
+                                                        Cursor="Hand"
+                                                        MouseLeftButtonDown="ReviewerResult_Click"
+                                                        Tag="Optional">
+                                                        <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DisplayName}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <Button
+                                            Margin="0,8,0,0"
+                                            HorizontalAlignment="Right"
+                                            Command="{Binding CloseReviewerEditorsCommand}"
+                                            Content="Done"
+                                            Style="{StaticResource CardAddButtonStyle}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Margin="0,0,0,12" Padding="14" Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="8">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="Tags" />
+                                        <Button
+                                            Grid.Column="1"
+                                            Command="{Binding ToggleLabelEditorCommand}"
+                                            Content="Add"
+                                            Style="{StaticResource CardAddButtonStyle}"
+                                            Visibility="{Binding SupportsLabels, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    </Grid>
+                                    <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding Details.Labels}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,0,6,6" Padding="8,3" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="12">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding Name}" />
+                                                        <Button
+                                                            Margin="6,0,0,0"
+                                                            Padding="0"
+                                                            Background="Transparent"
+                                                            BorderThickness="0"
+                                                            Command="{Binding DataContext.RemoveLabelCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            Cursor="Hand"
+                                                            FocusVisualStyle="{x:Null}"
+                                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                            IsEnabled="{Binding DataContext.CanManageLabels, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            Visibility="{Binding DataContext.CanManageLabels, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                            <ic:SymbolIcon FontSize="10" Symbol="Dismiss" />
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Margin="0,10,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Details.Labels.Count, Mode=OneWay}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                        No tags
+                                    </TextBlock>
+
+                                    <StackPanel Margin="0,10,0,0" Visibility="{Binding IsLabelEditorOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock Margin="0,0,0,4" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Add tag" />
                                         <Grid>
                                             <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox
+                                                Grid.Column="0"
+                                                Margin="0,0,8,0"
+                                                Style="{StaticResource PullRequestTextBoxStyle}"
+                                                Text="{Binding NewLabelText, UpdateSourceTrigger=PropertyChanged}" />
+                                            <Button
+                                                Grid.Column="1"
+                                                Margin="0,0,8,0"
+                                                Command="{Binding ToggleLabelEditorCommand}"
+                                                Content="Cancel"
+                                                Style="{StaticResource CardAddButtonStyle}" />
+                                            <Button
+                                                Grid.Column="2"
+                                                Command="{Binding AddLabelCommand}"
+                                                Content="Add"
+                                                Style="{StaticResource CardAddButtonStyle}" />
+                                        </Grid>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsFilesSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Margin="18,16,18,18">
+                        <TextBlock Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Details.Files.Count, Mode=OneWay}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                            No changed files reported.
+                        </TextBlock>
+
+                        <ItemsControl ItemsSource="{Binding Details.Files}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,6" Padding="14,12" Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="6" Cursor="Hand" MouseLeftButtonDown="FileItem_Click">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel
-                                                Grid.Column="0"
-                                                Margin="0,0,8,0"
-                                                Orientation="Horizontal">
-                                                <ic:SymbolIcon
-                                                    Margin="0,0,4,0"
-                                                    FontSize="12"
-                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                    Symbol="Person" />
-                                                <TextBlock
-                                                    VerticalAlignment="Center"
-                                                    FontSize="11"
-                                                    FontWeight="SemiBold"
-                                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                                    Text="{Binding ReviewerLogin}" />
+
+                                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                                <TextBlock FontFamily="Cascadia Code, Consolas, monospace" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding FileName}" />
+                                                <TextBlock Margin="0,4,0,0" FontFamily="Cascadia Code, Consolas, monospace" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                VerticalAlignment="Center"
-                                                FontSize="11"
-                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                Text="{Binding Body}"
-                                                TextTrimming="CharacterEllipsis" />
-                                            <Border
-                                                Grid.Column="2"
-                                                Padding="6,2"
-                                                Background="{Binding State, Converter={StaticResource ReviewStateToColorConverter}}"
-                                                CornerRadius="8">
-                                                <TextBlock
-                                                    FontSize="10"
-                                                    FontWeight="SemiBold"
-                                                    Foreground="White"
-                                                    Text="{Binding State, Converter={StaticResource ReviewStateToTextConverter}}" />
-                                            </Border>
+
+                                            <StackPanel Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Margin="0,0,16,0" FontSize="14" FontWeight="SemiBold" Foreground="#28A745">
+                                                    <Run Text="+" />
+                                                    <Run Text="{Binding Additions, Mode=OneWay}" />
+                                                </TextBlock>
+                                                <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="#CF222E">
+                                                    <Run Text="-" />
+                                                    <Run Text="{Binding Deletions, Mode=OneWay}" />
+                                                </TextBlock>
+                                            </StackPanel>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
+                </ScrollViewer>
 
-                    <!--  Comments section  -->
-                    <StackPanel Visibility="{Binding Details.Comments.Count, Converter={StaticResource IntGreaterThanZeroToVisibilityConverter}}">
-                        <Separator Margin="0,12" />
-                        <TextBlock
-                            Margin="0,0,0,8"
-                            FontSize="13"
-                            FontWeight="SemiBold"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}">
-                            <Run Text="Comments (" /><Run Text="{Binding Details.Comments.Count, Mode=OneWay}" /><Run Text=")" />
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsUpdatesSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Margin="18,16,18,18">
+                        <TextBlock Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Details.Updates.Count, Mode=OneWay}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                            No updates reported.
                         </TextBlock>
-                        <ItemsControl ItemsSource="{Binding Details.Comments}">
+
+                        <ItemsControl ItemsSource="{Binding Details.Updates}">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type models:PullRequestCommentInfo}">
-                                    <Border
-                                        Margin="0,2"
-                                        Padding="10,8"
-                                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                        CornerRadius="4">
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,8" Padding="12,10" Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="8">
                                         <StackPanel>
-                                            <StackPanel Orientation="Horizontal">
-                                                <ic:SymbolIcon
-                                                    Margin="0,0,4,0"
-                                                    FontSize="11"
-                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                    Symbol="Person" />
-                                                <TextBlock
-                                                    FontSize="11"
-                                                    FontWeight="SemiBold"
-                                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                                    Text="{Binding AuthorLogin}" />
-                                                <TextBlock
-                                                    Margin="8,0,0,0"
-                                                    FontSize="10"
-                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                    Text="{Binding CreatedAt, StringFormat='{}{0:MMM d, yyyy HH:mm}'}" />
-                                                <TextBlock
-                                                    Margin="8,0,0,0"
-                                                    FontFamily="Cascadia Code, Consolas, monospace"
-                                                    FontSize="10"
-                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                    Text="{Binding FilePath}"
-                                                    Visibility="{Binding FilePath, Converter={StaticResource NullToVisibilityConverter}}" />
-                                            </StackPanel>
-                                            <TextBlock
-                                                Margin="0,4,0,0"
-                                                FontSize="11"
-                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                Text="{Binding Body}"
-                                                TextWrapping="Wrap" />
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding Title}" />
+                                                <TextBlock Grid.Column="1" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="{Binding Timestamp, StringFormat='{}{0:MMM d, yyyy h:mm tt}'}" />
+                                            </Grid>
+
+                                            <TextBlock Margin="0,6,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding Description}" TextWrapping="Wrap" Visibility="{Binding Description, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                                            <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding Commits}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Button
+                                                            Margin="0,0,0,4"
+                                                            Padding="0"
+                                                            HorizontalContentAlignment="Stretch"
+                                                            Background="Transparent"
+                                                            BorderThickness="0"
+                                                            Command="{Binding DataContext.OpenUrlCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding Url}">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" FontFamily="Cascadia Code, Consolas, monospace" Foreground="#28A745" Text="{Binding ShortSha, Mode=OneWay}" />
+                                                                <TextBlock Grid.Column="1" Margin="16,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding Message, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock Grid.Column="2" Margin="18,0,4,0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="{Binding AuthorDisplayName}" />
+                                                            </Grid>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
+                </ScrollViewer>
 
-                    <!--  Requested Reviewers section  -->
-                    <StackPanel Visibility="{Binding Details.RequestedReviewers.Count, Converter={StaticResource IntGreaterThanZeroToVisibilityConverter}}">
-                        <Separator Margin="0,12" />
-                        <TextBlock
-                            Margin="0,0,0,8"
-                            FontSize="13"
-                            FontWeight="SemiBold"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="Requested Reviewers" />
-                        <ItemsControl ItemsSource="{Binding Details.RequestedReviewers}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsCommitsSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Margin="18,16,18,18">
+                        <TextBlock Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Details.Commits.Count, Mode=OneWay}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                            No commits reported.
+                        </TextBlock>
+
+                        <ItemsControl ItemsSource="{Binding Details.Commits}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Margin="0,2" Orientation="Horizontal">
-                                        <ic:SymbolIcon
-                                            Margin="0,0,6,0"
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                            Symbol="Person" />
-                                        <TextBlock
-                                            FontSize="11"
-                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                            Text="{Binding DisplayName}" />
-                                    </StackPanel>
+                                    <Button
+                                        Margin="0,0,0,6"
+                                        Padding="0"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Command="{Binding DataContext.OpenUrlCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding Url}">
+                                        <Border Padding="12,10" Background="{DynamicResource ControlFillColorSecondaryBrush}" CornerRadius="8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                    <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextWrapping="Wrap">
+                                                        <Run Text="{Binding Message, Mode=OneWay}" />
+                                                        <Run Text="  " />
+                                                        <Run Foreground="#28A745" Text="{Binding ShortSha, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                    <TextBlock Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding Description, Mode=OneWay}" TextWrapping="Wrap" Visibility="{Binding Description, Converter={StaticResource NullToVisibilityConverter}}" />
+                                                </StackPanel>
+
+                                                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                                    <TextBlock Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="{Binding AuthorDisplayName, Mode=OneWay}" TextAlignment="Right" />
+                                                    <TextBlock Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="{Binding Timestamp, Mode=OneWay, StringFormat='{}{0:MMM d, yyyy h:mm tt}'}" TextAlignment="Right" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
-                </StackPanel>
-            </ScrollViewer>
+                </ScrollViewer>
+            </Grid>
         </Grid>
     </Grid>
 </UserControl>

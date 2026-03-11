@@ -10,15 +10,22 @@ public partial class GitGraphCanvas
     private ScrollViewer? _parentScrollViewer;
     private bool _scrollViewerSearched;
     private bool _scrollViewerHooked;
+    private bool _viewportRefreshPending;
+    private bool _layoutRefreshHooked;
+    private int _layoutRefreshPassesRemaining;
+    private double _lastEffectiveViewportHeight = -1;
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         ResetScrollViewerCache();
         AttachToScrollViewer();
+        BeginViewportTracking();
+        ScheduleViewportRefresh();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        EndViewportTracking();
         DetachFromScrollViewer();
     }
 
@@ -59,13 +66,16 @@ public partial class GitGraphCanvas
     private void ParentScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
         // Re-render visible range when scrolling to keep culling accurate.
+        if (Math.Abs(e.ViewportHeightChange) > 0.5)
+            BeginViewportTracking(2);
         InvalidateVisual();
     }
 
     private void ParentScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         // Re-render when viewport size changes (window resize/maximize).
-        InvalidateVisual();
+        BeginViewportTracking(3);
+        ScheduleViewportRefresh();
     }
 
     /// <summary>
@@ -88,5 +98,72 @@ public partial class GitGraphCanvas
             parent = VisualTreeHelper.GetParent(parent);
         }
         return null;
+    }
+
+    private void ScheduleViewportRefresh()
+    {
+        if (!IsLoaded || _viewportRefreshPending)
+            return;
+
+        _viewportRefreshPending = true;
+        Dispatcher.InvokeAsync(() =>
+        {
+            _viewportRefreshPending = false;
+            AttachToScrollViewer();
+            InvalidateMeasure();
+            InvalidateVisual();
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void BeginViewportTracking(int passCount = 6)
+    {
+        _layoutRefreshPassesRemaining = Math.Max(_layoutRefreshPassesRemaining, passCount);
+
+        if (_layoutRefreshHooked)
+            return;
+
+        LayoutUpdated += GitGraphCanvas_LayoutUpdated;
+        _layoutRefreshHooked = true;
+    }
+
+    private void EndViewportTracking()
+    {
+        if (!_layoutRefreshHooked)
+            return;
+
+        LayoutUpdated -= GitGraphCanvas_LayoutUpdated;
+        _layoutRefreshHooked = false;
+        _layoutRefreshPassesRemaining = 0;
+        _lastEffectiveViewportHeight = -1;
+    }
+
+    private void GitGraphCanvas_LayoutUpdated(object? sender, EventArgs e)
+    {
+        if (!IsLoaded)
+            return;
+
+        AttachToScrollViewer();
+
+        var effectiveViewportHeight = GetEffectiveViewportHeight(_parentScrollViewer);
+        if (effectiveViewportHeight <= 0 || double.IsNaN(effectiveViewportHeight))
+            return;
+
+        bool viewportChanged = Math.Abs(effectiveViewportHeight - _lastEffectiveViewportHeight) > 0.5;
+        if (viewportChanged)
+        {
+            _lastEffectiveViewportHeight = effectiveViewportHeight;
+            ScheduleViewportRefresh();
+        }
+
+        if (_layoutRefreshPassesRemaining > 0)
+        {
+            _layoutRefreshPassesRemaining--;
+
+            if (!viewportChanged)
+                ScheduleViewportRefresh();
+        }
+
+        if (_layoutRefreshPassesRemaining <= 0 && effectiveViewportHeight >= RowHeight * 8)
+            EndViewportTracking();
     }
 }

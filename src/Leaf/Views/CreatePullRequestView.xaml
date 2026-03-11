@@ -10,6 +10,244 @@
     d:DesignWidth="800"
     mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="BranchComboBoxPopupBackgroundBrush" Color="#FF252B39" />
+
+        <Style x:Key="BranchComboBoxItemStyle" TargetType="{x:Type ComboBoxItem}">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ComboBoxItem}">
+                        <Border x:Name="ItemBorder" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentSelectedBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BranchComboBoxEditableTextBoxStyle" TargetType="{x:Type TextBox}">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource LeafAccentSelectedBrush}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TextBox}">
+                        <ScrollViewer x:Name="PART_ContentHost" Background="Transparent" Focusable="False" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BranchComboBoxToggleButtonStyle" TargetType="{x:Type ToggleButton}">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Border x:Name="ToggleBorder" Background="{TemplateBinding Background}">
+                            <Path
+                                x:Name="Chevron"
+                                Width="10"
+                                Height="6"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Data="M 0 0 L 5 5 L 10 0"
+                                Stroke="{DynamicResource TextFillColorSecondaryBrush}"
+                                StrokeEndLineCap="Round"
+                                StrokeStartLineCap="Round"
+                                StrokeThickness="1.6" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chevron" Property="Stroke" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chevron" Property="Stroke" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chevron" Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BranchComboBoxStyle" TargetType="{x:Type ComboBox}">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="Background" Value="{DynamicResource TextControlBackground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TextControlElevationBorderBrush}" />
+            <Setter Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThickness}" />
+            <Setter Property="Padding" Value="10,0,8,0" />
+            <Setter Property="MinHeight" Value="{DynamicResource TextControlThemeMinHeight}" />
+            <Setter Property="MinWidth" Value="{DynamicResource TextControlThemeMinWidth}" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="TextBoxBase.SelectionBrush" Value="{DynamicResource LeafAccentSelectedBrush}" />
+            <Setter Property="TextBoxBase.CaretBrush" Value="{DynamicResource TextControlForeground}" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource BranchComboBoxItemStyle}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ComboBox}">
+                        <Grid SnapsToDevicePixels="True">
+                            <Border
+                                x:Name="OuterBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{DynamicResource ControlCornerRadius}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="34" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <ContentPresenter
+                                        x:Name="ContentSite"
+                                        Margin="{TemplateBinding Padding}"
+                                        VerticalAlignment="Center"
+                                        Content="{TemplateBinding SelectionBoxItem}"
+                                        ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                        ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                        IsHitTestVisible="False" />
+
+                                    <TextBox
+                                        x:Name="PART_EditableTextBox"
+                                        Grid.Column="0"
+                                        Margin="{TemplateBinding Padding}"
+                                        Background="Transparent"
+                                        Foreground="{TemplateBinding Foreground}"
+                                        HorizontalContentAlignment="Left"
+                                        Style="{StaticResource BranchComboBoxEditableTextBoxStyle}"
+                                        VerticalContentAlignment="Center"
+                                        Visibility="Hidden" />
+
+                                    <ToggleButton
+                                        x:Name="DropDownToggle"
+                                        Grid.Column="1"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"
+                                        Background="Transparent"
+                                        ClickMode="Press"
+                                        Focusable="False"
+                                        IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                        Style="{StaticResource BranchComboBoxToggleButtonStyle}" />
+                                </Grid>
+                            </Border>
+
+                            <Popup
+                                x:Name="Popup"
+                                AllowsTransparency="True"
+                                Focusable="False"
+                                IsOpen="{TemplateBinding IsDropDownOpen}"
+                                Placement="Bottom"
+                                PopupAnimation="Fade">
+                                <Border
+                                    x:Name="PopupBorder"
+                                    MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                    MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                    Margin="0,4,0,0"
+                                    Background="{StaticResource BranchComboBoxPopupBackgroundBrush}"
+                                    BorderBrush="{DynamicResource TextControlElevationBorderBrush}"
+                                    BorderThickness="{DynamicResource TextControlBorderThemeThickness}"
+                                    CornerRadius="{DynamicResource ControlCornerRadius}">
+                                    <ScrollViewer
+                                        Margin="4"
+                                        Background="{StaticResource BranchComboBoxPopupBackgroundBrush}"
+                                        CanContentScroll="True">
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEditable" Value="True">
+                                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="ContentSite" Property="Visibility" Value="Hidden" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="OuterBorder" Property="Background" Value="{DynamicResource TextControlBackgroundPointerOver}" />
+                                <Setter TargetName="OuterBorder" Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushPointerOver}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="OuterBorder" Property="Background" Value="{DynamicResource TextControlBackgroundFocused}" />
+                                <Setter TargetName="OuterBorder" Property="BorderBrush" Value="{DynamicResource TextControlElevationBorderFocusedBrush}" />
+                                <Setter TargetName="OuterBorder" Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThicknessFocused}" />
+                            </Trigger>
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="OuterBorder" Property="Background" Value="{DynamicResource TextControlBackgroundFocused}" />
+                                <Setter TargetName="OuterBorder" Property="BorderBrush" Value="{DynamicResource TextControlElevationBorderFocusedBrush}" />
+                                <Setter TargetName="OuterBorder" Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThicknessFocused}" />
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="PopupBorder" Property="MinHeight" Value="34" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="OuterBorder" Property="Background" Value="{DynamicResource TextControlBackgroundDisabled}" />
+                                <Setter TargetName="OuterBorder" Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushDisabled}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextControlForegroundDisabled}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="SelectedReviewerChipTemplate">
+            <Border
+                Margin="0,0,4,4"
+                Padding="6,3"
+                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                CornerRadius="10">
+                <StackPanel Orientation="Horizontal">
+                    <ic:SymbolIcon
+                        Margin="0,0,4,0"
+                        FontSize="10"
+                        Symbol="Person" />
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontSize="11"
+                        Text="{Binding DisplayName}" />
+                    <Button
+                        Margin="4,0,0,0"
+                        Padding="2"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Command="{Binding DataContext.RemoveReviewerCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                        CommandParameter="{Binding}"
+                        Cursor="Hand"
+                        Focusable="False"
+                        IsTabStop="False">
+                        <ic:SymbolIcon FontSize="10" Symbol="Dismiss" />
+                    </Button>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
     <Grid>
         <!--  Submitting overlay  -->
         <Grid
@@ -43,27 +281,43 @@
                 Padding="16,12"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="0,0,0,1">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <ic:SymbolIcon
-                            Margin="0,0,8,0"
-                            VerticalAlignment="Center"
-                            FontSize="18"
-                            Foreground="#8250DF"
-                            Symbol="BranchRequest" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button
+                        Grid.Column="0"
+                        Margin="0,0,14,0"
+                        Padding="6,4"
+                        VerticalAlignment="Top"
+                        Command="{Binding CancelCommand}">
+                        <ic:SymbolIcon FontSize="14" Symbol="ArrowLeft" />
+                    </Button>
+
+                    <StackPanel Grid.Column="1">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon
+                                Margin="0,0,8,0"
+                                VerticalAlignment="Center"
+                                FontSize="18"
+                                Foreground="#28A745"
+                                Symbol="BranchRequest" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                Text="Create Pull Request" />
+                        </StackPanel>
                         <TextBlock
-                            VerticalAlignment="Center"
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="Create Pull Request" />
+                            Margin="26,4,0,0"
+                            FontSize="11"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Text="Open a pull request to propose merging your changes into another branch." />
                     </StackPanel>
-                    <TextBlock
-                        Margin="26,4,0,0"
-                        FontSize="11"
-                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                        Text="Open a pull request to propose merging your changes into another branch." />
-                </StackPanel>
+                </Grid>
             </Border>
 
             <!--  Form  -->
@@ -103,6 +357,8 @@
                         IsEditable="True"
                         IsTextSearchEnabled="True"
                         ItemsSource="{Binding AvailableBranches}"
+                        Style="{StaticResource BranchComboBoxStyle}"
+                        TabIndex="0"
                         Text="{Binding SourceBranch, UpdateSourceTrigger=PropertyChanged}" />
 
                     <!--  Target branch  -->
@@ -122,6 +378,8 @@
                         IsEditable="True"
                         IsTextSearchEnabled="True"
                         ItemsSource="{Binding AvailableBranches}"
+                        Style="{StaticResource BranchComboBoxStyle}"
+                        TabIndex="1"
                         Text="{Binding TargetBranch, UpdateSourceTrigger=PropertyChanged}" />
 
                     <!--  Title  -->
@@ -133,6 +391,7 @@
                         Text="Title" />
                     <TextBox
                         Margin="0,0,0,16"
+                        TabIndex="2"
                         Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" />
 
                     <!--  Description  -->
@@ -151,6 +410,7 @@
                         Height="150"
                         Margin="0,0,0,16"
                         AcceptsReturn="True"
+                        TabIndex="3"
                         Text="{Binding Body, UpdateSourceTrigger=PropertyChanged}"
                         TextWrapping="Wrap"
                         VerticalScrollBarVisibility="Auto" />
@@ -172,7 +432,7 @@
                                 <Setter Property="Text" Value="Search for collaborators or teams by name. Click a result to add them." />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding SupportsRequiredReviewers}" Value="True">
-                                        <Setter Property="Text" Value="Search for collaborators or teams by name. Click a result to add them. Click Required/Optional to toggle." />
+                                        <Setter Property="Text" Value="Search in either section below to add reviewers directly as required or optional." />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -180,148 +440,274 @@
                     </TextBlock>
 
                     <!--  Selected reviewers  -->
-                    <ItemsControl
+                    <StackPanel
                         Margin="0,0,0,4"
-                        ItemsSource="{Binding SelectedReviewers}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border
-                                    Margin="0,0,4,4"
-                                    Padding="6,3"
-                                    Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                    CornerRadius="10">
-                                    <StackPanel Orientation="Horizontal">
-                                        <ic:SymbolIcon
-                                            Margin="0,0,4,0"
-                                            FontSize="10"
-                                            Symbol="Person" />
-                                        <TextBlock
-                                            VerticalAlignment="Center"
-                                            FontSize="11"
-                                            Text="{Binding DisplayName}" />
-                                        <!--  Required/Optional toggle (Azure DevOps only)  -->
-                                        <Button
-                                            Margin="4,0,0,0"
-                                            Padding="4,1"
-                                            VerticalAlignment="Center"
-                                            Background="Transparent"
-                                            BorderThickness="0"
-                                            Command="{Binding DataContext.ToggleReviewerRequiredCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            Cursor="Hand"
-                                            Visibility="{Binding DataContext.SupportsRequiredReviewers, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}">
-                                            <TextBlock FontSize="9" VerticalAlignment="Center">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Text" Value="Optional" />
-                                                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsRequired}" Value="True">
-                                                                <Setter Property="Text" Value="Required" />
-                                                                <Setter Property="Foreground" Value="#D29922" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </Button>
-                                        <Button
-                                            Margin="4,0,0,0"
-                                            Padding="2"
-                                            Background="Transparent"
-                                            BorderThickness="0"
-                                            Command="{Binding DataContext.RemoveReviewerCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            Cursor="Hand">
-                                            <ic:SymbolIcon FontSize="10" Symbol="Dismiss" />
-                                        </Button>
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        Visibility="{Binding SupportsRequiredReviewers, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock
+                            Margin="0,0,0,4"
+                            FontSize="11"
+                            FontWeight="SemiBold"
+                            Foreground="#28A745"
+                            Text="Required reviewers" />
+                        <ItemsControl
+                            Margin="0,0,0,8"
+                            ItemTemplate="{StaticResource SelectedReviewerChipTemplate}"
+                            ItemsSource="{Binding RequiredSelectedReviewers}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                        <Grid Margin="0,0,0,4">
+                            <TextBox
+                                x:Name="RequiredReviewerSearchBox"
+                                TabIndex="4"
+                                Text="{Binding RequiredReviewerSearchText, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock
+                                Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                IsHitTestVisible="False"
+                                Text="Search required reviewers...">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Text, ElementName=RequiredReviewerSearchBox}" Value="">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                        <ProgressBar
+                            Height="2"
+                            Margin="0,0,0,4"
+                            IsIndeterminate="True"
+                            Visibility="{Binding IsSearchingRequiredReviewers, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <TextBlock
+                            Margin="0,0,0,4"
+                            FontSize="11"
+                            FontStyle="Italic"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Text="{Binding RequiredReviewerSearchStatus}"
+                            TextWrapping="Wrap"
+                            Visibility="{Binding RequiredReviewerSearchStatus, Converter={StaticResource NullToVisibilityConverter}}" />
+                        <ItemsControl
+                            Margin="0,0,0,12"
+                            ItemsSource="{Binding RequiredReviewerSearchResults}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border
+                                        Margin="0,1"
+                                        Padding="8,6"
+                                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                        CornerRadius="4"
+                                        Cursor="Hand"
+                                        MouseLeftButtonDown="ReviewerResult_Click"
+                                        Tag="Required">
+                                        <StackPanel Orientation="Horizontal">
+                                            <ic:SymbolIcon
+                                                Margin="0,0,6,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                Symbol="Person" />
+                                            <TextBlock
+                                                FontSize="11"
+                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                Text="{Binding DisplayName}" />
+                                            <TextBlock
+                                                Margin="8,0,0,0"
+                                                FontSize="10"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                Text="{Binding SecondaryText}"
+                                                Visibility="{Binding SecondaryText, Converter={StaticResource NullToVisibilityConverter}}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock
+                            Margin="0,0,0,4"
+                            FontSize="11"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="Optional reviewers" />
+                        <ItemsControl
+                            Margin="0,0,0,8"
+                            ItemTemplate="{StaticResource SelectedReviewerChipTemplate}"
+                            ItemsSource="{Binding OptionalSelectedReviewers}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                        <Grid Margin="0,0,0,4">
+                            <TextBox
+                                x:Name="OptionalReviewerSearchBox"
+                                TabIndex="5"
+                                Text="{Binding OptionalReviewerSearchText, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock
+                                Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                IsHitTestVisible="False"
+                                Text="Search optional reviewers...">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Text, ElementName=OptionalReviewerSearchBox}" Value="">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                        <ProgressBar
+                            Height="2"
+                            Margin="0,0,0,4"
+                            IsIndeterminate="True"
+                            Visibility="{Binding IsSearchingOptionalReviewers, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <TextBlock
+                            Margin="0,0,0,4"
+                            FontSize="11"
+                            FontStyle="Italic"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Text="{Binding OptionalReviewerSearchStatus}"
+                            TextWrapping="Wrap"
+                            Visibility="{Binding OptionalReviewerSearchStatus, Converter={StaticResource NullToVisibilityConverter}}" />
+                        <ItemsControl
+                            Margin="0,0,0,12"
+                            ItemsSource="{Binding OptionalReviewerSearchResults}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border
+                                        Margin="0,1"
+                                        Padding="8,6"
+                                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                        CornerRadius="4"
+                                        Cursor="Hand"
+                                        MouseLeftButtonDown="ReviewerResult_Click"
+                                        Tag="Optional">
+                                        <StackPanel Orientation="Horizontal">
+                                            <ic:SymbolIcon
+                                                Margin="0,0,6,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                Symbol="Person" />
+                                            <TextBlock
+                                                FontSize="11"
+                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                Text="{Binding DisplayName}" />
+                                            <TextBlock
+                                                Margin="8,0,0,0"
+                                                FontSize="10"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                Text="{Binding SecondaryText}"
+                                                Visibility="{Binding SecondaryText, Converter={StaticResource NullToVisibilityConverter}}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
 
-                    <!--  Reviewer search  -->
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox
-                            Grid.Column="0"
-                            KeyDown="ReviewerSearch_KeyDown"
-                            Text="{Binding ReviewerSearchText, UpdateSourceTrigger=PropertyChanged}" />
-                        <Button
-                            Grid.Column="1"
-                            Margin="4,0,0,0"
-                            Padding="8,4"
-                            Command="{Binding SearchReviewersCommand}"
-                            Content="Search"
-                            IsEnabled="{Binding IsSearchingReviewers, Converter={StaticResource InverseBoolConverter}}" />
-                    </Grid>
-
-                    <!--  Search loading indicator  -->
-                    <ProgressBar
-                        Height="2"
+                    <StackPanel
                         Margin="0,0,0,4"
-                        IsIndeterminate="True"
-                        Visibility="{Binding IsSearchingReviewers, Converter={StaticResource BoolToVisibilityConverter}}" />
-
-                    <!--  Search status message (no results / errors)  -->
-                    <TextBlock
-                        Margin="0,0,0,8"
-                        FontSize="11"
-                        FontStyle="Italic"
-                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                        Text="{Binding ReviewerSearchStatus}"
-                        TextWrapping="Wrap"
-                        Visibility="{Binding ReviewerSearchStatus, Converter={StaticResource NullToVisibilityConverter}}" />
-
-                    <!--  Reviewer search results  -->
-                    <ItemsControl
-                        Margin="0,0,0,12"
-                        ItemsSource="{Binding ReviewerSearchResults}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border
-                                    Margin="0,1"
-                                    Padding="8,6"
-                                    Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                    CornerRadius="4"
-                                    Cursor="Hand"
-                                    MouseLeftButtonDown="ReviewerResult_Click">
-                                    <StackPanel Orientation="Horizontal">
-                                        <ic:SymbolIcon
-                                            Margin="0,0,6,0"
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                            Symbol="Person" />
-                                        <TextBlock
-                                            FontSize="11"
-                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                            Text="{Binding DisplayName}" />
-                                        <TextBlock
-                                            Margin="8,0,0,0"
-                                            FontSize="10"
-                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                            Text="{Binding SecondaryText}"
-                                            Visibility="{Binding SecondaryText, Converter={StaticResource NullToVisibilityConverter}}" />
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        Visibility="{Binding SupportsRequiredReviewers, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
+                        <ItemsControl
+                            Margin="0,0,0,8"
+                            ItemTemplate="{StaticResource SelectedReviewerChipTemplate}"
+                            ItemsSource="{Binding SelectedReviewers}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                        <Grid>
+                            <TextBox
+                                x:Name="SingleReviewerSearchBox"
+                                TabIndex="4"
+                                Text="{Binding OptionalReviewerSearchText, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock
+                                Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                IsHitTestVisible="False"
+                                Text="Search reviewers...">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Text, ElementName=SingleReviewerSearchBox}" Value="">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                        <ProgressBar
+                            Height="2"
+                            Margin="0,0,0,4"
+                            IsIndeterminate="True"
+                            Visibility="{Binding IsSearchingOptionalReviewers, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <TextBlock
+                            Margin="0,0,0,8"
+                            FontSize="11"
+                            FontStyle="Italic"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Text="{Binding OptionalReviewerSearchStatus}"
+                            TextWrapping="Wrap"
+                            Visibility="{Binding OptionalReviewerSearchStatus, Converter={StaticResource NullToVisibilityConverter}}" />
+                        <ItemsControl
+                            Margin="0,0,0,12"
+                            ItemsSource="{Binding OptionalReviewerSearchResults}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border
+                                        Margin="0,1"
+                                        Padding="8,6"
+                                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                        CornerRadius="4"
+                                        Cursor="Hand"
+                                        MouseLeftButtonDown="ReviewerResult_Click"
+                                        Tag="Optional">
+                                        <StackPanel Orientation="Horizontal">
+                                            <ic:SymbolIcon
+                                                Margin="0,0,6,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                Symbol="Person" />
+                                            <TextBlock
+                                                FontSize="11"
+                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                Text="{Binding DisplayName}" />
+                                            <TextBlock
+                                                Margin="8,0,0,0"
+                                                FontSize="10"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                Text="{Binding SecondaryText}"
+                                                Visibility="{Binding SecondaryText, Converter={StaticResource NullToVisibilityConverter}}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
 
                     <!--  Draft toggle  -->
                     <CheckBox
                         Margin="0,0,0,4"
                         Content="Create as draft"
                         IsChecked="{Binding IsDraft}"
+                        TabIndex="6"
                         Visibility="{Binding SupportsDraft, Converter={StaticResource BoolToVisibilityConverter}}" />
                     <TextBlock
                         Margin="20,0,0,8"
@@ -340,14 +726,10 @@
                 BorderThickness="0,1,0,0">
                 <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
                     <Button
-                        Margin="0,0,8,0"
-                        Padding="16,6"
-                        Command="{Binding CancelCommand}"
-                        Content="Cancel" />
-                    <Button
                         Padding="16,6"
                         Background="#28A745"
                         Command="{Binding SubmitCommand}"
+                        TabIndex="7"
                         Foreground="White">
                         <StackPanel Orientation="Horizontal">
                             <ic:SymbolIcon

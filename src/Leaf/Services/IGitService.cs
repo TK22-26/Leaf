@@ -212,6 +212,12 @@ public interface IGitService
     Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha);
 
     /// <summary>
+    /// Get a unified diff between two refs.
+    /// Uses three-dot diff semantics so the diff is computed from the merge base to <paramref name="headRef"/>.
+    /// </summary>
+    Task<string> GetRefToRefDiffAsync(string repoPath, string baseRef, string headRef, string? filePath = null);
+
+    /// <summary>
     /// Stash changes.
     /// </summary>
     Task StashAsync(string repoPath, string? message = null);

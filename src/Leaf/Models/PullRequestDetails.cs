@@ -41,9 +41,39 @@ public class PullRequestDetails
     public List<ReviewerInfo> RequestedReviewers { get; init; } = [];
 
     /// <summary>
+    /// Commits included in the pull request.
+    /// </summary>
+    public List<PullRequestCommitInfo> Commits { get; init; } = [];
+
+    /// <summary>
+    /// Update/timeline events for the pull request (provider-specific).
+    /// </summary>
+    public List<PullRequestUpdateInfo> Updates { get; init; } = [];
+
+    /// <summary>
+    /// Labels/tags attached to the pull request.
+    /// </summary>
+    public List<PullRequestLabelInfo> Labels { get; init; } = [];
+
+    /// <summary>
+    /// Work items linked to the pull request.
+    /// </summary>
+    public List<PullRequestWorkItemInfo> WorkItems { get; init; } = [];
+
+    /// <summary>
     /// Whether the PR is mergeable according to the provider.
     /// </summary>
     public bool IsMergeable { get; init; }
+
+    /// <summary>
+    /// Whether the provider reports merge conflicts for this pull request.
+    /// </summary>
+    public bool HasConflicts { get; init; }
+
+    /// <summary>
+    /// Provider-supplied merge/conflict message.
+    /// </summary>
+    public string? MergeStatusMessage { get; init; }
 
     /// <summary>
     /// SHA of the head (source) commit.

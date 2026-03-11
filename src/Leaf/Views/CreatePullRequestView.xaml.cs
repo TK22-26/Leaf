@@ -16,20 +16,19 @@ public partial class CreatePullRequestView : UserControl
         InitializeComponent();
     }
 
-    private void ReviewerSearch_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && DataContext is CreatePullRequestViewModel vm)
-        {
-            vm.SearchReviewersCommand.Execute(null);
-        }
-    }
-
     private void ReviewerResult_Click(object sender, MouseButtonEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: ReviewerInfo reviewer }
+        if (sender is FrameworkElement { DataContext: ReviewerInfo reviewer } element
             && DataContext is CreatePullRequestViewModel vm)
         {
-            vm.AddReviewerCommand.Execute(reviewer);
+            if (string.Equals(element.Tag as string, "Required", StringComparison.OrdinalIgnoreCase))
+            {
+                vm.AddRequiredReviewerCommand.Execute(reviewer);
+            }
+            else
+            {
+                vm.AddOptionalReviewerCommand.Execute(reviewer);
+            }
         }
     }
 }

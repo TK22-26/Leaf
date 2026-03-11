@@ -54,4 +54,9 @@ public class PullRequestCommentInfo
     /// Whether this comment thread is resolved.
     /// </summary>
     public bool IsResolved { get; set; }
+
+    /// <summary>
+    /// Whether this entry is provider-generated activity rather than a user comment.
+    /// </summary>
+    public bool IsSystemActivity { get; set; }
 }

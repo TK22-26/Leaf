@@ -685,10 +685,32 @@
                     </views:GitGraphView>
 
                     <!--  Pull request detail view  -->
-                    <views:PullRequestDetailView DataContext="{Binding PullRequestDetailViewModel}" Visibility="{Binding DataContext.ContentMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ContentModeToVisibilityConverter}, ConverterParameter=PullRequestDetail}" />
+                    <views:PullRequestDetailView DataContext="{Binding PullRequestDetailViewModel}">
+                        <views:PullRequestDetailView.Style>
+                            <Style TargetType="views:PullRequestDetailView">
+                                <Setter Property="Visibility" Value="{Binding DataContext.ContentMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ContentModeToVisibilityConverter}, ConverterParameter=PullRequestDetail}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding DataContext.IsDiffViewerVisible, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </views:PullRequestDetailView.Style>
+                    </views:PullRequestDetailView>
 
                     <!--  Pull request create form  -->
-                    <views:CreatePullRequestView DataContext="{Binding CreatePullRequestViewModel}" Visibility="{Binding DataContext.ContentMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ContentModeToVisibilityConverter}, ConverterParameter=PullRequestCreate}" />
+                    <views:CreatePullRequestView DataContext="{Binding CreatePullRequestViewModel}">
+                        <views:CreatePullRequestView.Style>
+                            <Style TargetType="views:CreatePullRequestView">
+                                <Setter Property="Visibility" Value="{Binding DataContext.ContentMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ContentModeToVisibilityConverter}, ConverterParameter=PullRequestCreate}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding DataContext.IsDiffViewerVisible, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </views:CreatePullRequestView.Style>
+                    </views:CreatePullRequestView>
                 </Grid>
 
                 <!--  Right panel: Commit details / Working changes / Merge Status (hidden in PR mode)  -->

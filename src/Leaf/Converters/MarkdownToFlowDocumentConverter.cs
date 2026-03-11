@@ -1,9 +1,15 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
+using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Xml.Linq;
 
 namespace Leaf.Converters;
 
@@ -14,6 +20,9 @@ namespace Leaf.Converters;
 public partial class MarkdownToFlowDocumentConverter : IValueConverter
 {
     private static readonly FontFamily MonospaceFont = new("Cascadia Mono, Consolas, Courier New");
+    private static readonly Color BadgeLeftColor = Color.FromRgb(0x4D, 0x4D, 0x4D);
+    private static readonly HttpClient BadgeHttpClient = new() { Timeout = TimeSpan.FromSeconds(2) };
+    private static readonly ConcurrentDictionary<string, BadgeDefinition?> BadgeCache = new(StringComparer.OrdinalIgnoreCase);
     private const double BaseSize = 13.0;
 
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -22,6 +31,7 @@ public partial class MarkdownToFlowDocumentConverter : IValueConverter
         {
             FontFamily = new FontFamily("Segoe UI"),
             FontSize = BaseSize,
+            Foreground = ResolveBrush("TextFillColorTertiaryBrush", Color.FromRgb(0xA9, 0xB4, 0xC1)),
             PagePadding = new Thickness(0)
         };
 
@@ -47,38 +57,35 @@ public partial class MarkdownToFlowDocumentConverter : IValueConverter
                 }
                 i++; // consume closing ```
 
-                var codePara = new Paragraph
+                doc.Blocks.Add(MakeCodeBlock(codeLines));
+                continue;
+            }
+
+            var trimmedLine = line.Trim();
+
+            if (TryParseMarkdownImage(trimmedLine, out var imageSpec))
+            {
+                var imageSpecs = new List<MarkdownImageSpec> { imageSpec };
+                var nextIndex = i + 1;
+
+                while (nextIndex < lines.Length && TryParseMarkdownImage(lines[nextIndex].Trim(), out var nextImageSpec))
                 {
-                    Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E)),
-                    Padding = new Thickness(8),
-                    Margin = new Thickness(0, 4, 0, 4),
-                    FontFamily = MonospaceFont,
-                    FontSize = BaseSize - 1
-                };
-                codePara.Inlines.Add(new Run(string.Join("\n", codeLines))
-                {
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xCE, 0xCE, 0xCE))
-                });
-                doc.Blocks.Add(codePara);
+                    imageSpecs.Add(nextImageSpec);
+                    nextIndex++;
+                }
+
+                doc.Blocks.Add(MakeImageRowBlock(imageSpecs));
+                i = nextIndex;
                 continue;
             }
 
             // Headers
-            if (line.StartsWith("### ", StringComparison.Ordinal))
+            var headingMatch = HeadingPattern().Match(line);
+            if (headingMatch.Success)
             {
-                doc.Blocks.Add(MakeHeaderParagraph(line[4..], BaseSize + 1));
-                i++;
-                continue;
-            }
-            if (line.StartsWith("## ", StringComparison.Ordinal))
-            {
-                doc.Blocks.Add(MakeHeaderParagraph(line[3..], BaseSize + 4));
-                i++;
-                continue;
-            }
-            if (line.StartsWith("# ", StringComparison.Ordinal))
-            {
-                doc.Blocks.Add(MakeHeaderParagraph(line[2..], BaseSize + 8));
+                var level = headingMatch.Groups[1].Value.Length;
+                var headingText = headingMatch.Groups[2].Value.Trim();
+                doc.Blocks.Add(MakeHeaderParagraph(headingText, GetHeaderFontSize(level)));
                 i++;
                 continue;
             }
@@ -151,6 +158,7 @@ public partial class MarkdownToFlowDocumentConverter : IValueConverter
     {
         var para = new Paragraph
         {
+            Foreground = ResolveBrush("TextFillColorPrimaryBrush", Color.FromRgb(0xF3, 0xF4, 0xF6)),
             Margin = new Thickness(0, 8, 0, 2)
         };
         var bold = new Bold(new Run(text))
@@ -159,6 +167,354 @@ public partial class MarkdownToFlowDocumentConverter : IValueConverter
         };
         para.Inlines.Add(bold);
         return para;
+    }
+
+    private static Block MakeCodeBlock(IReadOnlyList<string> codeLines)
+    {
+        var textBlock = new TextBlock
+        {
+            FontFamily = MonospaceFont,
+            FontSize = BaseSize,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0xF7, 0xFA)),
+            Text = string.Join("\n", codeLines),
+            TextWrapping = TextWrapping.NoWrap
+        };
+
+        var border = new Border
+        {
+            Margin = new Thickness(0, 4, 0, 4),
+            Padding = new Thickness(0),
+            Background = new SolidColorBrush(Color.FromRgb(0x14, 0x19, 0x23)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x4B, 0x5A, 0x6F)),
+            BorderThickness = new Thickness(1.25),
+            CornerRadius = new CornerRadius(6),
+            Child = new Border
+            {
+                Padding = new Thickness(12, 9, 12, 9),
+                Background = new SolidColorBrush(Color.FromRgb(0x18, 0x1F, 0x2A)),
+                CornerRadius = new CornerRadius(6),
+                Child = textBlock
+            }
+        };
+
+        return new BlockUIContainer(border);
+    }
+
+    private static Block MakeImageRowBlock(IReadOnlyList<MarkdownImageSpec> imageSpecs)
+    {
+        var wrapPanel = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal
+        };
+
+        foreach (var imageSpec in imageSpecs)
+        {
+            var element = CreateImageElement(imageSpec);
+            element.Margin = new Thickness(0, 0, 6, 6);
+            wrapPanel.Children.Add(element);
+        }
+
+        return new BlockUIContainer(wrapPanel)
+        {
+            Margin = new Thickness(0, 4, 0, 4)
+        };
+    }
+
+    private static FrameworkElement CreateImageElement(MarkdownImageSpec imageSpec)
+    {
+        if (TryCreateBadgeElement(imageSpec, out var badgeElement))
+            return badgeElement;
+
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.UriSource = new Uri(imageSpec.ImageUrl, UriKind.Absolute);
+            bitmap.CacheOption = BitmapCacheOption.OnDemand;
+            bitmap.EndInit();
+
+            FrameworkElement imageElement = new Image
+            {
+                Source = bitmap,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                MaxHeight = 56
+            };
+
+            if (!string.IsNullOrWhiteSpace(imageSpec.NavigateUrl))
+                imageElement = WrapInLinkButton(imageElement, imageSpec.NavigateUrl);
+
+            return imageElement;
+        }
+        catch
+        {
+            return CreateSimpleBadgeElement(string.IsNullOrWhiteSpace(imageSpec.AltText) ? imageSpec.ImageUrl : imageSpec.AltText);
+        }
+    }
+
+    private static bool TryCreateBadgeElement(MarkdownImageSpec imageSpec, out FrameworkElement element)
+    {
+        element = null!;
+
+        if (TryParseShieldsBadge(imageSpec.ImageUrl, out var shieldBadge) ||
+            TryParseSvgBadge(imageSpec.ImageUrl, imageSpec.AltText, out shieldBadge))
+        {
+            element = CreateBadgeElement(shieldBadge);
+            if (!string.IsNullOrWhiteSpace(imageSpec.NavigateUrl))
+                element = WrapInLinkButton(element, imageSpec.NavigateUrl);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static FrameworkElement CreateBadgeElement(BadgeDefinition badge)
+    {
+        var border = new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            SnapsToDevicePixels = true
+        };
+
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal
+        };
+
+        panel.Children.Add(new Border
+        {
+            Background = new SolidColorBrush(badge.LeftColor),
+            Padding = new Thickness(10, 4, badge.RightText == null ? 10 : 8, 4),
+            Child = new TextBlock
+            {
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                Text = badge.LeftText
+            }
+        });
+
+        if (!string.IsNullOrWhiteSpace(badge.RightText))
+        {
+            panel.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(badge.RightColor),
+                Padding = new Thickness(8, 4, 10, 4),
+                Child = new TextBlock
+                {
+                    FontSize = 12,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = Brushes.White,
+                    Text = badge.RightText
+                }
+            });
+        }
+
+        border.Child = panel;
+        return border;
+    }
+
+    private static FrameworkElement CreateSimpleBadgeElement(string text)
+    {
+        return new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0x2D, 0x34, 0x3F)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x4B, 0x5A, 0x6F)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(10, 4, 10, 4),
+            Child = new TextBlock
+            {
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                Text = text
+            }
+        };
+    }
+
+    private static double GetHeaderFontSize(int level) => level switch
+    {
+        1 => BaseSize + 8,
+        2 => BaseSize + 4,
+        3 => BaseSize + 1,
+        4 => BaseSize,
+        5 => BaseSize - 1,
+        _ => BaseSize - 2
+    };
+
+    private static bool LooksLikeBadgeOrSvg(string imageUrl)
+        => imageUrl.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
+           || imageUrl.Contains("shields.io", StringComparison.OrdinalIgnoreCase)
+           || imageUrl.Contains("/badge", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryParseMarkdownImage(string line, out MarkdownImageSpec spec)
+    {
+        var linkedImageMatch = LinkedImagePattern().Match(line);
+        if (linkedImageMatch.Success)
+        {
+            spec = new MarkdownImageSpec(
+                linkedImageMatch.Groups[1].Value,
+                linkedImageMatch.Groups[2].Value,
+                linkedImageMatch.Groups[3].Value);
+            return true;
+        }
+
+        var imageMatch = ImagePattern().Match(line);
+        if (imageMatch.Success)
+        {
+            spec = new MarkdownImageSpec(
+                imageMatch.Groups[1].Value,
+                imageMatch.Groups[2].Value,
+                null);
+            return true;
+        }
+
+        spec = default;
+        return false;
+    }
+
+    private static bool TryParseShieldsBadge(string imageUrl, out BadgeDefinition badge)
+    {
+        badge = default;
+
+        if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri) ||
+            !uri.Host.Contains("shields.io", StringComparison.OrdinalIgnoreCase) ||
+            !uri.AbsolutePath.Contains("/badge/", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var segment = uri.AbsolutePath[(uri.AbsolutePath.LastIndexOf("/badge/", StringComparison.OrdinalIgnoreCase) + 7)..];
+        if (segment.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+            segment = segment[..^4];
+
+        var lastDash = segment.LastIndexOf('-');
+        if (lastDash <= 0)
+            return false;
+
+        var beforeColor = segment[..lastDash];
+        var secondLastDash = beforeColor.LastIndexOf('-');
+        if (secondLastDash <= 0)
+            return false;
+
+        var left = DecodeBadgeToken(beforeColor[..secondLastDash]);
+        var right = DecodeBadgeToken(beforeColor[(secondLastDash + 1)..]);
+        var colorToken = DecodeBadgeToken(segment[(lastDash + 1)..]);
+
+        badge = new BadgeDefinition(left, right, BadgeLeftColor, ParseBadgeColor(colorToken, Color.FromRgb(0x28, 0xA7, 0x45)));
+        return true;
+    }
+
+    private static bool TryParseSvgBadge(string imageUrl, string fallbackText, out BadgeDefinition badge)
+    {
+        badge = default;
+
+        if (!LooksLikeBadgeOrSvg(imageUrl))
+            return false;
+
+        var parsed = BadgeCache.GetOrAdd(imageUrl, url => ParseSvgBadgeDefinition(url, fallbackText));
+        if (parsed == null)
+            return false;
+
+        badge = parsed.Value;
+        return true;
+    }
+
+    private static BadgeDefinition? ParseSvgBadgeDefinition(string imageUrl, string fallbackText)
+    {
+        try
+        {
+            var svg = BadgeHttpClient.GetStringAsync(imageUrl).GetAwaiter().GetResult();
+            var document = XDocument.Parse(svg);
+
+            var texts = document
+                .Descendants()
+                .Where(element => element.Name.LocalName == "text")
+                .Select(element => element.Value.Trim())
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var fills = document
+                .Descendants()
+                .Where(element => element.Name.LocalName == "rect")
+                .Select(element => element.Attribute("fill")?.Value)
+                .Where(fill => !string.IsNullOrWhiteSpace(fill) && !fill.StartsWith("url(", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var leftText = texts.ElementAtOrDefault(0);
+            var rightText = texts.ElementAtOrDefault(1);
+
+            if (string.IsNullOrWhiteSpace(leftText) && string.IsNullOrWhiteSpace(rightText))
+                return string.IsNullOrWhiteSpace(fallbackText)
+                    ? null
+                    : new BadgeDefinition(fallbackText, null, BadgeLeftColor, Color.FromRgb(0x28, 0xA7, 0x45));
+
+            return new BadgeDefinition(
+                string.IsNullOrWhiteSpace(leftText) ? fallbackText : leftText!,
+                rightText,
+                ParseBadgeColor(fills.ElementAtOrDefault(0), BadgeLeftColor),
+                ParseBadgeColor(fills.ElementAtOrDefault(1), Color.FromRgb(0x28, 0xA7, 0x45)));
+        }
+        catch
+        {
+            return string.IsNullOrWhiteSpace(fallbackText)
+                ? null
+                : new BadgeDefinition(fallbackText, null, BadgeLeftColor, Color.FromRgb(0x28, 0xA7, 0x45));
+        }
+    }
+
+    private static string DecodeBadgeToken(string token)
+        => Uri.UnescapeDataString(token)
+            .Replace("--", "-", StringComparison.Ordinal)
+            .Replace("_", " ", StringComparison.Ordinal);
+
+    private static Color ParseBadgeColor(string? value, Color fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return fallback;
+
+        try
+        {
+            var normalized = value.StartsWith('#') ? value : $"#{value}";
+            if (ColorConverter.ConvertFromString(normalized) is Color color)
+                return color;
+        }
+        catch
+        {
+            try
+            {
+                if (ColorConverter.ConvertFromString(value) is Color namedColor)
+                    return namedColor;
+            }
+            catch
+            {
+            }
+        }
+
+        return fallback;
+    }
+
+    private static FrameworkElement WrapInLinkButton(FrameworkElement content, string navigateUrl)
+    {
+        var button = new Button
+        {
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(0),
+            Content = content
+        };
+        button.Click += (_, _) => OpenUrl(navigateUrl);
+        return button;
     }
 
     /// <summary>
@@ -219,13 +575,7 @@ public partial class MarkdownToFlowDocumentConverter : IValueConverter
             {
                 int end = text.IndexOf('`', earliest + 1);
                 if (end == -1) { inlines.Add(new Run(text[earliest..])); break; }
-                var code = new Run(text[(earliest + 1)..end])
-                {
-                    FontFamily = MonospaceFont,
-                    Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)),
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xCE, 0xCE, 0xCE))
-                };
-                inlines.Add(code);
+                inlines.Add(MakeInlineCodeInline(text[(earliest + 1)..end]));
                 pos = end + 1;
             }
             else if (earliest == italicIdx)
@@ -257,12 +607,62 @@ public partial class MarkdownToFlowDocumentConverter : IValueConverter
                     continue;
                 }
                 var linkText = text[(earliest + 1)..closeBracket];
-                var underline = new Underline();
-                ParseInlines(linkText, underline.Inlines);
-                inlines.Add(underline);
+                var url = text[(openParen + 1)..closeParen];
+                var hyperlink = new Hyperlink
+                {
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x28, 0xA7, 0x45))
+                };
+                if (Uri.TryCreate(url, UriKind.Absolute, out var navigateUri))
+                {
+                    hyperlink.NavigateUri = navigateUri;
+                }
+                hyperlink.Click += (_, _) => OpenUrl(url);
+                ParseInlines(linkText, hyperlink.Inlines);
+                inlines.Add(hyperlink);
                 pos = closeParen + 1;
             }
         }
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch
+        {
+            // Ignore bad URLs so markdown rendering never crashes the UI.
+        }
+    }
+
+    private static Brush ResolveBrush(string resourceKey, Color fallbackColor)
+        => Application.Current?.TryFindResource(resourceKey) as Brush
+           ?? new SolidColorBrush(fallbackColor);
+
+    private static Inline MakeInlineCodeInline(string codeText)
+    {
+        var inlineBorder = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x31, 0x3C)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x4B, 0x5A, 0x6F)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(5, 1, 5, 1),
+            Child = new TextBlock
+            {
+                FontFamily = MonospaceFont,
+                FontSize = BaseSize - 1,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xF0, 0xF6, 0xFC)),
+                Text = codeText
+            }
+        };
+
+        return new InlineUIContainer(inlineBorder)
+        {
+            BaselineAlignment = BaselineAlignment.Center
+        };
     }
 
     /// <summary>
@@ -309,6 +709,19 @@ public partial class MarkdownToFlowDocumentConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => Binding.DoNothing;
 
+    [GeneratedRegex(@"^(#{1,6})\s+(.+?)\s*#*\s*$")]
+    private static partial Regex HeadingPattern();
+
+    [GeneratedRegex(@"^\[!\[(.*?)\]\((.*?)\)\]\((.*?)\)$")]
+    private static partial Regex LinkedImagePattern();
+
+    [GeneratedRegex(@"^!\[(.*?)\]\((.*?)\)$")]
+    private static partial Regex ImagePattern();
+
     [GeneratedRegex(@"^\d+\.\s+(.+)$")]
     private static partial Regex NumberedListItemPattern();
+
+    private readonly record struct MarkdownImageSpec(string AltText, string ImageUrl, string? NavigateUrl);
+
+    private readonly record struct BadgeDefinition(string LeftText, string? RightText, Color LeftColor, Color RightColor);
 }
