@@ -148,21 +148,4 @@ public class BranchService : IBranchService
         _eventHub.NotifyBranchesChanged();
     }
 
-    /// <inheritdoc />
-    public async Task ResetBranchToCommitAsync(
-        IRepositorySession session,
-        string branchName,
-        string commitSha,
-        bool updateWorkingTree)
-    {
-        session.CancellationToken.ThrowIfCancellationRequested();
-        await _gitService.ResetBranchToCommitAsync(
-            session.RepositoryPath, branchName, commitSha, updateWorkingTree);
-        _eventHub.NotifyBranchesChanged();
-        _eventHub.NotifyCommitHistoryChanged();
-        if (updateWorkingTree)
-        {
-            _eventHub.NotifyWorkingDirectoryChanged();
-        }
-    }
 }

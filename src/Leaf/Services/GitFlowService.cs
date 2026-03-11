@@ -181,13 +181,15 @@ public partial class GitFlowService : IGitFlowService
             var startInfo = new ProcessStartInfo
             {
                 FileName = "git",
-                Arguments = $"config \"{key}\" \"{value}\"",
                 WorkingDirectory = repoPath,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            startInfo.ArgumentList.Add("config");
+            startInfo.ArgumentList.Add(key);
+            startInfo.ArgumentList.Add(value);
 
             using var process = Process.Start(startInfo);
             process?.WaitForExit();
@@ -213,7 +215,7 @@ public partial class GitFlowService : IGitFlowService
         }
 
         var branches = await _gitService.GetBranchesAsync(repoPath);
-        var repoInfo = await _gitService.GetRepositoryInfoAsync(repoPath);
+        var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
 
         status.CurrentBranchName = repoInfo.CurrentBranch;
         status.CurrentBranchType = GetBranchType(repoInfo.CurrentBranch ?? "", config);
@@ -1006,7 +1008,7 @@ public partial class GitFlowService : IGitFlowService
         {
             MergeStrategy.Squash => await SquashMergeWithCommit(repoPath, branchName),
             MergeStrategy.SquashRebase => await SquashRebaseMerge(repoPath, branchName, progress),
-            MergeStrategy.Rebase => await RebaseMerge(repoPath, branchName, progress),
+            MergeStrategy.Rebase => await RebaseMerge(repoPath, branchName),
             _ => await _gitService.MergeBranchAsync(repoPath, branchName)
         };
     }
@@ -1028,7 +1030,7 @@ public partial class GitFlowService : IGitFlowService
     private async Task<MergeResult> SquashRebaseMerge(string repoPath, string branchName, IProgress<string>? progress)
     {
         // Get current branch (the target we're merging into)
-        var repoInfo = await _gitService.GetRepositoryInfoAsync(repoPath);
+        var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
         var targetBranch = repoInfo.CurrentBranch;
 
         if (string.IsNullOrEmpty(targetBranch))
@@ -1066,7 +1068,7 @@ public partial class GitFlowService : IGitFlowService
         return squashResult;
     }
 
-    private async Task<MergeResult> RebaseMerge(string repoPath, string branchName, IProgress<string>? progress)
+    private async Task<MergeResult> RebaseMerge(string repoPath, string branchName)
     {
         // For rebase merge, we merge with fast-forward after the caller has rebased
         return await _gitService.MergeBranchAsync(repoPath, branchName);

@@ -53,6 +53,19 @@ public class DispatcherService : IDispatcherService
     }
 
     /// <inheritdoc />
+    public async Task InvokeAsync(Action action, DispatcherPriority priority)
+    {
+        if (CheckAccess())
+        {
+            action();
+        }
+        else
+        {
+            await _dispatcher.InvokeAsync(action, priority);
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<T> InvokeAsync<T>(Func<T> func)
     {
         if (CheckAccess())
@@ -62,6 +75,19 @@ public class DispatcherService : IDispatcherService
         else
         {
             return await _dispatcher.InvokeAsync(func);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<T> InvokeAsync<T>(Func<T> func, DispatcherPriority priority)
+    {
+        if (CheckAccess())
+        {
+            return func();
+        }
+        else
+        {
+            return await _dispatcher.InvokeAsync(func, priority);
         }
     }
 }
@@ -86,5 +112,15 @@ public class TestDispatcherService : IDispatcherService
     }
 
     /// <inheritdoc />
+    public Task InvokeAsync(Action action, DispatcherPriority priority)
+    {
+        action();
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
     public Task<T> InvokeAsync<T>(Func<T> func) => Task.FromResult(func());
+
+    /// <inheritdoc />
+    public Task<T> InvokeAsync<T>(Func<T> func, DispatcherPriority priority) => Task.FromResult(func());
 }

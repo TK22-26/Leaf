@@ -14,7 +14,6 @@ namespace Leaf.Views.Settings;
 public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 {
     private AppSettings? _settings;
-    private CredentialService? _credentialService;
     private SettingsService? _settingsService;
 
     private bool _isClaudeConnected;
@@ -41,7 +40,6 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     public void LoadSettings(AppSettings settings, CredentialService credentialService)
     {
         _settings = settings;
-        _credentialService = credentialService;
 
         // Load timeout
         AiTimeoutTextBox.Text = settings.AiCliTimeoutSeconds.ToString();

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Json;
 
@@ -45,16 +46,19 @@ public class OllamaService
             var modelNames = response?.models?.Select(m => m.name).ToList() ?? [];
             return (modelNames.Count > 0, modelNames, modelNames.Count == 0 ? "No models installed" : null);
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
+            Log.Error("Ollama", "Failed to get models - Ollama not running", ex);
             return (false, [], "Ollama is not running");
         }
-        catch (TaskCanceledException)
+        catch (TaskCanceledException ex)
         {
+            Log.Error("Ollama", "Failed to get models - connection timed out", ex);
             return (false, [], "Connection timed out");
         }
         catch (Exception ex)
         {
+            Log.Error("Ollama", "Failed to get models", ex);
             return (false, [], ex.Message);
         }
     }
@@ -65,6 +69,8 @@ public class OllamaService
     public async Task<(bool success, string output, string? error)> GenerateAsync(
         string baseUrl, string model, string prompt, int timeoutSeconds, CancellationToken ct = default)
     {
+        Log.Info("Ollama", $"Generate request: model={model}, timeout={timeoutSeconds}s, prompt length={prompt.Length}");
+        var sw = Log.StartTimer();
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -86,22 +92,26 @@ public class OllamaService
             }
 
             var result = await response.Content.ReadFromJsonAsync<OllamaGenerateResponse>(cts.Token);
+            Log.Perf("Ollama", $"Generate complete: model={model}", sw.ElapsedMilliseconds);
             return (true, result?.response ?? string.Empty, null);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
+            Log.Error("Ollama", $"Generate timed out after {timeoutSeconds}s for model={model}");
             return (false, string.Empty, $"Timed out after {timeoutSeconds}s");
         }
         catch (OperationCanceledException)
         {
             return (false, string.Empty, "Cancelled");
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
+            Log.Error("Ollama", "Generate failed - Ollama not running", ex);
             return (false, string.Empty, "Ollama is not running");
         }
         catch (Exception ex)
         {
+            Log.Error("Ollama", "Generate failed", ex);
             return (false, string.Empty, ex.Message);
         }
     }

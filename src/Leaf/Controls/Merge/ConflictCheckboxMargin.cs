@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.Windows;
+using Leaf.Services;
 using System.Windows.Input;
 using System.Windows.Media;
 using ICSharpCode.AvalonEdit.Editing;
@@ -55,8 +55,6 @@ public sealed class ConflictCheckboxMargin : AbstractMargin
             var selectable = _mapping.GetSelectableLineForLine(lineNumber);
             if (selectable == null) continue;
 
-            var region = _mapping.GetRegionForLine(lineNumber);
-
             var y = visualLine.VisualTop - TextView.VerticalOffset;
             var boxX = (MarginWidth - BoxSize) / 2;
             var boxY = y + (visualLine.Height - BoxSize) / 2;
@@ -107,7 +105,7 @@ public sealed class ConflictCheckboxMargin : AbstractMargin
         if (selectable == null) return;
 
         selectable.IsSelected = !selectable.IsSelected;
-        Debug.WriteLine($"[MERGE][UI] CheckboxToggle: line={line} selected={selectable.IsSelected} side={_side}");
+        Log.Info("MergeUI", $"CheckboxToggle: line={line} selected={selectable.IsSelected} side={_side}");
         e.Handled = true;
     }
 

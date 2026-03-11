@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using Leaf.Services;
@@ -212,6 +213,24 @@ public partial class AzureDevOpsSettingsControl : UserControl, ISettingsSectionC
             PatPasswordBox.Visibility = Visibility.Visible;
             TogglePatVisibilityButton.Content = "Show";
         }
+    }
+
+    private void OpenPatPage_Click(object sender, RoutedEventArgs e)
+    {
+        var organization = OrganizationTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(organization))
+        {
+            MessageBox.Show(
+                "Enter an Azure DevOps organization first, then use this button to open its PAT page.",
+                "Missing Organization",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            OrganizationTextBox.Focus();
+            return;
+        }
+
+        var url = $"https://dev.azure.com/{Uri.EscapeDataString(organization)}/_usersSettings/tokens";
+        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
     #endregion

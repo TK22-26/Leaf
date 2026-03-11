@@ -109,6 +109,12 @@ public interface IGitService
     Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath);
 
     /// <summary>
+    /// Get repository status information using fast git CLI commands.
+    /// Prefer this over <see cref="GetRepositoryInfoAsync"/> for performance-critical paths.
+    /// </summary>
+    Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath);
+
+    /// <summary>
     /// Clone a remote repository.
     /// </summary>
     Task<string> CloneAsync(string url, string localPath, string? username = null, string? password = null, IProgress<string>? progress = null);
@@ -169,9 +175,9 @@ public interface IGitService
     Task<bool> RedoCommitAsync(string repoPath);
 
     /// <summary>
-    /// Reset a branch to a specific commit.
+    /// Reset the current branch to a specific commit.
     /// </summary>
-    Task ResetBranchToCommitAsync(string repoPath, string branchName, string commitSha, bool updateWorkingTree);
+    Task ResetCurrentBranchToCommitAsync(string repoPath, string commitSha, GitResetMode mode);
 
     /// <summary>
     /// Checkout a branch.
@@ -204,6 +210,12 @@ public interface IGitService
     /// Get a unified diff between a commit and the working tree.
     /// </summary>
     Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha);
+
+    /// <summary>
+    /// Get a unified diff between two refs.
+    /// Uses three-dot diff semantics so the diff is computed from the merge base to <paramref name="headRef"/>.
+    /// </summary>
+    Task<string> GetRefToRefDiffAsync(string repoPath, string baseRef, string headRef, string? filePath = null);
 
     /// <summary>
     /// Stash changes.

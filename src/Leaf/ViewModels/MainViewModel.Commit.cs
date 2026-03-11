@@ -1,6 +1,7 @@
 using System;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.Views;
 
 namespace Leaf.ViewModels;
@@ -16,7 +17,7 @@ public partial class MainViewModel
         if (SelectedRepository == null || commit == null)
             return;
 
-        System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] RevertCommit: sha={commit.ShortSha} isMerge={commit.IsMerge}");
+        Log.Info("Merge", $"RevertCommit: sha={commit.ShortSha} isMerge={commit.IsMerge}");
 
         if (commit.IsMerge)
         {
@@ -50,7 +51,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] RevertMergeCommit: {ex.Message}");
+                Log.Error("Merge", "RevertMergeCommit failed", ex);
                 StatusMessage = $"Revert failed: {ex.Message}";
             }
             finally
@@ -68,13 +69,13 @@ public partial class MainViewModel
 
             await _gitService.RevertCommitAsync(SelectedRepository.Path, commit.Sha);
 
-            System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] RevertCommit: success sha={commit.ShortSha}");
+            Log.Info("Merge", $"RevertCommit: success sha={commit.ShortSha}");
             StatusMessage = $"Reverted {commit.ShortSha}";
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] RevertCommit: {ex.Message}");
+            Log.Error("Merge", "RevertCommit failed", ex);
             StatusMessage = $"Revert failed: {ex.Message}";
         }
         finally
@@ -84,34 +85,46 @@ public partial class MainViewModel
     }
 
     [RelayCommand]
-    public async Task ResetCurrentBranchToCommitAsync(CommitInfo commit)
+    public async Task ResetCurrentBranchToCommitAsync(ResetCurrentBranchRequest request)
     {
-        if (SelectedRepository == null || commit == null)
+        if (SelectedRepository == null || request?.Commit == null)
             return;
 
         var branchName = SelectedRepository.CurrentBranch;
-        if (string.IsNullOrWhiteSpace(branchName))
-        {
-            branchName = "HEAD";
-        }
 
-        var confirmed = await _dialogService.ShowConfirmationAsync(
-            $"Reset {branchName} to {commit.ShortSha}?\n\nThis will discard uncommitted changes and move the branch pointer.",
-            "Force Reset Branch");
-
-        if (!confirmed)
+        if (string.IsNullOrWhiteSpace(branchName) || SelectedRepository.IsDetachedHead)
         {
+            StatusMessage = "Cannot reset: no branch is checked out";
             return;
         }
+
+        var (message, title) = request.Mode switch
+        {
+            GitResetMode.Soft => (
+                $"Move {branchName} to {request.Commit.ShortSha} and keep all changes staged.\n\n{request.Commit.MessageShort}",
+                "Reset Branch (Soft)"),
+            GitResetMode.Mixed => (
+                $"Move {branchName} to {request.Commit.ShortSha} and keep changes in your working directory as unstaged.\n\n{request.Commit.MessageShort}",
+                "Reset Branch (Mixed)"),
+            GitResetMode.Hard => (
+                $"Move {branchName} to {request.Commit.ShortSha} and discard all staged and unstaged tracked changes. Untracked files will not be removed.\n\n{request.Commit.MessageShort}",
+                "Hard Reset Branch"),
+            _ => throw new ArgumentOutOfRangeException()
+        };
+
+        if (!await _dialogService.ShowConfirmationAsync(message, title))
+            return;
 
         try
         {
             IsBusy = true;
-            StatusMessage = $"Resetting {branchName} to {commit.ShortSha}...";
+            var modeLabel = request.Mode.ToString().ToLower();
+            StatusMessage = $"Resetting {branchName} to {request.Commit.ShortSha} ({modeLabel})...";
 
-            await _gitService.ResetBranchToCommitAsync(SelectedRepository.Path, branchName, commit.Sha, updateWorkingTree: true);
+            await _gitService.ResetCurrentBranchToCommitAsync(
+                SelectedRepository.Path, request.Commit.Sha, request.Mode);
 
-            StatusMessage = $"Reset {branchName} to {commit.ShortSha}";
+            StatusMessage = $"Reset {branchName} to {request.Commit.ShortSha} ({modeLabel})";
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -138,7 +151,7 @@ public partial class MainViewModel
             await _gitService.CheckoutCommitAsync(SelectedRepository.Path, commit.Sha);
 
             // Refresh the repo info to update detached HEAD state
-            var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path);
             SelectedRepository.CurrentBranch = info.CurrentBranch;
             SelectedRepository.IsDetachedHead = info.IsDetachedHead;
             SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
@@ -172,7 +185,7 @@ public partial class MainViewModel
         if (commit == null || SelectedRepository == null)
             return;
 
-        System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] CherryPickCommit: sha={commit.ShortSha}");
+        Log.Info("Merge", $"CherryPickCommit: sha={commit.ShortSha}");
         IsBusy = true;
         StatusMessage = $"Cherry-picking {commit.ShortSha}...";
 
@@ -181,25 +194,25 @@ public partial class MainViewModel
             var result = await _gitService.CherryPickAsync(SelectedRepository.Path, commit.Sha);
             if (result.Success)
             {
-                System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] CherryPickCommit: success");
+                Log.Info("Merge", "CherryPickCommit: success");
                 StatusMessage = $"Cherry-picked {commit.ShortSha}";
                 await RefreshAsync();
             }
             else if (result.HasConflicts)
             {
-                System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] CherryPickCommit: conflicts detected");
+                Log.Warn("Merge", "CherryPickCommit: conflicts detected");
                 StatusMessage = $"Cherry-pick has conflicts: {commit.ShortSha}";
                 await RefreshAsync();
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] CherryPickCommit: {result.ErrorMessage}");
+                Log.Error("Merge", $"CherryPickCommit: {result.ErrorMessage}");
                 StatusMessage = $"Cherry-pick failed: {result.ErrorMessage}";
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] CherryPickCommit: {ex.Message}");
+            Log.Error("Merge", "CherryPickCommit failed", ex);
             StatusMessage = $"Cherry-pick failed: {ex.Message}";
         }
         finally

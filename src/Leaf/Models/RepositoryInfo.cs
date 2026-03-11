@@ -253,6 +253,40 @@ public partial class RepositoryInfo : ObservableObject
     public bool WorktreesLoaded { get; set; }
 
     /// <summary>
+    /// Whether pull requests have been loaded for this repository.
+    /// </summary>
+    [JsonIgnore]
+    public bool PullRequestsLoaded { get; set; }
+
+    /// <summary>
+    /// Whether the pull request category should show all pull requests or only open ones.
+    /// </summary>
+    [ObservableProperty]
+    [property: JsonIgnore]
+    private bool _showAllPullRequests;
+
+    /// <summary>
+    /// Label for the pull request filter toggle.
+    /// </summary>
+    [JsonIgnore]
+    public string PullRequestFilterLabel => ShowAllPullRequests ? "All" : "Open";
+
+    /// <summary>
+    /// Tooltip for the pull request filter toggle.
+    /// </summary>
+    [JsonIgnore]
+    public string PullRequestFilterToolTip => ShowAllPullRequests
+        ? "Showing all pull requests"
+        : "Showing open pull requests only";
+
+    /// <summary>
+    /// Currently selected pull request in the tree view.
+    /// </summary>
+    [ObservableProperty]
+    [property: JsonIgnore]
+    private PullRequestInfo? _selectedPullRequest;
+
+    /// <summary>
     /// True if a merge, cherry-pick, revert, or rebase is currently in progress.
     /// </summary>
     [ObservableProperty]
@@ -310,5 +344,32 @@ public partial class RepositoryInfo : ObservableObject
             branch.IsSelected = false;
         }
         SelectedBranches.Clear();
+    }
+
+    /// <summary>
+    /// Clears the pull request selection.
+    /// </summary>
+    public void ClearPullRequestSelection()
+    {
+        if (SelectedPullRequest != null)
+        {
+            SelectedPullRequest.IsSelected = false;
+            SelectedPullRequest = null;
+        }
+
+        foreach (var category in BranchCategories)
+        {
+            if (category.IsPullRequestsCategory)
+            {
+                foreach (var pr in category.PullRequests)
+                    pr.IsSelected = false;
+            }
+        }
+    }
+
+    partial void OnShowAllPullRequestsChanged(bool value)
+    {
+        OnPropertyChanged(nameof(PullRequestFilterLabel));
+        OnPropertyChanged(nameof(PullRequestFilterToolTip));
     }
 }

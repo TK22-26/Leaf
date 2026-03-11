@@ -264,7 +264,7 @@ public partial class MainViewModel
     public async Task<RepositoryInfo?> GetRepositoryInfoAsync()
     {
         if (SelectedRepository == null) return null;
-        return await _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+        return await _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path);
     }
 
     /// <summary>

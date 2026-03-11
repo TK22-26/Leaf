@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.IO;
+using Leaf.Services;
 
 namespace Leaf.Services.Git.Operations;
 
@@ -15,12 +15,12 @@ internal static class MergeDebugHelper
     internal static void LogMergeState(string label, string repoPath)
     {
         var gitDir = Path.Combine(repoPath, ".git");
-        Debug.WriteLine($"[MERGE][STATE] {label}: repo={Path.GetFileName(repoPath)}");
-        Debug.WriteLine($"[MERGE][STATE]   MERGE_HEAD={File.Exists(Path.Combine(gitDir, "MERGE_HEAD"))}");
-        Debug.WriteLine($"[MERGE][STATE]   CHERRY_PICK_HEAD={File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD"))}");
-        Debug.WriteLine($"[MERGE][STATE]   REVERT_HEAD={File.Exists(Path.Combine(gitDir, "REVERT_HEAD"))}");
-        Debug.WriteLine($"[MERGE][STATE]   rebase-merge={Directory.Exists(Path.Combine(gitDir, "rebase-merge"))}");
-        Debug.WriteLine($"[MERGE][STATE]   rebase-apply={Directory.Exists(Path.Combine(gitDir, "rebase-apply"))}");
-        Debug.WriteLine($"[MERGE][STATE]   leaf-merge-conflicts.txt={File.Exists(Path.Combine(gitDir, "leaf-merge-conflicts.txt"))}");
+        Log.Info("Merge", $"{label}: repo={Path.GetFileName(repoPath)}");
+        Log.Info("Merge", $"  MERGE_HEAD={File.Exists(Path.Combine(gitDir, "MERGE_HEAD"))}");
+        Log.Info("Merge", $"  CHERRY_PICK_HEAD={File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD"))}");
+        Log.Info("Merge", $"  REVERT_HEAD={File.Exists(Path.Combine(gitDir, "REVERT_HEAD"))}");
+        Log.Info("Merge", $"  rebase-merge={Directory.Exists(Path.Combine(gitDir, "rebase-merge"))}");
+        Log.Info("Merge", $"  rebase-apply={Directory.Exists(Path.Combine(gitDir, "rebase-apply"))}");
+        Log.Info("Merge", $"  leaf-merge-conflicts.txt={File.Exists(Path.Combine(gitDir, "leaf-merge-conflicts.txt"))}");
     }
 }

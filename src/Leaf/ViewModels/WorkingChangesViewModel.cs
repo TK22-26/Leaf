@@ -216,14 +216,9 @@ public partial class WorkingChangesViewModel : ObservableObject
         _repositoryPath = repoPath;
         WorkingChanges = workingChanges;
 
-        // Debug: show what data we received
         if (workingChanges == null)
         {
-            ErrorMessage = "SetWorkingChanges: null data received";
-        }
-        else
-        {
-            ErrorMessage = $"Synced: {workingChanges.UnstagedFiles.Count} unstaged, {workingChanges.StagedFiles.Count} staged";
+            Log.Warn("WorkingChanges", "SetWorkingChanges: null data received");
         }
 
         // Force notification for dependent properties
@@ -736,6 +731,13 @@ public partial class WorkingChangesViewModel : ObservableObject
                 Directory.Delete(fullPath, recursive: true);
             }
 
+            // If the file was staged, remove it from the index too —
+            // otherwise it lingers as a staged entry after disk deletion.
+            if (file.IsStaged)
+            {
+                await _gitService.UnstageFileAsync(_repositoryPath, file.Path);
+            }
+
             await RefreshAndNotifyAsync();
             FileDeletedOrDiscarded?.Invoke(this, new FileDeletedOrDiscardedEventArgs(file.Path));
         }
@@ -903,18 +905,18 @@ exit /b %errorlevel%
             _aiCancellationTokenSource = new CancellationTokenSource();
             var cancellationToken = _aiCancellationTokenSource.Token;
 
-            Debug.WriteLine($"[WorkingChanges] AutoFill start: repo={_repositoryPath}");
+            Log.Info("WorkingChanges", $"AutoFill start: repo={_repositoryPath}");
 
             // Get staged diff summary
             var summary = await _gitService.GetStagedSummaryAsync(_repositoryPath);
             if (summary.Length > MaxSummaryChars)
             {
                 ErrorMessage = $"Staged summary is too large to send ({summary.Length} chars).";
-                Debug.WriteLine($"[WorkingChanges] AutoFill blocked: summary length {summary.Length} exceeds limit {MaxSummaryChars}.");
+                Log.Warn("WorkingChanges", $"AutoFill blocked: summary length {summary.Length} exceeds limit {MaxSummaryChars}.");
                 return;
             }
 
-            Debug.WriteLine($"[WorkingChanges] AutoFill summary length: {summary.Length}");
+            Log.Info("WorkingChanges", $"AutoFill summary length: {summary.Length}");
 
             var (message, description, error) = await _aiCommitService.GenerateCommitMessageAsync(
                 summary, _repositoryPath, cancellationToken);

@@ -58,7 +58,7 @@ public sealed class GitGraphCacheService : IGitGraphCacheService
         return pen;
     }
 
-    public Dictionary<string, GitTreeNode> GetNodesBySha(IReadOnlyList<GitTreeNode> nodes)
+    public IReadOnlyDictionary<string, GitTreeNode> GetNodesBySha(IReadOnlyList<GitTreeNode> nodes)
     {
         // If nodes reference changed, rebuild the cache
         if (_nodesByShaCache == null || !ReferenceEquals(_cachedNodesReference, nodes))
@@ -71,8 +71,7 @@ public sealed class GitGraphCacheService : IGitGraphCacheService
             _cachedNodesReference = nodes;
         }
 
-        // Return a copy to avoid shared mutable state
-        return new Dictionary<string, GitTreeNode>(_nodesByShaCache);
+        return _nodesByShaCache;
     }
 
     public void ClearNodeCache()

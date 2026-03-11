@@ -167,7 +167,7 @@ public partial class ConflictSideEditorControl : UserControl
     /// </summary>
     public double GetScrollRatio()
     {
-        var sv = _cachedScrollViewer ??= FindScrollViewer(Editor);
+        var sv = _cachedScrollViewer ??= VisualTreeExtensions.FindScrollViewer(Editor);
         if (sv == null) return 0;
         var max = sv.ExtentHeight - sv.ViewportHeight;
         return max > 0 ? sv.VerticalOffset / max : 0;
@@ -175,7 +175,7 @@ public partial class ConflictSideEditorControl : UserControl
 
     public void ApplyScrollRatio(double ratio)
     {
-        var sv = _cachedScrollViewer ??= FindScrollViewer(Editor);
+        var sv = _cachedScrollViewer ??= VisualTreeExtensions.FindScrollViewer(Editor);
         if (sv == null) return;
         var max = sv.ExtentHeight - sv.ViewportHeight;
         if (max > 0)
@@ -321,16 +321,4 @@ public partial class ConflictSideEditorControl : UserControl
         _viewModel = null;
     }
 
-    private static ScrollViewer? FindScrollViewer(DependencyObject? root)
-    {
-        if (root == null) return null;
-        if (root is ScrollViewer viewer) return viewer;
-
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var found = FindScrollViewer(VisualTreeHelper.GetChild(root, i));
-            if (found != null) return found;
-        }
-        return null;
-    }
 }

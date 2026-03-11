@@ -233,8 +233,6 @@ public sealed class ConflictSideLineMapping
                         }
                     }
 
-                    int endLine = oursContent.Count;
-
                     // Record conflict ranges — use actual content boundaries for each side
                     int oursEndContent = startLine + oursCount - 1;
                     int theirsEndContent = startLine + theirsCount - 1;

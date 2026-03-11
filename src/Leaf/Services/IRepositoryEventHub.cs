@@ -52,6 +52,11 @@ public interface IRepositoryEventHub
     void NotifyConflictStateChanged();
 
     /// <summary>
+    /// Notify that pull request data has changed (created, merged, closed, updated).
+    /// </summary>
+    void NotifyPullRequestsChanged();
+
+    /// <summary>
     /// Request a refresh with specific scope flags.
     /// Use this for custom combinations or to trigger refresh programmatically.
     /// </summary>
@@ -83,6 +88,9 @@ public enum RefreshScope
     /// <summary>Refresh conflict state.</summary>
     Conflicts = 16,
 
+    /// <summary>Refresh pull request list.</summary>
+    PullRequests = 32,
+
     /// <summary>Refresh everything.</summary>
-    All = Branches | WorkingDirectory | CommitHistory | Stashes | Conflicts
+    All = Branches | WorkingDirectory | CommitHistory | Stashes | Conflicts | PullRequests
 }

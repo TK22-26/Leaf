@@ -8,6 +8,7 @@ using FluentIcons.Common;
 using FluentIcons.Wpf;
 using Leaf.Controls.GitGraph;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.ViewModels;
 
 namespace Leaf.Views;
@@ -53,7 +54,7 @@ public partial class GitGraphView : UserControl
         if (Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
         {
             var label = e.Label;
-            System.Diagnostics.Debug.WriteLine($"[CHECKOUT] OnBranchCheckoutRequested: label.Name={label.Name}, label.TipSha={label.TipSha ?? "NULL"}, e.TipSha={e.TipSha ?? "NULL"}");
+            Log.Info("Checkout", $"OnBranchCheckoutRequested: label.Name={label.Name}, label.TipSha={label.TipSha ?? "NULL"}, e.TipSha={e.TipSha ?? "NULL"}");
 
             // If this is a remote-only label and we're on the matching local branch, fast-forward
             if (label.IsRemote && !label.IsLocal && label.RemoteName != null)
@@ -63,7 +64,9 @@ public partial class GitGraphView : UserControl
                     var currentBranchName = viewModel.WorkingChanges?.BranchName;
                     if (currentBranchName == label.Name)
                     {
-                        _ = mainViewModel.FastForwardBranchLabelAsync(label);
+                        _ = mainViewModel.FastForwardBranchLabelAsync(label).ContinueWith(
+                            t => Log.Error("Checkout", $"FastForward failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
+                            TaskContinuationOptions.OnlyOnFaulted);
                         return;
                     }
                 }
@@ -75,7 +78,7 @@ public partial class GitGraphView : UserControl
                 ? $"{label.RemoteName}/{label.Name}"
                 : label.Name;
             var tipShaToUse = label.TipSha ?? e.TipSha ?? string.Empty;
-            System.Diagnostics.Debug.WriteLine($"[CHECKOUT] Calling CheckoutBranchAsync: branchName={branchName}, tipShaToUse={tipShaToUse}");
+            Log.Info("Checkout", $"Calling CheckoutBranchAsync: branchName={branchName}, tipShaToUse={tipShaToUse}");
             _ = mainViewModel.CheckoutBranchAsync(new BranchInfo
             {
                 Name = branchName,
@@ -83,7 +86,9 @@ public partial class GitGraphView : UserControl
                 RemoteName = label.RemoteName,
                 IsCurrent = label.IsCurrent,
                 TipSha = tipShaToUse
-            });
+            }).ContinueWith(
+                t => Log.Error("Checkout", $"Checkout failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
+                TaskContinuationOptions.OnlyOnFaulted);
         }
     }
 
@@ -263,7 +268,7 @@ public partial class GitGraphView : UserControl
             var label = GraphCanvas.GetBranchLabelAt(pos);
             if (label != null && Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
             {
-                System.Diagnostics.Debug.WriteLine($"[CHECKOUT] GraphCanvas double-click: label.Name={label.Name}, label.TipSha={label.TipSha ?? "NULL"}");
+                Log.Info("Checkout", $"GraphCanvas double-click: label.Name={label.Name}, label.TipSha={label.TipSha ?? "NULL"}");
 
                 // If this is a remote-only label (local is at different commit)
                 // and we're currently on the matching local branch, fast-forward instead of checkout
@@ -273,7 +278,9 @@ public partial class GitGraphView : UserControl
                     if (currentBranchName == label.Name)
                     {
                         // Fast-forward current branch to this remote
-                        _ = mainViewModel.FastForwardBranchLabelAsync(label);
+                        _ = mainViewModel.FastForwardBranchLabelAsync(label).ContinueWith(
+                            t => Log.Error("Checkout", $"FastForward failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
+                            TaskContinuationOptions.OnlyOnFaulted);
                         e.Handled = true;
                         return;
                     }
@@ -284,7 +291,7 @@ public partial class GitGraphView : UserControl
                 var name = label.IsRemote && !label.IsLocal && label.RemoteName != null
                     ? $"{label.RemoteName}/{label.Name}"
                     : label.Name;
-                System.Diagnostics.Debug.WriteLine($"[CHECKOUT] GraphCanvas calling CheckoutBranchAsync: name={name}, TipSha={label.TipSha ?? "NULL"}");
+                Log.Info("Checkout", $"GraphCanvas calling CheckoutBranchAsync: name={name}, TipSha={label.TipSha ?? "NULL"}");
                 _ = mainViewModel.CheckoutBranchAsync(new BranchInfo
                 {
                     Name = name,
@@ -292,7 +299,9 @@ public partial class GitGraphView : UserControl
                     RemoteName = label.RemoteName,
                     IsCurrent = label.IsCurrent,
                     TipSha = label.TipSha ?? string.Empty
-                });
+                }).ContinueWith(
+                    t => Log.Error("Checkout", $"Checkout failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
+                    TaskContinuationOptions.OnlyOnFaulted);
                 e.Handled = true;
                 return;
             }
@@ -405,15 +414,32 @@ public partial class GitGraphView : UserControl
         menu.Items.Add(createBranchItem);
 
         var currentBranchName = mainViewModel.SelectedRepository?.CurrentBranch;
-        if (!string.IsNullOrWhiteSpace(currentBranchName))
+        if (!string.IsNullOrWhiteSpace(currentBranchName)
+            && mainViewModel.SelectedRepository?.IsDetachedHead != true)
         {
-            var resetItem = new MenuItem
+            var resetMenu = new MenuItem
             {
-                Header = $"Reset {currentBranchName} to this commit...",
-                Command = mainViewModel.ResetCurrentBranchToCommitCommand,
-                CommandParameter = commit
+                Header = $"Reset {currentBranchName} to this commit"
             };
-            menu.Items.Add(resetItem);
+            resetMenu.Items.Add(new MenuItem
+            {
+                Header = "Soft \u2014 keep all changes staged",
+                Command = mainViewModel.ResetCurrentBranchToCommitCommand,
+                CommandParameter = new ResetCurrentBranchRequest(commit, GitResetMode.Soft)
+            });
+            resetMenu.Items.Add(new MenuItem
+            {
+                Header = "Mixed \u2014 keep changes unstaged",
+                Command = mainViewModel.ResetCurrentBranchToCommitCommand,
+                CommandParameter = new ResetCurrentBranchRequest(commit, GitResetMode.Mixed)
+            });
+            resetMenu.Items.Add(new MenuItem
+            {
+                Header = "Hard \u2014 discard tracked changes",
+                Command = mainViewModel.ResetCurrentBranchToCommitCommand,
+                CommandParameter = new ResetCurrentBranchRequest(commit, GitResetMode.Hard)
+            });
+            menu.Items.Add(resetMenu);
         }
 
         var revertItem = new MenuItem
@@ -464,6 +490,17 @@ public partial class GitGraphView : UserControl
             CommandParameter = commit
         };
         menu.Items.Add(createTagItem);
+
+        menu.Items.Add(new Separator());
+
+        var findPrItem = new MenuItem
+        {
+            Header = "Find Pull Request...",
+            Command = mainViewModel.FindPullRequestForCommitCommand,
+            CommandParameter = commit,
+            Icon = new FluentIcons.Wpf.SymbolIcon { Symbol = FluentIcons.Common.Symbol.BranchRequest, FontSize = 14 }
+        };
+        menu.Items.Add(findPrItem);
 
         // Merge branch labels
         if (commit.BranchLabels.Count > 0)
@@ -709,7 +746,7 @@ public partial class GitGraphView : UserControl
         if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
             return;
 
-        if (DataContext is not GitGraphViewModel viewModel)
+        if (DataContext is not GitGraphViewModel)
             return;
 
         var menu = new ContextMenu();
@@ -749,6 +786,19 @@ public partial class GitGraphView : UserControl
         };
         menu.Items.Add(mergeItem);
 
+        if (label.IsLocal && !label.IsCurrent)
+        {
+            var createPullRequestItem = new MenuItem
+            {
+                Header = $"Create PR into {label.Name}...",
+                Command = mainViewModel.OpenCreatePullRequestCommand,
+                CommandParameter = new CreatePullRequestRequest(
+                    SourceBranch: mainViewModel.SelectedRepository?.CurrentBranch,
+                    TargetBranch: label.Name)
+            };
+            menu.Items.Add(createPullRequestItem);
+        }
+
         // Create branch here
         var createBranchItem = new MenuItem
         {
@@ -757,6 +807,17 @@ public partial class GitGraphView : UserControl
             CommandParameter = branchInfo
         };
         menu.Items.Add(createBranchItem);
+
+        menu.Items.Add(new Separator());
+
+        // Copy branch name
+        var copyItem = new MenuItem
+        {
+            Header = "Copy branch name",
+            Command = mainViewModel.CopyBranchNameCommand,
+            CommandParameter = branchInfo
+        };
+        menu.Items.Add(copyItem);
 
         menu.Items.Add(new Separator());
 

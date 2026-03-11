@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using Leaf.Services;
 using Leaf.Services.Git.Core;
 
 namespace Leaf.Services.Git.Operations;
@@ -15,16 +15,16 @@ internal static class StashMergeHelpers
     public static Models.MergeResult? TryCommitBasedMerge(string repoPath, int stashIndex)
     {
         // Approach: stash local -> apply target -> stage -> apply local stash -> get conflicts
-        Debug.WriteLine("[TryCommitBasedMerge] Starting commit-based merge approach");
+        Log.Info("StashMerge", "Starting commit-based merge approach");
 
         // Step 1: Stash local changes temporarily
-        var tempStashResult = GitCliHelpers.RunGit(repoPath, $"stash push -m \"{GitCliHelpers.TempStashMessage}\"");
+        var tempStashResult = GitCliHelpers.RunGitArgs(repoPath, "stash", "push", "-m", GitCliHelpers.TempStashMessage);
         if (tempStashResult.ExitCode != 0)
         {
-            Debug.WriteLine($"[TryCommitBasedMerge] Failed to create temp stash: {tempStashResult.Error}");
+            Log.Error("StashMerge", $"Failed to create temp stash: {tempStashResult.Error}");
             return null;
         }
-        Debug.WriteLine("[TryCommitBasedMerge] Created temp stash for local changes");
+        Log.Info("StashMerge", "Created temp stash for local changes");
 
         // Target stash index shifted by +1 since we added TEMP at index 0
         int adjustedIndex = stashIndex + 1;
@@ -33,24 +33,24 @@ internal static class StashMergeHelpers
         var applyTargetResult = GitCliHelpers.RunGit(repoPath, $"stash apply {adjustedIndex}");
         if (applyTargetResult.ExitCode != 0)
         {
-            Debug.WriteLine($"[TryCommitBasedMerge] Failed to apply target stash: {applyTargetResult.Error}");
+            Log.Error("StashMerge", $"Failed to apply target stash: {applyTargetResult.Error}");
             // Restore local changes
             GitCliHelpers.RunGit(repoPath, "stash pop 0");
             return null;
         }
-        Debug.WriteLine("[TryCommitBasedMerge] Applied target stash");
+        Log.Info("StashMerge", "Applied target stash");
 
         // Step 3: Stage all changes from target stash
         GitCliHelpers.RunGit(repoPath, "add -A");
-        Debug.WriteLine("[TryCommitBasedMerge] Staged target stash changes");
+        Log.Info("StashMerge", "Staged target stash changes");
 
         // Step 4: Apply temp stash (local changes) - this should attempt merge
         var applyTempResult = GitCliHelpers.RunGit(repoPath, "stash apply 0");
-        Debug.WriteLine($"[TryCommitBasedMerge] Apply temp result: exit={applyTempResult.ExitCode}, error={applyTempResult.Error}");
+        Log.Info("StashMerge", $"Apply temp result: exit={applyTempResult.ExitCode}, error={applyTempResult.Error}");
 
         // Check for conflicts
         var conflicts = GitCliHelpers.GetConflictFiles(repoPath);
-        Debug.WriteLine($"[TryCommitBasedMerge] Conflicts found: {conflicts.Count}");
+        Log.Info("StashMerge", $"Conflicts found: {conflicts.Count}");
 
         if (conflicts.Count > 0)
         {
@@ -58,7 +58,7 @@ internal static class StashMergeHelpers
             // Drop the target stash since its changes are now in the working dir
             GitCliHelpers.RunGit(repoPath, $"stash drop {adjustedIndex}");
             // Keep TEMP stash - will be cleaned up after conflict resolution
-            Debug.WriteLine("[TryCommitBasedMerge] Conflicts created successfully");
+            Log.Info("StashMerge", "Conflicts created successfully");
 
             return new Models.MergeResult
             {
@@ -74,14 +74,14 @@ internal static class StashMergeHelpers
             // Drop both stashes
             GitCliHelpers.RunGit(repoPath, $"stash drop {adjustedIndex}"); // Drop target
             GitCliHelpers.RunGit(repoPath, "stash drop 0"); // Drop temp
-            Debug.WriteLine("[TryCommitBasedMerge] Both stashes applied cleanly");
+            Log.Info("StashMerge", "Both stashes applied cleanly");
 
             return new Models.MergeResult { Success = true };
         }
 
         // Apply failed but no conflicts - something else went wrong
         // Try to restore original state
-        Debug.WriteLine("[TryCommitBasedMerge] Apply failed without conflicts - restoring state");
+        Log.Warn("StashMerge", "Apply failed without conflicts - restoring state");
         GitCliHelpers.RunGit(repoPath, "reset --hard HEAD");
         GitCliHelpers.RunGit(repoPath, "stash pop 0"); // Restore local changes
         return null;
@@ -95,7 +95,7 @@ internal static class StashMergeHelpers
         var result = new Models.MergeResult();
 
         var popResult = GitCliHelpers.RunGit(repoPath, $"stash pop {stashIndex}");
-        Debug.WriteLine($"[SimplePopStash] Result: exit={popResult.ExitCode}, output={popResult.Output}, error={popResult.Error}");
+        Log.Info("StashMerge", $"SimplePopStash: exit={popResult.ExitCode}, output={popResult.Output}, error={popResult.Error}");
 
         var conflicts = GitCliHelpers.GetConflictFiles(repoPath);
 

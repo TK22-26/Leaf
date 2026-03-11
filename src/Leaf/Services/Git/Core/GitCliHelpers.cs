@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using Leaf.Services;
 
 namespace Leaf.Services.Git.Core;
 
@@ -9,8 +10,6 @@ namespace Leaf.Services.Git.Core;
 /// </summary>
 internal class GitCliHelpers
 {
-    private readonly IGitCommandRunner _runner;
-
     /// <summary>
     /// Constant used to identify temporary stashes created during smart pop operations.
     /// </summary>
@@ -18,7 +17,6 @@ internal class GitCliHelpers
 
     public GitCliHelpers(IGitCommandRunner runner)
     {
-        _runner = runner;
     }
 
     /// <summary>
@@ -50,6 +48,77 @@ internal class GitCliHelpers
         {
             return new GitResult(-1, "", "Failed to start git process");
         }
+
+        string output = process.StandardOutput.ReadToEnd();
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        return new GitResult(process.ExitCode, output, error);
+    }
+
+    /// <summary>
+    /// Run a synchronous git command with individually-escaped arguments.
+    /// Prefer this over RunGit(string) when any argument contains user-controlled data.
+    /// </summary>
+    public static GitResult RunGitArgs(string workingDirectory, params string[] args)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        foreach (var arg in args)
+            startInfo.ArgumentList.Add(arg);
+
+        startInfo.EnvironmentVariables["LC_ALL"] = "C";
+
+        using var process = Process.Start(startInfo);
+        if (process == null)
+        {
+            return new GitResult(-1, "", "Failed to start git process");
+        }
+
+        string output = process.StandardOutput.ReadToEnd();
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        return new GitResult(process.ExitCode, output, error);
+    }
+
+    /// <summary>
+    /// Run a git command with stdin input and individually-escaped arguments.
+    /// </summary>
+    public static GitResult RunGitWithInputArgs(string workingDirectory, string input, params string[] args)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        foreach (var arg in args)
+            startInfo.ArgumentList.Add(arg);
+
+        startInfo.EnvironmentVariables["LC_ALL"] = "C";
+
+        using var process = Process.Start(startInfo);
+        if (process == null)
+        {
+            return new GitResult(-1, "", "Failed to start git process");
+        }
+
+        process.StandardInput.Write(input);
+        process.StandardInput.Close();
 
         string output = process.StandardOutput.ReadToEnd();
         string error = process.StandardError.ReadToEnd();
@@ -172,11 +241,27 @@ internal class GitCliHelpers
 
     /// <summary>
     /// Check if there are uncommitted changes.
+    /// Uses git diff-index which exits immediately on first difference,
+    /// much faster than 'git status --porcelain' on repos with many changes.
     /// </summary>
     public static bool HasUncommittedChanges(string repoPath)
     {
-        var result = RunGit(repoPath, "status --porcelain");
-        return !string.IsNullOrWhiteSpace(result.Output);
+        // Fast: diff-index --quiet HEAD checks staged + unstaged tracked files.
+        // Exits immediately on first difference (exit code 1 = dirty).
+        var result = RunGit(repoPath, "diff-index --quiet HEAD --");
+        if (result.ExitCode == 1)
+            return true;
+
+        if (result.ExitCode != 0)
+        {
+            // No HEAD (empty repo) or other error — fall back to status
+            var fallback = RunGit(repoPath, "status --porcelain");
+            return !string.IsNullOrWhiteSpace(fallback.Output);
+        }
+
+        // Tracked files are clean; check for untracked files
+        var untracked = RunGit(repoPath, "ls-files --others --exclude-standard");
+        return !string.IsNullOrWhiteSpace(untracked.Output);
     }
 
     /// <summary>
@@ -189,12 +274,12 @@ internal class GitCliHelpers
             foreach (var rejFile in Directory.GetFiles(repoPath, "*.rej", SearchOption.AllDirectories))
             {
                 File.Delete(rejFile);
-                Debug.WriteLine($"[CleanupRejectFiles] Deleted {rejFile}");
+                Log.Info("Git", $"CleanupRejectFiles: Deleted {rejFile}");
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CleanupRejectFiles] Error cleaning up .rej files: {ex.Message}");
+            Log.Error("Git", $"CleanupRejectFiles: Error cleaning up .rej files: {ex.Message}");
         }
     }
 
@@ -253,7 +338,7 @@ internal class GitCliHelpers
     /// </summary>
     public static string ReadConflictStage(string repoPath, string filePath, int stage)
     {
-        var result = RunGit(repoPath, $"show :{stage}:\"{filePath}\"");
+        var result = RunGitArgs(repoPath, "show", $":{stage}:{filePath}");
         return result.ExitCode == 0 ? result.Output : string.Empty;
     }
 
@@ -262,7 +347,7 @@ internal class GitCliHelpers
     /// </summary>
     public static string GetRefFileContent(string repoPath, string refName, string filePath)
     {
-        var result = RunGit(repoPath, $"show {refName}:\"{filePath}\"");
+        var result = RunGitArgs(repoPath, "show", $"{refName}:{filePath}");
         return result.ExitCode == 0 ? result.Output : string.Empty;
     }
 

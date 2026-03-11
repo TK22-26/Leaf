@@ -11,6 +11,7 @@ using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Rendering;
 using Leaf.Helpers;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.ViewModels;
 
 namespace Leaf.Controls;
@@ -212,7 +213,7 @@ public partial class MergedResultEditorControl : UserControl
 
     public void ApplyScrollRatio(double ratio)
     {
-        var sv = _cachedScrollViewer ??= FindScrollViewer(Editor);
+        var sv = _cachedScrollViewer ??= VisualTreeExtensions.FindScrollViewer(Editor);
         if (sv == null) return;
 
         var maxOffset = sv.ExtentHeight - sv.ViewportHeight;
@@ -222,7 +223,7 @@ public partial class MergedResultEditorControl : UserControl
 
     private double GetScrollRatio()
     {
-        var sv = _cachedScrollViewer ??= FindScrollViewer(Editor);
+        var sv = _cachedScrollViewer ??= VisualTreeExtensions.FindScrollViewer(Editor);
         if (sv == null) return 0;
         var max = sv.ExtentHeight - sv.ViewportHeight;
         return max > 0 ? sv.VerticalOffset / max : 0;
@@ -233,18 +234,6 @@ public partial class MergedResultEditorControl : UserControl
         ScrollOffsetChanged?.Invoke(this, GetScrollRatio());
     }
 
-    private static ScrollViewer? FindScrollViewer(DependencyObject? root)
-    {
-        if (root == null) return null;
-        if (root is ScrollViewer viewer) return viewer;
-
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var found = FindScrollViewer(VisualTreeHelper.GetChild(root, i));
-            if (found != null) return found;
-        }
-        return null;
-    }
 }
 
 internal sealed class MergedResultBackground : FrameworkElement
@@ -299,7 +288,7 @@ internal sealed class MergedResultBackground : FrameworkElement
         _renderCount++;
         if (_renderCount % 100 == 0)
         {
-            System.Diagnostics.Debug.WriteLine($"[MergedResultBackground] OnRender called {_renderCount} times");
+            Log.Perf("MergedResultBackground", $"OnRender called {_renderCount} times");
         }
 
         if (_lines == null || _editor == null)
@@ -308,7 +297,7 @@ internal sealed class MergedResultBackground : FrameworkElement
         // Guard against render loops
         if (_isRendering)
         {
-            System.Diagnostics.Debug.WriteLine($"[MergedResultBackground] Prevented re-entrant render!");
+            Log.Warn("MergedResultBackground", "Prevented re-entrant render!");
             return;
         }
 

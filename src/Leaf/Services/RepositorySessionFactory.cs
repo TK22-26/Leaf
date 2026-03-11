@@ -25,8 +25,9 @@ public class RepositorySessionFactory : IRepositorySessionFactory
             // Use Discover - it handles subfolders, worktrees, etc.
             return Repository.Discover(path) != null;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("RepoSessionFactory", $"Repository validation failed for '{path}': {ex.Message}");
             return false;
         }
     }

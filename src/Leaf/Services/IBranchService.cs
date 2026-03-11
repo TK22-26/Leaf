@@ -120,16 +120,4 @@ public interface IBranchService
         string remoteBranchName,
         bool isCurrentBranch);
 
-    /// <summary>
-    /// Resets a branch to a specific commit.
-    /// </summary>
-    /// <param name="session">Repository session.</param>
-    /// <param name="branchName">Branch name to reset.</param>
-    /// <param name="commitSha">Target commit SHA.</param>
-    /// <param name="updateWorkingTree">If true, also updates the working tree (hard reset).</param>
-    Task ResetBranchToCommitAsync(
-        IRepositorySession session,
-        string branchName,
-        string commitSha,
-        bool updateWorkingTree);
 }

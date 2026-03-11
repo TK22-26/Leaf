@@ -194,14 +194,20 @@
                             Grid.Column="0"
                             Margin="0,4"
                             Orientation="Horizontal">
-                            <ic:SymbolIcon
-                                x:Name="CategoryIcon"
+                            <Grid
+                                Width="14"
+                                Height="14"
                                 Margin="0,0,6,0"
-                                VerticalAlignment="Center"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                IconVariant="Regular"
-                                Symbol="BranchFork" />
+                                VerticalAlignment="Center">
+                                <ic:SymbolIcon
+                                    x:Name="CategoryIcon"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    IconVariant="Regular"
+                                    Symbol="BranchFork" />
+                            </Grid>
                             <TextBlock
                                 x:Name="CategoryName"
                                 VerticalAlignment="Center"
@@ -300,6 +306,68 @@
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Symbol="Add" />
                         </Button>
+                        <!--  Pull request actions (PULL REQUESTS category)  -->
+                        <StackPanel
+                            x:Name="PullRequestHeaderActions"
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            Visibility="Collapsed">
+                            <Button
+                                x:Name="PullRequestFilterButton"
+                                Margin="0,0,2,0"
+                                Padding="4"
+                                VerticalAlignment="Center"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{Binding DataContext.TogglePullRequestFilterCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                Cursor="Hand"
+                                ToolTip="{Binding DataContext.SelectedRepository.PullRequestFilterToolTip, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                <Button.Style>
+                                    <Style BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        <Setter Property="Content">
+                                            <Setter.Value>
+                                                <ic:SymbolIcon
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                    Symbol="EyeOff" />
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding DataContext.SelectedRepository.ShowAllPullRequests, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                <Setter Property="Content">
+                                                    <Setter.Value>
+                                                        <ic:SymbolIcon
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                            Symbol="Eye" />
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button
+                                x:Name="CreatePRButton"
+                                Margin="0"
+                                Padding="4"
+                                VerticalAlignment="Center"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Click="CreatePRButton_Click"
+                                Cursor="Hand"
+                                ToolTip="Create pull request">
+                                <ic:SymbolIcon
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Symbol="Add" />
+                            </Button>
+                        </StackPanel>
                     </Grid>
                     <HierarchicalDataTemplate.Triggers>
                         <DataTrigger Binding="{Binding IsGitFlowCategory}" Value="True">
@@ -311,6 +379,11 @@
                         <DataTrigger Binding="{Binding IsTagsCategory}" Value="True">
                             <Setter TargetName="CategoryIcon" Property="Symbol" Value="Tag" />
                             <Setter TargetName="CategoryIcon" Property="Foreground" Value="#F59E0B" />
+                            <Setter TargetName="CategoryIcon" Property="RenderTransform">
+                                <Setter.Value>
+                                    <TranslateTransform X="-0.5" Y="0.5" />
+                                </Setter.Value>
+                            </Setter>
                             <Setter TargetName="CategoryName" Property="Foreground" Value="#F59E0B" />
                         </DataTrigger>
                         <DataTrigger Binding="{Binding IsLocalCategory}" Value="True">
@@ -324,6 +397,12 @@
                             <Setter TargetName="CategoryIcon" Property="Foreground" Value="#3B82F6" />
                             <Setter TargetName="CategoryName" Property="Foreground" Value="#3B82F6" />
                             <Setter TargetName="AddWorktreeButton" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsPullRequestsCategory}" Value="True">
+                            <Setter TargetName="CategoryIcon" Property="Symbol" Value="BranchRequest" />
+                            <Setter TargetName="CategoryIcon" Property="Foreground" Value="#8250DF" />
+                            <Setter TargetName="CategoryName" Property="Foreground" Value="#8250DF" />
+                            <Setter TargetName="PullRequestHeaderActions" Property="Visibility" Value="Visible" />
                         </DataTrigger>
                     </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>
@@ -509,6 +588,11 @@
                                     CommandParameter="{Binding}"
                                     Header="Rename branch..."
                                     IsEnabled="{Binding IsRemote, Converter={StaticResource InverseBoolConverter}}" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.OpenCreatePullRequestCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding Name}"
+                                    Header="Create Pull Request..."
+                                    IsEnabled="{Binding IsRemote, Converter={StaticResource InverseBoolConverter}}" />
                                 <MenuItem Header="GitFlow" Visibility="{Binding GitFlowType, Converter={StaticResource GitFlowTypeToVisibilityConverter}, ConverterParameter=Finishable}">
                                     <MenuItem
                                         Command="{Binding PlacementTarget.Tag.FinishGitFlowBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
@@ -544,6 +628,11 @@
                                         </Style>
                                     </MenuItem.Style>
                                 </MenuItem>
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.CopyBranchNameCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Copy branch name" />
                                 <Separator />
                                 <MenuItem
                                     Command="{Binding PlacementTarget.Tag.DeleteBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
@@ -670,6 +759,11 @@
                                     Command="{Binding PlacementTarget.Tag.CheckoutTagCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                     CommandParameter="{Binding}"
                                     Header="Checkout (detached HEAD)" />
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.CopyTagNameCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Copy tag name" />
                                 <Separator />
                                 <MenuItem
                                     Command="{Binding PlacementTarget.Tag.DeleteTagCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
@@ -851,6 +945,110 @@
                             </StackPanel>
                         </Grid>
                     </Border>
+                </DataTemplate>
+
+                <!--  Pull Request item template  -->
+                <DataTemplate DataType="{x:Type models:PullRequestInfo}">
+                    <Border
+                        Padding="4,3,2,3"
+                        Background="Transparent"
+                        CornerRadius="2"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="PullRequest_MouseLeftButtonDown"
+                        MouseRightButtonDown="PullRequest_MouseRightButtonDown"
+                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.OpenPullRequestInBrowserCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Open in Browser">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon FontSize="14" Symbol="Open" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.CopyPullRequestUrlCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Copy PR URL">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon FontSize="14" Symbol="Copy" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.DeletePullRequestCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Foreground="#DC2626"
+                                    Header="Delete">
+                                    <MenuItem.Icon>
+                                        <ic:SymbolIcon FontSize="14" Symbol="Delete" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <!--  PR state icon  -->
+                            <ic:SymbolIcon
+                                x:Name="PrIcon"
+                                Grid.Column="0"
+                                Margin="0,0,6,0"
+                                FontSize="12"
+                                Foreground="#28A745"
+                                Symbol="BranchRequest" />
+                            <!--  PR title  -->
+                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Grid.Column="0"
+                                    FontSize="11"
+                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                    Text="{Binding Number, Mode=OneWay, StringFormat='#{0}'}" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Margin="4,0,0,0"
+                                    FontSize="11"
+                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                    Text="{Binding Title, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis">
+                                </TextBlock>
+                            </Grid>
+                            <!--  Draft badge  -->
+                            <Border
+                                x:Name="DraftBadge"
+                                Grid.Column="2"
+                                Padding="4,1"
+                                VerticalAlignment="Center"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="4"
+                                Visibility="Collapsed">
+                                <TextBlock
+                                    FontSize="9"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="Draft" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsDraft}" Value="True">
+                            <Setter TargetName="DraftBadge" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="PrIcon" Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding State}" Value="Merged">
+                            <Setter TargetName="PrIcon" Property="Foreground" Value="#8250DF" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding State}" Value="Closed">
+                            <Setter TargetName="PrIcon" Property="Foreground" Value="#CF222E" />
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
                 </DataTemplate>
             </TreeView.Resources>
 

@@ -301,15 +301,60 @@ Description: [your description here]";
         var psi = new ProcessStartInfo
         {
             FileName = "codex",
-            Arguments = $"--approval-mode full-auto -q \"{EscapeArg(prompt)}\"",
             WorkingDirectory = workingDir,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        psi.ArgumentList.Add("exec");
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add("model_reasoning_effort=low");
+        psi.ArgumentList.Add("-m");
+        psi.ArgumentList.Add("gpt-5.1-codex-mini");
+        psi.ArgumentList.Add("--full-auto");
+        psi.ArgumentList.Add("--color");
+        psi.ArgumentList.Add("never");
+        psi.ArgumentList.Add("--json");
+        psi.ArgumentList.Add("-");
 
-        return await RunProcessAsync(psi, timeoutSeconds);
+        try
+        {
+            using var process = Process.Start(psi);
+            if (process == null)
+                return (false, "", "Failed to start codex process.");
+
+            await process.StandardInput.WriteAsync(prompt);
+            process.StandardInput.Close();
+
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+
+            var completed = await Task.WhenAny(
+                process.WaitForExitAsync(),
+                Task.Delay(TimeSpan.FromSeconds(timeoutSeconds)));
+
+            if (!process.HasExited)
+            {
+                process.Kill();
+                return (false, "", $"Codex timed out after {timeoutSeconds}s.");
+            }
+
+            var output = await outputTask;
+            var error = await errorTask;
+
+            if (process.ExitCode != 0)
+                return (false, "", $"Codex exited with code {process.ExitCode}: {error}");
+
+            // Extract message from JSONL output
+            output = CommitMessageParser.ExtractCodexJsonlMessage(output);
+            return (true, output, "");
+        }
+        catch (Exception ex)
+        {
+            return (false, "", $"Codex error: {ex.Message}");
+        }
     }
 
     private static async Task<(bool Success, string Output, string Detail)> RunClaudeAsync(
@@ -320,13 +365,18 @@ Description: [your description here]";
         var psi = new ProcessStartInfo
         {
             FileName = "claude",
-            Arguments = $"-p \"{EscapeArg(prompt)}\" --output-format json --output-schema '{schema}'",
             WorkingDirectory = workingDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        psi.ArgumentList.Add("-p");
+        psi.ArgumentList.Add(prompt);
+        psi.ArgumentList.Add("--output-format");
+        psi.ArgumentList.Add("json");
+        psi.ArgumentList.Add("--output-schema");
+        psi.ArgumentList.Add(schema);
 
         return await RunProcessAsync(psi, timeoutSeconds);
     }
@@ -371,17 +421,8 @@ Description: [your description here]";
         }
     }
 
-    private static string EscapeArg(string arg)
-    {
-        return arg.Replace("\\", "\\\\").Replace("\"", "\\\"");
-    }
-
     private static bool TryParseCommitResult(string response, out string message, out string description, out string error)
     {
-        message = "";
-        description = "";
-        error = "";
-
         // Try JSON first
         if (TryParseJson(response, out message, out description))
         {
@@ -432,8 +473,9 @@ Description: [your description here]";
 
             return !string.IsNullOrWhiteSpace(message);
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error("AutoCommit", $"JSON parse error: {ex.Message}");
             return false;
         }
     }

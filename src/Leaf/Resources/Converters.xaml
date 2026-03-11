@@ -8,7 +8,17 @@
     <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
     <converters:NullToVisibilityInverseConverter x:Key="NullToVisibilityInverseConverter" />
     <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+    <converters:ContentModeToVisibilityConverter x:Key="ContentModeToVisibilityConverter" />
     <converters:EmptyToVisibilityConverter x:Key="EmptyToVisibilityConverter" />
+
+    <!--  Pull Request Converters  -->
+    <converters:PullRequestStateToColorConverter x:Key="PullRequestStateToColorConverter" />
+    <converters:PullRequestStateToTextConverter x:Key="PullRequestStateToTextConverter" />
+    <converters:CheckStatusToColorConverter x:Key="CheckStatusToColorConverter" />
+    <converters:CheckStatusToIconConverter x:Key="CheckStatusToIconConverter" />
+    <converters:ReviewStateToColorConverter x:Key="ReviewStateToColorConverter" />
+    <converters:ReviewStateToTextConverter x:Key="ReviewStateToTextConverter" />
+    <converters:MarkdownToFlowDocumentConverter x:Key="MarkdownToFlowDocumentConverter" />
     <converters:FileStatusToBrushConverter x:Key="FileStatusToBrushConverter" />
     <converters:IdenticonConverter x:Key="IdenticonConverter" />
 

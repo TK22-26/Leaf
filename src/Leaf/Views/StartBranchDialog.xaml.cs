@@ -79,7 +79,6 @@ public partial class StartBranchDialog : Window
         if (_config == null) return;
 
         GitFlowBranchType type = GetSelectedBranchType();
-        string prefix = GetPrefix(type);
 
         switch (type)
         {
@@ -280,7 +279,7 @@ public partial class StartBranchDialog : Window
 
             // Check for uncommitted changes before starting
             ProgressText.Text = "Checking for uncommitted changes...";
-            var repoInfo = await _gitService.GetRepositoryInfoAsync(_repoPath);
+            var repoInfo = await _gitService.GetRepositoryInfoFastAsync(_repoPath);
 
             if (repoInfo.IsDirty)
             {

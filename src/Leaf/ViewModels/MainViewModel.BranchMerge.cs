@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.Views;
 
 namespace Leaf.ViewModels;
@@ -18,10 +19,10 @@ public partial class MainViewModel
     [RelayCommand]
     public async Task MergeBranchAsync(BranchInfo branch)
     {
-        System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] MergeBranch: branch={branch.Name}");
+        Log.Info("Merge", $"MergeBranch: branch={branch.Name}");
         if (SelectedRepository == null)
         {
-            System.Diagnostics.Debug.WriteLine("[MERGE][ERROR] MergeBranch: SelectedRepository is null");
+            Log.Error("Merge", "MergeBranch: SelectedRepository is null");
             return;
         }
 
@@ -73,7 +74,7 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             StatusMessage = $"Merge failed: {ex.Message}";
-            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] MergeBranch: {ex}");
+            Log.Error("Merge", "MergeBranch failed", ex);
         }
         finally
         {
@@ -84,7 +85,7 @@ public partial class MainViewModel
     private async Task<MergeResult> ExecuteNormalMergeAsync(string branchName)
     {
         var result = await _gitService.MergeBranchAsync(SelectedRepository!.Path, branchName);
-        System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] NormalMerge: Success={result.Success}, Conflicts={result.HasConflicts}, UnrelatedHistories={result.HasUnrelatedHistories}");
+        Log.Info("Merge", $"NormalMerge: Success={result.Success}, Conflicts={result.HasConflicts}, UnrelatedHistories={result.HasUnrelatedHistories}");
 
         // Handle unrelated histories - prompt and retry
         if (!result.Success && result.HasUnrelatedHistories)
@@ -103,7 +104,7 @@ public partial class MainViewModel
             // Retry with flag
             StatusMessage = $"Merging {branchName} (allowing unrelated histories)...";
             result = await _gitService.MergeBranchAsync(SelectedRepository.Path, branchName, allowUnrelatedHistories: true);
-            System.Diagnostics.Debug.WriteLine($"[MERGE][OPS] NormalMerge (retry unrelated): Success={result.Success}, Conflicts={result.HasConflicts}");
+            Log.Info("Merge", $"NormalMerge (retry unrelated): Success={result.Success}, Conflicts={result.HasConflicts}");
         }
 
         return result;
@@ -132,7 +133,7 @@ public partial class MainViewModel
             StatusMessage = "Merge has conflicts - resolve to complete";
 
             // Refresh repo info to update merge banner and conflicts immediately
-            var info = await _gitService.GetRepositoryInfoAsync(SelectedRepository!.Path);
+            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository!.Path);
             SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
             SelectedRepository.OperationType = info.OperationType;
             SelectedRepository.MergingBranch = info.MergingBranch;
@@ -144,7 +145,7 @@ public partial class MainViewModel
         else
         {
             StatusMessage = $"Merge failed: {result.ErrorMessage}";
-            System.Diagnostics.Debug.WriteLine($"[MERGE][ERROR] HandleMergeResult: {result.ErrorMessage}");
+            Log.Error("Merge", $"HandleMergeResult: {result.ErrorMessage}");
         }
     }
 

@@ -15,7 +15,6 @@ public partial class CommitDetailViewModel : ObservableObject
     private readonly IGitService _gitService;
     private readonly IClipboardService _clipboardService;
     private readonly IFileSystemService _fileSystemService;
-    private readonly SettingsService _settingsService;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasParent))]
@@ -161,7 +160,6 @@ public partial class CommitDetailViewModel : ObservableObject
         _gitService = gitService;
         _clipboardService = clipboardService;
         _fileSystemService = fileSystemService;
-        _settingsService = settingsService;
         IsCompactFileList = settingsService.LoadSettings().CompactFileList;
     }
 

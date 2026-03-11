@@ -170,6 +170,9 @@ public partial class GitGraphCanvas : FrameworkElement
                 // Sort by ChildRow ascending for binary search during render
                 canvas._laneSegments.Sort((a, b) => a.ChildRow.CompareTo(b.ChildRow));
             }
+
+            canvas.BeginViewportTracking();
+            canvas.ScheduleViewportRefresh();
         }
     }
 
@@ -358,7 +361,11 @@ public partial class GitGraphCanvas : FrameworkElement
         base.OnVisualParentChanged(oldParent);
         ResetScrollViewerCache();
         if (IsLoaded)
+        {
             AttachToScrollViewer();
+            BeginViewportTracking(3);
+            ScheduleViewportRefresh();
+        }
     }
 
     #endregion
@@ -371,19 +378,48 @@ public partial class GitGraphCanvas : FrameworkElement
     private double GetYForRow(int row) =>
         _layoutService.GetYForRow(row, RowHeight);
 
+    private double GetFallbackViewportHeight()
+    {
+        double fallbackViewportHeight = Window.GetWindow(this)?.ActualHeight ?? 0;
+        if (fallbackViewportHeight <= 0 || double.IsNaN(fallbackViewportHeight))
+            fallbackViewportHeight = ActualHeight;
+        if (fallbackViewportHeight <= 0 || double.IsNaN(fallbackViewportHeight))
+            fallbackViewportHeight = 900;
+
+        return fallbackViewportHeight;
+    }
+
+    private double GetEffectiveViewportHeight(ScrollViewer? scrollViewer)
+    {
+        double viewportHeight = scrollViewer?.ViewportHeight ?? 0;
+        double scrollViewerHeight = scrollViewer?.ActualHeight ?? 0;
+        double renderHeight = scrollViewer?.RenderSize.Height ?? 0;
+        double fallbackViewportHeight = GetFallbackViewportHeight();
+
+        double bestViewportHeight = Math.Max(viewportHeight, Math.Max(scrollViewerHeight, renderHeight));
+        if (bestViewportHeight <= 0 || double.IsNaN(bestViewportHeight))
+            bestViewportHeight = fallbackViewportHeight;
+
+        // On startup, ViewportHeight can briefly lag at ~5 rows even though the host is already larger.
+        if (bestViewportHeight < RowHeight * 8 && fallbackViewportHeight > bestViewportHeight)
+            bestViewportHeight = fallbackViewportHeight;
+
+        return bestViewportHeight;
+    }
+
     private (int minIndex, int maxIndex) GetVisibleNodeRange(IReadOnlyList<GitTreeNode> nodes, int rowOffset)
     {
         if (nodes.Count == 0)
             return (0, -1);
 
         var scrollViewer = FindParentScrollViewer();
-        if (scrollViewer == null)
-            return (0, nodes.Count - 1); // Fallback to all nodes
+        double viewportHeight = GetEffectiveViewportHeight(scrollViewer);
+        double scrollOffset = scrollViewer?.VerticalOffset ?? 0;
 
         return _layoutService.GetVisibleNodeRange(
             nodes.Count,
-            scrollViewer.VerticalOffset,
-            scrollViewer.ViewportHeight,
+            scrollOffset,
+            viewportHeight,
             RowHeight,
             rowOffset);
     }

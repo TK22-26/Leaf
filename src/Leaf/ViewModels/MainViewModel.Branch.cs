@@ -462,7 +462,7 @@ public partial class MainViewModel
 
             // Refresh repo info, branches, and graph in parallel (all independent git calls)
             SelectedRepository.BranchesLoaded = false;
-            var repoInfoTask = _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            var repoInfoTask = _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path);
             var branchesTask = LoadBranchesForRepoAsync(SelectedRepository, skipFilterApplication: true);
             var graphTask = GitGraphViewModel?.RefreshAfterCheckoutAsync(branchName, detachedHeadSha: null) ?? Task.CompletedTask;
 
@@ -531,7 +531,7 @@ public partial class MainViewModel
 
             // Refresh repo info, branches, and graph in parallel (all independent git calls)
             SelectedRepository.BranchesLoaded = false;
-            var infoTask = _gitService.GetRepositoryInfoAsync(SelectedRepository.Path);
+            var infoTask = _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path);
             var branchesTask = LoadBranchesForRepoAsync(SelectedRepository, skipFilterApplication: true);
             var graphTask = GitGraphViewModel?.RefreshAfterCheckoutAsync(newBranchName: null, detachedHeadSha: tag.TargetSha) ?? Task.CompletedTask;
 
@@ -602,5 +602,19 @@ public partial class MainViewModel
         {
             IsBusy = false;
         }
+    }
+
+    [RelayCommand]
+    public void CopyBranchName(BranchInfo branch)
+    {
+        if (branch == null) return;
+        _clipboardService.SetText(branch.Name);
+    }
+
+    [RelayCommand]
+    public void CopyTagName(TagInfo tag)
+    {
+        if (tag == null) return;
+        _clipboardService.SetText(tag.Name);
     }
 }

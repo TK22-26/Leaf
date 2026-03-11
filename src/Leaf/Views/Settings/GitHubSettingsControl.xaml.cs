@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using Leaf.Services;
@@ -199,6 +200,11 @@ public partial class GitHubSettingsControl : UserControl, ISettingsSectionContro
             PatPasswordBox.Visibility = Visibility.Visible;
             TogglePatVisibilityButton.Content = "Show";
         }
+    }
+
+    private void OpenPatPage_Click(object sender, RoutedEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo("https://github.com/settings/tokens") { UseShellExecute = true });
     }
 
     #endregion

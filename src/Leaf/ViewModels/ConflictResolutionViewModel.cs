@@ -22,7 +22,6 @@ public partial class ConflictResolutionViewModel : ObservableObject
     private readonly IGitService _gitService;
     private readonly IClipboardService _clipboardService;
     private readonly IThreeWayMergeService _mergeService;
-    private readonly IDispatcherService _dispatcherService;
     private readonly IMergeUiLogger _logger;
     private readonly string _repoPath;
     private int _currentRegionIndex = -1;
@@ -189,7 +188,6 @@ public partial class ConflictResolutionViewModel : ObservableObject
         _gitService = gitService;
         _clipboardService = clipboardService;
         _mergeService = mergeService;
-        _dispatcherService = dispatcherService;
         _repoPath = repoPath;
         _logger = new MergeUiLogger();
 
@@ -207,7 +205,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
             if (showLoading)
                 IsLoading = true;
 
-            Debug.WriteLine($"[MERGE][UI] LoadConflicts: repo={System.IO.Path.GetFileName(_repoPath)}");
+            Log.Info("Merge", $"LoadConflicts: repo={System.IO.Path.GetFileName(_repoPath)}");
             var latestConflicts = await _gitService.GetConflictsAsync(_repoPath);
             foreach (var conflict in latestConflicts)
                 conflict.IsResolved = false;
@@ -284,7 +282,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         // Skip if already built
         if (_lastBuiltFilePath == filePath && CurrentMergeResult != null)
         {
-            Debug.WriteLine($"[MERGE][UI] BuildMergeResult: skipping redundant build for {filePath}");
+            Log.Info("Merge", $"BuildMergeResult: skipping redundant build for {filePath}");
             return;
         }
 
@@ -324,7 +322,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         _buildMergeCts = new CancellationTokenSource();
         var ct = _buildMergeCts.Token;
 
-        Debug.WriteLine($"[MERGE][UI] BuildMergeResult: file={filePath} base={baseContent?.Length ?? 0}chars ours={oursContent?.Length ?? 0}chars theirs={theirsContent?.Length ?? 0}chars");
+        Log.Info("Merge", $"BuildMergeResult: file={filePath} base={baseContent?.Length ?? 0}chars ours={oursContent?.Length ?? 0}chars theirs={theirsContent?.Length ?? 0}chars");
 
         FileMergeResult result;
         try
@@ -333,18 +331,18 @@ public partial class ConflictResolutionViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            Debug.WriteLine($"[MERGE][UI] BuildMergeResult: cancelled for {filePath}");
+            Log.Info("Merge", $"BuildMergeResult: cancelled for {filePath}");
             return;
         }
 
         if (ct.IsCancellationRequested || SelectedConflict?.FilePath != filePath)
         {
-            Debug.WriteLine($"[MERGE][UI] BuildMergeResult: discarded (selection changed) for {filePath}");
+            Log.Info("Merge", $"BuildMergeResult: discarded (selection changed) for {filePath}");
             return;
         }
 
         _lastBuiltFilePath = filePath;
-        Debug.WriteLine($"[MERGE][UI] BuildMergeResult: {result.Regions.Count} regions, unresolved={result.UnresolvedCount}");
+        Log.Info("Merge", $"BuildMergeResult: {result.Regions.Count} regions, unresolved={result.UnresolvedCount}");
 
         CurrentMergeResult = result;
         _currentRegionIndex = result.GetFirstUnresolvedConflictIndex();
@@ -661,7 +659,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         try
         {
             IsResolving = true;
-            Debug.WriteLine($"[MERGE][UI] MarkResolved: file={SelectedConflict.FilePath}");
+            Log.Info("Merge", $"MarkResolved: file={SelectedConflict.FilePath}");
 
             var mergedContent = MergedContent;
             if (string.IsNullOrWhiteSpace(mergedContent) && CurrentMergeResult != null)
@@ -693,14 +691,16 @@ public partial class ConflictResolutionViewModel : ObservableObject
         {
             IsResolving = true;
             var commitMessage = $"Merge branch '{SourceBranch}' into {TargetBranch}";
-            Debug.WriteLine($"[MERGE][OPS] CompleteMerge: message={commitMessage}");
+            Log.Info("Merge", $"CompleteMerge: message={commitMessage}");
             await _gitService.CompleteMergeAsync(_repoPath, commitMessage);
-            Debug.WriteLine("[MERGE][OPS] CompleteMerge: success");
+            Log.Info("Merge", "CompleteMerge: success");
+            Cleanup();
             MergeCompleted?.Invoke(this, true);
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MERGE][ERROR] CompleteMerge: {ex.Message}");
+            Log.Error("Merge", $"CompleteMerge: {ex.Message}", ex);
+            Cleanup();
             MergeCompleted?.Invoke(this, false);
             throw;
         }
@@ -716,9 +716,10 @@ public partial class ConflictResolutionViewModel : ObservableObject
         try
         {
             IsResolving = true;
-            Debug.WriteLine("[MERGE][UI] AbortMerge (from ConflictResolutionVM)");
+            Log.Info("Merge", "AbortMerge (from ConflictResolutionVM)");
             await _gitService.AbortMergeAsync(_repoPath);
-            Debug.WriteLine("[MERGE][UI] AbortMerge: completed");
+            Log.Info("Merge", "AbortMerge: completed");
+            Cleanup();
             MergeCompleted?.Invoke(this, false);
         }
         finally
@@ -880,6 +881,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
     private void WireConflictLineEvents(FileMergeResult result)
     {
+        _wiredSelectableLines.Clear();
+
         foreach (var region in result.Regions.Where(r => r.IsConflict))
         {
             region.InitializeSelectableLines();
@@ -986,6 +989,19 @@ public partial class ConflictResolutionViewModel : ObservableObject
         OnPropertyChanged(nameof(CanMarkResolved));
     }
 
+    /// <summary>
+    /// Stops and cleans up timer and cancellation token resources.
+    /// Call before raising MergeCompleted to prevent DispatcherTimer rooting the ViewModel.
+    /// </summary>
+    public void Cleanup()
+    {
+        _mergedContentDebounceTimer?.Stop();
+        _mergedContentDebounceTimer = null;
+        _buildMergeCts?.Cancel();
+        _buildMergeCts?.Dispose();
+        _buildMergeCts = null;
+    }
+
     public void UpdateMergedLinesFromText(string text)
     {
         var lines = text.Split('\n');
@@ -1059,7 +1075,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         OursLineMapping = oursMapping;
         TheirsLineMapping = theirsMapping;
 
-        Debug.WriteLine($"[MERGE][UI] BuildLineMappings: aligned={oursMapping.TotalLines} lines, conflicts={oursMapping.AllConflictRanges.Count}");
+        Log.Info("Merge", $"BuildLineMappings: aligned={oursMapping.TotalLines} lines, conflicts={oursMapping.AllConflictRanges.Count}");
     }
 
     private static bool ContainsConflictMarkers(string content)

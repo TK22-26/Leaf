@@ -130,23 +130,36 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <PasswordBox x:Name="PatPasswordBox"
                                          Grid.Column="0"
                                          Padding="8,6"
                                          PasswordChanged="PatPasswordBox_PasswordChanged" />
+                            <TextBox x:Name="PatTextBox"
+                                     Grid.Column="0"
+                                     Padding="8,6"
+                                     TextChanged="PatTextBox_TextChanged"
+                                     Visibility="Collapsed" />
                             <Button x:Name="TogglePatVisibilityButton"
-                                    Grid.Column="1"
-                                    Width="60"
-                                    Margin="8,0,0,0"
-                                    Click="TogglePatVisibility_Click"
-                                    Content="Show" />
+                                     Grid.Column="1"
+                                     Width="60"
+                                     Margin="8,0,0,0"
+                                     Click="TogglePatVisibility_Click"
+                                     Content="Show" />
+                            <Button
+                                Grid.Column="2"
+                                Width="34"
+                                Height="34"
+                                Margin="8,0,0,0"
+                                Padding="0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Click="OpenPatPage_Click"
+                                ToolTip="Open PAT page">
+                                <ic:SymbolIcon Symbol="Open" FontSize="12" />
+                            </Button>
                         </Grid>
-                        <TextBox x:Name="PatTextBox"
-                                 Margin="0,0,0,12"
-                                 Padding="8,6"
-                                 TextChanged="PatTextBox_TextChanged"
-                                 Visibility="Collapsed" />
 
                         <!-- Buttons -->
                         <StackPanel Orientation="Horizontal">

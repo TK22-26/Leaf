@@ -43,20 +43,24 @@ public class AutoFetchService : IAutoFetchService
             }
         };
         _timer.Start();
+        Log.Info("AutoFetch", $"Timer started with interval {interval.TotalMinutes:F1} min");
     }
 
     public void Stop()
     {
         _timer?.Stop();
         _timer = null;
+        Log.Info("AutoFetch", "Timer stopped");
     }
 
     public async Task FetchAsync(string repoPath)
     {
+        var sw = Log.StartTimer();
         try
         {
             if (!NetworkInterface.GetIsNetworkAvailable())
             {
+                Log.Warn("AutoFetch", "Network unavailable, skipping fetch");
                 return;
             }
 
@@ -79,7 +83,7 @@ public class AutoFetchService : IAutoFetchService
                         catch
                         {
                             // Skip this remote when host cannot be resolved
-                            Debug.WriteLine($"Auto-fetch: Skipping {remote.Name} - host {host} unreachable");
+                            Log.Warn("AutoFetch", $"Skipping {remote.Name} - host {host} unreachable");
                             continue;
                         }
                     }
@@ -99,14 +103,16 @@ public class AutoFetchService : IAutoFetchService
                 catch (Exception ex)
                 {
                     // Log but continue with other remotes
-                    Debug.WriteLine($"Auto-fetch failed for {remote.Name}: {ex.Message}");
+                    Log.Error("AutoFetch", $"Failed for {remote.Name}: {ex.Message}");
                 }
             }
 
             LastFetchTime = DateTime.Now;
 
             // Get updated ahead/behind counts
-            var info = await _gitService.GetRepositoryInfoAsync(repoPath);
+            var info = await _gitService.GetRepositoryInfoFastAsync(repoPath);
+
+            Log.Perf("AutoFetch", "Fetch cycle complete", sw.ElapsedMilliseconds);
 
             FetchCompleted?.Invoke(this, new AutoFetchCompletedEventArgs
             {
@@ -115,9 +121,9 @@ public class AutoFetchService : IAutoFetchService
                 BehindBy = info.BehindBy
             });
         }
-        catch
+        catch (Exception ex)
         {
-            // Silent failure for auto-fetch - don't disrupt the user
+            Log.Error("AutoFetch", "Fetch cycle failed", ex);
         }
     }
 }

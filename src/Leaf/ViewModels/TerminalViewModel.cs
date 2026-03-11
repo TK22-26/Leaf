@@ -132,9 +132,13 @@ public sealed partial class TerminalViewModel : ObservableObject
     [RelayCommand]
     private void Cancel()
     {
-        if (_commandCts != null && !_commandCts.IsCancellationRequested)
+        try
         {
-            _commandCts.Cancel();
+            _commandCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // CTS was already disposed by ExecuteCommandAsync - safe to ignore
         }
     }
 
@@ -193,8 +197,8 @@ public sealed partial class TerminalViewModel : ObservableObject
         finally
         {
             IsRunning = false;
-            _commandCts.Dispose();
-            _commandCts = null;
+            var cts = Interlocked.Exchange(ref _commandCts, null);
+            cts?.Dispose();
             CommandCompleted?.Invoke(this, EventArgs.Empty);
         }
     }

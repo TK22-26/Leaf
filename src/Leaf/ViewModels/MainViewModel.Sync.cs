@@ -29,9 +29,9 @@ public partial class MainViewModel
                     {
                         await _gitService.FetchAsync(repo.Path);
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Continue with other repos
+                        Log.Error("Sync", $"Fetch failed for {repo.Name}", ex);
                     }
                 }
             }
@@ -140,9 +140,9 @@ public partial class MainViewModel
                         {
                             await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: fetchPat);
                         }
-                        catch
+                        catch (Exception ex)
                         {
-                            // Continue with other remotes
+                            Log.Error("Sync", $"Fetch from {remote.Name} failed during pull", ex);
                         }
                     }
                 }
@@ -288,7 +288,7 @@ public partial class MainViewModel
             catch (Exception ex)
             {
                 failedMessages.Add($"{remote.Name}: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Push to {remote.Name} failed: {ex.Message}");
+                Log.Error("Sync", $"Push to {remote.Name} failed", ex);
             }
         }
 
@@ -341,19 +341,22 @@ public partial class MainViewModel
     /// </summary>
     private void OnAutoFetchCompleted(object? sender, AutoFetchCompletedEventArgs e)
     {
-        if (SelectedRepository == null)
-            return;
+        _ = _dispatcherService.InvokeAsync(() =>
+        {
+            if (SelectedRepository == null)
+                return;
 
-        // Update ahead/behind counts
-        SelectedRepository.AheadBy = e.AheadBy;
-        SelectedRepository.BehindBy = e.BehindBy;
+            // Update ahead/behind counts
+            SelectedRepository.AheadBy = e.AheadBy;
+            SelectedRepository.BehindBy = e.BehindBy;
 
-        // Update status
-        StatusMessage = $"Auto-fetched at {e.FetchTime:HH:mm}" +
-                       (e.AheadBy > 0 ? $" | ↑{e.AheadBy}" : "") +
-                       (e.BehindBy > 0 ? $" | ↓{e.BehindBy}" : "");
+            // Update status
+            StatusMessage = $"Auto-fetched at {e.FetchTime:HH:mm}" +
+                           (e.AheadBy > 0 ? $" | ↑{e.AheadBy}" : "") +
+                           (e.BehindBy > 0 ? $" | ↓{e.BehindBy}" : "");
 
-        // Notify that LastFetchTime changed (property delegates to service)
-        OnPropertyChanged(nameof(LastFetchTime));
+            // Notify that LastFetchTime changed (property delegates to service)
+            OnPropertyChanged(nameof(LastFetchTime));
+        });
     }
 }

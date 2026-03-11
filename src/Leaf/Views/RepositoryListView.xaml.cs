@@ -11,6 +11,8 @@ namespace Leaf.Views;
 /// </summary>
 public partial class RepositoryListView : UserControl
 {
+    private bool _suppressSelectionChanged;
+
     public RepositoryListView()
     {
         InitializeComponent();
@@ -68,8 +70,10 @@ public partial class RepositoryListView : UserControl
                     var childContainer = rootContainer.ItemContainerGenerator.ContainerFromItem(childItem) as TreeViewItem;
                     if (childContainer != null)
                     {
+                        _suppressSelectionChanged = true;
                         childContainer.IsSelected = true;
                         childContainer.BringIntoView();
+                        Dispatcher.BeginInvoke(DispatcherPriority.Background, () => _suppressSelectionChanged = false);
                         return;
                     }
                 }
@@ -82,13 +86,20 @@ public partial class RepositoryListView : UserControl
         if (DataContext is not MainViewModel viewModel)
             return;
 
+        if (_suppressSelectionChanged)
+            return;
+
         // Handle RepositoryInfo, QuickAccessItem, and WorktreeInfo
         switch (e.NewValue)
         {
             case RepositoryInfo repo:
+                if (string.Equals(viewModel.SelectedRepository?.Path, repo.Path, StringComparison.OrdinalIgnoreCase))
+                    return;
                 _ = viewModel.SelectRepositoryAsync(repo);
                 break;
             case QuickAccessItem qa:
+                if (string.Equals(viewModel.SelectedRepository?.Path, qa.Repository.Path, StringComparison.OrdinalIgnoreCase))
+                    return;
                 _ = viewModel.SelectRepositoryAsync(qa.Repository);
                 break;
             case WorktreeInfo worktree:

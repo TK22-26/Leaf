@@ -71,7 +71,13 @@ public partial class NotificationHost : UserControl
         }
 
         var card = new NotificationCard();
-        card.SetContent(message.Title, message.Description, message.Type);
+        card.SetContent(
+            message.Title,
+            message.Description,
+            message.Type,
+            message.ClickCommand,
+            message.ClickCommandParameter,
+            message.Actions);
         card.CloseRequested += (_, _) => DismissCard(card);
         card.MouseEnter += (_, _) => PauseAutoDismiss(card);
         card.MouseLeave += (_, _) => RestartAutoDismiss(card);

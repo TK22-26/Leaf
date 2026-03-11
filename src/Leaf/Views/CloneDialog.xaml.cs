@@ -17,7 +17,6 @@ public partial class CloneDialog : Window
     private readonly AzureDevOpsService _azureDevOpsService;
     private readonly GitHubService _gitHubService;
     private readonly SettingsService _settingsService;
-    private readonly string _defaultClonePath;
     private bool _isCloning;
 
     // Azure DevOps repos
@@ -45,7 +44,6 @@ public partial class CloneDialog : Window
         _settingsService = settingsService;
         _azureDevOpsService = new AzureDevOpsService(credentialService);
         _gitHubService = new GitHubService(credentialService);
-        _defaultClonePath = defaultClonePath;
 
         DestinationTextBox.Text = defaultClonePath;
         UpdateCloneButtonState();
@@ -54,10 +52,16 @@ public partial class CloneDialog : Window
         // Load repos from both sources on startup (in parallel) so counts are shown immediately
         Loaded += async (s, e) =>
         {
-            // Load both sources in parallel
-            var gitHubTask = LoadGitHubRepositoriesAsync();
-            var azureTask = LoadAzureRepositoriesInBackgroundAsync();
-            await Task.WhenAll(gitHubTask, azureTask);
+            try
+            {
+                var gitHubTask = LoadGitHubRepositoriesAsync();
+                var azureTask = LoadAzureRepositoriesInBackgroundAsync();
+                await Task.WhenAll(gitHubTask, azureTask);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                Log.Error("CloneDialog", $"Background load failed: {ex.Message}", ex);
+            }
         };
     }
 

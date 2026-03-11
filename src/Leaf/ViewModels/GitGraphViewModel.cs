@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Graph;
@@ -27,8 +28,6 @@ public partial class GitGraphViewModel : ObservableObject
     private readonly HashSet<string> _soloBranchNames = new(StringComparer.OrdinalIgnoreCase);
     private List<CommitInfo> _allCommits = [];
     private string? _currentBranchName;
-    private GitFlowConfig? _gitFlowConfig;
-    private IReadOnlyCollection<string> _remoteNames = Array.Empty<string>();
 
     // Lazy loading state
     private int _loadedCommitCount;
@@ -36,7 +35,7 @@ public partial class GitGraphViewModel : ObservableObject
     private HashSet<string> _loadedCommitShas = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? _graphBuildCts;
     private const int BatchSize = 1000;  // Large batch to minimize O(n) skip cost
-    private const int InitialBatchSize = 500;
+    private const int InitialBatchSize = 200;
 
     [ObservableProperty]
     private string? _repositoryPath;
@@ -63,7 +62,7 @@ public partial class GitGraphViewModel : ObservableObject
     private bool _isSearchActive;
 
     [ObservableProperty]
-    private bool _isLoading;
+    private bool _isLoading = true;
 
     [ObservableProperty]
     private bool _isLoadingMore;
@@ -226,8 +225,6 @@ public partial class GitGraphViewModel : ObservableObject
 
     public void SetGitFlowContext(GitFlowConfig? config, IReadOnlyCollection<string> remoteNames)
     {
-        _gitFlowConfig = config;
-        _remoteNames = remoteNames;
         GraphBuilder.SetGitFlowContext(config, remoteNames);
         // Graph rebuild deferred to LoadRepositoryAsync or ApplyBranchFilters
     }
@@ -240,6 +237,9 @@ public partial class GitGraphViewModel : ObservableObject
     {
         if (string.IsNullOrEmpty(path))
             return;
+
+        Log.Info("Graph", $"Loading repository graph: {path}");
+        var sw = Log.StartTimer();
 
         try
         {
@@ -372,6 +372,7 @@ public partial class GitGraphViewModel : ObservableObject
         }
         finally
         {
+            Log.Perf("Graph", $"LoadRepositoryAsync for {path}", sw.ElapsedMilliseconds);
             IsLoading = false;
         }
     }
@@ -789,17 +790,6 @@ public partial class GitGraphViewModel : ObservableObject
         {
             SelectCommit(firstMatch);
         }
-    }
-
-    /// <summary>
-    /// Check if search text looks like a SHA (hex-only, 4+ chars).
-    /// </summary>
-    private static bool IsLikelyShaSearch(string text)
-    {
-        // SHA searches are hex-only and typically 4-40 chars
-        return text.Length >= 4 &&
-               text.Length <= 40 &&
-               text.All(c => char.IsAsciiHexDigit(c));
     }
 
     /// <summary>
