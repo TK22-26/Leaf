@@ -38,6 +38,11 @@ public class BranchCategory
     public ObservableCollection<RemoteBranchGroup> RemoteGroups { get; set; } = [];
 
     /// <summary>
+    /// Directory groups for branches with path prefixes (used for LOCAL/GITFLOW categories).
+    /// </summary>
+    public ObservableCollection<DirectoryBranchGroup> DirectoryGroups { get; set; } = [];
+
+    /// <summary>
     /// Tags (used for TAGS category).
     /// </summary>
     public ObservableCollection<TagInfo> Tags { get; set; } = [];

@@ -161,7 +161,6 @@ internal class RepositoryOperations
         return Task.Run(() =>
         {
             var sw = Log.StartTimer();
-
             // Check if bare repo via git CLI
             var revParseResult = GitCliHelpers.RunGit(repoPath, "rev-parse --is-bare-repository");
             if (revParseResult.ExitCode == 0 && revParseResult.Output.Trim() == "true")
@@ -252,20 +251,10 @@ internal class RepositoryOperations
 
             bool isMergeInProgress = operationType != Models.GitOperationType.None;
 
-            // Count conflicts via git CLI
+            // Count conflicts via git CLI (only when a merge-like operation is in progress)
             if (isMergeInProgress)
             {
                 conflictCount = GitCliHelpers.GetConflictCount(repoPath);
-            }
-            else
-            {
-                // Check for orphaned conflict state via git CLI
-                var orphanCount = GitCliHelpers.GetConflictCount(repoPath);
-                if (orphanCount > 0)
-                {
-                    conflictCount = orphanCount;
-                    Log.Warn("Merge", $"Orphaned conflicts detected: {conflictCount} files");
-                }
             }
 
             Log.Perf("RepoOps", "GetRepositoryInfoFastAsync", sw.ElapsedMilliseconds);

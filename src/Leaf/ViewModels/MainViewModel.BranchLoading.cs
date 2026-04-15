@@ -128,10 +128,7 @@ public partial class MainViewModel
                     BranchCount = gitFlowBranches.Count,
                     IsExpanded = true
                 };
-                foreach (var branch in gitFlowBranches)
-                {
-                    gitFlowCategory.Branches.Add(branch);
-                }
+                PopulateWithDirectoryGroups(gitFlowCategory, gitFlowBranches);
                 categories.Add(gitFlowCategory);
             }
 
@@ -143,10 +140,7 @@ public partial class MainViewModel
                 BranchCount = localBranches.Count,
                 IsExpanded = true
             };
-            foreach (var branch in localBranches)
-            {
-                localCategory.Branches.Add(branch);
-            }
+            PopulateWithDirectoryGroups(localCategory, localBranches);
             categories.Add(localCategory);
 
             // REMOTE category
@@ -243,6 +237,7 @@ public partial class MainViewModel
             await _dispatcherService.InvokeAsync(() =>
             {
                 GitGraphViewModel?.SetGitFlowContext(gitFlowConfig, remoteNames);
+                IsGitFlowInitialized = gitFlowConfig?.IsInitialized == true;
                 repo.LocalBranches = new ObservableCollection<BranchInfo>(localBranches);
                 repo.RemoteBranches = new ObservableCollection<BranchInfo>(remoteBranches);
                 repo.BranchCategories = categories;
@@ -385,5 +380,41 @@ public partial class MainViewModel
         return await _dialogService.ShowConfirmationAsync(
             $"Failed to delete branch '{branch.Name}'.\n\n{error}\n\nForce delete this branch?",
             "Force Delete Branch");
+    }
+
+    /// <summary>
+    /// Populates a BranchCategory with directory groups for branches containing "/" and
+    /// ungrouped branches for those without. Branches are the same instances (shared references).
+    /// </summary>
+    private static void PopulateWithDirectoryGroups(BranchCategory category, List<BranchInfo> branches)
+    {
+        var grouped = branches
+            .GroupBy(b =>
+            {
+                var slashIndex = b.Name.IndexOf('/');
+                return slashIndex > 0 ? b.Name[..slashIndex] : null;
+            });
+
+        foreach (var group in grouped.OrderBy(g => g.Key ?? ""))
+        {
+            if (group.Key == null)
+            {
+                // Ungrouped branches (no "/" in name) — add directly
+                foreach (var branch in group.OrderBy(b => b.Name))
+                {
+                    category.Branches.Add(branch);
+                }
+            }
+            else
+            {
+                // Directory group — collapsible folder
+                var dirGroup = new DirectoryBranchGroup
+                {
+                    Name = group.Key,
+                    Branches = new ObservableCollection<BranchInfo>(group.OrderBy(b => b.Name))
+                };
+                category.DirectoryGroups.Add(dirGroup);
+            }
+        }
     }
 }

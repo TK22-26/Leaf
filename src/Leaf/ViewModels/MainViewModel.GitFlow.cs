@@ -10,6 +10,28 @@ namespace Leaf.ViewModels;
 public partial class MainViewModel
 {
     /// <summary>
+    /// Event raised when the GitFlow action menu should be shown on the action bar button.
+    /// </summary>
+    public event EventHandler? RequestGitFlowActionMenu;
+
+    /// <summary>
+    /// GitFlow action bar button — opens init dialog if not initialized, or shows action menu if initialized.
+    /// </summary>
+    [RelayCommand]
+    public async Task GitFlowButtonAsync()
+    {
+        if (SelectedRepository == null) return;
+
+        if (!IsGitFlowInitialized)
+        {
+            await InitializeGitFlowAsync();
+            return;
+        }
+
+        RequestGitFlowActionMenu?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
     /// Initialize GitFlow in the current repository.
     /// </summary>
     [RelayCommand]
@@ -25,6 +47,7 @@ public partial class MainViewModel
         if (dialog.ShowDialog() == true && dialog.Result != null)
         {
             StatusMessage = "GitFlow initialized successfully";
+            SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
     }
@@ -54,6 +77,7 @@ public partial class MainViewModel
         if (dialog.ShowDialog() == true)
         {
             StatusMessage = $"Started feature {dialog.BranchName}";
+            SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
     }
@@ -83,6 +107,7 @@ public partial class MainViewModel
         if (dialog.ShowDialog() == true)
         {
             StatusMessage = $"Started release {dialog.BranchName}";
+            SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
     }
@@ -112,6 +137,7 @@ public partial class MainViewModel
         if (dialog.ShowDialog() == true)
         {
             StatusMessage = $"Started hotfix {dialog.BranchName}";
+            SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
     }
@@ -152,6 +178,8 @@ public partial class MainViewModel
         var result = dialog.ShowDialog();
 
         // Always refresh to detect conflicts or other state changes
+        if (SelectedRepository != null)
+            SelectedRepository.BranchesLoaded = false;
         await RefreshAsync();
 
         if (result == true)
@@ -209,6 +237,7 @@ public partial class MainViewModel
             }
 
             StatusMessage = $"Published {branchType.ToString().ToLower()} {flowName}";
+            SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -299,6 +328,7 @@ public partial class MainViewModel
                 throw new ArgumentException($"Unsupported branch type: {branchType}");
         }
 
+        SelectedRepository.BranchesLoaded = false;
         await RefreshAsync();
     }
 

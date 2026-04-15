@@ -23,79 +23,200 @@ internal class StagingOperations : IStagingOperations
     {
         return Task.Run(() =>
         {
-            using var repo = new Repository(repoPath);
+            // Try LibGit2Sharp first (supports rename detection for better UX).
+            // Fall back to git CLI if it takes too long — LibGit2Sharp's RetrieveStatus
+            // can block indefinitely on repos with many renames (O(n²) matching).
+            var libgitTask = Task.Run(() => GetWorkingChangesViaLibGit2(repoPath));
 
-            if (repo.Info.IsBare)
-                return new WorkingChangesInfo();
-
-            var status = repo.RetrieveStatus(new StatusOptions
+            if (libgitTask.Wait(TimeSpan.FromSeconds(5)))
             {
-                IncludeUntracked = true,
-                RecurseUntrackedDirs = true
-            });
-
-            var isDetached = repo.Info.IsHeadDetached;
-            var headSha = repo.Head?.Tip?.Sha;
-
-            var workingChanges = new WorkingChangesInfo
-            {
-                BranchName = isDetached
-                    ? $"HEAD detached at {headSha?[..7] ?? "unknown"}"
-                    : (repo.Head?.FriendlyName ?? "HEAD"),
-                IsDetachedHead = isDetached,
-                DetachedHeadSha = isDetached ? headSha : null
-            };
-
-            foreach (var entry in status)
-            {
-                var fileStatus = entry.State;
-
-                // Check for staged changes
-                if (fileStatus.HasFlag(FileStatus.NewInIndex) ||
-                    fileStatus.HasFlag(FileStatus.ModifiedInIndex) ||
-                    fileStatus.HasFlag(FileStatus.DeletedFromIndex) ||
-                    fileStatus.HasFlag(FileStatus.RenamedInIndex) ||
-                    fileStatus.HasFlag(FileStatus.TypeChangeInIndex))
-                {
-                    workingChanges.StagedFiles.Add(new FileStatusInfo
-                    {
-                        Path = entry.FilePath,
-                        OldPath = entry.HeadToIndexRenameDetails?.OldFilePath,
-                        Status = MapFileStatus(fileStatus, staged: true),
-                        IsStaged = true
-                    });
-                }
-
-                // Check for unstaged changes (working directory)
-                if (fileStatus.HasFlag(FileStatus.ModifiedInWorkdir) ||
-                    fileStatus.HasFlag(FileStatus.DeletedFromWorkdir) ||
-                    fileStatus.HasFlag(FileStatus.TypeChangeInWorkdir) ||
-                    fileStatus.HasFlag(FileStatus.RenamedInWorkdir))
-                {
-                    workingChanges.UnstagedFiles.Add(new FileStatusInfo
-                    {
-                        Path = entry.FilePath,
-                        OldPath = entry.IndexToWorkDirRenameDetails?.OldFilePath,
-                        Status = MapFileStatus(fileStatus, staged: false),
-                        IsStaged = false
-                    });
-                }
-
-                // Untracked files go to unstaged
-                if (fileStatus.HasFlag(FileStatus.NewInWorkdir))
-                {
-                    workingChanges.UnstagedFiles.Add(new FileStatusInfo
-                    {
-                        Path = entry.FilePath,
-                        Status = FileChangeStatus.Untracked,
-                        IsStaged = false
-                    });
-                }
+                return libgitTask.Result;
             }
 
-            return workingChanges;
+            Log.Warn("Staging", $"LibGit2Sharp status timed out for '{repoPath}', falling back to git CLI");
+            return GetWorkingChangesViaGitCli(repoPath);
         });
     }
+
+    /// <summary>
+    /// Get working changes using LibGit2Sharp (supports rename detection).
+    /// </summary>
+    private static WorkingChangesInfo GetWorkingChangesViaLibGit2(string repoPath)
+    {
+        using var repo = new Repository(repoPath);
+
+        if (repo.Info.IsBare)
+            return new WorkingChangesInfo();
+
+        var status = repo.RetrieveStatus(new StatusOptions
+        {
+            IncludeUntracked = true,
+            RecurseUntrackedDirs = true,
+            DetectRenamesInIndex = true,
+            DetectRenamesInWorkDir = true
+        });
+
+        var isDetached = repo.Info.IsHeadDetached;
+        var headSha = repo.Head?.Tip?.Sha;
+
+        var workingChanges = new WorkingChangesInfo
+        {
+            BranchName = isDetached
+                ? $"HEAD detached at {headSha?[..7] ?? "unknown"}"
+                : (repo.Head?.FriendlyName ?? "HEAD"),
+            IsDetachedHead = isDetached,
+            DetachedHeadSha = isDetached ? headSha : null
+        };
+
+        foreach (var entry in status)
+        {
+            var fileStatus = entry.State;
+
+            // Check for staged changes
+            if (fileStatus.HasFlag(FileStatus.NewInIndex) ||
+                fileStatus.HasFlag(FileStatus.ModifiedInIndex) ||
+                fileStatus.HasFlag(FileStatus.DeletedFromIndex) ||
+                fileStatus.HasFlag(FileStatus.RenamedInIndex) ||
+                fileStatus.HasFlag(FileStatus.TypeChangeInIndex))
+            {
+                workingChanges.StagedFiles.Add(new FileStatusInfo
+                {
+                    Path = entry.FilePath,
+                    OldPath = entry.HeadToIndexRenameDetails?.OldFilePath,
+                    Status = MapFileStatus(fileStatus, staged: true),
+                    IsStaged = true
+                });
+            }
+
+            // Check for unstaged changes (working directory)
+            if (fileStatus.HasFlag(FileStatus.ModifiedInWorkdir) ||
+                fileStatus.HasFlag(FileStatus.DeletedFromWorkdir) ||
+                fileStatus.HasFlag(FileStatus.TypeChangeInWorkdir) ||
+                fileStatus.HasFlag(FileStatus.RenamedInWorkdir))
+            {
+                workingChanges.UnstagedFiles.Add(new FileStatusInfo
+                {
+                    Path = entry.FilePath,
+                    OldPath = entry.IndexToWorkDirRenameDetails?.OldFilePath,
+                    Status = MapFileStatus(fileStatus, staged: false),
+                    IsStaged = false
+                });
+            }
+
+            // Untracked files go to unstaged
+            if (fileStatus.HasFlag(FileStatus.NewInWorkdir))
+            {
+                workingChanges.UnstagedFiles.Add(new FileStatusInfo
+                {
+                    Path = entry.FilePath,
+                    Status = FileChangeStatus.Untracked,
+                    IsStaged = false
+                });
+            }
+        }
+
+        return workingChanges;
+    }
+
+    /// <summary>
+    /// Fast fallback: get working changes using git CLI (no rename detection, but always fast).
+    /// </summary>
+    private static WorkingChangesInfo GetWorkingChangesViaGitCli(string repoPath)
+    {
+        // Get branch info
+        var headResult = GitCliHelpers.RunGit(repoPath, "symbolic-ref --short HEAD");
+        bool isDetached = headResult.ExitCode != 0;
+        string? headSha = null;
+        string branchName;
+
+        if (isDetached)
+        {
+            var shaResult = GitCliHelpers.RunGit(repoPath, "rev-parse HEAD");
+            headSha = shaResult.ExitCode == 0 ? shaResult.Output.Trim() : null;
+            branchName = $"HEAD detached at {headSha?[..7] ?? "unknown"}";
+        }
+        else
+        {
+            branchName = headResult.Output.Trim();
+        }
+
+        var workingChanges = new WorkingChangesInfo
+        {
+            BranchName = branchName,
+            IsDetachedHead = isDetached,
+            DetachedHeadSha = isDetached ? headSha : null
+        };
+
+        // Parse porcelain status output
+        var statusResult = GitCliHelpers.RunGit(repoPath, "status --porcelain -uall");
+        if (statusResult.ExitCode != 0)
+            return workingChanges;
+
+        foreach (var line in statusResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (line.Length < 4) continue;
+
+            var indexStatus = line[0];
+            var workdirStatus = line[1];
+            var filePath = line[3..].Trim();
+
+            // Handle renames (format: "R  new -> old" or similar)
+            string? oldPath = null;
+            if (filePath.Contains(" -> "))
+            {
+                var parts = filePath.Split(" -> ", 2);
+                oldPath = parts[0].Trim();
+                filePath = parts[1].Trim();
+            }
+
+            // Staged changes (index column)
+            if (indexStatus != ' ' && indexStatus != '?')
+            {
+                workingChanges.StagedFiles.Add(new FileStatusInfo
+                {
+                    Path = filePath,
+                    OldPath = oldPath,
+                    Status = MapPorcelainStatus(indexStatus),
+                    IsStaged = true
+                });
+            }
+
+            // Unstaged changes (workdir column)
+            if (workdirStatus != ' ' && indexStatus != '?')
+            {
+                workingChanges.UnstagedFiles.Add(new FileStatusInfo
+                {
+                    Path = filePath,
+                    Status = MapPorcelainStatus(workdirStatus),
+                    IsStaged = false
+                });
+            }
+
+            // Untracked files
+            if (indexStatus == '?' && workdirStatus == '?')
+            {
+                workingChanges.UnstagedFiles.Add(new FileStatusInfo
+                {
+                    Path = filePath,
+                    Status = FileChangeStatus.Untracked,
+                    IsStaged = false
+                });
+            }
+        }
+
+        return workingChanges;
+    }
+
+    private static FileChangeStatus MapPorcelainStatus(char status) => status switch
+    {
+        'A' => FileChangeStatus.Added,
+        'M' => FileChangeStatus.Modified,
+        'D' => FileChangeStatus.Deleted,
+        'R' => FileChangeStatus.Renamed,
+        'C' => FileChangeStatus.Added,     // Copied — treat as added
+        'T' => FileChangeStatus.TypeChanged,
+        _ => FileChangeStatus.Modified
+    };
 
     /// <summary>
     /// Get the combined diff of staged and unstaged changes.

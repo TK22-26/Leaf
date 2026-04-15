@@ -142,14 +142,14 @@
                             VerticalAlignment="Center">
                     <ToggleButton Content="Diff"
                                   Style="{StaticResource HeaderToggleStyle}"
-                                  IsChecked="{Binding IsDiffMode, Mode=OneWay}"
+                                  IsChecked="{Binding ShowFullDiff, Mode=OneWay}"
                                   Command="{Binding ShowDiffCommand}" />
                     <ToggleButton Content="Hunks"
                                   Margin="8,0,0,0"
                                   Style="{StaticResource HeaderToggleStyle}"
-                                  IsChecked="{Binding IsHunkMode, Mode=OneWay}"
+                                  IsChecked="{Binding ShowHunkView, Mode=OneWay}"
                                   IsEnabled="{Binding CanShowHunks}"
-                                  Command="{Binding ToggleHunkModeCommand}"
+                                  Command="{Binding ShowHunksCommand}"
                                   ToolTip="Show only changed sections (hunks)" />
                     <ToggleButton Content="Blame"
                                   Margin="8,0,0,0"

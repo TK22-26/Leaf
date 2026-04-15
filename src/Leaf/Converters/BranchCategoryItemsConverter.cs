@@ -18,6 +18,16 @@ public class BranchCategoryItemsConverter : IValueConverter
             if (category.IsWorktreesCategory) return category.Worktrees;
             if (category.IsPullRequestsCategory) return category.PullRequests;
             if (category.IsRemoteCategory) return category.RemoteGroups;
+
+            // LOCAL and GITFLOW: merge directory groups with ungrouped branches
+            if (category.DirectoryGroups.Count > 0)
+            {
+                var items = new List<object>();
+                items.AddRange(category.DirectoryGroups);
+                items.AddRange(category.Branches);
+                return items;
+            }
+
             return category.Branches;
         }
         return null;

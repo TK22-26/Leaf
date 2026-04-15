@@ -407,6 +407,24 @@
                     </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>
 
+                <!--  Directory branch group template (dev/, feature/, etc.)  -->
+                <HierarchicalDataTemplate DataType="{x:Type models:DirectoryBranchGroup}" ItemsSource="{Binding Branches}">
+                    <StackPanel Margin="0,2" Orientation="Horizontal">
+                        <ic:SymbolIcon
+                            Margin="0,0,6,0"
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            IconVariant="Regular"
+                            Symbol="Folder" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                            Text="{Binding Name}" />
+                    </StackPanel>
+                </HierarchicalDataTemplate>
+
                 <!--  Remote branch group template (origin, upstream, etc.)  -->
                 <HierarchicalDataTemplate DataType="{x:Type models:RemoteBranchGroup}" ItemsSource="{Binding Branches}">
                     <Border Background="Transparent" Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">

@@ -64,6 +64,13 @@ public class BranchLabel
     public string? TipSha { get; set; }
 
     /// <summary>
+    /// True if this label was placed on a nearest visible ancestor commit
+    /// (because the actual tip commit was not in the loaded commit range).
+    /// Used to clean up stale labels when lazy loading brings in the real tip.
+    /// </summary>
+    public bool IsAncestorFallback { get; set; }
+
+    /// <summary>
     /// Full reference name for display purposes.
     /// </summary>
     public string FullName => IsRemote && !IsLocal && RemoteName != null
