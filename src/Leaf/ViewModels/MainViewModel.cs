@@ -107,6 +107,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _isBranchFilterActive;
 
     [ObservableProperty]
+    private bool _isGitFlowInitialized;
+
+    [ObservableProperty]
     private string _branchInputActionText = "Create";
 
     [ObservableProperty]

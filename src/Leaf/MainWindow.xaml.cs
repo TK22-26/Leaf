@@ -91,6 +91,7 @@ public partial class MainWindow : Window
 
         DataContext = viewModel;
         viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        viewModel.RequestGitFlowActionMenu += ViewModel_RequestGitFlowActionMenu;
 
         NotificationHostControl.NotificationService = notificationService;
 
@@ -209,5 +210,36 @@ public partial class MainWindow : Window
         {
             viewModel.UpdateRepoPaneWidth(RepoPaneGrid.ActualWidth);
         }
+    }
+
+    private void ViewModel_RequestGitFlowActionMenu(object? sender, EventArgs e)
+    {
+        var button = GitFlowActionBarButton;
+        if (button?.ContextMenu == null) return;
+
+        var menu = button.ContextMenu;
+        menu.Items.Clear();
+
+        var startFeature = new MenuItem { Header = "Start Feature" };
+        startFeature.Click += (_, _) => _viewModel.StartFeatureCommand.Execute(null);
+        menu.Items.Add(startFeature);
+
+        var startRelease = new MenuItem { Header = "Start Release" };
+        startRelease.Click += (_, _) => _viewModel.StartReleaseCommand.Execute(null);
+        menu.Items.Add(startRelease);
+
+        var startHotfix = new MenuItem { Header = "Start Hotfix" };
+        startHotfix.Click += (_, _) => _viewModel.StartHotfixCommand.Execute(null);
+        menu.Items.Add(startHotfix);
+
+        menu.Items.Add(new Separator());
+
+        var settings = new MenuItem { Header = "Settings..." };
+        settings.Click += (_, _) => _viewModel.InitializeGitFlowCommand.Execute(null);
+        menu.Items.Add(settings);
+
+        menu.PlacementTarget = button;
+        menu.Placement = PlacementMode.Bottom;
+        menu.IsOpen = true;
     }
 }

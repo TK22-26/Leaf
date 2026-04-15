@@ -91,6 +91,9 @@ public partial class DiffViewerViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsDiffMode))]
     [NotifyPropertyChangedFor(nameof(IsBlameMode))]
     [NotifyPropertyChangedFor(nameof(IsHistoryMode))]
+    [NotifyPropertyChangedFor(nameof(ShowFullDiff))]
+    [NotifyPropertyChangedFor(nameof(ShowHunkView))]
+    [NotifyPropertyChangedFor(nameof(CanShowHunks))]
     private ViewerMode _mode = ViewerMode.Diff;
 
     [ObservableProperty]

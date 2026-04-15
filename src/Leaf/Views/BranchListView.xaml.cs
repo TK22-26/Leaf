@@ -266,20 +266,34 @@ public partial class BranchListView : UserControl
 
     private Button? _lastChevronButton;
 
+    private bool _isGitFlowMenuBuilding;
+
     private async void GitFlowActionButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button || button.ContextMenu == null)
             return;
 
+        if (_isGitFlowMenuBuilding)
+            return;
+
         _lastChevronButton = button;
         e.Handled = true;
 
-        // Build the context menu dynamically
-        await BuildGitFlowContextMenu(button.ContextMenu);
+        try
+        {
+            _isGitFlowMenuBuilding = true;
 
-        button.ContextMenu.PlacementTarget = button;
-        button.ContextMenu.Placement = PlacementMode.Right;
-        button.ContextMenu.IsOpen = true;
+            // Build the context menu dynamically
+            await BuildGitFlowContextMenu(button.ContextMenu);
+
+            button.ContextMenu.PlacementTarget = button;
+            button.ContextMenu.Placement = PlacementMode.Right;
+            button.ContextMenu.IsOpen = true;
+        }
+        finally
+        {
+            _isGitFlowMenuBuilding = false;
+        }
     }
 
     #region GitFlow Context Menu

@@ -355,9 +355,10 @@
                     </Button>
                     <!--  GitFlow  -->
                     <Button
-                        Command="{Binding InitializeGitFlowCommand}"
+                        x:Name="GitFlowActionBarButton"
+                        Command="{Binding GitFlowButtonCommand}"
                         Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="GitFlow settings">
+                        ToolTip="GitFlow">
                         <StackPanel HorizontalAlignment="Center">
                             <ic:SymbolIcon
                                 HorizontalAlignment="Center"
@@ -368,6 +369,9 @@
                                 FontSize="10"
                                 Text="GitFlow" />
                         </StackPanel>
+                        <Button.ContextMenu>
+                            <ContextMenu />
+                        </Button.ContextMenu>
                     </Button>
                     <Rectangle
                         Width="1"

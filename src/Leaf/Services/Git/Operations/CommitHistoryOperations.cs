@@ -134,6 +134,8 @@ internal class CommitHistoryOperations
                     continue;
 
                 var labels = BuildBranchLabels(tipSha, localBranchTips, remoteBranchTips, branchNameToTipSha, currentBranchName);
+                foreach (var label in labels)
+                    label.IsAncestorFallback = true;
                 AddBranchLabels(targetCommit, labels);
             }
 
