@@ -115,7 +115,7 @@ public partial class DiffViewerViewModel : ObservableObject
     /// <summary>
     /// True if hunk mode can be enabled (file has both old and new content - not a new or deleted file).
     /// </summary>
-    public bool CanShowHunks => IsDiffMode && !IsBinary && DiffResult != null &&
+    public bool CanShowHunks => !IsBinary && DiffResult != null &&
                                 !string.IsNullOrEmpty(DiffResult.OldContent) &&
                                 !string.IsNullOrEmpty(DiffResult.NewContent);
 
@@ -220,18 +220,22 @@ public partial class DiffViewerViewModel : ObservableObject
     {
         CancelActiveLoad();
         IsLoading = false;
+        IsHunkMode = false;
         Mode = ViewerMode.Diff;
         Log.Info("DiffViewer", "Mode=Diff (cancel active load)");
     }
 
     [RelayCommand]
-    private void ToggleHunkMode()
+    private void ShowHunks()
     {
         if (!CanShowHunks)
             return;
 
-        IsHunkMode = !IsHunkMode;
-        Log.Info("DiffViewer", $"HunkMode={IsHunkMode}");
+        CancelActiveLoad();
+        IsLoading = false;
+        IsHunkMode = true;
+        Mode = ViewerMode.Diff;
+        Log.Info("DiffViewer", "Mode=Hunks");
     }
 
     /// <summary>
