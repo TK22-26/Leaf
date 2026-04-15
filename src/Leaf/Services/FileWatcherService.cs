@@ -51,6 +51,7 @@ public class FileWatcherService : IDisposable
             _workingDirWatcher = new FileSystemWatcher(repoPath)
             {
                 IncludeSubdirectories = true,
+                InternalBufferSize = 65536, // 64KB — default 8KB overflows on rapid changes
                 NotifyFilter = NotifyFilters.LastWrite |
                               NotifyFilters.FileName |
                               NotifyFilters.DirectoryName |
@@ -62,6 +63,7 @@ public class FileWatcherService : IDisposable
             _workingDirWatcher.Created += OnWorkingDirChanged;
             _workingDirWatcher.Deleted += OnWorkingDirChanged;
             _workingDirWatcher.Renamed += OnWorkingDirRenamed;
+            _workingDirWatcher.Error += OnWatcherError;
         }
         catch (Exception ex)
         {
@@ -77,6 +79,7 @@ public class FileWatcherService : IDisposable
                 _gitDirWatcher = new FileSystemWatcher(gitDir)
                 {
                     IncludeSubdirectories = true,
+                    InternalBufferSize = 65536,
                     NotifyFilter = NotifyFilters.LastWrite |
                                   NotifyFilters.FileName |
                                   NotifyFilters.DirectoryName,
@@ -87,6 +90,7 @@ public class FileWatcherService : IDisposable
                 _gitDirWatcher.Created += OnGitDirChanged;
                 _gitDirWatcher.Deleted += OnGitDirChanged;
                 _gitDirWatcher.Renamed += OnGitDirRenamed;
+                _gitDirWatcher.Error += OnWatcherError;
             }
             catch (Exception ex)
             {
@@ -146,6 +150,20 @@ public class FileWatcherService : IDisposable
         _gitDirDebounceTimer = null;
 
         _currentRepoPath = null;
+    }
+
+    private void OnWatcherError(object sender, ErrorEventArgs e)
+    {
+        var ex = e.GetException();
+        Log.Error("FileWatcher", $"Watcher error (buffer overflow?): {ex?.Message}", ex);
+
+        // Restart the watcher — after a buffer overflow it stops raising events permanently
+        var repoPath = _currentRepoPath;
+        if (!string.IsNullOrEmpty(repoPath))
+        {
+            Log.Info("FileWatcher", $"Restarting watcher for {repoPath}");
+            WatchRepository(repoPath);
+        }
     }
 
     private void OnWorkingDirChanged(object sender, FileSystemEventArgs e)
@@ -236,6 +254,10 @@ public class FileWatcherService : IDisposable
         var relativePath = path.ToLowerInvariant();
 
         if (relativePath.EndsWith("\\leaf-merge-conflicts.txt") || relativePath.EndsWith("/leaf-merge-conflicts.txt"))
+            return false;
+
+        // Ignore lock files — transient files created during git operations
+        if (relativePath.EndsWith(".lock"))
             return false;
 
         // HEAD changes (checkout, commit)
