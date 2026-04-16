@@ -519,9 +519,15 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             }
             TotalHeight = rowCount * RowHeight;
         }
-        catch
+        catch (OperationCanceledException)
         {
-            // Silently fail - don't disrupt the UI
+            // Caller cancelled — not a failure.
+        }
+        catch (Exception ex)
+        {
+            // Don't disrupt the UI, but leave breadcrumbs so silent failures
+            // are diagnosable. Narrowed from bare `catch` per plan §2.2.
+            Log.Warn("Graph", $"RefreshWorkingChanges failed: {ex.Message}");
         }
     }
 

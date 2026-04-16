@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.Utils;
 
 namespace Leaf.ViewModels;
@@ -446,10 +447,14 @@ public partial class MainViewModel
                         branchName,
                         isCurrentBranch: true);
                 }
-                catch
+                catch (InvalidOperationException ex)
                 {
-                    // Fast-forward not possible (branches diverged) — checkout succeeded,
-                    // user will see the diverged state in the graph
+                    // Fast-forward not possible (branches diverged) — checkout
+                    // succeeded, user sees the diverged state in the graph.
+                    // Narrowed from catch-all per plan §2.2; trace-log so the
+                    // actual git message is available when debugging why a
+                    // specific branch didn't fast-forward.
+                    Log.Info("Branch", $"Fast-forward skipped for {branchName}: {ex.Message}");
                 }
             }
 
@@ -579,9 +584,13 @@ public partial class MainViewModel
                 StatusMessage = $"Deleting tag {tag.Name} from remote...";
                 await _gitService.DeleteRemoteTagAsync(SelectedRepository.Path, tag.Name, "origin");
             }
-            catch
+            catch (InvalidOperationException ex)
             {
-                // Remote deletion may fail if tag doesn't exist on remote - that's OK
+                // Remote deletion may fail if the tag doesn't exist on remote —
+                // expected when the tag was only ever local. Narrowed per plan
+                // §2.2; trace-log so real failures (auth, network) are
+                // diagnosable after the fact.
+                Log.Info("Tag", $"Remote tag delete skipped for {tag.Name}: {ex.Message}");
             }
 
             StatusMessage = $"Deleted tag {tag.Name}";
