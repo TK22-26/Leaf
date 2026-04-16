@@ -15,7 +15,7 @@ namespace Leaf.ViewModels;
 /// <summary>
 /// ViewModel for the diff viewer control.
 /// </summary>
-public partial class DiffViewerViewModel : ObservableObject
+public partial class DiffViewerViewModel : ObservableObject, IDisposable
 {
     public enum ViewerMode
     {
@@ -402,5 +402,13 @@ public partial class DiffViewerViewModel : ObservableObject
     private bool IsActiveToken(CancellationToken token)
     {
         return _loadCts != null && _loadCts.Token == token;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        // No finalizer on this type, so no GC.SuppressFinalize — the
+        // standard pattern only requires it when a finalizer is present.
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _loadCts);
     }
 }

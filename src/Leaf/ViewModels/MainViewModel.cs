@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
@@ -306,79 +307,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _workingChangesViewModel.FileSelected += OnWorkingChangesFileSelected;
         _workingChangesViewModel.FileDeletedOrDiscarded += OnFileDeletedOrDiscarded;
         _diffViewerViewModel = new DiffViewerViewModel(gitService);
-        _diffViewerViewModel.CloseRequested += (s, e) => CloseDiffViewer();
+        _diffViewerViewModel.CloseRequested += OnDiffViewerCloseRequested;
         _diffViewerViewModel.HunkReverted += OnDiffViewerHunkReverted;
         _terminalViewModel = new TerminalViewModel(gitService, settingsService);
         _terminalViewModel.CommandExecuted += OnTerminalCommandExecuted;
 
         // Wire up file watcher events
-        _fileWatcherService.WorkingDirectoryChanged += (s, e) => _ = HandleWorkingDirectoryChangedAsync();
-        _fileWatcherService.GitDirectoryChanged += (s, e) => _ = HandleGitDirectoryChangedAsync();
+        _fileWatcherService.WorkingDirectoryChanged += OnFileWatcherWorkingDirectoryChanged;
+        _fileWatcherService.GitDirectoryChanged += OnFileWatcherGitDirectoryChanged;
 
         // Wire up selection changes
-        _gitGraphViewModel.PropertyChanged += (s, e) =>
-        {
-            if (e.PropertyName == nameof(GitGraphViewModel.SelectedCommit))
-            {
-                // Skip LoadCommitDetails for stash pseudo-commits — the SelectedStash handler loads stash details
-                if (_gitGraphViewModel.SelectedCommit?.IsStash != true)
-                {
-                    LoadCommitDetails(_gitGraphViewModel.SelectedCommit);
-                }
-            }
-            else if (e.PropertyName == nameof(GitGraphViewModel.IsWorkingChangesSelected))
-            {
-                IsWorkingChangesSelected = _gitGraphViewModel.IsWorkingChangesSelected;
-                if (IsWorkingChangesSelected && SelectedRepository != null)
-                {
-                    // Defer to avoid reentrancy during PropertyChanged
-                    var repoPath = SelectedRepository.Path;
-                    var workingChanges = _gitGraphViewModel.WorkingChanges;
-                    _dispatcherService.InvokeAsync(() =>
-                    {
-                        _workingChangesViewModel.SetWorkingChanges(repoPath, workingChanges);
-                    }).FireAndForget("SelectWorkingChanges.DispatcherInvoke", isUserAction: true);
-                }
-            }
-            else if (e.PropertyName == nameof(GitGraphViewModel.WorkingChanges))
-            {
-                // Update working changes count in commit detail view
-                if (_commitDetailViewModel != null && _gitGraphViewModel?.WorkingChanges != null)
-                {
-                    _commitDetailViewModel.UpdateWorkingChangesCount(_gitGraphViewModel.WorkingChanges.TotalChanges);
-                }
-            }
-            else if (e.PropertyName == nameof(GitGraphViewModel.SelectedStash))
-            {
-                // Notify that Pop command availability changed
-                PopStashCommand.NotifyCanExecuteChanged();
-
-                // Load stash details when a stash is selected
-                var selectedStash = _gitGraphViewModel.SelectedStash;
-                if (selectedStash != null && SelectedRepository != null)
-                {
-                    _commitDetailViewModel.LoadStashAsync(SelectedRepository.Path, selectedStash)
-                        .FireAndForget(nameof(_commitDetailViewModel.LoadStashAsync), isUserAction: true);
-                }
-            }
-        };
+        _gitGraphViewModel.PropertyChanged += OnGitGraphViewModelPropertyChanged;
 
         // Wire up commit detail events
-        _commitDetailViewModel.NavigateToCommitRequested += (s, sha) =>
-        {
-            if (_gitGraphViewModel != null)
-            {
-                _gitGraphViewModel.SelectCommitBySha(sha);
-            }
-        };
-
-        _commitDetailViewModel.SelectWorkingChangesRequested += (s, e) =>
-        {
-            if (_gitGraphViewModel != null)
-            {
-                _gitGraphViewModel.SelectWorkingChanges();
-            }
-        };
+        _commitDetailViewModel.NavigateToCommitRequested += OnNavigateToCommitRequested;
+        _commitDetailViewModel.SelectWorkingChangesRequested += OnSelectWorkingChangesRequested;
 
         // Start auto-fetch timer
         StartAutoFetchTimer();
@@ -388,6 +331,89 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         Log.Info("App", "MainViewModel initialized");
     }
+
+    #region Event handlers (named so Dispose can unsubscribe — see plan §1.6)
+
+    private void OnDiffViewerCloseRequested(object? sender, EventArgs e)
+    {
+        CloseDiffViewer();
+    }
+
+    private void OnFileWatcherWorkingDirectoryChanged(object? sender, EventArgs e)
+    {
+        HandleWorkingDirectoryChangedAsync()
+            .FireAndForget(nameof(HandleWorkingDirectoryChangedAsync), isUserAction: false);
+    }
+
+    private void OnFileWatcherGitDirectoryChanged(object? sender, EventArgs e)
+    {
+        HandleGitDirectoryChangedAsync()
+            .FireAndForget(nameof(HandleGitDirectoryChangedAsync), isUserAction: false);
+    }
+
+    private void OnGitGraphViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        var graph = GitGraphViewModel;
+        if (graph == null) return;
+
+        if (e.PropertyName == nameof(GitGraphViewModel.SelectedCommit))
+        {
+            // Skip LoadCommitDetails for stash pseudo-commits — the
+            // SelectedStash branch below loads stash details.
+            if (graph.SelectedCommit?.IsStash != true)
+            {
+                LoadCommitDetails(graph.SelectedCommit);
+            }
+        }
+        else if (e.PropertyName == nameof(GitGraphViewModel.IsWorkingChangesSelected))
+        {
+            IsWorkingChangesSelected = graph.IsWorkingChangesSelected;
+            if (IsWorkingChangesSelected && SelectedRepository != null && WorkingChangesViewModel != null)
+            {
+                // Defer to avoid reentrancy during PropertyChanged.
+                var repoPath = SelectedRepository.Path;
+                var workingChanges = graph.WorkingChanges;
+                var wcVm = WorkingChangesViewModel;
+                _dispatcherService.InvokeAsync(() =>
+                {
+                    wcVm.SetWorkingChanges(repoPath, workingChanges);
+                }).FireAndForget("SelectWorkingChanges.DispatcherInvoke", isUserAction: true);
+            }
+        }
+        else if (e.PropertyName == nameof(GitGraphViewModel.WorkingChanges))
+        {
+            // Update working changes count in commit detail view.
+            if (CommitDetailViewModel != null && graph.WorkingChanges != null)
+            {
+                CommitDetailViewModel.UpdateWorkingChangesCount(graph.WorkingChanges.TotalChanges);
+            }
+        }
+        else if (e.PropertyName == nameof(GitGraphViewModel.SelectedStash))
+        {
+            // Notify that Pop command availability changed.
+            PopStashCommand.NotifyCanExecuteChanged();
+
+            // Load stash details when a stash is selected.
+            var selectedStash = graph.SelectedStash;
+            if (selectedStash != null && SelectedRepository != null && CommitDetailViewModel != null)
+            {
+                CommitDetailViewModel.LoadStashAsync(SelectedRepository.Path, selectedStash)
+                    .FireAndForget(nameof(CommitDetailViewModel.LoadStashAsync), isUserAction: true);
+            }
+        }
+    }
+
+    private void OnNavigateToCommitRequested(object? sender, string sha)
+    {
+        GitGraphViewModel?.SelectCommitBySha(sha);
+    }
+
+    private void OnSelectWorkingChangesRequested(object? sender, EventArgs e)
+    {
+        GitGraphViewModel?.SelectWorkingChanges();
+    }
+
+    #endregion
 
     partial void OnSelectedRepositoryChanged(RepositoryInfo? value)
     {
@@ -436,15 +462,82 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Disposes resources held by MainViewModel.
+    /// Disposes resources held by MainViewModel — unsubscribes from every
+    /// event this VM subscribed to in its constructor (see plan §1.6) and
+    /// disposes any IDisposable services and child ViewModels we own.
     /// </summary>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
 
-        // Unsubscribe from events to prevent memory leaks
+        // Unsubscribe from every event wired up in the constructor. Order
+        // mirrors the constructor wiring so any audit diff is easy to read.
+        _folderWatcherService.RepositoryDiscovered -= OnRepositoryDiscovered;
         _autoFetchService.FetchCompleted -= OnAutoFetchCompleted;
+
+        var workingChanges = WorkingChangesViewModel;
+        if (workingChanges != null)
+        {
+            workingChanges.FileSelected -= OnWorkingChangesFileSelected;
+            workingChanges.FileDeletedOrDiscarded -= OnFileDeletedOrDiscarded;
+        }
+
+        var diffViewer = DiffViewerViewModel;
+        if (diffViewer != null)
+        {
+            diffViewer.CloseRequested -= OnDiffViewerCloseRequested;
+            diffViewer.HunkReverted -= OnDiffViewerHunkReverted;
+        }
+
+        var terminal = TerminalViewModel;
+        if (terminal != null)
+        {
+            terminal.CommandExecuted -= OnTerminalCommandExecuted;
+        }
+
+        _fileWatcherService.WorkingDirectoryChanged -= OnFileWatcherWorkingDirectoryChanged;
+        _fileWatcherService.GitDirectoryChanged -= OnFileWatcherGitDirectoryChanged;
+
+        var graph = GitGraphViewModel;
+        if (graph != null)
+        {
+            graph.PropertyChanged -= OnGitGraphViewModelPropertyChanged;
+        }
+
+        var commitDetail = CommitDetailViewModel;
+        if (commitDetail != null)
+        {
+            commitDetail.NavigateToCommitRequested -= OnNavigateToCommitRequested;
+            commitDetail.SelectWorkingChangesRequested -= OnSelectWorkingChangesRequested;
+        }
+
+        // Transient VMs wired up outside the constructor still need to be
+        // detached — they hold refs to long-lived services.
+        DetachCreatePullRequestViewModel(CreatePullRequestViewModel);
+        DetachPullRequestDetailViewModel(PullRequestDetailViewModel);
+
+        // The last MergeConflictResolutionViewModel (if any) must detach its
+        // MergeCompleted subscription and run its own Cleanup() so the
+        // DispatcherTimer + CTS fields inside don't root the VM.
+        var mergeConflictVm = MergeConflictResolutionViewModel;
+        if (mergeConflictVm != null)
+        {
+            mergeConflictVm.MergeCompleted -= OnMergeConflictResolutionCompleted;
+            mergeConflictVm.Cleanup();
+        }
+
+        // Stop the auto-fetch timer so no pending callbacks race with disposal.
+        _autoFetchService.Stop();
+
+        // Dispose IDisposable child ViewModels — these own CancellationTokenSource
+        // fields that would otherwise leak at process shutdown (picked up from
+        // plan §1.5 now that Dispose plumbing exists).
+        (diffViewer as IDisposable)?.Dispose();
+        (terminal as IDisposable)?.Dispose();
+        (workingChanges as IDisposable)?.Dispose();
+        (commitDetail as IDisposable)?.Dispose();
+        (graph as IDisposable)?.Dispose();
 
         // Dispose current repository session
         _currentSession?.Dispose();
@@ -454,7 +547,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _fileWatcherService.Dispose();
 
         // Dispose folder watcher
-        _folderWatcherService.RepositoryDiscovered -= OnRepositoryDiscovered;
         _folderWatcherService.Dispose();
     }
 }

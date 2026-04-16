@@ -102,6 +102,21 @@ public partial class MainWindow : Window
         NotificationHostControl.NotificationService = notificationService;
 
         ContentRendered += OnContentRendered;
+        // Without this, MainViewModel.Dispose is never called — every
+        // unsubscribe added for plan §1.6 would be dead code.
+        Closed += OnWindowClosed;
+    }
+
+    private void OnWindowClosed(object? sender, EventArgs e)
+    {
+        // Mirror the subscriptions we added here so the window doesn't
+        // root the VM after close.
+        _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        _viewModel.RequestGitFlowActionMenu -= ViewModel_RequestGitFlowActionMenu;
+        ContentRendered -= OnContentRendered;
+        Closed -= OnWindowClosed;
+
+        _viewModel.Dispose();
     }
 
     public Task InitializeStartupAsync()

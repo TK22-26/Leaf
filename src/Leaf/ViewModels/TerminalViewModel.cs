@@ -9,7 +9,7 @@ using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
-public sealed partial class TerminalViewModel : ObservableObject
+public sealed partial class TerminalViewModel : ObservableObject, IDisposable
 {
     private readonly TerminalService _terminalService;
     private readonly SettingsService _settingsService;
@@ -204,6 +204,15 @@ public sealed partial class TerminalViewModel : ObservableObject
             CancellationTokenSourceExtensions.DisposeAndClear(ref _commandCts);
             CommandCompleted?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        // Unsubscribe from the long-lived service event so this VM can be
+        // garbage-collected once MainViewModel drops its reference.
+        _gitService.GitCommandExecuted -= OnGitCommandExecuted;
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _commandCts);
     }
 
     partial void OnAutoScrollChanged(bool value)
