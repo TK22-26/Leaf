@@ -52,7 +52,14 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     // is unsafe even for concurrent reads while another thread writes;
     // ConcurrentDictionary has the same cost profile for the low write
     // volumes here.
-    private readonly ConcurrentDictionary<string, Task<MergeCommitTooltipViewModel?>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
+    //
+    // Lazy<Task<…>> wrapper on the tooltip cache: ConcurrentDictionary.GetOrAdd
+    // can invoke its factory multiple times under contention (only one result
+    // wins the slot, the others are discarded). For tooltip previews the
+    // "others" are full git-service calls — not acceptable. Lazy guarantees
+    // the inner factory runs at most once per key regardless of how many
+    // Lazy wrappers GetOrAdd ends up creating and discarding.
+    private readonly ConcurrentDictionary<string, Lazy<Task<MergeCommitTooltipViewModel?>>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _branchTips = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _hiddenBranchNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _soloBranchNames = new(StringComparer.OrdinalIgnoreCase);
@@ -1032,9 +1039,14 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
 
     public bool TryGetMergeTooltip(string sha, out MergeCommitTooltipViewModel? tooltip)
     {
-        if (_mergeTooltipTasks.TryGetValue(sha, out var task) && task.IsCompletedSuccessfully)
+        // IsValueCreated guards us from triggering the Lazy's factory from a
+        // polling read — it only returns a tooltip once GetMergeTooltipAsync
+        // has actually started the build.
+        if (_mergeTooltipTasks.TryGetValue(sha, out var lazy) &&
+            lazy.IsValueCreated &&
+            lazy.Value.IsCompletedSuccessfully)
         {
-            tooltip = task.Result;
+            tooltip = lazy.Value.Result;
             return tooltip != null;
         }
 
@@ -1049,15 +1061,20 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             return Task.FromResult<MergeCommitTooltipViewModel?>(null);
         }
 
-        // GetOrAdd is the atomic primitive for "return the existing task or
-        // start a new one and cache it". Under a race, the factory can run
-        // twice (only one result is cached) — the wasted Task just gets
-        // garbage-collected. That's the right trade-off for a tooltip
-        // preview; strict-once would need a Lazy<Task> wrapper.
+        // Capture RepositoryPath defensively so the Lazy's factory doesn't
+        // observe a later change to the property.
         var repoPath = RepositoryPath;
-        return _mergeTooltipTasks.GetOrAdd(
+
+        // GetOrAdd + Lazy: under concurrent hovers, GetOrAdd may construct
+        // multiple Lazy wrappers (only one wins the slot). Lazy guarantees
+        // that BuildMergeTooltipAsync itself runs at most once per key —
+        // the losing Lazy wrappers are discarded without their factory
+        // ever running.
+        var lazy = _mergeTooltipTasks.GetOrAdd(
             commit.Sha,
-            _ => BuildMergeTooltipAsync(commit, repoPath));
+            _ => new Lazy<Task<MergeCommitTooltipViewModel?>>(
+                () => BuildMergeTooltipAsync(commit, repoPath)));
+        return lazy.Value;
     }
 
     private async Task<MergeCommitTooltipViewModel?> BuildMergeTooltipAsync(CommitInfo commit, string repoPath)
