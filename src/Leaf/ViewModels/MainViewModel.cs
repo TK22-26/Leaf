@@ -32,6 +32,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IFolderWatcherService _folderWatcherService;
     private readonly IPullRequestService _pullRequestService;
     private readonly IRepositorySessionFactory _sessionFactory;
+    private readonly IDiffService _diffService = new DiffService();
     private readonly INotificationService? _notificationService;
     private IRepositorySession? _currentSession;
     private bool _disposed;
