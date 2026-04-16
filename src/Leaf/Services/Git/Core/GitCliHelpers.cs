@@ -6,21 +6,17 @@ namespace Leaf.Services.Git.Core;
 
 /// <summary>
 /// Helper utilities for common git CLI operations.
-/// Instance-based for testability; only pure functions are static.
+/// Pure static surface — all callers use the class directly; no instance state.
 /// </summary>
-internal class GitCliHelpers
+internal static class GitCliHelpers
 {
     /// <summary>
     /// Constant used to identify temporary stashes created during smart pop operations.
     /// </summary>
     public const string TempStashMessage = "TEMP_LEAF_AUTOPOP";
 
-    public GitCliHelpers(IGitCommandRunner runner)
-    {
-    }
-
     /// <summary>
-    /// Result of a git command execution (internal record for static methods).
+    /// Result of a git command execution.
     /// </summary>
     public record GitResult(int ExitCode, string Output, string Error);
 
