@@ -49,11 +49,6 @@ public class FakeDialogService : IDialogService
         return Task.CompletedTask;
     }
 
-    public Task<T?> ShowDialogAsync<T>(object viewModel) where T : class
-    {
-        return Task.FromResult<T?>(null);
-    }
-
     public Task<string?> ShowInputAsync(string prompt, string title, string? defaultValue = null)
     {
         InputCalls.Add((prompt, title, defaultValue));

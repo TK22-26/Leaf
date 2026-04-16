@@ -44,14 +44,6 @@ public interface IDialogService
     Task ShowErrorAsync(string message, string title);
 
     /// <summary>
-    /// Shows a custom dialog window and returns the result.
-    /// </summary>
-    /// <typeparam name="T">The expected result type (typically the ViewModel).</typeparam>
-    /// <param name="viewModel">The ViewModel to set as DataContext.</param>
-    /// <returns>The dialog result, or null if cancelled.</returns>
-    Task<T?> ShowDialogAsync<T>(object viewModel) where T : class;
-
-    /// <summary>
     /// Shows an input dialog for getting text input from the user.
     /// </summary>
     /// <param name="prompt">The prompt message.</param>

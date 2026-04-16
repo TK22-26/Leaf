@@ -73,20 +73,6 @@ public class DialogService : IDialogService
     }
 
     /// <inheritdoc />
-    public async Task<T?> ShowDialogAsync<T>(object viewModel) where T : class
-    {
-        // Note: This is a simplified implementation.
-        // A full implementation would need a dialog type registry or convention-based resolution.
-        // For now, we return null - this method will be enhanced as dialogs are migrated.
-        return await _dispatcher.InvokeAsync<T?>(() =>
-        {
-            // TODO: Implement dialog window creation based on ViewModel type
-            // This will be enhanced in Phase 3 when dialogs are refactored
-            return null;
-        });
-    }
-
-    /// <inheritdoc />
     public async Task<string?> ShowInputAsync(string prompt, string title, string? defaultValue = null)
     {
         // Note: WPF doesn't have a built-in input dialog.
@@ -163,12 +149,6 @@ public class TestDialogService : IDialogService
     {
         ShownMessages.Add((message, title));
         return Task.CompletedTask;
-    }
-
-    /// <inheritdoc />
-    public Task<T?> ShowDialogAsync<T>(object viewModel) where T : class
-    {
-        return Task.FromResult<T?>(null);
     }
 
     /// <inheritdoc />
