@@ -32,6 +32,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IFolderWatcherService _folderWatcherService;
     private readonly IPullRequestService _pullRequestService;
     private readonly IRepositorySessionFactory _sessionFactory;
+    private readonly IDiffService _diffService;
     private readonly INotificationService? _notificationService;
     private IRepositorySession? _currentSession;
     private bool _disposed;
@@ -173,6 +174,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public ObservableCollection<object> RepositoryRootItems => _repositoryService.RepositoryRootItems;
 
+    // Cache for FilteredRepositoryRootItems — WPF bindings often read the
+    // getter multiple times per layout pass, so without a cache each read
+    // rebuilt the filtered tree. Keyed by the trimmed search text; the
+    // empty-search fast path returns the underlying ObservableCollection
+    // directly so WPF gets incremental change notifications on it.
+    private IEnumerable<object>? _filteredRepoRootItemsCache;
+    private string? _filteredRepoRootItemsCacheKey;
+
     /// <summary>
     /// Filtered repository root items based on search text.
     /// </summary>
@@ -180,54 +189,84 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         get
         {
-            if (string.IsNullOrWhiteSpace(RepositorySearchText))
+            var key = (RepositorySearchText ?? string.Empty).Trim();
+            if (key.Length == 0)
                 return RepositoryRootItems;
 
-            var searchText = RepositorySearchText.Trim();
-            var result = new List<object>();
+            if (_filteredRepoRootItemsCache != null && _filteredRepoRootItemsCacheKey == key)
+                return _filteredRepoRootItemsCache;
 
-            foreach (var item in RepositoryRootItems)
+            _filteredRepoRootItemsCacheKey = key;
+            _filteredRepoRootItemsCache = BuildFilteredRepositoryRootItems(key);
+            return _filteredRepoRootItemsCache;
+        }
+    }
+
+    // Adapters for the three repo-tree mutation signals we observe.
+    // Each has a different delegate signature (NotifyCollectionChangedEventHandler
+    // vs. EventHandler<RepositoryInfo>), so they can't share a method —
+    // but they all funnel into InvalidateFilteredRepoItemsCache.
+    private void OnRepoRootItemsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        => InvalidateFilteredRepoItemsCache();
+
+    private void OnRepoAddedOrRemoved(object? sender, RepositoryInfo repo)
+        => InvalidateFilteredRepoItemsCache();
+
+    private void InvalidateFilteredRepoItemsCache()
+    {
+        // The empty-search fast path returns the live ObservableCollection
+        // directly and doesn't need re-notification, but we raise anyway
+        // for consistency — WPF no-ops when the value reference is equal.
+        _filteredRepoRootItemsCache = null;
+        _filteredRepoRootItemsCacheKey = null;
+        OnPropertyChanged(nameof(FilteredRepositoryRootItems));
+    }
+
+    private List<object> BuildFilteredRepositoryRootItems(string searchText)
+    {
+        var result = new List<object>();
+
+        foreach (var item in RepositoryRootItems)
+        {
+            if (item is Models.RepositorySection section)
             {
-                if (item is Models.RepositorySection section)
+                var filteredItems = section.Items
+                    .Where(qi => qi.Repository?.Name?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
+                    .ToList();
+                if (filteredItems.Count > 0)
                 {
-                    var filteredItems = section.Items
-                        .Where(qi => qi.Repository?.Name?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
-                        .ToList();
-                    if (filteredItems.Count > 0)
+                    var filteredSection = new Models.RepositorySection
                     {
-                        var filteredSection = new Models.RepositorySection
-                        {
-                            Name = section.Name,
-                            IsExpanded = true
-                        };
-                        foreach (var fi in filteredItems)
-                            filteredSection.Items.Add(fi);
-                        result.Add(filteredSection);
-                    }
-                }
-                else if (item is Models.RepositoryGroup group)
-                {
-                    var filteredRepos = group.Repositories
-                        .Where(r => r.Name?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
-                        .ToList();
-                    if (filteredRepos.Count > 0 || group.Name?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
-                    {
-                        var filteredGroup = new Models.RepositoryGroup
-                        {
-                            Name = group.Name,
-                            IsExpanded = true,
-                            IsWatched = group.IsWatched
-                        };
-                        var reposToAdd = filteredRepos.Count > 0 ? filteredRepos : group.Repositories.ToList();
-                        foreach (var r in reposToAdd)
-                            filteredGroup.Repositories.Add(r);
-                        result.Add(filteredGroup);
-                    }
+                        Name = section.Name,
+                        IsExpanded = true
+                    };
+                    foreach (var fi in filteredItems)
+                        filteredSection.Items.Add(fi);
+                    result.Add(filteredSection);
                 }
             }
-
-            return result;
+            else if (item is Models.RepositoryGroup group)
+            {
+                var filteredRepos = group.Repositories
+                    .Where(r => r.Name?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
+                    .ToList();
+                if (filteredRepos.Count > 0 || group.Name?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    var filteredGroup = new Models.RepositoryGroup
+                    {
+                        Name = group.Name,
+                        IsExpanded = true,
+                        IsWatched = group.IsWatched
+                    };
+                    var reposToAdd = filteredRepos.Count > 0 ? filteredRepos : group.Repositories.ToList();
+                    foreach (var r in reposToAdd)
+                        filteredGroup.Repositories.Add(r);
+                    result.Add(filteredGroup);
+                }
+            }
         }
+
+        return result;
     }
 
     private string? _mergeConflictRepoPath;
@@ -269,6 +308,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IFileSystemService fileSystemService,
         IFolderWatcherService folderWatcherService,
         IPullRequestService pullRequestService,
+        IDiffService diffService,
         INotificationService? notificationService = null)
     {
         _gitService = gitService;
@@ -280,6 +320,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _dispatcherService = dispatcherService;
         _dialogService = dialogService;
         _sessionFactory = sessionFactory;
+        _diffService = diffService;
         _clipboardService = clipboardService;
         _folderWatcherService = folderWatcherService;
         _pullRequestService = pullRequestService;
@@ -288,6 +329,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Subscribe to folder watcher for new repository discovery
         _folderWatcherService.RepositoryDiscovered += OnRepositoryDiscovered;
+
+        // Invalidate the filtered-repo-items cache (and re-notify WPF)
+        // whenever the underlying repo tree changes — so an active search
+        // filter reflects repos that get added/removed during the search.
+        // Both top-level structural changes (section appearance/removal)
+        // and nested add/remove of repos inside a group need to invalidate;
+        // the service exposes dedicated add/remove events for the latter.
+        _repositoryService.RepositoryRootItems.CollectionChanged += OnRepoRootItemsCollectionChanged;
+        _repositoryService.RepositoryAdded += OnRepoAddedOrRemoved;
+        _repositoryService.RepositoryRemoved += OnRepoAddedOrRemoved;
 
         // Start watching saved folders and scan for missed repos
         var watchedFolders = _settingsService.LoadSettings().WatchedFolders;
@@ -488,6 +539,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Unsubscribe from every event wired up in the constructor. Order
         // mirrors the constructor wiring so any audit diff is easy to read.
         _folderWatcherService.RepositoryDiscovered -= OnRepositoryDiscovered;
+        _repositoryService.RepositoryRootItems.CollectionChanged -= OnRepoRootItemsCollectionChanged;
+        _repositoryService.RepositoryAdded -= OnRepoAddedOrRemoved;
+        _repositoryService.RepositoryRemoved -= OnRepoAddedOrRemoved;
         _autoFetchService.FetchCompleted -= OnAutoFetchCompleted;
 
         var workingChanges = WorkingChangesViewModel;

@@ -13,38 +13,9 @@ public partial class MainViewModel
     /// <summary>
     /// Show the diff viewer for a file in a commit.
     /// </summary>
-    public async Task ShowFileDiffAsync(Models.FileChangeInfo file, string commitSha)
-    {
-        if (SelectedRepository == null || DiffViewerViewModel == null)
-            return;
-
-        DiffViewerViewModel.IsLoading = true;
-        IsDiffViewerVisible = true;
-
-        try
-        {
-            // Get the file content from the commit
-            var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
-                SelectedRepository.Path, commitSha, file.Path, cancellationToken: CurrentRepositoryToken);
-
-            // Compute the diff
-            var diffService = new Services.DiffService();
-            var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
-            DiffViewerViewModel.RepositoryPath = SelectedRepository.Path;
-
-            // Load into the view model
-            DiffViewerViewModel.LoadDiff(result);
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Failed to load diff: {ex.Message}";
-            IsDiffViewerVisible = false;
-        }
-        finally
-        {
-            DiffViewerViewModel.IsLoading = false;
-        }
-    }
+    public Task ShowFileDiffAsync(Models.FileChangeInfo file, string commitSha) =>
+        ShowTwoPaneDiffAsync(file.FileName, file.Path, repoPath =>
+            _gitService.GetFileDiffAsync(repoPath, commitSha, file.Path, cancellationToken: CurrentRepositoryToken));
 
     /// <summary>
     /// Close the diff viewer.
@@ -277,40 +248,28 @@ public partial class MainViewModel
     /// <summary>
     /// Show diff for an unstaged file (working directory vs index).
     /// </summary>
-    public async Task ShowUnstagedFileDiffAsync(Models.FileStatusInfo file)
-    {
-        if (SelectedRepository == null || DiffViewerViewModel == null)
-            return;
-
-        DiffViewerViewModel.IsLoading = true;
-        IsDiffViewerVisible = true;
-
-        try
-        {
-            var (oldContent, newContent) = await _gitService.GetUnstagedFileDiffAsync(
-                SelectedRepository.Path, file.Path, cancellationToken: CurrentRepositoryToken);
-
-            var diffService = new Services.DiffService();
-            var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
-            DiffViewerViewModel.RepositoryPath = SelectedRepository.Path;
-
-            DiffViewerViewModel.LoadDiff(result);
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Failed to load diff: {ex.Message}";
-            IsDiffViewerVisible = false;
-        }
-        finally
-        {
-            DiffViewerViewModel.IsLoading = false;
-        }
-    }
+    public Task ShowUnstagedFileDiffAsync(Models.FileStatusInfo file) =>
+        ShowTwoPaneDiffAsync(file.FileName, file.Path, repoPath =>
+            _gitService.GetUnstagedFileDiffAsync(repoPath, file.Path, cancellationToken: CurrentRepositoryToken));
 
     /// <summary>
     /// Show diff for a staged file (index vs HEAD).
     /// </summary>
-    public async Task ShowStagedFileDiffAsync(Models.FileStatusInfo file)
+    public Task ShowStagedFileDiffAsync(Models.FileStatusInfo file) =>
+        ShowTwoPaneDiffAsync(file.FileName, file.Path, repoPath =>
+            _gitService.GetStagedFileDiffAsync(repoPath, file.Path, cancellationToken: CurrentRepositoryToken));
+
+    /// <summary>
+    /// Shared pipeline for the three "load two-pane diff into the viewer"
+    /// flows (commit file, unstaged, staged). The caller supplies the
+    /// file identity and a delegate that fetches old+new content for a
+    /// given repo path. Everything else — loading state, error surface,
+    /// DiffPlex computation, and viewer handoff — is shared.
+    /// </summary>
+    private async Task ShowTwoPaneDiffAsync(
+        string fileName,
+        string filePath,
+        Func<string, Task<(string oldContent, string newContent)>> loadContent)
     {
         if (SelectedRepository == null || DiffViewerViewModel == null)
             return;
@@ -320,13 +279,9 @@ public partial class MainViewModel
 
         try
         {
-            var (oldContent, newContent) = await _gitService.GetStagedFileDiffAsync(
-                SelectedRepository.Path, file.Path, cancellationToken: CurrentRepositoryToken);
-
-            var diffService = new Services.DiffService();
-            var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
+            var (oldContent, newContent) = await loadContent(SelectedRepository.Path);
+            var result = _diffService.ComputeDiff(oldContent, newContent, fileName, filePath);
             DiffViewerViewModel.RepositoryPath = SelectedRepository.Path;
-
             DiffViewerViewModel.LoadDiff(result);
         }
         catch (Exception ex)
