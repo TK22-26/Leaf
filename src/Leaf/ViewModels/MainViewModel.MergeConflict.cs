@@ -284,9 +284,8 @@ public partial class MainViewModel
 
             MergeConflictResolutionViewModel = null;
             _mergeConflictRepoPath = null;
-            _ = _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path).ContinueWith(
-                t => Log.Error("Merge", "Failed to clear stored merge conflicts", t.Exception?.InnerException ?? t.Exception),
-                TaskContinuationOptions.OnlyOnFaulted);
+            _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path)
+                .FireAndForget(nameof(_gitService.ClearStoredMergeConflictFilesAsync), isUserAction: false);
             return;
         }
 
@@ -333,8 +332,15 @@ public partial class MainViewModel
 
     private async void OnMergeConflictResolutionCompleted(object? sender, bool success)
     {
-        Log.Info("Merge", $"OnMergeConflictResolutionCompleted: success={success}");
-        StatusMessage = success ? "Merge completed successfully" : "Merge aborted";
-        await RefreshAsync();
+        try
+        {
+            Log.Info("Merge", $"OnMergeConflictResolutionCompleted: success={success}");
+            StatusMessage = success ? "Merge completed successfully" : "Merge aborted";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(OnMergeConflictResolutionCompleted), isUserAction: true);
+        }
     }
 }

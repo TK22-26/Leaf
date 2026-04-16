@@ -296,7 +296,7 @@ public partial class CommitDetailViewModel : ObservableObject
         if (value)
         {
             ShowTreeView = true;
-            _ = LoadAllFilesAsync();
+            LoadAllFilesAsync().FireAndForget(nameof(LoadAllFilesAsync), isUserAction: true);
         }
         else
         {
@@ -340,7 +340,7 @@ public partial class CommitDetailViewModel : ObservableObject
     {
         if (value != null && !string.IsNullOrEmpty(RepositoryPath) && Commit != null)
         {
-            _ = LoadDiffAsync(value);
+            LoadDiffAsync(value).FireAndForget(nameof(LoadDiffAsync), isUserAction: true);
         }
     }
 

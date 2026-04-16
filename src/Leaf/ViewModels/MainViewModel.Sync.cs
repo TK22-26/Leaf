@@ -303,7 +303,7 @@ public partial class MainViewModel
     /// </summary>
     private void OnAutoFetchCompleted(object? sender, AutoFetchCompletedEventArgs e)
     {
-        _ = _dispatcherService.InvokeAsync(() =>
+        _dispatcherService.InvokeAsync(() =>
         {
             if (SelectedRepository == null)
                 return;
@@ -319,6 +319,6 @@ public partial class MainViewModel
 
             // Notify that LastFetchTime changed (property delegates to service)
             OnPropertyChanged(nameof(LastFetchTime));
-        });
+        }).FireAndForget(nameof(OnAutoFetchCompleted), isUserAction: false);
     }
 }

@@ -180,7 +180,8 @@ public partial class MainViewModel
         if (SelectedRepository != null)
         {
             SelectedRepository.PullRequestsLoaded = false;
-            _ = LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
+            LoadBranchesForRepoAsync(SelectedRepository, forceReload: true)
+                .FireAndForget(nameof(LoadBranchesForRepoAsync), isUserAction: true);
         }
     }
 
@@ -205,7 +206,7 @@ public partial class MainViewModel
             }),
             new NotificationAction("View in Leaf", () =>
             {
-                _ = SelectPullRequestAsync(pr);
+                SelectPullRequestAsync(pr).FireAndForget(nameof(SelectPullRequestAsync), isUserAction: true);
             }));
     }
 
@@ -383,7 +384,8 @@ public partial class MainViewModel
             if (SelectedRepository != null)
             {
                 SelectedRepository.PullRequestsLoaded = false;
-                _ = LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
+                LoadBranchesForRepoAsync(SelectedRepository, forceReload: true)
+                    .FireAndForget(nameof(LoadBranchesForRepoAsync), isUserAction: true);
             }
         };
         return vm;

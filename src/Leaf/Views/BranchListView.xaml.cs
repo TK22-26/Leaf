@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.ViewModels;
 
 namespace Leaf.Views;
@@ -49,7 +50,8 @@ public partial class BranchListView : UserControl
         // Double-click to checkout
         if (e.ClickCount == 2 && !branch.IsCurrent)
         {
-            _ = viewModel.CheckoutBranchAsync(branch);
+            viewModel.CheckoutBranchAsync(branch)
+                .FireAndForget(nameof(viewModel.CheckoutBranchAsync), isUserAction: true);
             e.Handled = true;
             return;
         }
@@ -167,7 +169,8 @@ public partial class BranchListView : UserControl
         // Double-click to switch to worktree
         if (e.ClickCount == 2 && !worktree.IsCurrent)
         {
-            _ = viewModel.SwitchToWorktreeAsync(worktree);
+            viewModel.SwitchToWorktreeAsync(worktree)
+                .FireAndForget(nameof(viewModel.SwitchToWorktreeAsync), isUserAction: true);
             e.Handled = true;
             return;
         }
@@ -289,6 +292,10 @@ public partial class BranchListView : UserControl
             button.ContextMenu.PlacementTarget = button;
             button.ContextMenu.Placement = PlacementMode.Right;
             button.ContextMenu.IsOpen = true;
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(GitFlowActionButton_Click), isUserAction: true);
         }
         finally
         {
@@ -423,29 +430,36 @@ public partial class BranchListView : UserControl
 
     private async void FinishGitFlowBranch(GitFlowBranchType branchType, string name)
     {
-        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
-            return;
-
-        var config = await viewModel.GetGitFlowConfigAsync();
-        if (config == null) return;
-
-        // Get the full branch name
-        var prefix = branchType switch
+        try
         {
-            GitFlowBranchType.Feature => config.FeaturePrefix,
-            GitFlowBranchType.Release => config.ReleasePrefix,
-            GitFlowBranchType.Hotfix => config.HotfixPrefix,
-            _ => ""
-        };
-        var branchName = prefix + name;
+            if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+                return;
 
-        // Find the branch
-        var branch = viewModel.SelectedRepository.LocalBranches
-            .FirstOrDefault(b => b.Name.Equals(branchName, StringComparison.OrdinalIgnoreCase));
+            var config = await viewModel.GetGitFlowConfigAsync();
+            if (config == null) return;
 
-        if (branch != null)
+            // Get the full branch name
+            var prefix = branchType switch
+            {
+                GitFlowBranchType.Feature => config.FeaturePrefix,
+                GitFlowBranchType.Release => config.ReleasePrefix,
+                GitFlowBranchType.Hotfix => config.HotfixPrefix,
+                _ => ""
+            };
+            var branchName = prefix + name;
+
+            // Find the branch
+            var branch = viewModel.SelectedRepository.LocalBranches
+                .FirstOrDefault(b => b.Name.Equals(branchName, StringComparison.OrdinalIgnoreCase));
+
+            if (branch != null)
+            {
+                await viewModel.FinishGitFlowBranchAsync(branch);
+            }
+        }
+        catch (Exception ex)
         {
-            await viewModel.FinishGitFlowBranchAsync(branch);
+            AsyncErrorHandler.Handle(ex, nameof(FinishGitFlowBranch), isUserAction: true);
         }
     }
 
@@ -470,66 +484,73 @@ public partial class BranchListView : UserControl
 
     private async void OpenQuickCreate(GitFlowBranchType branchType, string header, string color, string defaultPrefix)
     {
-        _currentBranchType = branchType;
-        _suggestedVersion = null;
-
-        // Get actual prefix from GitFlow config
-        if (DataContext is MainViewModel viewModel && viewModel.SelectedRepository != null)
+        try
         {
-            var config = await viewModel.GetGitFlowConfigAsync();
-            if (config != null)
-            {
-                _currentPrefix = branchType switch
-                {
-                    GitFlowBranchType.Feature => config.FeaturePrefix,
-                    GitFlowBranchType.Release => config.ReleasePrefix,
-                    GitFlowBranchType.Hotfix => config.HotfixPrefix,
-                    _ => defaultPrefix
-                };
+            _currentBranchType = branchType;
+            _suggestedVersion = null;
 
-                // Get suggested version for release/hotfix
-                if (branchType == GitFlowBranchType.Release || branchType == GitFlowBranchType.Hotfix)
+            // Get actual prefix from GitFlow config
+            if (DataContext is MainViewModel viewModel && viewModel.SelectedRepository != null)
+            {
+                var config = await viewModel.GetGitFlowConfigAsync();
+                if (config != null)
                 {
-                    _suggestedVersion = await viewModel.GetSuggestedVersionAsync(branchType);
+                    _currentPrefix = branchType switch
+                    {
+                        GitFlowBranchType.Feature => config.FeaturePrefix,
+                        GitFlowBranchType.Release => config.ReleasePrefix,
+                        GitFlowBranchType.Hotfix => config.HotfixPrefix,
+                        _ => defaultPrefix
+                    };
+
+                    // Get suggested version for release/hotfix
+                    if (branchType == GitFlowBranchType.Release || branchType == GitFlowBranchType.Hotfix)
+                    {
+                        _suggestedVersion = await viewModel.GetSuggestedVersionAsync(branchType);
+                    }
+                }
+                else
+                {
+                    _currentPrefix = defaultPrefix;
                 }
             }
             else
             {
                 _currentPrefix = defaultPrefix;
             }
-        }
-        else
-        {
-            _currentPrefix = defaultPrefix;
-        }
 
-        // Setup UI - ensure textbox is enabled (may have been disabled from previous use)
-        QuickCreateHeader.Text = header;
-        QuickCreateTypeIndicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
-        QuickCreateNameBox.Text = "";
-        QuickCreateNameBox.IsEnabled = true;
-        QuickCreatePreview.Text = _currentPrefix + "...";
-        QuickCreateStartButton.IsEnabled = false;
-        QuickCreateProgress.Visibility = Visibility.Collapsed;
+            // Setup UI - ensure textbox is enabled (may have been disabled from previous use)
+            QuickCreateHeader.Text = header;
+            QuickCreateTypeIndicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+            QuickCreateNameBox.Text = "";
+            QuickCreateNameBox.IsEnabled = true;
+            QuickCreatePreview.Text = _currentPrefix + "...";
+            QuickCreateStartButton.IsEnabled = false;
+            QuickCreateProgress.Visibility = Visibility.Collapsed;
 
-        // Show/hide version suggestion
-        if (_suggestedVersion != null)
-        {
-            QuickCreateVersionText.Text = _suggestedVersion.ToString();
-            QuickCreateVersionPanel.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            QuickCreateVersionPanel.Visibility = Visibility.Collapsed;
-        }
+            // Show/hide version suggestion
+            if (_suggestedVersion != null)
+            {
+                QuickCreateVersionText.Text = _suggestedVersion.ToString();
+                QuickCreateVersionPanel.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                QuickCreateVersionPanel.Visibility = Visibility.Collapsed;
+            }
 
-        // Position popup next to the chevron button and show
-        if (_lastChevronButton != null)
-        {
-            QuickCreatePopup.PlacementTarget = _lastChevronButton;
+            // Position popup next to the chevron button and show
+            if (_lastChevronButton != null)
+            {
+                QuickCreatePopup.PlacementTarget = _lastChevronButton;
+            }
+            QuickCreatePopup.IsOpen = true;
+            QuickCreateNameBox.Focus();
         }
-        QuickCreatePopup.IsOpen = true;
-        QuickCreateNameBox.Focus();
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(OpenQuickCreate), isUserAction: true);
+        }
     }
 
     private void QuickCreateNameBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -569,21 +590,21 @@ public partial class BranchListView : UserControl
 
     private async void QuickCreateStart_Click(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
-            return;
-
-        var name = QuickCreateNameBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(name))
-            return;
-
-        // Disable UI
-        QuickCreateNameBox.IsEnabled = false;
-        QuickCreateStartButton.IsEnabled = false;
-        QuickCreateProgress.Visibility = Visibility.Visible;
-        QuickCreateProgressText.Text = "Checking for uncommitted changes...";
-
         try
         {
+            if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+                return;
+
+            var name = QuickCreateNameBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            // Disable UI
+            QuickCreateNameBox.IsEnabled = false;
+            QuickCreateStartButton.IsEnabled = false;
+            QuickCreateProgress.Visibility = Visibility.Visible;
+            QuickCreateProgressText.Text = "Checking for uncommitted changes...";
+
             // Check for uncommitted changes
             var repoInfo = await viewModel.GetRepositoryInfoAsync();
             if (repoInfo?.IsDirty == true)
@@ -616,9 +637,8 @@ public partial class BranchListView : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to create branch:\n\n{ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
             ResetQuickCreateUI();
+            AsyncErrorHandler.Handle(ex, nameof(QuickCreateStart_Click), isUserAction: true);
         }
     }
 
@@ -707,29 +727,28 @@ public partial class BranchListView : UserControl
 
     private async void WorktreeCreateConfirm_Click(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
-            return;
-
-        var branchName = WorktreeNameBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(branchName))
-            return;
-
-        // Disable UI
-        WorktreeNameBox.IsEnabled = false;
-        WorktreeCreateButton.IsEnabled = false;
-        WorktreeCreateProgress.Visibility = Visibility.Visible;
-        WorktreeCreateProgressText.Text = "Creating worktree...";
-
         try
         {
+            if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+                return;
+
+            var branchName = WorktreeNameBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(branchName))
+                return;
+
+            // Disable UI
+            WorktreeNameBox.IsEnabled = false;
+            WorktreeCreateButton.IsEnabled = false;
+            WorktreeCreateProgress.Visibility = Visibility.Visible;
+            WorktreeCreateProgressText.Text = "Creating worktree...";
+
             await viewModel.CreateWorktreeWithNewBranchAsync(branchName);
             WorktreeCreatePopup.IsOpen = false;
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to create worktree:\n\n{ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
             ResetWorktreeCreateUI();
+            AsyncErrorHandler.Handle(ex, nameof(WorktreeCreateConfirm_Click), isUserAction: true);
         }
     }
 
@@ -836,35 +855,37 @@ public partial class BranchListView : UserControl
 
     private async void BranchCreateConfirm_Click(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainViewModel viewModel)
-            return;
-
-        var name = BranchNameBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(name))
-            return;
-
-        // Disable UI and show progress
-        BranchNameBox.IsEnabled = false;
-        BranchCreateButton.IsEnabled = false;
-        BranchCreateProgress.Visibility = Visibility.Visible;
-        BranchCreateProgressText.Text = viewModel.BranchInputActionText == "Rename"
-            ? "Renaming branch..."
-            : "Creating branch...";
-
         try
         {
-            viewModel.NewBranchName = name;
-            await viewModel.ConfirmCreateBranchAsync();
+            if (DataContext is not MainViewModel viewModel)
+                return;
+
+            var name = BranchNameBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            // Disable UI and show progress
+            BranchNameBox.IsEnabled = false;
+            BranchCreateButton.IsEnabled = false;
+            BranchCreateProgress.Visibility = Visibility.Visible;
+            BranchCreateProgressText.Text = viewModel.BranchInputActionText == "Rename"
+                ? "Renaming branch..."
+                : "Creating branch...";
+
+            try
+            {
+                viewModel.NewBranchName = name;
+                await viewModel.ConfirmCreateBranchAsync();
+            }
+            finally
+            {
+                BranchCreatePopup.IsOpen = false;
+                ResetBranchCreateUI();
+            }
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed: {ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        finally
-        {
-            BranchCreatePopup.IsOpen = false;
-            ResetBranchCreateUI();
+            AsyncErrorHandler.Handle(ex, nameof(BranchCreateConfirm_Click), isUserAction: true);
         }
     }
 

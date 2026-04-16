@@ -364,7 +364,8 @@ public partial class CreatePullRequestViewModel : ObservableObject
             return;
         }
 
-        _ = RunDebouncedReviewerSearchAsync(bucket, searchText.Trim(), cts.Token);
+        RunDebouncedReviewerSearchAsync(bucket, searchText.Trim(), cts.Token)
+            .FireAndForget(nameof(RunDebouncedReviewerSearchAsync), isUserAction: false);
     }
 
     private async Task RunDebouncedReviewerSearchAsync(ReviewerBucket bucket, string searchText, CancellationToken cancellationToken)

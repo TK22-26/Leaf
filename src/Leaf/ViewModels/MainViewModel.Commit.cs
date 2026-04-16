@@ -359,7 +359,8 @@ public partial class MainViewModel
     {
         if (CommitDetailViewModel != null && SelectedRepository != null && commit != null)
         {
-            _ = CommitDetailViewModel.LoadCommitAsync(SelectedRepository.Path, commit.Sha);
+            CommitDetailViewModel.LoadCommitAsync(SelectedRepository.Path, commit.Sha)
+                .FireAndForget(nameof(CommitDetailViewModel.LoadCommitAsync), isUserAction: true);
         }
     }
 }

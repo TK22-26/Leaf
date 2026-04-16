@@ -168,30 +168,38 @@ public partial class MainViewModel
     /// </summary>
     private async void OnRepositoryDiscovered(object? sender, string repoPath)
     {
-        await _dispatcherService.InvokeAsync(async () =>
+        try
         {
-            if (_repositoryService.ContainsRepository(repoPath))
-                return;
-
-            if (await _gitService.IsValidRepositoryAsync(repoPath))
+            await _dispatcherService.InvokeAsync(async () =>
             {
-                var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
-                _repositoryService.AddRepository(repoInfo);
-                Log.Info("Repository", $"Discovered repository: {repoInfo.Name} ({repoPath})");
+                if (_repositoryService.ContainsRepository(repoPath))
+                    return;
 
-                // Mark the parent folder group as watched
-                var parentFolder = Path.GetDirectoryName(repoPath);
-                foreach (var group in RepositoryGroups)
+                if (await _gitService.IsValidRepositoryAsync(repoPath))
                 {
-                    if (group.Type == Models.GroupType.Folder &&
-                        repoPath.StartsWith(Path.GetDirectoryName(group.Repositories.FirstOrDefault()?.Path ?? "") ?? "", StringComparison.OrdinalIgnoreCase))
+                    var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
+                    _repositoryService.AddRepository(repoInfo);
+                    Log.Info("Repository", $"Discovered repository: {repoInfo.Name} ({repoPath})");
+
+                    // Mark the parent folder group as watched
+                    var parentFolder = Path.GetDirectoryName(repoPath);
+                    foreach (var group in RepositoryGroups)
                     {
-                        group.IsWatched = true;
-                        break;
+                        if (group.Type == Models.GroupType.Folder &&
+                            repoPath.StartsWith(Path.GetDirectoryName(group.Repositories.FirstOrDefault()?.Path ?? "") ?? "", StringComparison.OrdinalIgnoreCase))
+                        {
+                            group.IsWatched = true;
+                            break;
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
+        catch (Exception ex)
+        {
+            // Background discovery — log-only by default, surface only if user opted in.
+            AsyncErrorHandler.Handle(ex, nameof(OnRepositoryDiscovered), isUserAction: false);
+        }
     }
 
     /// <summary>
@@ -337,7 +345,8 @@ public partial class MainViewModel
               if (!await TryApplyRepositoryInfoAsync(repository, infoTask, TimeSpan.FromMilliseconds(750)))
               {
                   ApplyRepositoryInfoFromGraph(repository);
-                  _ = ContinueApplyingRepositoryInfoAsync(repository, infoTask);
+                  ContinueApplyingRepositoryInfoAsync(repository, infoTask)
+                      .FireAndForget(nameof(ContinueApplyingRepositoryInfoAsync), isUserAction: false);
               }
               Log.Perf("SelectRepo", "ApplyRepositoryInfo", stepSw.ElapsedMilliseconds);
 
@@ -365,11 +374,13 @@ public partial class MainViewModel
               UpdateRepositoryStatusMessage(repository);
 
             if (fetchInBackground)
-                _ = _autoFetchService.FetchAsync(repository.Path);
+                _autoFetchService.FetchAsync(repository.Path)
+                    .FireAndForget(nameof(_autoFetchService.FetchAsync), isUserAction: false);
 
             if (!needsBranchFilters && needsBranchSidebarLoad)
             {
-                _ = LoadBranchesForRepoAsync(repository, forceReload: false, skipFilterApplication: true);
+                LoadBranchesForRepoAsync(repository, forceReload: false, skipFilterApplication: true)
+                    .FireAndForget(nameof(LoadBranchesForRepoAsync), isUserAction: false);
             }
 
             Log.Perf("SelectRepo", $"TOTAL for {repository.Name}", totalSw.ElapsedMilliseconds);

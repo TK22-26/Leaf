@@ -177,15 +177,24 @@ public partial class MainViewModel
 
     private async void OnTerminalCommandExecuted(object? sender, TerminalCommandExecutedEventArgs e)
     {
-        if (SelectedRepository == null)
+        try
         {
-            return;
-        }
+            if (SelectedRepository == null)
+            {
+                return;
+            }
 
-        // Refresh after successful git commands to sync the graph.
-        if (e.ExitCode == 0)
+            // Refresh after successful git commands to sync the graph.
+            if (e.ExitCode == 0)
+            {
+                await RefreshAsync();
+            }
+        }
+        catch (Exception ex)
         {
-            await RefreshAsync();
+            // Terminal-driven refresh — treat as user action since the user
+            // explicitly ran a command.
+            AsyncErrorHandler.Handle(ex, nameof(OnTerminalCommandExecuted), isUserAction: true);
         }
     }
 }

@@ -113,6 +113,9 @@ public partial class ReportIssueDialog : Window
             TitleTextBox.IsEnabled = true;
             BodyTextBox.IsEnabled = true;
             SubmitButton.IsEnabled = true;
+
+            // Also log — ShowStatus is a UI-only indicator.
+            AsyncErrorHandler.Handle(ex, nameof(SubmitButton_Click), isUserAction: false);
         }
     }
 

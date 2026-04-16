@@ -285,9 +285,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (watchedFolders.Count > 0)
         {
             _folderWatcherService.StartWatching(watchedFolders);
-            _ = ScanWatchedFoldersAsync(watchedFolders).ContinueWith(
-                t => Log.Error("FolderWatcher", $"Scan failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
-                TaskContinuationOptions.OnlyOnFaulted);
+            // Background scan — faults log-only unless the user opts into
+            // background notifications. Replaces the prior bespoke ContinueWith.
+            ScanWatchedFoldersAsync(watchedFolders).FireAndForget(nameof(ScanWatchedFoldersAsync), isUserAction: false);
         }
 
         // Subscribe to auto-fetch completion
@@ -334,10 +334,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     // Defer to avoid reentrancy during PropertyChanged
                     var repoPath = SelectedRepository.Path;
                     var workingChanges = _gitGraphViewModel.WorkingChanges;
-                    _ = _dispatcherService.InvokeAsync(() =>
+                    _dispatcherService.InvokeAsync(() =>
                     {
                         _workingChangesViewModel.SetWorkingChanges(repoPath, workingChanges);
-                    });
+                    }).FireAndForget("SelectWorkingChanges.DispatcherInvoke", isUserAction: true);
                 }
             }
             else if (e.PropertyName == nameof(GitGraphViewModel.WorkingChanges))
@@ -357,7 +357,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 var selectedStash = _gitGraphViewModel.SelectedStash;
                 if (selectedStash != null && SelectedRepository != null)
                 {
-                    _ = _commitDetailViewModel.LoadStashAsync(SelectedRepository.Path, selectedStash);
+                    _commitDetailViewModel.LoadStashAsync(SelectedRepository.Path, selectedStash)
+                        .FireAndForget(nameof(_commitDetailViewModel.LoadStashAsync), isUserAction: true);
                 }
             }
         };
@@ -383,7 +384,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         StartAutoFetchTimer();
 
         // Check for updates silently on startup
-        _ = CheckForUpdatesSilentlyAsync();
+        CheckForUpdatesSilentlyAsync().FireAndForget(nameof(CheckForUpdatesSilentlyAsync), isUserAction: false);
 
         Log.Info("App", "MainViewModel initialized");
     }

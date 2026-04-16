@@ -47,8 +47,7 @@ public partial class FinishBranchDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to load configuration:\n\n{ex.Message}",
-                "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            AsyncErrorHandler.Handle(ex, nameof(LoadConfigAndSetupUI), isUserAction: true);
         }
     }
 
@@ -153,7 +152,14 @@ public partial class FinishBranchDialog : Window
 
     private async void RefreshChangelog_Click(object sender, RoutedEventArgs e)
     {
-        await LoadChangelog();
+        try
+        {
+            await LoadChangelog();
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(RefreshChangelog_Click), isUserAction: true);
+        }
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -164,27 +170,27 @@ public partial class FinishBranchDialog : Window
 
     private async void Finish_Click(object sender, RoutedEventArgs e)
     {
-        // Get selected merge strategy
-        MergeStrategy strategy;
-        if (MergeStrategySquash.IsChecked == true)
-            strategy = MergeStrategy.Squash;
-        else if (MergeStrategySquashRebase.IsChecked == true)
-            strategy = MergeStrategy.SquashRebase;
-        else if (MergeStrategyRebase.IsChecked == true)
-            strategy = MergeStrategy.Rebase;
-        else
-            strategy = MergeStrategy.Merge;
-
-        bool deleteBranch = DeleteBranchCheckBox.IsChecked == true;
-        bool push = PushCheckBox.IsChecked == true;
-        string? tagMessage = TagMessageTextBox.Text.Trim();
-        if (string.IsNullOrEmpty(tagMessage)) tagMessage = null;
-
-        ProgressSection.Visibility = Visibility.Visible;
-        FinishButton.IsEnabled = false;
-
         try
         {
+            // Get selected merge strategy
+            MergeStrategy strategy;
+            if (MergeStrategySquash.IsChecked == true)
+                strategy = MergeStrategy.Squash;
+            else if (MergeStrategySquashRebase.IsChecked == true)
+                strategy = MergeStrategy.SquashRebase;
+            else if (MergeStrategyRebase.IsChecked == true)
+                strategy = MergeStrategy.Rebase;
+            else
+                strategy = MergeStrategy.Merge;
+
+            bool deleteBranch = DeleteBranchCheckBox.IsChecked == true;
+            bool push = PushCheckBox.IsChecked == true;
+            string? tagMessage = TagMessageTextBox.Text.Trim();
+            if (string.IsNullOrEmpty(tagMessage)) tagMessage = null;
+
+            ProgressSection.Visibility = Visibility.Visible;
+            FinishButton.IsEnabled = false;
+
             var progress = new Progress<string>(msg => ProgressText.Text = msg);
 
             switch (_branchType)
@@ -229,11 +235,9 @@ public partial class FinishBranchDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to finish branch:\n\n{ex.Message}",
-                "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-
             ProgressSection.Visibility = Visibility.Collapsed;
             FinishButton.IsEnabled = true;
+            AsyncErrorHandler.Handle(ex, nameof(Finish_Click), isUserAction: true);
         }
     }
 }
