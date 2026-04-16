@@ -60,7 +60,7 @@ public partial class GitGraphCanvas
         double tagHeight = itemHeight + ((tags.Count - 1) * itemHeight);
         double tagTop = y - itemHeight / 2;
 
-        var firstBrush = GraphBuilder.GetBranchColor(tags[0]) as SolidColorBrush ?? Brushes.Gray;
+        var firstBrush = ResolveBranchColor(tags[0]) as SolidColorBrush ?? Brushes.Gray;
         var firstColor = firstBrush.Color;
         var tagBgBrush = new SolidColorBrush(Color.FromArgb(
             (byte)(firstColor.A * GhostTagOpacity),
@@ -87,7 +87,7 @@ public partial class GitGraphCanvas
 
             if (i > 0)
             {
-                var tagBrush = GraphBuilder.GetBranchColor(tagName) as SolidColorBrush ?? Brushes.Gray;
+                var tagBrush = ResolveBranchColor(tagName) as SolidColorBrush ?? Brushes.Gray;
                 var tagColor = tagBrush.Color;
                 var rowBrush = new SolidColorBrush(Color.FromArgb(
                     (byte)(tagColor.A * GhostTagOpacity),
@@ -143,7 +143,7 @@ public partial class GitGraphCanvas
 
         // Use first label's color for the expanded tag background
         var firstLabel = node.BranchLabels[0];
-        Brush tagBgBrush = GraphBuilder.GetBranchColor(firstLabel.Name);
+        Brush tagBgBrush = ResolveBranchColor(firstLabel.Name);
 
         // Calculate dimensions - use first label's width (same as collapsed state with +N)
         double firstFontSize = firstLabel.IsCurrent ? 13 : 11;
@@ -231,7 +231,7 @@ public partial class GitGraphCanvas
             {
                 bool isHovered = hoveredItem == (nodeIndex, branchIndex);
 
-                Brush branchColorBrush = GraphBuilder.GetBranchColor(label.Name);
+                Brush branchColorBrush = ResolveBranchColor(label.Name);
                 var branchColor = ((SolidColorBrush)branchColorBrush).Color;
 
                 // Draw border and background around non-first items

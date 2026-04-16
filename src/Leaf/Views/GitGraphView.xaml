@@ -116,6 +116,7 @@
                                           HasWorkingChanges="{Binding HasWorkingChanges}"
                                           IsWorkingChangesSelected="{Binding IsWorkingChangesSelected}"
                                           CurrentBranchName="{Binding WorkingChanges.BranchName}"
+                                          ColorResolver="{Binding ColorResolver}"
                                           RowHeight="{StaticResource RowHeight}"
                                           Height="{Binding TotalHeight}"
                                           MinWidth="80"

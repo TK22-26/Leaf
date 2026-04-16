@@ -125,4 +125,25 @@ public class GitFlowConfig
         DeleteBranchAfterFinish = true,
         GenerateChangelog = true
     };
+
+    /// <summary>
+    /// Creates a deep copy of this configuration. Provided so long-lived
+    /// consumers (e.g. <see cref="Graph.GraphBuilder"/>) can store a snapshot
+    /// immune to later mutation by the caller.
+    /// </summary>
+    public GitFlowConfig Clone() => new()
+    {
+        IsInitialized = IsInitialized,
+        MainBranch = MainBranch,
+        DevelopBranch = DevelopBranch,
+        FeaturePrefix = FeaturePrefix,
+        ReleasePrefix = ReleasePrefix,
+        HotfixPrefix = HotfixPrefix,
+        SupportPrefix = SupportPrefix,
+        VersionTagPrefix = VersionTagPrefix,
+        DefaultMergeStrategy = DefaultMergeStrategy,
+        AutoPushAfterFinish = AutoPushAfterFinish,
+        DeleteBranchAfterFinish = DeleteBranchAfterFinish,
+        GenerateChangelog = GenerateChangelog
+    };
 }

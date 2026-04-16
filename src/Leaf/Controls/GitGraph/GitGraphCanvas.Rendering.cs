@@ -26,7 +26,7 @@ public partial class GitGraphCanvas
         {
             // Get the branch color for WIP node
             var branchName = CurrentBranchName ?? "main";
-            var branchBrush = GraphBuilder.GetBranchColor(branchName) as SolidColorBrush ?? Brushes.Gray;
+            var branchBrush = ResolveBranchColor(branchName) as SolidColorBrush ?? Brushes.Gray;
             var branchColor = branchBrush.Color;
 
             var headNode = nodes?.FirstOrDefault(n => n.IsHead);
