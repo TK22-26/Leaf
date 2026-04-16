@@ -103,9 +103,16 @@ public class UpdateService
 
             return null; // Up to date
         }
-        catch
+        catch (Exception ex) when (ex is HttpRequestException
+                                or TaskCanceledException
+                                or JsonException
+                                or InvalidOperationException
+                                or FormatException)
         {
-            return null; // Network error or parse error
+            // Best-effort update check — network down, malformed payload, or
+            // unparseable version all fall through silently.
+            Log.Info("Updates", $"CheckForUpdates failed: {ex.GetType().Name}: {ex.Message}");
+            return null;
         }
     }
 
@@ -152,9 +159,14 @@ public class UpdateService
 
             return await outputTask;
         }
-        catch
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception
+                                or InvalidOperationException
+                                or System.IO.IOException
+                                or UnauthorizedAccessException)
         {
-            return null; // gh CLI not available
+            // gh CLI missing from PATH, or process spawn blocked.
+            Log.Info("Updates", $"gh release probe failed: {ex.GetType().Name}: {ex.Message}");
+            return null;
         }
     }
 
@@ -174,8 +186,11 @@ public class UpdateService
 
             return await response.Content.ReadAsStringAsync();
         }
-        catch
+        catch (Exception ex) when (ex is HttpRequestException
+                                or TaskCanceledException
+                                or InvalidOperationException)
         {
+            Log.Info("Updates", $"Direct release fetch failed: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
@@ -223,9 +238,12 @@ public class UpdateService
                 UseShellExecute = true
             });
         }
-        catch
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception
+                                or System.IO.FileNotFoundException
+                                or InvalidOperationException)
         {
-            // Ignore errors opening browser
+            // No registered handler for URL scheme or shell execution blocked.
+            Log.Info("Updates", $"OpenUrl('{url}') failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

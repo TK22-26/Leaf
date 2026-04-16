@@ -350,9 +350,13 @@ internal class GitCliHelpers
                 return count;
             }
         }
-        catch
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or IOException
+                                or UnauthorizedAccessException)
         {
-            // Ignore errors
+            // Treat unreadable status as zero conflicts; caller will surface
+            // any real merge-state error through normal channels.
+            Log.Info("GitCli", $"GetConflictCount failed: {ex.GetType().Name}: {ex.Message}");
         }
 
         return 0;

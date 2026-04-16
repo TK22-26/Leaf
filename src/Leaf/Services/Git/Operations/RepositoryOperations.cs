@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using Leaf.Models;
 using Leaf.Services;
@@ -29,8 +30,13 @@ internal class RepositoryOperations
             {
                 return Repository.IsValid(path);
             }
-            catch
+            catch (Exception ex) when (ex is LibGit2SharpException
+                                    or IOException
+                                    or UnauthorizedAccessException
+                                    or ArgumentException)
             {
+                // Path is missing, unreadable, or not a git working tree.
+                Leaf.Services.Log.Info("Repo", $"IsValid({path}) failed: {ex.GetType().Name}: {ex.Message}");
                 return false;
             }
         });

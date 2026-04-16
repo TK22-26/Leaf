@@ -78,10 +78,12 @@ public class AutoFetchService : IAutoFetchService
                         {
                             await Dns.GetHostAddressesAsync(host);
                         }
-                        catch
+                        catch (Exception ex) when (ex is System.Net.Sockets.SocketException
+                                                or ArgumentException
+                                                or InvalidOperationException)
                         {
-                            // Skip this remote when host cannot be resolved
-                            Log.Warn("AutoFetch", $"Skipping {remote.Name} - host {host} unreachable");
+                            // Offline, DNS down, or malformed host — skip this remote.
+                            Log.Warn("AutoFetch", $"Skipping {remote.Name} - {host} unreachable: {ex.GetType().Name}: {ex.Message}");
                             continue;
                         }
                     }

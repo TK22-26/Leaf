@@ -381,9 +381,14 @@ public partial class MainViewModel
                     if (details != null)
                         return details.Summary;
                 }
-                catch
+                catch (Exception ex) when (ex is System.Net.Http.HttpRequestException
+                                        or TaskCanceledException
+                                        or InvalidOperationException)
                 {
-                    // Heuristic failed — continue trying other patterns
+                    // Heuristic failed (network, auth, wrong ID) — continue
+                    // trying other patterns. Log so auth/network issues that
+                    // mask the feature are diagnosable.
+                    Log.Info("PR", $"PR lookup for #{prNumber} failed: {ex.GetType().Name}: {ex.Message}");
                 }
             }
         }

@@ -201,9 +201,10 @@ public partial class MainViewModel
                 {
                     await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: pushCredentialKey);
                 }
-                catch
+                catch (InvalidOperationException ex)
                 {
-                    // Ignore fetch failures - push succeeded
+                    // Post-push fetch is cosmetic; the push itself succeeded.
+                    Log.Info("Sync", $"Post-push fetch {remote.Name} failed: {ex.Message}");
                 }
             }
 
@@ -262,9 +263,10 @@ public partial class MainViewModel
             {
                 await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey);
             }
-            catch
+            catch (InvalidOperationException ex)
             {
-                // Ignore fetch failures - push succeeded
+                // Post-push fetch is cosmetic; the push itself succeeded.
+                Log.Info("Sync", $"Post-push fetch {remote.Name} failed: {ex.Message}");
             }
         }
 

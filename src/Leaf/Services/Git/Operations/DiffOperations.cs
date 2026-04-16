@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using Leaf.Services.Git.Core;
 using LibGit2Sharp;
@@ -97,9 +98,14 @@ internal class DiffOperations
                 {
                     newContent = File.ReadAllText(fullPath);
                 }
-                catch
+                catch (Exception ex) when (ex is IOException
+                                        or UnauthorizedAccessException
+                                        or System.Security.SecurityException
+                                        or NotSupportedException)
                 {
-                    // File might be locked or binary
+                    // File might be locked, binary, or access-denied — caller
+                    // renders an empty diff rather than failing the operation.
+                    Leaf.Services.Log.Info("Diff", $"ReadAllText({filePath}) failed: {ex.GetType().Name}: {ex.Message}");
                 }
             }
 

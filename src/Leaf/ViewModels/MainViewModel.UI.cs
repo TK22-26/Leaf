@@ -169,9 +169,14 @@ public partial class MainViewModel
                 IsUpdateAvailable = true;
             }
         }
-        catch
+        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException
+                                or TaskCanceledException
+                                or System.Text.Json.JsonException
+                                or InvalidOperationException)
         {
-            // Silently ignore errors during startup check
+            // Update check is best-effort on startup — network down, GitHub
+            // rate-limited, malformed manifest all fall through silently.
+            Log.Info("Updates", $"Silent update check failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

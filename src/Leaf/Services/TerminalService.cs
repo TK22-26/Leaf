@@ -63,9 +63,13 @@ public sealed class TerminalService
                            process.Kill(entireProcessTree: true);
                        }
                    }
-                   catch
+                   catch (Exception ex) when (ex is InvalidOperationException
+                                           or System.ComponentModel.Win32Exception
+                                           or NotSupportedException
+                                           or AggregateException)
                    {
-                       // Ignore kill failures.
+                       // Process may have exited between HasExited check and Kill.
+                       Log.Info("Terminal", $"Process kill on cancel failed: {ex.GetType().Name}: {ex.Message}");
                    }
                }))
         {

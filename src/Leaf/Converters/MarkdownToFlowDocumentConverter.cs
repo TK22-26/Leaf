@@ -1,8 +1,11 @@
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -10,6 +13,7 @@ using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Xml.Linq;
+using Leaf.Services;
 
 namespace Leaf.Converters;
 
@@ -246,8 +250,14 @@ public partial class MarkdownToFlowDocumentConverter : IValueConverter
 
             return imageElement;
         }
-        catch
+        catch (Exception ex) when (ex is UriFormatException
+                                or NotSupportedException
+                                or IOException
+                                or InvalidOperationException)
         {
+            // Bad URL, unsupported scheme, or unreachable image — fall back
+            // to a plain text badge so markdown rendering never crashes.
+            Log.Info("Markdown", $"Image fallback for {imageSpec.ImageUrl}: {ex.GetType().Name}: {ex.Message}");
             return CreateSimpleBadgeElement(string.IsNullOrWhiteSpace(imageSpec.AltText) ? imageSpec.ImageUrl : imageSpec.AltText);
         }
     }
@@ -463,8 +473,15 @@ public partial class MarkdownToFlowDocumentConverter : IValueConverter
                 ParseBadgeColor(fills.ElementAtOrDefault(0), BadgeLeftColor),
                 ParseBadgeColor(fills.ElementAtOrDefault(1), Color.FromRgb(0x28, 0xA7, 0x45)));
         }
-        catch
+        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException
+                                or TaskCanceledException
+                                or System.Xml.XmlException
+                                or UriFormatException
+                                or InvalidOperationException)
         {
+            // Network failure, timeout, bad XML, or bad URL — fall back to
+            // the plain text badge. Markdown rendering must never crash.
+            Log.Info("Markdown", $"SVG badge parse fallback for {imageUrl}: {ex.GetType().Name}: {ex.Message}");
             return string.IsNullOrWhiteSpace(fallbackText)
                 ? null
                 : new BadgeDefinition(fallbackText, null, BadgeLeftColor, Color.FromRgb(0x28, 0xA7, 0x45));
@@ -487,15 +504,18 @@ public partial class MarkdownToFlowDocumentConverter : IValueConverter
             if (ColorConverter.ConvertFromString(normalized) is Color color)
                 return color;
         }
-        catch
+        catch (Exception ex) when (ex is FormatException or NotSupportedException)
         {
+            // First attempt was a hex-style parse; fall through to named-colour lookup.
             try
             {
                 if (ColorConverter.ConvertFromString(value) is Color namedColor)
                     return namedColor;
             }
-            catch
+            catch (Exception innerEx) when (innerEx is FormatException or NotSupportedException)
             {
+                // Unknown colour literal — return fallback without disturbing render.
+                Log.Info("Markdown", $"Colour parse fallback for '{value}': {innerEx.GetType().Name}");
             }
         }
 
@@ -630,9 +650,14 @@ public partial class MarkdownToFlowDocumentConverter : IValueConverter
         {
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
         }
-        catch
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception
+                                or System.IO.FileNotFoundException
+                                or InvalidOperationException
+                                or ObjectDisposedException)
         {
-            // Ignore bad URLs so markdown rendering never crashes the UI.
+            // No default handler, malformed URL, shell failure — markdown
+            // rendering must never crash.
+            Log.Info("Markdown", $"OpenUrl failed for '{url}': {ex.GetType().Name}: {ex.Message}");
         }
     }
 

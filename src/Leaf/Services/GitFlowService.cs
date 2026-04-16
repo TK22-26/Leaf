@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
@@ -158,8 +159,14 @@ public partial class GitFlowService : IGitFlowService
 
                 return config;
             }
-            catch
+            catch (Exception ex) when (ex is IOException
+                                    or UnauthorizedAccessException
+                                    or RegexMatchTimeoutException
+                                    or FormatException)
             {
+                // Config unreadable or malformed — caller treats as "not
+                // initialized" and offers the init wizard.
+                Log.Info("GitFlow", $"GetConfig failed: {ex.GetType().Name}: {ex.Message}");
                 return null;
             }
         });

@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -103,9 +104,11 @@ public sealed class ConflictRegionOverlay
         {
             origin = textView.TransformToVisual(_canvas).Transform(new Point(0, 0));
         }
-        catch
+        catch (InvalidOperationException ex)
         {
-            return; // Not in visual tree yet
+            // Not in the same visual tree yet — layout pass hasn't caught up.
+            Leaf.Services.Log.Info("ConflictOverlay", $"TransformToVisual failed: {ex.Message}");
+            return;
         }
 
         foreach (var range in _mapping.AllConflictRanges)
@@ -120,8 +123,12 @@ public sealed class ConflictRegionOverlay
                 var docLine = _editor.Document.GetLineByNumber(headerLineNum);
                 visualTop = textView.GetVisualTopByDocumentLine(docLine.LineNumber);
             }
-            catch
+            catch (Exception ex) when (ex is ArgumentOutOfRangeException
+                                    or InvalidOperationException)
             {
+                // Document was mutated between mapping and render — hide the
+                // bar for this region; it will reposition on the next pass.
+                Leaf.Services.Log.Info("ConflictOverlay", $"Line lookup failed for region {range.Region.Index}: {ex.GetType().Name}: {ex.Message}");
                 bar.Visibility = Visibility.Collapsed;
                 continue;
             }

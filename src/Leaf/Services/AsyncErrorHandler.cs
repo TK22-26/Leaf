@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 
 namespace Leaf.Services;
@@ -124,8 +125,18 @@ public static class AsyncErrorHandler
     private static bool ShouldShowToast(bool isUserAction)
     {
         if (isUserAction) return true;
-        try { return _showBackgroundErrors?.Invoke() == true; }
-        catch { return false; }
+        try
+        {
+            return _showBackgroundErrors?.Invoke() == true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or NullReferenceException
+                                or ObjectDisposedException)
+        {
+            // Callback raced shutdown — default to silent for background errors.
+            System.Diagnostics.Debug.WriteLine($"[AsyncErrorHandler] ShouldShowToast callback failed: {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
     }
 
     private static string FormatUserMessage(Exception ex, string context)

@@ -192,9 +192,14 @@ public partial class MainViewModel
             Clipboard.SetText(url);
             StatusMessage = "Copied URL to clipboard";
         }
-        catch
+        catch (System.Runtime.InteropServices.COMException ex)
         {
+            // WPF Clipboard uses OLE which occasionally throws
+            // CLIPBRD_E_CANT_OPEN when another process is holding the
+            // clipboard open. Surface the failure to the status bar and
+            // log so users can see what's contesting the clipboard.
             StatusMessage = "Failed to copy URL";
+            Log.Warn("Remote", $"Clipboard.SetText failed: {ex.Message}");
         }
     }
 
@@ -309,9 +314,12 @@ public partial class MainViewModel
                 {
                     await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey);
                 }
-                catch
+                catch (InvalidOperationException ex)
                 {
-                    // Ignore fetch failures - push succeeded
+                    // Post-push fetch is cosmetic (updating local refs view);
+                    // the push itself succeeded. Log so persistent refresh
+                    // failures are diagnosable.
+                    Log.Info("Remote", $"Post-push fetch {remote.Name} failed: {ex.Message}");
                 }
             }
 

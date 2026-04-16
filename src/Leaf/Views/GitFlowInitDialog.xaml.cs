@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -226,9 +228,14 @@ public partial class GitFlowInitDialog : Window
             var status = await _gitFlowService.GetStatusAsync(_repoPath);
             CreateDevelopWarning.Visibility = !status.IsInitialized ? Visibility.Visible : Visibility.Collapsed;
         }
-        catch
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or IOException
+                                or UnauthorizedAccessException)
         {
+            // GitFlow status read failed — err on the side of warning the
+            // user so they know they may need to create develop.
             CreateDevelopWarning.Visibility = Visibility.Visible;
+            Log.Info("GitFlowInit", $"GetStatus failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

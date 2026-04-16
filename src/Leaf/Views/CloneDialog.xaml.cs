@@ -90,9 +90,12 @@ public partial class CloneDialog : Window
             _allRepos = _allRepos.OrderBy(r => r.DisplayName).ToList();
             AzureSourceStatus.Text = $"{_allRepos.Count} repos";
         }
-        catch
+        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException
+                                or TaskCanceledException
+                                or InvalidOperationException)
         {
             AzureSourceStatus.Text = "Error";
+            Log.Warn("CloneDialog", $"Azure DevOps background load failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -670,9 +673,11 @@ public partial class CloneDialog : Window
                 return url[(lastSlash + 1)..];
             }
         }
-        catch
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
-            // Ignore parsing errors
+            // Malformed URL — caller handles null by disabling the Clone
+            // button. No user-visible action needed.
+            Log.Info("CloneDialog", $"ExtractRepoName failed for '{url}': {ex.Message}");
         }
 
         return null;
