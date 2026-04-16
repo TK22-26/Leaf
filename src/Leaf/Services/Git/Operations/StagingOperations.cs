@@ -19,23 +19,51 @@ internal class StagingOperations : IStagingOperations
     /// <summary>
     /// Get working directory changes (staged and unstaged files).
     /// </summary>
-    public Task<WorkingChangesInfo> GetWorkingChangesAsync(string repoPath)
+    /// <remarks>
+    /// LibGit2Sharp's <c>RetrieveStatus</c> supports rename detection, which
+    /// we prefer for UX, but it can effectively hang on repos with many
+    /// renames (O(n²) matching). We race it against a timeout and fall back
+    /// to git CLI if it doesn't finish within 5 seconds.
+    ///
+    /// Plan §2.4: the previous implementation used
+    /// <c>libgitTask.Wait(TimeSpan.FromSeconds(5))</c> inside an outer
+    /// <c>Task.Run</c>, which blocked a thread-pool thread for up to five
+    /// seconds per call. Under load that starves the pool and cascades into
+    /// all other async git operations. <see cref="Task.WhenAny(Task[])"/>
+    /// with a <see cref="Task.Delay(TimeSpan)"/> sentinel gives the same
+    /// timeout semantics without blocking any thread — Task.Delay is
+    /// timer-driven, not thread-bound.
+    /// </remarks>
+    public async Task<WorkingChangesInfo> GetWorkingChangesAsync(string repoPath)
     {
-        return Task.Run(() =>
+        var libgitTask = Task.Run(() => GetWorkingChangesViaLibGit2(repoPath));
+
+        // The timeout CTS is cancelled as soon as we're done with it so the
+        // underlying timer is released promptly even when libgit wins the
+        // race — otherwise each abandoned Task.Delay holds a timer slot
+        // until its 5 s elapse, which accumulates under high call frequency.
+        using var timeoutCts = new CancellationTokenSource();
+        var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5), timeoutCts.Token);
+
+        var completed = await Task.WhenAny(libgitTask, timeoutTask).ConfigureAwait(false);
+        if (completed == libgitTask)
         {
-            // Try LibGit2Sharp first (supports rename detection for better UX).
-            // Fall back to git CLI if it takes too long — LibGit2Sharp's RetrieveStatus
-            // can block indefinitely on repos with many renames (O(n²) matching).
-            var libgitTask = Task.Run(() => GetWorkingChangesViaLibGit2(repoPath));
+            // Cancel the timer first so the `using` disposal doesn't have to
+            // wait on a slow TimerQueue unregister.
+            timeoutCts.Cancel();
 
-            if (libgitTask.Wait(TimeSpan.FromSeconds(5)))
-            {
-                return libgitTask.Result;
-            }
+            // Await instead of .Result so a LibGit2 exception propagates as
+            // itself rather than wrapped in AggregateException.
+            return await libgitTask.ConfigureAwait(false);
+        }
 
-            Log.Warn("Staging", $"LibGit2Sharp status timed out for '{repoPath}', falling back to git CLI");
-            return GetWorkingChangesViaGitCli(repoPath);
-        });
+        Log.Warn("Staging", $"LibGit2Sharp status timed out for '{repoPath}', falling back to git CLI");
+
+        // The LibGit2 task keeps running in the background until it finishes
+        // (LibGit2Sharp RetrieveStatus doesn't honour cancellation). We
+        // discard its eventual result; the CLI fallback runs in parallel
+        // and is what we hand back to the caller.
+        return await Task.Run(() => GetWorkingChangesViaGitCli(repoPath)).ConfigureAwait(false);
     }
 
     /// <summary>
