@@ -178,6 +178,20 @@ internal class WorktreeOperations
     }
 
     /// <summary>
+    /// Sanitize a branch name for use as a directory name. Replaces the
+    /// path separator <c>/</c> and any OS-invalid file name chars with
+    /// <c>-</c>. Extracted so the worktree UI preview can show the same
+    /// sanitized form that actually lands on disk, without duplicating
+    /// the rule.
+    /// </summary>
+    public static string SanitizeBranchNameForPath(string branchName)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        return string.Concat(branchName.Select(c =>
+            c == '/' || invalidChars.Contains(c) ? '-' : c));
+    }
+
+    /// <summary>
     /// Generate a default worktree path as a sibling directory.
     /// </summary>
     public static string GenerateDefaultWorktreePath(string repoPath, string branchName)
@@ -186,11 +200,7 @@ internal class WorktreeOperations
         var normalizedPath = repoPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var parentDir = Path.GetDirectoryName(normalizedPath)!;
         var repoName = Path.GetFileName(normalizedPath);
-
-        // Sanitize branch name: replace / and invalid path chars with -
-        var invalidChars = Path.GetInvalidFileNameChars();
-        var safeBranchName = string.Concat(branchName.Select(c =>
-            c == '/' || invalidChars.Contains(c) ? '-' : c));
+        var safeBranchName = SanitizeBranchNameForPath(branchName);
 
         var basePath = Path.Combine(parentDir, $"{repoName}-{safeBranchName}");
 

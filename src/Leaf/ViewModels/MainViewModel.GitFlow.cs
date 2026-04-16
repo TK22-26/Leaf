@@ -320,6 +320,121 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Snapshot of the data a GitFlow quick-create flyout needs to render.
+    /// Groups the config-driven prefix and an optional suggested version so
+    /// the code-behind has a single await instead of two orchestrated calls.
+    /// </summary>
+    /// <param name="Prefix">Branch prefix from GitFlow config (e.g. "feature/"), or a fallback when GitFlow isn't initialized.</param>
+    /// <param name="SuggestedVersion">Next semantic version for release/hotfix flows; null for features or when no version can be derived.</param>
+    public record GitFlowQuickCreateContext(string Prefix, SemanticVersion? SuggestedVersion);
+
+    /// <summary>
+    /// Gather the prefix and suggested version for a GitFlow quick-create
+    /// flyout. Falls back to <paramref name="fallbackPrefix"/> when GitFlow
+    /// isn't initialized or when the repo isn't selected — the UI still
+    /// needs a prefix to render the preview. Version suggestion is only
+    /// meaningful for release/hotfix and is always null for features.
+    /// </summary>
+    public async Task<GitFlowQuickCreateContext> PrepareGitFlowQuickCreateAsync(
+        GitFlowBranchType branchType,
+        string fallbackPrefix)
+    {
+        var config = SelectedRepository == null
+            ? null
+            : await _gitFlowService.GetConfigAsync(SelectedRepository.Path);
+
+        if (config == null)
+            return new GitFlowQuickCreateContext(fallbackPrefix, SuggestedVersion: null);
+
+        var prefix = branchType switch
+        {
+            GitFlowBranchType.Feature => config.FeaturePrefix,
+            GitFlowBranchType.Release => config.ReleasePrefix,
+            GitFlowBranchType.Hotfix => config.HotfixPrefix,
+            _ => fallbackPrefix
+        };
+
+        SemanticVersion? suggested = null;
+        if (branchType is GitFlowBranchType.Release or GitFlowBranchType.Hotfix)
+            suggested = await GetSuggestedVersionAsync(branchType);
+
+        return new GitFlowQuickCreateContext(prefix, suggested);
+    }
+
+    /// <summary>
+    /// Orchestrates the full GitFlow quick-create flow: check for
+    /// uncommitted changes, optionally stash them, then create the branch.
+    /// When the working tree is dirty the user is prompted via
+    /// IDialogService; answering Cancel (or closing the dialog) aborts the
+    /// flow and returns false. <paramref name="progress"/> receives status
+    /// strings so the calling popup can update its inline progress label
+    /// without this method touching any WPF types.
+    /// </summary>
+    /// <returns>True if the branch was created, false if the user cancelled.</returns>
+    public async Task<bool> StartGitFlowBranchWithStashCheckAsync(
+        GitFlowBranchType branchType,
+        string name,
+        IProgress<string>? progress = null)
+    {
+        if (SelectedRepository == null)
+            throw new InvalidOperationException("No repository selected.");
+
+        progress?.Report("Checking for uncommitted changes...");
+
+        var repoInfo = await GetRepositoryInfoAsync();
+        if (repoInfo?.IsDirty == true)
+        {
+            var result = await _dialogService.ShowMessageAsync(
+                "You have uncommitted changes.\n\nWould you like to stash them first?",
+                "Uncommitted Changes",
+                System.Windows.MessageBoxButton.YesNoCancel);
+
+            if (result == System.Windows.MessageBoxResult.Cancel)
+                return false;
+
+            if (result == System.Windows.MessageBoxResult.Yes)
+            {
+                progress?.Report("Stashing changes...");
+                await StashChangesAsync($"Auto-stash before {branchType.ToString().ToLower()} '{name}'");
+            }
+        }
+
+        progress?.Report($"Creating {branchType.ToString().ToLower()} branch...");
+        await CreateGitFlowBranchAsync(branchType, name);
+        return true;
+    }
+
+    /// <summary>
+    /// Finish a GitFlow branch by type + flow name. Resolves the full
+    /// branch name via the config prefix, locates the matching BranchInfo
+    /// on the selected repository, and dispatches to the existing
+    /// <see cref="FinishGitFlowBranchAsync(BranchInfo)"/> flow. Used by
+    /// the sidebar's GitFlow action menu, which only knows the flow name.
+    /// </summary>
+    public async Task FinishGitFlowBranchByNameAsync(GitFlowBranchType branchType, string flowName)
+    {
+        if (SelectedRepository == null) return;
+
+        var config = await GetGitFlowConfigAsync();
+        if (config == null) return;
+
+        var prefix = branchType switch
+        {
+            GitFlowBranchType.Feature => config.FeaturePrefix,
+            GitFlowBranchType.Release => config.ReleasePrefix,
+            GitFlowBranchType.Hotfix => config.HotfixPrefix,
+            _ => string.Empty
+        };
+        var fullName = prefix + flowName;
+
+        var branch = SelectedRepository.LocalBranches
+            .FirstOrDefault(b => b.Name.Equals(fullName, StringComparison.OrdinalIgnoreCase));
+
+        if (branch != null)
+            await FinishGitFlowBranchAsync(branch);
+    }
+
+    /// <summary>
     /// Classifies branches by their GitFlow type based on the GitFlow configuration.
     /// Sets the GitFlowType property on each branch for proper coloring.
     /// </summary>
