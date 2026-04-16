@@ -108,48 +108,6 @@ internal class GitCliHelpers
     }
 
     /// <summary>
-    /// Run a git command with stdin input.
-    /// </summary>
-    public static GitResult RunGitWithInput(string workingDirectory, string arguments, string input)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "git",
-            Arguments = arguments,
-            WorkingDirectory = workingDirectory,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        // Force English output for consistent error message parsing
-        startInfo.EnvironmentVariables["LC_ALL"] = "C";
-
-        using var process = Process.Start(startInfo);
-        if (process == null)
-        {
-            return new GitResult(-1, "", "Failed to start git process");
-        }
-
-        // Write the input to stdin
-        process.StandardInput.Write(input);
-        process.StandardInput.Close();
-
-        // Read stderr on a separate thread to avoid deadlock when pipe buffers fill.
-        // (ReadToEnd on stdout blocks until the process closes its stdout handle, but the
-        // process may block writing to stderr if its pipe buffer is full and nobody is reading it.)
-        string error = "";
-        var stderrTask = Task.Run(() => process.StandardError.ReadToEnd());
-        string output = process.StandardOutput.ReadToEnd();
-        error = stderrTask.Result;
-        process.WaitForExit();
-
-        return new GitResult(process.ExitCode, output, error);
-    }
-
-    /// <summary>
     /// Run patch command with the given patch content.
     /// </summary>
     public static GitResult RunPatchWithInput(string workingDirectory, string patchContent)

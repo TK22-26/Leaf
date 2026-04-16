@@ -197,9 +197,9 @@ internal class ConflictOperations : IConflictOperations
     {
         return Task.Run(() =>
         {
-            var baseResult = GitCliHelpers.RunGitWithInput(repoPath, "hash-object -w --stdin", baseContent ?? string.Empty);
-            var oursResult = GitCliHelpers.RunGitWithInput(repoPath, "hash-object -w --stdin", oursContent ?? string.Empty);
-            var theirsResult = GitCliHelpers.RunGitWithInput(repoPath, "hash-object -w --stdin", theirsContent ?? string.Empty);
+            var baseResult = GitCliHelpers.RunGitWithInputArgs(repoPath, baseContent ?? string.Empty, "hash-object", "-w", "--stdin");
+            var oursResult = GitCliHelpers.RunGitWithInputArgs(repoPath, oursContent ?? string.Empty, "hash-object", "-w", "--stdin");
+            var theirsResult = GitCliHelpers.RunGitWithInputArgs(repoPath, theirsContent ?? string.Empty, "hash-object", "-w", "--stdin");
 
             if (baseResult.ExitCode != 0 || oursResult.ExitCode != 0 || theirsResult.ExitCode != 0)
             {
@@ -215,7 +215,7 @@ internal class ConflictOperations : IConflictOperations
                             $"100644 {oursSha} 2\t{filePath}\n" +
                             $"100644 {theirsSha} 3\t{filePath}\n";
 
-            var indexResult = GitCliHelpers.RunGitWithInput(repoPath, "update-index --index-info", indexInfo);
+            var indexResult = GitCliHelpers.RunGitWithInputArgs(repoPath, indexInfo, "update-index", "--index-info");
             if (indexResult.ExitCode != 0)
             {
                 Log.Error("Merge", $"ReopenConflict: failed to restore index: {indexResult.Error}");
