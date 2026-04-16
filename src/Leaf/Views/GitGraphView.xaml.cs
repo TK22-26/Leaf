@@ -64,9 +64,8 @@ public partial class GitGraphView : UserControl
                     var currentBranchName = viewModel.WorkingChanges?.BranchName;
                     if (currentBranchName == label.Name)
                     {
-                        _ = mainViewModel.FastForwardBranchLabelAsync(label).ContinueWith(
-                            t => Log.Error("Checkout", $"FastForward failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
-                            TaskContinuationOptions.OnlyOnFaulted);
+                        mainViewModel.FastForwardBranchLabelAsync(label)
+                            .FireAndForget(nameof(mainViewModel.FastForwardBranchLabelAsync), isUserAction: true);
                         return;
                     }
                 }
@@ -79,16 +78,14 @@ public partial class GitGraphView : UserControl
                 : label.Name;
             var tipShaToUse = label.TipSha ?? e.TipSha ?? string.Empty;
             Log.Info("Checkout", $"Calling CheckoutBranchAsync: branchName={branchName}, tipShaToUse={tipShaToUse}");
-            _ = mainViewModel.CheckoutBranchAsync(new BranchInfo
+            mainViewModel.CheckoutBranchAsync(new BranchInfo
             {
                 Name = branchName,
                 IsRemote = label.IsRemote,
                 RemoteName = label.RemoteName,
                 IsCurrent = label.IsCurrent,
                 TipSha = tipShaToUse
-            }).ContinueWith(
-                t => Log.Error("Checkout", $"Checkout failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
-                TaskContinuationOptions.OnlyOnFaulted);
+            }).FireAndForget(nameof(mainViewModel.CheckoutBranchAsync), isUserAction: true);
         }
     }
 
@@ -278,9 +275,8 @@ public partial class GitGraphView : UserControl
                     if (currentBranchName == label.Name)
                     {
                         // Fast-forward current branch to this remote
-                        _ = mainViewModel.FastForwardBranchLabelAsync(label).ContinueWith(
-                            t => Log.Error("Checkout", $"FastForward failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
-                            TaskContinuationOptions.OnlyOnFaulted);
+                        mainViewModel.FastForwardBranchLabelAsync(label)
+                            .FireAndForget(nameof(mainViewModel.FastForwardBranchLabelAsync), isUserAction: true);
                         e.Handled = true;
                         return;
                     }
@@ -292,16 +288,14 @@ public partial class GitGraphView : UserControl
                     ? $"{label.RemoteName}/{label.Name}"
                     : label.Name;
                 Log.Info("Checkout", $"GraphCanvas calling CheckoutBranchAsync: name={name}, TipSha={label.TipSha ?? "NULL"}");
-                _ = mainViewModel.CheckoutBranchAsync(new BranchInfo
+                mainViewModel.CheckoutBranchAsync(new BranchInfo
                 {
                     Name = name,
                     IsRemote = label.IsRemote,
                     RemoteName = label.RemoteName,
                     IsCurrent = label.IsCurrent,
                     TipSha = label.TipSha ?? string.Empty
-                }).ContinueWith(
-                    t => Log.Error("Checkout", $"Checkout failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
-                    TaskContinuationOptions.OnlyOnFaulted);
+                }).FireAndForget(nameof(mainViewModel.CheckoutBranchAsync), isUserAction: true);
                 e.Handled = true;
                 return;
             }
@@ -524,46 +518,61 @@ public partial class GitGraphView : UserControl
 
     private async void CommitItem_ToolTipOpening(object sender, ToolTipEventArgs e)
     {
-        if (sender is not FrameworkElement element || element.DataContext is not CommitInfo commit)
-            return;
-
-        var toolTip = GetOrCreateTooltip(element);
-        if (!commit.IsMerge)
+        try
         {
-            toolTip.Content = null;
-            e.Handled = true;
-            return;
-        }
+            if (sender is not FrameworkElement element || element.DataContext is not CommitInfo commit)
+                return;
 
-        await ShowMergeTooltipAsync(element, commit);
+            var toolTip = GetOrCreateTooltip(element);
+            if (!commit.IsMerge)
+            {
+                toolTip.Content = null;
+                e.Handled = true;
+                return;
+            }
+
+            await ShowMergeTooltipAsync(element, commit);
+        }
+        catch (Exception ex)
+        {
+            // Tooltip opening is a passive user hover — silent log by default.
+            AsyncErrorHandler.Handle(ex, nameof(CommitItem_ToolTipOpening), isUserAction: false);
+        }
     }
 
     private async void GraphCanvas_ToolTipOpening(object sender, ToolTipEventArgs e)
     {
-        if (sender is not FrameworkElement element)
-            return;
-
-        if (DataContext is not GitGraphViewModel viewModel)
-            return;
-
-        var toolTip = GetOrCreateTooltip(element);
-        var hoveredCommit = GetCommitAtMousePosition(viewModel);
-        if (hoveredCommit == null)
+        try
         {
-            toolTip.Content = null;
-            e.Handled = true;
-            return;
-        }
+            if (sender is not FrameworkElement element)
+                return;
 
-        if (!hoveredCommit.IsMerge)
+            if (DataContext is not GitGraphViewModel viewModel)
+                return;
+
+            var toolTip = GetOrCreateTooltip(element);
+            var hoveredCommit = GetCommitAtMousePosition(viewModel);
+            if (hoveredCommit == null)
+            {
+                toolTip.Content = null;
+                e.Handled = true;
+                return;
+            }
+
+            if (!hoveredCommit.IsMerge)
+            {
+                toolTip.Content = null;
+                e.Handled = true;
+                return;
+            }
+
+            _graphTooltipSha = hoveredCommit.Sha;
+            await ShowMergeTooltipAsync(element, hoveredCommit);
+        }
+        catch (Exception ex)
         {
-            toolTip.Content = null;
-            e.Handled = true;
-            return;
+            AsyncErrorHandler.Handle(ex, nameof(GraphCanvas_ToolTipOpening), isUserAction: false);
         }
-
-        _graphTooltipSha = hoveredCommit.Sha;
-        await ShowMergeTooltipAsync(element, hoveredCommit);
     }
 
     private async Task ShowMergeTooltipAsync(FrameworkElement element, CommitInfo commit)
@@ -681,25 +690,33 @@ public partial class GitGraphView : UserControl
 
     private async void GraphCanvas_MouseMove(object sender, MouseEventArgs e)
     {
-        if (sender is not FrameworkElement element)
-            return;
-
-        if (DataContext is not GitGraphViewModel viewModel)
-            return;
-
-        var commit = GetCommitAtMousePosition(viewModel);
-        if (commit == null || !commit.IsMerge)
+        try
         {
-            CloseTooltip(element);
-            _graphTooltipSha = null;
-            return;
+            if (sender is not FrameworkElement element)
+                return;
+
+            if (DataContext is not GitGraphViewModel viewModel)
+                return;
+
+            var commit = GetCommitAtMousePosition(viewModel);
+            if (commit == null || !commit.IsMerge)
+            {
+                CloseTooltip(element);
+                _graphTooltipSha = null;
+                return;
+            }
+
+            if (string.Equals(_graphTooltipSha, commit.Sha, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            _graphTooltipSha = commit.Sha;
+            await ShowMergeTooltipAsync(element, commit);
         }
-
-        if (string.Equals(_graphTooltipSha, commit.Sha, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        _graphTooltipSha = commit.Sha;
-        await ShowMergeTooltipAsync(element, commit);
+        catch (Exception ex)
+        {
+            // MouseMove fires continuously — toasting every frame would spam.
+            AsyncErrorHandler.Handle(ex, nameof(GraphCanvas_MouseMove), isUserAction: false);
+        }
     }
 
     private void CloseTooltip(FrameworkElement element)

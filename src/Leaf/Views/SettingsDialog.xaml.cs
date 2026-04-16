@@ -278,6 +278,7 @@ public partial class SettingsDialog : Window
             _ => 1 // Normal
         };
         LogLevelComboBox.SelectedIndex = logLevelIndex;
+        ShowBackgroundOperationErrorsCheckBox.IsChecked = _settings.ShowBackgroundOperationErrors;
 
         // Load settings into UserControls
         AzureDevOpsSettings.LoadSettings(_settings, _credentialService);
@@ -326,6 +327,7 @@ public partial class SettingsDialog : Window
         // Logging
         if (LogLevelComboBox.SelectedItem is ComboBoxItem logItem && logItem.Tag is string logTag)
             _settings.LogLevel = logTag;
+        _settings.ShowBackgroundOperationErrors = ShowBackgroundOperationErrorsCheckBox.IsChecked == true;
 
         // Save settings from UserControls
         AzureDevOpsSettings.SaveSettings(_settings, _credentialService);

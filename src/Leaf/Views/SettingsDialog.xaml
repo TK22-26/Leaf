@@ -518,6 +518,41 @@
                                            Margin="0,12,0,0" />
                             </StackPanel>
                         </Border>
+
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="16"
+                                Margin="0,12,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Error Reporting"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           Margin="0,0,0,12" />
+
+                                <CheckBox x:Name="ShowBackgroundOperationErrorsCheckBox"
+                                          Margin="0,0,0,8">
+                                    <CheckBox.Content>
+                                        <StackPanel>
+                                            <TextBlock Text="Show background operation errors"
+                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                            <TextBlock Text="Surface errors from passive tasks (tooltip previews, auto-fetch, lazy loading) as toast notifications"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
+                                    </CheckBox.Content>
+                                </CheckBox>
+
+                                <TextBlock Text="Errors from user-initiated actions (clicking Push, opening a dialog, etc.) are always shown. This setting only affects errors from tasks you did not explicitly start."
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           Margin="0,8,0,0"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
 
                     <!-- Terminal Content -->

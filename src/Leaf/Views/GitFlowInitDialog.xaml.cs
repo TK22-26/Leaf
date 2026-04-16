@@ -65,10 +65,13 @@ public partial class GitFlowInitDialog : Window
                 LoadDefaultsFromSettings();
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Load defaults from settings on error
+            // Recoverable: we still want a populated dialog, so fall back to
+            // defaults. Log the failure for diagnostics but don't interrupt
+            // the user — the dialog is fully functional from defaults.
             LoadDefaultsFromSettings();
+            AsyncErrorHandler.Handle(ex, nameof(LoadExistingConfigOrDefaults), isUserAction: false);
         }
     }
 
@@ -109,20 +112,27 @@ public partial class GitFlowInitDialog : Window
 
     private async void Next_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentStep < TotalSteps)
+        try
         {
-            _currentStep++;
-            UpdateStepVisuals();
-
-            if (_currentStep == TotalSteps)
+            if (_currentStep < TotalSteps)
             {
-                UpdateSummary();
-                await CheckDevelopBranchExists();
+                _currentStep++;
+                UpdateStepVisuals();
+
+                if (_currentStep == TotalSteps)
+                {
+                    UpdateSummary();
+                    await CheckDevelopBranchExists();
+                }
+            }
+            else
+            {
+                await InitializeGitFlow();
             }
         }
-        else
+        catch (Exception ex)
         {
-            await InitializeGitFlow();
+            AsyncErrorHandler.Handle(ex, nameof(Next_Click), isUserAction: true);
         }
     }
 

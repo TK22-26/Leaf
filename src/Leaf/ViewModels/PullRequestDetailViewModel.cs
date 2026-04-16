@@ -776,7 +776,8 @@ public partial class PullRequestDetailViewModel : ObservableObject
             return;
         }
 
-        _ = RunDebouncedReviewerSearchAsync(bucket, searchText.Trim(), cts.Token);
+        RunDebouncedReviewerSearchAsync(bucket, searchText.Trim(), cts.Token)
+            .FireAndForget(nameof(RunDebouncedReviewerSearchAsync), isUserAction: false);
     }
 
     private void ScheduleAssigneeSearch(string searchText)
@@ -793,7 +794,8 @@ public partial class PullRequestDetailViewModel : ObservableObject
             return;
         }
 
-        _ = RunDebouncedAssigneeSearchAsync(searchText.Trim(), cts.Token);
+        RunDebouncedAssigneeSearchAsync(searchText.Trim(), cts.Token)
+            .FireAndForget(nameof(RunDebouncedAssigneeSearchAsync), isUserAction: false);
     }
 
     private async Task RunDebouncedReviewerSearchAsync(ReviewerBucket bucket, string searchText, CancellationToken cancellationToken)

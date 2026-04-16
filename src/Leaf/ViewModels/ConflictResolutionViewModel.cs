@@ -373,7 +373,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
         {
             ContinueLargeFile = false;
             _logger.FileTabSelected(value.FileName, value.IsResolved);
-            _ = BuildMergeResultForSelectedConflict();
+            BuildMergeResultForSelectedConflict()
+                .FireAndForget(nameof(BuildMergeResultForSelectedConflict), isUserAction: true);
         }
     }
 
@@ -742,7 +743,8 @@ public partial class ConflictResolutionViewModel : ObservableObject
         ContinueLargeFile = true;
         IsLargeFile = false;
         _lastBuiltFilePath = null;
-        _ = BuildMergeResultForSelectedConflict();
+        BuildMergeResultForSelectedConflict()
+            .FireAndForget(nameof(BuildMergeResultForSelectedConflict), isUserAction: true);
     }
 
     [RelayCommand]
@@ -935,7 +937,11 @@ public partial class ConflictResolutionViewModel : ObservableObject
         OnPropertyChanged(nameof(CanCompleteMerge));
         OnPropertyChanged(nameof(FileProgressPercent));
         RefreshConflictBuckets();
-        _ = _gitService.SaveStoredMergeConflictFilesAsync(_repoPath, Conflicts.Select(c => c.FilePath));
+        // Persist merge-conflict resolution state — if this faults, the user
+        // loses recovery state across a restart, so it's strictly a user-action
+        // error regardless of how UpdateCounts was triggered.
+        _gitService.SaveStoredMergeConflictFilesAsync(_repoPath, Conflicts.Select(c => c.FilePath))
+            .FireAndForget(nameof(_gitService.SaveStoredMergeConflictFilesAsync), isUserAction: true);
     }
 
     private void UpdateResolutionProperties()

@@ -201,6 +201,13 @@ public class AppSettings
 
     // Logging
     public string LogLevel { get; set; } = "Normal";
+
+    // Error handling (plan §1.3 / §1.4)
+    // When true, exceptions thrown by background operations (tooltip
+    // previews, passive event handlers, auto-fetch, lazy loading) surface
+    // as toasts in addition to being logged. Default false — most users
+    // only want to see errors from actions they explicitly initiated.
+    public bool ShowBackgroundOperationErrors { get; set; } = false;
 }
 
 /// <summary>

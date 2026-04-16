@@ -84,20 +84,27 @@ public partial class MainViewModel
     /// </summary>
     private async void OnDiffViewerHunkReverted(object? sender, Models.DiffHunk hunk)
     {
-        // Refresh working changes after reverting a hunk
-        if (GitGraphViewModel != null && SelectedRepository != null)
+        try
         {
-            await GitGraphViewModel.RefreshWorkingChangesAsync();
-
-            if (WorkingChangesViewModel != null && IsWorkingChangesSelected)
+            // Refresh working changes after reverting a hunk
+            if (GitGraphViewModel != null && SelectedRepository != null)
             {
-                WorkingChangesViewModel.SetWorkingChanges(
-                    SelectedRepository.Path,
-                    GitGraphViewModel.WorkingChanges);
-            }
-        }
+                await GitGraphViewModel.RefreshWorkingChangesAsync();
 
-        // Note: We don't close the diff viewer - the user can continue viewing/reverting other hunks
+                if (WorkingChangesViewModel != null && IsWorkingChangesSelected)
+                {
+                    WorkingChangesViewModel.SetWorkingChanges(
+                        SelectedRepository.Path,
+                        GitGraphViewModel.WorkingChanges);
+                }
+            }
+
+            // Note: We don't close the diff viewer - the user can continue viewing/reverting other hunks
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(OnDiffViewerHunkReverted), isUserAction: true);
+        }
     }
 
     /// <summary>
@@ -105,13 +112,20 @@ public partial class MainViewModel
     /// </summary>
     private async void OnWorkingChangesFileSelected(object? sender, FileSelectedEventArgs e)
     {
-        if (e.IsStaged)
+        try
         {
-            await ShowStagedFileDiffAsync(e.File);
+            if (e.IsStaged)
+            {
+                await ShowStagedFileDiffAsync(e.File);
+            }
+            else
+            {
+                await ShowUnstagedFileDiffAsync(e.File);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            await ShowUnstagedFileDiffAsync(e.File);
+            AsyncErrorHandler.Handle(ex, nameof(OnWorkingChangesFileSelected), isUserAction: true);
         }
     }
 

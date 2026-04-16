@@ -47,6 +47,12 @@ public partial class MainWindow : Window
         var credentialService = new CredentialService();
         var settingsService = new SettingsService();
 
+        // Centralised async-error handling — must be wired before any ViewModel
+        // subscribes to events, so fire-and-forget callbacks fault cleanly.
+        AsyncErrorHandler.Init(
+            notificationService,
+            () => settingsService.LoadSettings().ShowBackgroundOperationErrors);
+
         // Migrate legacy credentials to new multi-org format
         settingsService.MigrateCredentialsIfNeeded(credentialService);
 
