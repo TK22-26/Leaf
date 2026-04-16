@@ -8,11 +8,15 @@ namespace Leaf.Graph;
 /// Uses a simpler lane allocation that processes from oldest to newest.
 /// </summary>
 /// <remarks>
-/// Instance-based so each repository gets its own lane / colour / GitFlow
-/// context. Concurrent builds against different repositories (or across repo
-/// switches) used to race on static fields — see plan §1.2. Constructing a
-/// fresh builder per operation, or cloning an existing one for a short-lived
-/// background build, is now explicit.
+/// Instance-based and <b>immutable after construction</b> for its colour /
+/// GitFlow context. Each repository gets its own builder; short-lived
+/// background builds (pagination, tooltip previews) create their own builder
+/// with the same context. Two guarantees fall out of this:
+/// <list type="bullet">
+/// <item>Concurrent builds cannot corrupt shared state (plan §1.2).</item>
+/// <item>A displayed graph can never render against a differently-configured
+/// resolver — the active builder and nodes swap atomically in the view model.</item>
+/// </list>
 /// </remarks>
 public class GraphBuilder : IBranchColorResolver
 {
@@ -20,8 +24,11 @@ public class GraphBuilder : IBranchColorResolver
     // worth reusing across a render pass.
     private readonly Dictionary<string, Brush> _colorCache = new();
 
-    private GitFlowConfig? _gitFlowConfig;
-    private HashSet<string>? _remoteNames;
+    // Defensive snapshot of the GitFlow config taken at construction time.
+    // Stored as the full config so BranchInfo.GetGitFlowColorForName keeps its
+    // existing signature; callers cannot reach in to mutate it.
+    private readonly GitFlowConfig? _gitFlowConfig;
+    private readonly HashSet<string>? _remoteNames;
 
     // Fallback colors for lanes without a known branch name
     private static readonly Brush[] FallbackBrushes;
@@ -39,42 +46,29 @@ public class GraphBuilder : IBranchColorResolver
             brush.Freeze();
     }
 
-    public GraphBuilder() { }
+    /// <summary>
+    /// Constructs a builder with no GitFlow context and no known remote names.
+    /// Used at design time and as the initial state of
+    /// <see cref="ViewModels.GitGraphViewModel"/> before a repository is loaded.
+    /// </summary>
+    public GraphBuilder() : this(null, null) { }
 
+    /// <summary>
+    /// Constructs a builder bound to the given GitFlow config and remote-name
+    /// set. The config is deep-cloned so later mutation by the caller cannot
+    /// affect colour resolution on this builder.
+    /// </summary>
     public GraphBuilder(GitFlowConfig? gitFlowConfig, IEnumerable<string>? remoteNames)
     {
-        SetContext(gitFlowConfig, remoteNames);
+        _gitFlowConfig = gitFlowConfig?.IsInitialized == true ? gitFlowConfig.Clone() : null;
+        _remoteNames = remoteNames != null
+            ? new HashSet<string>(remoteNames, StringComparer.OrdinalIgnoreCase)
+            : null;
     }
 
     public int MaxLane { get; private set; }
 
     #region Color Generation (same algorithm as GitGraphCanvas for consistency)
-
-    /// <summary>
-    /// Applies new GitFlow + remote-name context. Any previously cached colours
-    /// are discarded because GitFlow resolution can change which branches map
-    /// to the reserved feature/release/hotfix palette.
-    /// </summary>
-    public void SetContext(GitFlowConfig? config, IEnumerable<string>? remoteNames)
-    {
-        _gitFlowConfig = config?.IsInitialized == true ? config : null;
-        _remoteNames = remoteNames != null
-            ? new HashSet<string>(remoteNames, StringComparer.OrdinalIgnoreCase)
-            : null;
-        _colorCache.Clear();
-    }
-
-    /// <summary>
-    /// Creates an independent builder that shares GitFlow + remote-name
-    /// context with this one but has a fresh colour cache and lane state.
-    /// Used for short-lived background builds (lazy-load batches, tooltip
-    /// previews) so mutation of <see cref="MaxLane"/> on a temp instance
-    /// cannot race with the main UI-thread builder.
-    /// </summary>
-    public GraphBuilder Clone()
-    {
-        return new GraphBuilder(_gitFlowConfig, _remoteNames);
-    }
 
     /// <summary>
     /// Generates a consistent color from a branch name using HSL color space.

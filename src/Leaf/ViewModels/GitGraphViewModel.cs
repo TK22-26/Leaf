@@ -21,14 +21,28 @@ public partial class GitGraphViewModel : ObservableObject
     public const string WorkingChangesSha = "WORKING_CHANGES";
 
     private readonly IGitService _gitService;
-    private readonly GraphBuilder _graphBuilder = new();
 
-    /// <summary>
-    /// Per-repository colour resolver. The view and tooltip views bind to
-    /// this instead of reaching into <see cref="GraphBuilder"/> statically —
-    /// ensures colour state never leaks between repositories.
-    /// </summary>
-    public IBranchColorResolver ColorResolver => _graphBuilder;
+    // The active builder that owns colour state for the currently-displayed
+    // graph. Swapped atomically with <see cref="Nodes"/> and
+    // <see cref="ColorResolver"/> at the end of a background build so the
+    // canvas can never render nodes from one repository against another
+    // repository's colour context.
+    private GraphBuilder _graphBuilder = new();
+
+    // Context deferred from SetGitFlowContext until the next LoadRepositoryAsync
+    // consumes it and atomically swaps the builder. _hasPendingContext
+    // distinguishes "caller hasn't set context yet" from "caller explicitly
+    // set context to null" (which happens on every non-GitFlow repo).
+    private bool _hasPendingContext;
+    private GitFlowConfig? _pendingGitFlowConfig;
+    private IReadOnlyList<string>? _pendingRemoteNames;
+
+    // The context currently baked into _graphBuilder. Used by pagination and
+    // tooltip preview builders so they inherit the same context without racing
+    // with SetGitFlowContext stores.
+    private GitFlowConfig? _activeGitFlowConfig;
+    private IReadOnlyList<string>? _activeRemoteNames;
+
     private readonly Dictionary<string, Task<MergeCommitTooltipViewModel?>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _branchTips = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _hiddenBranchNames = new(StringComparer.OrdinalIgnoreCase);
@@ -41,8 +55,34 @@ public partial class GitGraphViewModel : ObservableObject
     private bool _hasMoreCommits = true;
     private HashSet<string> _loadedCommitShas = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? _graphBuildCts;
+
+    /// <summary>
+    /// Cancels any in-flight graph build and returns a token for the new one.
+    /// The previous <see cref="CancellationTokenSource"/> is disposed so
+    /// repeated repo switches do not leak handles.
+    /// </summary>
+    private CancellationToken BeginGraphBuild()
+    {
+        var previous = _graphBuildCts;
+        _graphBuildCts = new CancellationTokenSource();
+        if (previous != null)
+        {
+            try { previous.Cancel(); } catch (ObjectDisposedException) { /* already gone */ }
+            previous.Dispose();
+        }
+        return _graphBuildCts.Token;
+    }
     private const int BatchSize = 1000;  // Large batch to minimize O(n) skip cost
     private const int InitialBatchSize = 200;
+
+    /// <summary>
+    /// Per-repository colour resolver. Bound by <c>GitGraphCanvas</c> and the
+    /// tooltip canvas; updated atomically with <see cref="Nodes"/> when a new
+    /// repository load completes so the canvas never resolves colours against
+    /// the wrong context.
+    /// </summary>
+    [ObservableProperty]
+    private IBranchColorResolver _colorResolver;
 
     [ObservableProperty]
     private string? _repositoryPath;
@@ -137,6 +177,7 @@ public partial class GitGraphViewModel : ObservableObject
     public GitGraphViewModel(IGitService gitService)
     {
         _gitService = gitService;
+        _colorResolver = _graphBuilder;
     }
 
     /// <summary>
@@ -230,10 +271,20 @@ public partial class GitGraphViewModel : ObservableObject
         return result;
     }
 
+    /// <summary>
+    /// Stores new GitFlow + remote-name context for the next graph build to
+    /// consume. Does NOT mutate the active builder — if it did, the canvas
+    /// would briefly render still-displayed nodes against the new colour
+    /// context. The pending values are applied atomically inside
+    /// <see cref="LoadRepositoryAsync"/> together with the new node list.
+    /// </summary>
     public void SetGitFlowContext(GitFlowConfig? config, IReadOnlyCollection<string> remoteNames)
     {
-        _graphBuilder.SetContext(config, remoteNames);
-        // Graph rebuild deferred to LoadRepositoryAsync or ApplyBranchFilters
+        // Defensive copy — the config we receive may be long-lived and
+        // mutated by its owner before LoadRepositoryAsync runs.
+        _pendingGitFlowConfig = config?.Clone();
+        _pendingRemoteNames = remoteNames != null ? remoteNames.ToList() : null;
+        _hasPendingContext = true;
     }
 
     /// <summary>
@@ -325,17 +376,52 @@ public partial class GitGraphViewModel : ObservableObject
             var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
             var currentBranch = _currentBranchName;
 
-            // Background builds use a cloned builder (same GitFlow + remote
-            // context, independent MaxLane + colour cache) so mutation on the
-            // worker thread cannot race the UI-thread _graphBuilder.
-            var builder = _graphBuilder.Clone();
+            // Cancel any in-flight build; if a second LoadRepositoryAsync
+            // starts before the first completes, only the most recent one
+            // will swap its results into the UI.
+            var ct = BeginGraphBuild();
+
+            // Consume pending GitFlow/remote context for the new builder.
+            // If SetGitFlowContext has been called since the last load,
+            // adopt those values (even when they are null — that's the
+            // correct context for a repository without GitFlow). Otherwise
+            // stay on whatever the previous load applied.
+            GitFlowConfig? effectiveConfig;
+            IReadOnlyList<string>? effectiveRemotes;
+            if (_hasPendingContext)
+            {
+                effectiveConfig = _pendingGitFlowConfig;
+                effectiveRemotes = _pendingRemoteNames;
+                _pendingGitFlowConfig = null;
+                _pendingRemoteNames = null;
+                _hasPendingContext = false;
+            }
+            else
+            {
+                effectiveConfig = _activeGitFlowConfig;
+                effectiveRemotes = _activeRemoteNames;
+            }
+
+            // Build the new builder on the UI thread (cheap — just defensive
+            // copies) so the config snapshot is taken before any awaiting.
+            var newBuilder = new GraphBuilder(effectiveConfig, effectiveRemotes);
+
             var (graphNodes, graphMaxLane) = await Task.Run(() =>
             {
-                var builtNodes = builder.BuildGraph(commitsWithStashes, currentBranch);
-                return (builtNodes, builder.MaxLane);
-            });
+                ct.ThrowIfCancellationRequested();
+                var builtNodes = newBuilder.BuildGraph(commitsWithStashes, currentBranch);
+                return (builtNodes, newBuilder.MaxLane);
+            }, ct);
 
-            // Fast UI property updates (pointer swaps only)
+            ct.ThrowIfCancellationRequested();
+
+            // Atomic swap: builder + resolver + nodes flip together so the
+            // canvas can never render new nodes against the old resolver or
+            // old nodes against the new resolver.
+            _graphBuilder = newBuilder;
+            _activeGitFlowConfig = effectiveConfig;
+            _activeRemoteNames = effectiveRemotes;
+            ColorResolver = newBuilder;
             Nodes = new ObservableCollection<GitTreeNode>(graphNodes);
             Commits = new ObservableCollection<CommitInfo>(commitsWithStashes);
             MaxLane = graphMaxLane;
@@ -375,6 +461,11 @@ public partial class GitGraphViewModel : ObservableObject
             }
 
             ApplySearchFilter(SearchText);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a later LoadRepositoryAsync — drop our results
+            // silently; the newer call will update the UI.
         }
         catch (Exception ex)
         {
@@ -498,10 +589,9 @@ public partial class GitGraphViewModel : ObservableObject
 
         IsLoadingMore = true;
 
-        // Cancel any pending graph build
-        _graphBuildCts?.Cancel();
-        _graphBuildCts = new CancellationTokenSource();
-        var ct = _graphBuildCts.Token;
+        // Cancel any in-flight graph build and dispose its CTS (prevents the
+        // leak flagged in §1.5).
+        var ct = BeginGraphBuild();
 
         try
         {
@@ -552,10 +642,12 @@ public partial class GitGraphViewModel : ObservableObject
             var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
             var currentBranch = _currentBranchName;
 
-            // Build graph on background thread with a cloned GraphBuilder
-            // (avoids race on instance state like MaxLane; inherits current
-            // GitFlow + remote context for consistent colours).
-            var tempBuilder = _graphBuilder.Clone();
+            // Build graph on background thread with a fresh GraphBuilder
+            // bound to the currently-active context (pagination never changes
+            // colour context — only LoadRepositoryAsync does). Isolated
+            // instance means MaxLane mutation cannot race the UI-thread
+            // builder.
+            var tempBuilder = new GraphBuilder(_activeGitFlowConfig, _activeRemoteNames);
             var (nodes, maxLane) = await Task.Run(() =>
             {
                 ct.ThrowIfCancellationRequested();
@@ -565,7 +657,10 @@ public partial class GitGraphViewModel : ObservableObject
 
             ct.ThrowIfCancellationRequested();
 
-            // Fast UI update (pointer swaps only)
+            // Atomic swap of builder + resolver + nodes keeps rendering
+            // consistent even though the context itself did not change.
+            _graphBuilder = tempBuilder;
+            ColorResolver = tempBuilder;
             Nodes = new ObservableCollection<GitTreeNode>(nodes);
             Commits = new ObservableCollection<CommitInfo>(commitsWithStashes);
             MaxLane = maxLane;
@@ -982,17 +1077,20 @@ public partial class GitGraphViewModel : ObservableObject
             }
         }
 
-        // Tooltip preview is cosmetic; clone so GitFlow + remote-name context
-        // is honoured without racing the UI-thread builder.
-        var tooltipGraphBuilder = _graphBuilder.Clone();
+        // Tooltip preview uses a short-lived builder bound to the active
+        // GitFlow + remote-name context so colours match the main graph.
+        var tooltipGraphBuilder = new GraphBuilder(_activeGitFlowConfig, _activeRemoteNames);
         var visibleCommits = mergeCommits.Take(10).ToList();
         var nodes = tooltipGraphBuilder.BuildGraph(visibleCommits);
 
+        // Pass the tooltip's own builder as the resolver — its colour cache
+        // contains exactly the branches in the preview, and it will live for
+        // the tooltip's lifetime without racing the main builder.
         return new MergeCommitTooltipViewModel(
             new ObservableCollection<CommitInfo>(mergeCommits),
             new ObservableCollection<GitTreeNode>(nodes),
             tooltipGraphBuilder.MaxLane,
             RowHeight,
-            ColorResolver);
+            tooltipGraphBuilder);
     }
 }
