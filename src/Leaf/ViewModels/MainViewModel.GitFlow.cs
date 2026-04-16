@@ -54,61 +54,49 @@ public partial class MainViewModel
     /// Start a new GitFlow feature branch.
     /// </summary>
     [RelayCommand]
-    public async Task StartFeatureAsync()
-    {
-        if (SelectedRepository == null) return;
-
-        var isInitialized = await _gitFlowService.IsInitializedAsync(SelectedRepository.Path);
-        if (!isInitialized)
-        {
-            await _dialogService.ShowInformationAsync(
-                "GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
-                "GitFlow Not Initialized");
-            return;
-        }
-
-        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Feature);
-        if (await _dialogService.ShowDialogAsync(dialog))
-        {
-            StatusMessage = $"Started feature {dialog.BranchName}";
-            SelectedRepository.BranchesLoaded = false;
-            await RefreshAsync();
-        }
-    }
+    public Task StartFeatureAsync() => StartGitFlowBranchDialogAsync(Models.GitFlowBranchType.Feature, "feature");
 
     /// <summary>
     /// Start a new GitFlow release branch.
     /// </summary>
     [RelayCommand]
-    public async Task StartReleaseAsync()
+    public Task StartReleaseAsync() => StartGitFlowBranchDialogAsync(Models.GitFlowBranchType.Release, "release");
+
+    /// <summary>
+    /// Start a new GitFlow hotfix branch.
+    /// </summary>
+    [RelayCommand]
+    public Task StartHotfixAsync() => StartGitFlowBranchDialogAsync(Models.GitFlowBranchType.Hotfix, "hotfix");
+
+    /// <summary>
+    /// Shared flow for the three Start* commands: ensure GitFlow is
+    /// initialized, show the StartBranchDialog for <paramref name="branchType"/>,
+    /// and refresh on success. The three entry points differ only in the
+    /// branch type and the status-message noun, so the body is parameterized.
+    /// </summary>
+    private async Task StartGitFlowBranchDialogAsync(Models.GitFlowBranchType branchType, string statusNoun)
     {
-        if (SelectedRepository == null) return;
+        if (!await EnsureGitFlowInitializedAsync()) return;
 
-        var isInitialized = await _gitFlowService.IsInitializedAsync(SelectedRepository.Path);
-        if (!isInitialized)
-        {
-            await _dialogService.ShowInformationAsync(
-                "GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
-                "GitFlow Not Initialized");
-            return;
-        }
-
-        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Release);
+        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository!.Path, branchType);
         if (await _dialogService.ShowDialogAsync(dialog))
         {
-            StatusMessage = $"Started release {dialog.BranchName}";
+            StatusMessage = $"Started {statusNoun} {dialog.BranchName}";
             SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
     }
 
     /// <summary>
-    /// Start a new GitFlow hotfix branch.
+    /// Ensure a repository is selected and GitFlow is initialized for it.
+    /// Shows the "GitFlow Not Initialized" information dialog and returns
+    /// false when the caller should abort; returns true when it's safe to
+    /// proceed. Consolidates the guard that was copy-pasted across the
+    /// Start* commands.
     /// </summary>
-    [RelayCommand]
-    public async Task StartHotfixAsync()
+    private async Task<bool> EnsureGitFlowInitializedAsync()
     {
-        if (SelectedRepository == null) return;
+        if (SelectedRepository == null) return false;
 
         var isInitialized = await _gitFlowService.IsInitializedAsync(SelectedRepository.Path);
         if (!isInitialized)
@@ -116,16 +104,10 @@ public partial class MainViewModel
             await _dialogService.ShowInformationAsync(
                 "GitFlow is not initialized in this repository.\n\nPlease initialize GitFlow first.",
                 "GitFlow Not Initialized");
-            return;
+            return false;
         }
 
-        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Hotfix);
-        if (await _dialogService.ShowDialogAsync(dialog))
-        {
-            StatusMessage = $"Started hotfix {dialog.BranchName}";
-            SelectedRepository.BranchesLoaded = false;
-            await RefreshAsync();
-        }
+        return true;
     }
 
     /// <summary>
