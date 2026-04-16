@@ -32,7 +32,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IFolderWatcherService _folderWatcherService;
     private readonly IPullRequestService _pullRequestService;
     private readonly IRepositorySessionFactory _sessionFactory;
-    private readonly IDiffService _diffService = new DiffService();
+    private readonly IDiffService _diffService;
     private readonly INotificationService? _notificationService;
     private IRepositorySession? _currentSession;
     private bool _disposed;
@@ -202,10 +202,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void OnRepositoryRootItemsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    // Adapters for the three repo-tree mutation signals we observe.
+    // Each has a different delegate signature (NotifyCollectionChangedEventHandler
+    // vs. EventHandler<RepositoryInfo>), so they can't share a method —
+    // but they all funnel into InvalidateFilteredRepoItemsCache.
+    private void OnRepoRootItemsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        => InvalidateFilteredRepoItemsCache();
+
+    private void OnRepoAddedOrRemoved(object? sender, RepositoryInfo repo)
+        => InvalidateFilteredRepoItemsCache();
+
+    private void InvalidateFilteredRepoItemsCache()
     {
-        // Drop the cache and re-notify so the TreeView re-reads. The
-        // empty-search fast path returns the live ObservableCollection
+        // The empty-search fast path returns the live ObservableCollection
         // directly and doesn't need re-notification, but we raise anyway
         // for consistency — WPF no-ops when the value reference is equal.
         _filteredRepoRootItemsCache = null;
@@ -299,6 +308,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IFileSystemService fileSystemService,
         IFolderWatcherService folderWatcherService,
         IPullRequestService pullRequestService,
+        IDiffService diffService,
         INotificationService? notificationService = null)
     {
         _gitService = gitService;
@@ -310,6 +320,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _dispatcherService = dispatcherService;
         _dialogService = dialogService;
         _sessionFactory = sessionFactory;
+        _diffService = diffService;
         _clipboardService = clipboardService;
         _folderWatcherService = folderWatcherService;
         _pullRequestService = pullRequestService;
@@ -322,7 +333,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Invalidate the filtered-repo-items cache (and re-notify WPF)
         // whenever the underlying repo tree changes — so an active search
         // filter reflects repos that get added/removed during the search.
-        _repositoryService.RepositoryRootItems.CollectionChanged += OnRepositoryRootItemsChanged;
+        // Both top-level structural changes (section appearance/removal)
+        // and nested add/remove of repos inside a group need to invalidate;
+        // the service exposes dedicated add/remove events for the latter.
+        _repositoryService.RepositoryRootItems.CollectionChanged += OnRepoRootItemsCollectionChanged;
+        _repositoryService.RepositoryAdded += OnRepoAddedOrRemoved;
+        _repositoryService.RepositoryRemoved += OnRepoAddedOrRemoved;
 
         // Start watching saved folders and scan for missed repos
         var watchedFolders = _settingsService.LoadSettings().WatchedFolders;
@@ -523,7 +539,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Unsubscribe from every event wired up in the constructor. Order
         // mirrors the constructor wiring so any audit diff is easy to read.
         _folderWatcherService.RepositoryDiscovered -= OnRepositoryDiscovered;
-        _repositoryService.RepositoryRootItems.CollectionChanged -= OnRepositoryRootItemsChanged;
+        _repositoryService.RepositoryRootItems.CollectionChanged -= OnRepoRootItemsCollectionChanged;
+        _repositoryService.RepositoryAdded -= OnRepoAddedOrRemoved;
+        _repositoryService.RepositoryRemoved -= OnRepoAddedOrRemoved;
         _autoFetchService.FetchCompleted -= OnAutoFetchCompleted;
 
         var workingChanges = WorkingChangesViewModel;

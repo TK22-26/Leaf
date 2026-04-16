@@ -61,6 +61,7 @@ public partial class MainWindow : Window
         var autoFetchService = new AutoFetchService(gitService, credentialService);
         var folderWatcherService = new FolderWatcherService();
         var pullRequestService = new PullRequestService(credentialService, gitService);
+        var diffService = new DiffService();
 
         // ViewModelFactory for transient ViewModel creation
         var viewModelFactory = new ViewModelFactory(gitService, dialogService, repositoryEventHub, clipboardService, fileSystemService);
@@ -83,6 +84,7 @@ public partial class MainWindow : Window
             fileSystemService,
             folderWatcherService,
             pullRequestService,
+            diffService,
             notificationService);
 
         viewModel.CommandPaletteViewModel = new ViewModels.CommandPaletteViewModel(
