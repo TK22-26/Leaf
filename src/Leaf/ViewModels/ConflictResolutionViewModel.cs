@@ -9,6 +9,7 @@ using Leaf.Models;
 using Leaf.Models.Merge;
 using Leaf.Services;
 using Leaf.Services.Merge;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -317,10 +318,10 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
         IsLargeFile = false;
 
-        // Cancel any previous build
-        _buildMergeCts?.Cancel();
-        _buildMergeCts = new CancellationTokenSource();
-        var ct = _buildMergeCts.Token;
+        // Cancel any previous build, dispose its CTS, install a fresh one.
+        // The previous pattern (`Cancel()` then overwrite) leaked the old CTS
+        // for the life of the process — see plan §1.5.
+        var ct = CancellationTokenSourceExtensions.ReplaceAndCancel(ref _buildMergeCts).Token;
 
         Log.Info("Merge", $"BuildMergeResult: file={filePath} base={baseContent?.Length ?? 0}chars ours={oursContent?.Length ?? 0}chars theirs={theirsContent?.Length ?? 0}chars");
 
@@ -1003,9 +1004,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
     {
         _mergedContentDebounceTimer?.Stop();
         _mergedContentDebounceTimer = null;
-        _buildMergeCts?.Cancel();
-        _buildMergeCts?.Dispose();
-        _buildMergeCts = null;
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _buildMergeCts);
     }
 
     public void UpdateMergedLinesFromText(string text)

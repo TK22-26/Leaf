@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -167,7 +168,10 @@ public sealed partial class TerminalViewModel : ObservableObject
         }
 
         IsRunning = true;
-        _commandCts = new CancellationTokenSource();
+        // ReplaceAndCancel is idempotent and handles the case where a prior
+        // CTS somehow slipped past the IsRunning guard (e.g. future re-entrant
+        // code path): the old one gets cancelled + disposed instead of leaked.
+        var ct = CancellationTokenSourceExtensions.ReplaceAndCancel(ref _commandCts).Token;
 
         try
         {
@@ -178,7 +182,7 @@ public sealed partial class TerminalViewModel : ObservableObject
                 ShellArgumentsTemplate,
                 line => AppendOutput(TerminalLineKind.Output, line),
                 line => AppendOutput(TerminalLineKind.Error, line),
-                _commandCts.Token);
+                ct);
 
             if (exitCode != 0)
             {
@@ -197,8 +201,7 @@ public sealed partial class TerminalViewModel : ObservableObject
         finally
         {
             IsRunning = false;
-            var cts = Interlocked.Exchange(ref _commandCts, null);
-            cts?.Dispose();
+            CancellationTokenSourceExtensions.DisposeAndClear(ref _commandCts);
             CommandCompleted?.Invoke(this, EventArgs.Empty);
         }
     }

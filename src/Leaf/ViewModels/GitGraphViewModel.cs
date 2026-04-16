@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using Leaf.Graph;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -58,20 +59,12 @@ public partial class GitGraphViewModel : ObservableObject
 
     /// <summary>
     /// Cancels any in-flight graph build and returns a token for the new one.
-    /// The previous <see cref="CancellationTokenSource"/> is disposed so
-    /// repeated repo switches do not leak handles.
+    /// Delegates to the shared <see cref="CancellationTokenSourceExtensions"/>
+    /// helper so every CTS-replace site in the codebase leaks consistently — or,
+    /// rather, doesn't.
     /// </summary>
     private CancellationToken BeginGraphBuild()
-    {
-        var previous = _graphBuildCts;
-        _graphBuildCts = new CancellationTokenSource();
-        if (previous != null)
-        {
-            try { previous.Cancel(); } catch (ObjectDisposedException) { /* already gone */ }
-            previous.Dispose();
-        }
-        return _graphBuildCts.Token;
-    }
+        => CancellationTokenSourceExtensions.ReplaceAndCancel(ref _graphBuildCts).Token;
     private const int BatchSize = 1000;  // Large batch to minimize O(n) skip cost
     private const int InitialBatchSize = 200;
 

@@ -8,6 +8,7 @@ using Leaf.Models;
 using Leaf.Services;
 using Leaf.Services.Git.Core;
 using Leaf.Services.PullRequests;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -350,13 +351,9 @@ public partial class CreatePullRequestViewModel : ObservableObject
 
     private void ScheduleReviewerSearch(ReviewerBucket bucket, string searchText)
     {
-        var cts = new CancellationTokenSource();
-        var previous = bucket == ReviewerBucket.Required
-            ? Interlocked.Exchange(ref _requiredReviewerSearchCts, cts)
-            : Interlocked.Exchange(ref _optionalReviewerSearchCts, cts);
-
-        previous?.Cancel();
-        previous?.Dispose();
+        var cts = bucket == ReviewerBucket.Required
+            ? CancellationTokenSourceExtensions.ReplaceAndCancel(ref _requiredReviewerSearchCts)
+            : CancellationTokenSourceExtensions.ReplaceAndCancel(ref _optionalReviewerSearchCts);
 
         if (string.IsNullOrWhiteSpace(searchText) || string.IsNullOrWhiteSpace(_repoPath))
         {
@@ -486,13 +483,8 @@ public partial class CreatePullRequestViewModel : ObservableObject
 
     private void CancelReviewerSearches()
     {
-        _requiredReviewerSearchCts?.Cancel();
-        _requiredReviewerSearchCts?.Dispose();
-        _requiredReviewerSearchCts = null;
-
-        _optionalReviewerSearchCts?.Cancel();
-        _optionalReviewerSearchCts?.Dispose();
-        _optionalReviewerSearchCts = null;
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _requiredReviewerSearchCts);
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _optionalReviewerSearchCts);
     }
 
     private enum ReviewerBucket

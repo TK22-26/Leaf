@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -899,11 +900,12 @@ exit /b %errorlevel%
             IsLoading = true;
             ErrorMessage = null;
 
-            // Cancel any existing AI generation
-            _aiCancellationTokenSource?.Cancel();
-            _aiCancellationTokenSource?.Dispose();
-            _aiCancellationTokenSource = new CancellationTokenSource();
-            var cancellationToken = _aiCancellationTokenSource.Token;
+            // Cancel any existing AI generation — two rapid AutoFill clicks
+            // can otherwise race the prior finally block's dispose/null set
+            // against this block's Cancel+Dispose+assign sequence.
+            var cancellationToken = CancellationTokenSourceExtensions
+                .ReplaceAndCancel(ref _aiCancellationTokenSource)
+                .Token;
 
             Log.Info("WorkingChanges", $"AutoFill start: repo={_repositoryPath}");
 
@@ -954,8 +956,7 @@ exit /b %errorlevel%
         finally
         {
             IsLoading = false;
-            _aiCancellationTokenSource?.Dispose();
-            _aiCancellationTokenSource = null;
+            CancellationTokenSourceExtensions.DisposeAndClear(ref _aiCancellationTokenSource);
         }
     }
 
@@ -965,7 +966,11 @@ exit /b %errorlevel%
     [RelayCommand]
     public void CancelAutoFill()
     {
-        _aiCancellationTokenSource?.Cancel();
+        // Local copy under atomic read — if the finally block nulls the field
+        // between our null check and Cancel() we'd otherwise NRE or hit
+        // ObjectDisposedException.
+        var cts = Interlocked.CompareExchange(ref _aiCancellationTokenSource, null, null);
+        try { cts?.Cancel(); } catch (ObjectDisposedException) { /* already finished */ }
     }
 
     partial void OnCommitMessageChanged(string value)

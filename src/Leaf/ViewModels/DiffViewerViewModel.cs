@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using ICSharpCode.AvalonEdit.Highlighting;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Utils;
 using System.Linq;
 
 namespace Leaf.ViewModels;
@@ -390,19 +391,12 @@ public partial class DiffViewerViewModel : ObservableObject
 
     private CancellationToken ResetActiveLoad()
     {
-        CancelActiveLoad();
-        _loadCts = new CancellationTokenSource();
-        return _loadCts.Token;
+        return CancellationTokenSourceExtensions.ReplaceAndCancel(ref _loadCts).Token;
     }
 
     private void CancelActiveLoad()
     {
-        if (_loadCts != null)
-        {
-            _loadCts.Cancel();
-            _loadCts.Dispose();
-            _loadCts = null;
-        }
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _loadCts);
     }
 
     private bool IsActiveToken(CancellationToken token)
