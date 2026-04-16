@@ -81,7 +81,7 @@ internal class StashOperations
 
             // Step 2: Get the stash diff as a patch
             var stashRef = $"stash@{{{stashIndex}}}";
-            var patchResult = GitCliHelpers.RunGit(repoPath, $"stash show -p {stashRef}");
+            var patchResult = GitCliHelpers.RunGitArgs(repoPath, "stash", "show", "-p", stashRef);
             Log.Info("Stash",$"[PopStash] Patch result: exit={patchResult.ExitCode}, length={patchResult.Output.Length}");
 
             if (patchResult.ExitCode != 0 || string.IsNullOrWhiteSpace(patchResult.Output))
@@ -110,7 +110,7 @@ internal class StashOperations
             {
                 // Success! Patch applied cleanly - now drop the stash
                 Log.Info("Stash","[PopStash] Patch applied cleanly - dropping stash");
-                GitCliHelpers.RunGit(repoPath, $"stash drop {stashIndex}");
+                GitCliHelpers.RunGitArgs(repoPath, "stash", "drop", stashIndex.ToString());
 
                 result.Success = true;
                 return result;
@@ -141,7 +141,7 @@ internal class StashOperations
             if (conflicts.Count > 0)
             {
                 Log.Info("Stash","[PopStash] CONFLICTS: Merge conflicts detected - dropping stash");
-                GitCliHelpers.RunGit(repoPath, $"stash drop {stashIndex}");
+                GitCliHelpers.RunGitArgs(repoPath, "stash", "drop", stashIndex.ToString());
 
                 result.HasConflicts = true;
                 result.ConflictingFiles = conflicts;
@@ -208,7 +208,7 @@ internal class StashOperations
     {
         return Task.Run(() =>
         {
-            var listResult = GitCliHelpers.RunGit(repoPath, "stash list");
+            var listResult = GitCliHelpers.RunGitArgs(repoPath, "stash", "list");
             var lines = listResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
             for (int i = 0; i < lines.Length; i++)
@@ -217,11 +217,11 @@ internal class StashOperations
                 {
                     // Re-query the stash list to guard against index shifts from concurrent
                     // stash operations between the find and the drop.
-                    var verifyResult = GitCliHelpers.RunGit(repoPath, "stash list");
+                    var verifyResult = GitCliHelpers.RunGitArgs(repoPath, "stash", "list");
                     var verifyLines = verifyResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
                     if (i < verifyLines.Length && verifyLines[i].Contains(GitCliHelpers.TempStashMessage))
                     {
-                        GitCliHelpers.RunGit(repoPath, $"stash drop {i}");
+                        GitCliHelpers.RunGitArgs(repoPath, "stash", "drop", i.ToString());
                     }
                     break;
                 }

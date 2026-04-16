@@ -44,7 +44,7 @@ internal class ConflictOperations : IConflictOperations
             var conflictPaths = new List<string>();
 
             // Use git diff to find unmerged files
-            var result = GitCliHelpers.RunGit(repoPath, "diff --name-only --diff-filter=U");
+            var result = GitCliHelpers.RunGitArgs(repoPath, "diff", "--name-only", "--diff-filter=U");
             if (result.ExitCode == 0)
             {
                 conflictPaths.AddRange(result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries));
@@ -53,7 +53,7 @@ internal class ConflictOperations : IConflictOperations
 
             if (conflictPaths.Count == 0)
             {
-                var statusResult = GitCliHelpers.RunGit(repoPath, "status --porcelain");
+                var statusResult = GitCliHelpers.RunGitArgs(repoPath, "status", "--porcelain");
                 if (statusResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(statusResult.Output))
                 {
                     conflictPaths.AddRange(_context.OutputParser.ParseConflictFilesFromPorcelain(statusResult.Output));
@@ -233,14 +233,14 @@ internal class ConflictOperations : IConflictOperations
     {
         return Task.Run(() =>
         {
-            var unresolvedResult = GitCliHelpers.RunGit(repoPath, "diff --name-only --diff-filter=U");
+            var unresolvedResult = GitCliHelpers.RunGitArgs(repoPath, "diff", "--name-only", "--diff-filter=U");
             var unresolved = unresolvedResult.Output
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(f => f.Trim())
                 .Where(f => !string.IsNullOrEmpty(f))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var stagedResult = GitCliHelpers.RunGit(repoPath, "diff --name-only --cached");
+            var stagedResult = GitCliHelpers.RunGitArgs(repoPath, "diff", "--name-only", "--cached");
             var stagedFiles = stagedResult.Output
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(f => f.Trim())

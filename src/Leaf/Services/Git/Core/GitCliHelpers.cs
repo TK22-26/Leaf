@@ -25,45 +25,10 @@ internal class GitCliHelpers
     public record GitResult(int ExitCode, string Output, string Error);
 
     /// <summary>
-    /// Run a synchronous git command.
-    /// </summary>
-    public static GitResult RunGit(string workingDirectory, string arguments)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "git",
-            Arguments = arguments,
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        // Force English output for consistent error message parsing
-        startInfo.EnvironmentVariables["LC_ALL"] = "C";
-
-        using var process = Process.Start(startInfo);
-        if (process == null)
-        {
-            return new GitResult(-1, "", "Failed to start git process");
-        }
-
-        // Read stderr on a separate thread to avoid deadlock when pipe buffers fill.
-        // (ReadToEnd on stdout blocks until the process closes its stdout handle, but the
-        // process may block writing to stderr if its pipe buffer is full and nobody is reading it.)
-        string error = "";
-        var stderrTask = Task.Run(() => process.StandardError.ReadToEnd());
-        string output = process.StandardOutput.ReadToEnd();
-        error = stderrTask.Result;
-        process.WaitForExit();
-
-        return new GitResult(process.ExitCode, output, error);
-    }
-
-    /// <summary>
     /// Run a synchronous git command with individually-escaped arguments.
-    /// Prefer this over RunGit(string) when any argument contains user-controlled data.
+    /// Uses ProcessStartInfo.ArgumentList so the OS handles quoting, which
+    /// prevents shell-injection bugs when any argument carries user-supplied
+    /// data (branch names, stash refs, paths, etc.).
     /// </summary>
     public static GitResult RunGitArgs(string workingDirectory, params string[] args)
     {
@@ -248,7 +213,7 @@ internal class GitCliHelpers
         }
 
         // Try to find git.exe and derive patch.exe location from it
-        var gitResult = RunGit(".", "--exec-path");
+        var gitResult = RunGitArgs(".", "--exec-path");
         if (gitResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(gitResult.Output))
         {
             var execPath = gitResult.Output.Trim().Replace('/', '\\');
@@ -273,19 +238,19 @@ internal class GitCliHelpers
     {
         // Fast: diff-index --quiet HEAD checks staged + unstaged tracked files.
         // Exits immediately on first difference (exit code 1 = dirty).
-        var result = RunGit(repoPath, "diff-index --quiet HEAD --");
+        var result = RunGitArgs(repoPath, "diff-index", "--quiet", "HEAD", "--");
         if (result.ExitCode == 1)
             return true;
 
         if (result.ExitCode != 0)
         {
             // No HEAD (empty repo) or other error — fall back to status
-            var fallback = RunGit(repoPath, "status --porcelain");
+            var fallback = RunGitArgs(repoPath, "status", "--porcelain");
             return !string.IsNullOrWhiteSpace(fallback.Output);
         }
 
         // Tracked files are clean; check for untracked files
-        var untracked = RunGit(repoPath, "ls-files --others --exclude-standard");
+        var untracked = RunGitArgs(repoPath, "ls-files", "--others", "--exclude-standard");
         return !string.IsNullOrWhiteSpace(untracked.Output);
     }
 
@@ -313,7 +278,7 @@ internal class GitCliHelpers
     /// </summary>
     public static List<string> GetConflictFiles(string repoPath)
     {
-        var result = RunGit(repoPath, "diff --name-only --diff-filter=U");
+        var result = RunGitArgs(repoPath, "diff", "--name-only", "--diff-filter=U");
         return result.Output
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(f => f.Trim())
@@ -329,14 +294,14 @@ internal class GitCliHelpers
         try
         {
             // First try git diff --name-only --diff-filter=U
-            var result = RunGit(repoPath, "diff --name-only --diff-filter=U");
+            var result = RunGitArgs(repoPath, "diff", "--name-only", "--diff-filter=U");
             if (result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.Output))
             {
                 return result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
             }
 
             // Fallback: check git status --porcelain for 'U' markers
-            result = RunGit(repoPath, "status --porcelain");
+            result = RunGitArgs(repoPath, "status", "--porcelain");
             if (result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.Output))
             {
                 int count = 0;
@@ -389,7 +354,7 @@ internal class GitCliHelpers
         var oursContent = GetRefFileContent(repoPath, "HEAD", filePath);
         var theirsContent = GetRefFileContent(repoPath, "MERGE_HEAD", filePath);
 
-        var baseShaResult = RunGit(repoPath, "merge-base HEAD MERGE_HEAD");
+        var baseShaResult = RunGitArgs(repoPath, "merge-base", "HEAD", "MERGE_HEAD");
         var baseSha = baseShaResult.ExitCode == 0 ? baseShaResult.Output.Trim() : string.Empty;
         var baseContent = string.IsNullOrEmpty(baseSha)
             ? string.Empty

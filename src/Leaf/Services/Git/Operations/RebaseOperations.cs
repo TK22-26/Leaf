@@ -59,7 +59,7 @@ internal class RebaseOperations
         {
             Log.Info("Rebase", "AbortRebase: running git rebase --abort");
             MergeDebugHelper.LogMergeState("BeforeAbortRebase", repoPath);
-            GitCliHelpers.RunGit(repoPath, "rebase --abort");
+            GitCliHelpers.RunGitArgs(repoPath, "rebase", "--abort");
             MergeDebugHelper.LogMergeState("AfterAbortRebase", repoPath);
         });
     }
@@ -99,7 +99,7 @@ internal class RebaseOperations
         return Task.Run(() =>
         {
             Log.Info("Rebase", "SkipRebaseCommit");
-            var result = GitCliHelpers.RunGit(repoPath, "rebase --skip");
+            var result = GitCliHelpers.RunGitArgs(repoPath, "rebase", "--skip");
             return new Models.MergeResult
             {
                 Success = result.ExitCode == 0,
