@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -44,8 +45,22 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     private GitFlowConfig? _activeGitFlowConfig;
     private IReadOnlyList<string>? _activeRemoteNames;
 
-    private readonly Dictionary<string, Task<MergeCommitTooltipViewModel?>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _branchTips = new(StringComparer.OrdinalIgnoreCase);
+    // ConcurrentDictionary instead of Dictionary — plan §2.3. Today every
+    // access happens on the UI thread so there is no active race, but
+    // upcoming §2.1 work (CancellationToken plumbing) and tooltip background
+    // builders both push some logic off the dispatcher. A plain Dictionary
+    // is unsafe even for concurrent reads while another thread writes;
+    // ConcurrentDictionary has the same cost profile for the low write
+    // volumes here.
+    //
+    // Lazy<Task<…>> wrapper on the tooltip cache: ConcurrentDictionary.GetOrAdd
+    // can invoke its factory multiple times under contention (only one result
+    // wins the slot, the others are discarded). For tooltip previews the
+    // "others" are full git-service calls — not acceptable. Lazy guarantees
+    // the inner factory runs at most once per key regardless of how many
+    // Lazy wrappers GetOrAdd ends up creating and discarding.
+    private readonly ConcurrentDictionary<string, Lazy<Task<MergeCommitTooltipViewModel?>>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _branchTips = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _hiddenBranchNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _soloBranchNames = new(StringComparer.OrdinalIgnoreCase);
     private List<CommitInfo> _allCommits = [];
@@ -1024,9 +1039,14 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
 
     public bool TryGetMergeTooltip(string sha, out MergeCommitTooltipViewModel? tooltip)
     {
-        if (_mergeTooltipTasks.TryGetValue(sha, out var task) && task.IsCompletedSuccessfully)
+        // IsValueCreated guards us from triggering the Lazy's factory from a
+        // polling read — it only returns a tooltip once GetMergeTooltipAsync
+        // has actually started the build.
+        if (_mergeTooltipTasks.TryGetValue(sha, out var lazy) &&
+            lazy.IsValueCreated &&
+            lazy.Value.IsCompletedSuccessfully)
         {
-            tooltip = task.Result;
+            tooltip = lazy.Value.Result;
             return tooltip != null;
         }
 
@@ -1041,14 +1061,20 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             return Task.FromResult<MergeCommitTooltipViewModel?>(null);
         }
 
-        if (_mergeTooltipTasks.TryGetValue(commit.Sha, out var existing))
-        {
-            return existing;
-        }
+        // Capture RepositoryPath defensively so the Lazy's factory doesn't
+        // observe a later change to the property.
+        var repoPath = RepositoryPath;
 
-        var task = BuildMergeTooltipAsync(commit, RepositoryPath);
-        _mergeTooltipTasks[commit.Sha] = task;
-        return task;
+        // GetOrAdd + Lazy: under concurrent hovers, GetOrAdd may construct
+        // multiple Lazy wrappers (only one wins the slot). Lazy guarantees
+        // that BuildMergeTooltipAsync itself runs at most once per key —
+        // the losing Lazy wrappers are discarded without their factory
+        // ever running.
+        var lazy = _mergeTooltipTasks.GetOrAdd(
+            commit.Sha,
+            _ => new Lazy<Task<MergeCommitTooltipViewModel?>>(
+                () => BuildMergeTooltipAsync(commit, repoPath)));
+        return lazy.Value;
     }
 
     private async Task<MergeCommitTooltipViewModel?> BuildMergeTooltipAsync(CommitInfo commit, string repoPath)
