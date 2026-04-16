@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -548,7 +549,17 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
                 if (!process.WaitForExit(Math.Max(1, timeoutSeconds) * 1000))
                 {
-                    try { process.Kill(); } catch { }
+                    try
+                    {
+                        process.Kill();
+                    }
+                    catch (Exception killEx) when (killEx is InvalidOperationException
+                                                or System.ComponentModel.Win32Exception
+                                                or NotSupportedException)
+                    {
+                        // Process may have exited between timeout and Kill call.
+                        Log.Info("AiSettings", $"Kill after timeout failed: {killEx.GetType().Name}: {killEx.Message}");
+                    }
                     return (CliCheckResult.Unknown, $"timed out after {Math.Max(1, timeoutSeconds)}s");
                 }
 
@@ -578,9 +589,13 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             {
                 return (CliCheckResult.NotInstalled, "command not found on PATH");
             }
-            catch
+            catch (Exception ex) when (ex is InvalidOperationException
+                                    or System.IO.IOException
+                                    or UnauthorizedAccessException
+                                    or System.Security.SecurityException)
             {
-                return (CliCheckResult.Unknown, "exception");
+                Log.Info("AiSettings", $"CLI probe failed: {ex.GetType().Name}: {ex.Message}");
+                return (CliCheckResult.Unknown, $"exception: {ex.GetType().Name}");
             }
         }
 

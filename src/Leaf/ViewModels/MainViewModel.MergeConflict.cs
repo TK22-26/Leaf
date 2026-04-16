@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Windows;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
@@ -148,7 +149,13 @@ public partial class MainViewModel
                 {
                     await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path);
                 }
-                catch { /* best-effort cleanup */ }
+                catch (Exception clearEx) when (clearEx is IOException or UnauthorizedAccessException)
+                {
+                    // Stored conflict file may already be gone or locked —
+                    // the reset itself already succeeded, so this is
+                    // cosmetic.
+                    Log.Info("Merge", $"Clear stored merge conflicts failed: {clearEx.Message}");
+                }
 
                 StatusMessage = discardChanges
                     ? "Index reset and files restored"

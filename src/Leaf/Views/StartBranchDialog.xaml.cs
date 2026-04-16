@@ -1,3 +1,4 @@
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using Leaf.Models;
@@ -141,8 +142,14 @@ public partial class StartBranchDialog : Window
             SuggestedVersionText.Text = _suggestedVersion.ToString();
             VersionSuggestionPanel.Visibility = Visibility.Visible;
         }
-        catch
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or System.IO.IOException
+                                or UnauthorizedAccessException
+                                or FormatException)
         {
+            // No tags yet, unparseable tag, or repo access issue — suggestion
+            // is a nicety; the user can type a version manually.
+            Log.Info("StartBranch", $"SuggestNextVersion failed: {ex.GetType().Name}: {ex.Message}");
             VersionSuggestionPanel.Visibility = Visibility.Collapsed;
         }
     }
@@ -258,9 +265,15 @@ public partial class StartBranchDialog : Window
                     return;
                 }
             }
-            catch
+            catch (Exception ex) when (ex is InvalidOperationException
+                                    or System.IO.IOException
+                                    or UnauthorizedAccessException
+                                    or ArgumentException)
             {
-                // If validation fails, allow user to proceed (will fail on actual creation)
+                // Pre-flight validation is advisory — if the check itself
+                // fails we let the user proceed and surface any real error
+                // at branch-creation time.
+                Log.Info("StartBranch", $"Pre-validation failed: {ex.GetType().Name}: {ex.Message}");
             }
 
             ValidationErrorBorder.Visibility = Visibility.Collapsed;

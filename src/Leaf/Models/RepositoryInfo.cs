@@ -1,3 +1,4 @@
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text.Json.Serialization;
@@ -145,7 +146,15 @@ public partial class RepositoryInfo : ObservableObject
                     }
                 }
             }
-            catch { /* Ignore read errors */ }
+            catch (Exception ex) when (ex is IOException
+                                    or UnauthorizedAccessException
+                                    or ArgumentException
+                                    or NotSupportedException)
+            {
+                // .git pointer unreadable or malformed — treat as a detached
+                // worktree with no discoverable main repo.
+                Leaf.Services.Log.Info("RepoInfo", $"MainWorktreePath read failed: {ex.GetType().Name}: {ex.Message}");
+            }
             return null;
         }
     }

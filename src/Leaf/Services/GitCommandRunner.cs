@@ -123,9 +123,15 @@ public class GitCommandRunner : IGitCommandRunner
                     outputTask.WaitAsync(drainCts.Token),
                     errorTask.WaitAsync(drainCts.Token));
             }
-            catch
+            catch (Exception drainEx) when (drainEx is OperationCanceledException
+                                         or TimeoutException
+                                         or InvalidOperationException
+                                         or IOException
+                                         or AggregateException)
             {
-                // Ignore drain failures during cancellation
+                // Drain hit the 1s ceiling or streams were torn down — cancellation
+                // is still the outcome the caller needs to see.
+                Log.Info("GitRunner", $"Post-cancel drain failed: {drainEx.GetType().Name}: {drainEx.Message}");
             }
             throw;
         }

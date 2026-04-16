@@ -191,10 +191,10 @@ public class AiCommitMessageService : IAiCommitMessageService
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    try { process.Kill(); } catch { }
+                    KillSafely(process, "cancelled");
                     throw new OperationCanceledException(cancellationToken);
                 }
-                try { process.Kill(); } catch { }
+                KillSafely(process, "timed out");
                 return (false, string.Empty, $"timed out after {timeoutSeconds}s");
             }
 
@@ -242,6 +242,22 @@ public class AiCommitMessageService : IAiCommitMessageService
         catch (Exception ex)
         {
             return (false, string.Empty, ex.Message);
+        }
+    }
+
+    private static void KillSafely(Process process, string reason)
+    {
+        try
+        {
+            process.Kill();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or System.ComponentModel.Win32Exception
+                                or NotSupportedException
+                                or AggregateException)
+        {
+            // Process may have exited between the decision to kill and the call.
+            Log.Info("AiCommit", $"Kill on {reason} failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

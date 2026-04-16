@@ -1,6 +1,8 @@
 using System;
+using System.IO;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Services;
 
 namespace Leaf.ViewModels;
 
@@ -281,8 +283,13 @@ public partial class MainViewModel
         {
             return await _gitFlowService.SuggestNextVersionAsync(SelectedRepository.Path, branchType);
         }
-        catch
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or IOException
+                                or UnauthorizedAccessException)
         {
+            // Version detection is best-effort — returning null lets the
+            // dialog fall back to a blank name field.
+            Log.Info("GitFlow", $"SuggestNextVersion failed: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
