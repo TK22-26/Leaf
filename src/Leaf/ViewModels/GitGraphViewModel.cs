@@ -22,6 +22,13 @@ public partial class GitGraphViewModel : ObservableObject
 
     private readonly IGitService _gitService;
     private readonly GraphBuilder _graphBuilder = new();
+
+    /// <summary>
+    /// Per-repository colour resolver. The view and tooltip views bind to
+    /// this instead of reaching into <see cref="GraphBuilder"/> statically —
+    /// ensures colour state never leaks between repositories.
+    /// </summary>
+    public IBranchColorResolver ColorResolver => _graphBuilder;
     private readonly Dictionary<string, Task<MergeCommitTooltipViewModel?>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _branchTips = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _hiddenBranchNames = new(StringComparer.OrdinalIgnoreCase);
@@ -225,7 +232,7 @@ public partial class GitGraphViewModel : ObservableObject
 
     public void SetGitFlowContext(GitFlowConfig? config, IReadOnlyCollection<string> remoteNames)
     {
-        GraphBuilder.SetGitFlowContext(config, remoteNames);
+        _graphBuilder.SetContext(config, remoteNames);
         // Graph rebuild deferred to LoadRepositoryAsync or ApplyBranchFilters
     }
 
@@ -318,9 +325,12 @@ public partial class GitGraphViewModel : ObservableObject
             var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
             var currentBranch = _currentBranchName;
 
+            // Background builds use a cloned builder (same GitFlow + remote
+            // context, independent MaxLane + colour cache) so mutation on the
+            // worker thread cannot race the UI-thread _graphBuilder.
+            var builder = _graphBuilder.Clone();
             var (graphNodes, graphMaxLane) = await Task.Run(() =>
             {
-                var builder = new GraphBuilder();
                 var builtNodes = builder.BuildGraph(commitsWithStashes, currentBranch);
                 return (builtNodes, builder.MaxLane);
             });
@@ -542,12 +552,13 @@ public partial class GitGraphViewModel : ObservableObject
             var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
             var currentBranch = _currentBranchName;
 
-            // Build graph on background thread with new GraphBuilder instance
-            // (avoids race on instance state like MaxLane)
+            // Build graph on background thread with a cloned GraphBuilder
+            // (avoids race on instance state like MaxLane; inherits current
+            // GitFlow + remote context for consistent colours).
+            var tempBuilder = _graphBuilder.Clone();
             var (nodes, maxLane) = await Task.Run(() =>
             {
                 ct.ThrowIfCancellationRequested();
-                var tempBuilder = new GraphBuilder();
                 var graphNodes = tempBuilder.BuildGraph(commitsWithStashes, currentBranch);
                 return (graphNodes, tempBuilder.MaxLane);
             }, ct);
@@ -971,7 +982,9 @@ public partial class GitGraphViewModel : ObservableObject
             }
         }
 
-        var tooltipGraphBuilder = new GraphBuilder();
+        // Tooltip preview is cosmetic; clone so GitFlow + remote-name context
+        // is honoured without racing the UI-thread builder.
+        var tooltipGraphBuilder = _graphBuilder.Clone();
         var visibleCommits = mergeCommits.Take(10).ToList();
         var nodes = tooltipGraphBuilder.BuildGraph(visibleCommits);
 
@@ -979,6 +992,7 @@ public partial class GitGraphViewModel : ObservableObject
             new ObservableCollection<CommitInfo>(mergeCommits),
             new ObservableCollection<GitTreeNode>(nodes),
             tooltipGraphBuilder.MaxLane,
-            RowHeight);
+            RowHeight,
+            ColorResolver);
     }
 }

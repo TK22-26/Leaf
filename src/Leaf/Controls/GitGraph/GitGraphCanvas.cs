@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using Leaf.Controls.GitGraph.Services;
+using Leaf.Graph;
 using Leaf.Models;
 
 namespace Leaf.Controls.GitGraph;
@@ -119,6 +120,13 @@ public partial class GitGraphCanvas : FrameworkElement
         DependencyProperty.Register(
             nameof(CurrentBranchName),
             typeof(string),
+            typeof(GitGraphCanvas),
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty ColorResolverProperty =
+        DependencyProperty.Register(
+            nameof(ColorResolver),
+            typeof(IBranchColorResolver),
             typeof(GitGraphCanvas),
             new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
@@ -256,6 +264,27 @@ public partial class GitGraphCanvas : FrameworkElement
     {
         get => (string?)GetValue(CurrentBranchNameProperty);
         set => SetValue(CurrentBranchNameProperty, value);
+    }
+
+    /// <summary>
+    /// Per-repository resolver for branch / tag label colours. Null when the
+    /// canvas is wired up before a repository is selected (or in design-time);
+    /// rendering falls back to a neutral grey so nothing crashes in that case.
+    /// </summary>
+    public IBranchColorResolver? ColorResolver
+    {
+        get => (IBranchColorResolver?)GetValue(ColorResolverProperty);
+        set => SetValue(ColorResolverProperty, value);
+    }
+
+    /// <summary>
+    /// Resolves a branch colour via the active <see cref="ColorResolver"/>,
+    /// falling back to gray when no resolver is set yet. Used by all render
+    /// paths (main rendering, labels, tooltips, expanded rows).
+    /// </summary>
+    internal Brush ResolveBranchColor(string branchName)
+    {
+        return ColorResolver?.GetBranchColor(branchName) ?? Brushes.Gray;
     }
 
 

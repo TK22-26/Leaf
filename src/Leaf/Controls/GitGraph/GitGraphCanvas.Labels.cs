@@ -30,7 +30,7 @@ public partial class GitGraphCanvas
         foreach (var label in node.BranchLabels)
         {
             // Each branch gets a unique color generated from its name
-            Brush bgBrush = GraphBuilder.GetBranchColor(label.Name);
+            Brush bgBrush = ResolveBranchColor(label.Name);
 
             // Current branch gets enlarged styling
             double fontSize = label.IsCurrent ? 13 : 11;
@@ -268,7 +268,7 @@ public partial class GitGraphCanvas
 
         foreach (var tagName in node.TagNames)
         {
-            var baseBrush = GraphBuilder.GetBranchColor(tagName) as SolidColorBrush ?? Brushes.Gray;
+            var baseBrush = ResolveBranchColor(tagName) as SolidColorBrush ?? Brushes.Gray;
             var baseColor = baseBrush.Color;
             var ghostBrush = new SolidColorBrush(Color.FromArgb(
                 (byte)(baseColor.A * GhostTagOpacity),
@@ -388,7 +388,7 @@ public partial class GitGraphCanvas
         double nodeX = GetXForColumn(node.ColumnIndex);
         double labelX = 4;
 
-        Brush baseBrush = GraphBuilder.GetBranchColor(labelText);
+        Brush baseBrush = ResolveBranchColor(labelText);
         Color baseColor = ((SolidColorBrush)baseBrush).Color;
         var ghostBrush = new SolidColorBrush(Color.FromArgb(
             (byte)(baseColor.A * GhostTagOpacity),

@@ -96,7 +96,7 @@ public partial class GitGraphCanvas
 
         foreach (var branch in branches)
         {
-            var branchBrush = GraphBuilder.GetBranchColor(branch.Name);
+            var branchBrush = ResolveBranchColor(branch.Name);
 
             // Create a row: colored circle + name (left) + icons (right)
             var row = new Grid

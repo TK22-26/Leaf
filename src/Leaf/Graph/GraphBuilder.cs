@@ -7,55 +7,84 @@ namespace Leaf.Graph;
 /// Builds the visual graph structure from commits.
 /// Uses a simpler lane allocation that processes from oldest to newest.
 /// </summary>
-public class GraphBuilder
+/// <remarks>
+/// Instance-based so each repository gets its own lane / colour / GitFlow
+/// context. Concurrent builds against different repositories (or across repo
+/// switches) used to race on static fields — see plan §1.2. Constructing a
+/// fresh builder per operation, or cloning an existing one for a short-lived
+/// background build, is now explicit.
+/// </remarks>
+public class GraphBuilder : IBranchColorResolver
 {
-    // Cache for generated branch colors (consistent across the session)
-    private static readonly Dictionary<string, Brush> BranchColorCache = new();
-    private static GitFlowConfig? _gitFlowConfig;
-    private static HashSet<string>? _remoteNames;
+    // Instance colour cache — re-computation is cheap but frozen brushes are
+    // worth reusing across a render pass.
+    private readonly Dictionary<string, Brush> _colorCache = new();
+
+    private GitFlowConfig? _gitFlowConfig;
+    private HashSet<string>? _remoteNames;
 
     // Fallback colors for lanes without a known branch name
-    private static readonly Brush[] FallbackBrushes =
-    [
-        new SolidColorBrush(Color.FromRgb(0x60, 0x60, 0x60)), // Gray 1
-        new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80)), // Gray 2
-        new SolidColorBrush(Color.FromRgb(0x70, 0x70, 0x70)), // Gray 3
-        new SolidColorBrush(Color.FromRgb(0x90, 0x90, 0x90)), // Gray 4
-    ];
+    private static readonly Brush[] FallbackBrushes;
 
     static GraphBuilder()
     {
+        FallbackBrushes =
+        [
+            new SolidColorBrush(Color.FromRgb(0x60, 0x60, 0x60)), // Gray 1
+            new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80)), // Gray 2
+            new SolidColorBrush(Color.FromRgb(0x70, 0x70, 0x70)), // Gray 3
+            new SolidColorBrush(Color.FromRgb(0x90, 0x90, 0x90)), // Gray 4
+        ];
         foreach (var brush in FallbackBrushes)
             brush.Freeze();
+    }
+
+    public GraphBuilder() { }
+
+    public GraphBuilder(GitFlowConfig? gitFlowConfig, IEnumerable<string>? remoteNames)
+    {
+        SetContext(gitFlowConfig, remoteNames);
     }
 
     public int MaxLane { get; private set; }
 
     #region Color Generation (same algorithm as GitGraphCanvas for consistency)
 
-    public static void SetGitFlowContext(GitFlowConfig? config, IEnumerable<string>? remoteNames)
+    /// <summary>
+    /// Applies new GitFlow + remote-name context. Any previously cached colours
+    /// are discarded because GitFlow resolution can change which branches map
+    /// to the reserved feature/release/hotfix palette.
+    /// </summary>
+    public void SetContext(GitFlowConfig? config, IEnumerable<string>? remoteNames)
     {
         _gitFlowConfig = config?.IsInitialized == true ? config : null;
         _remoteNames = remoteNames != null
             ? new HashSet<string>(remoteNames, StringComparer.OrdinalIgnoreCase)
             : null;
-        ClearColorCache();
+        _colorCache.Clear();
     }
 
-    public static void ClearColorCache()
+    /// <summary>
+    /// Creates an independent builder that shares GitFlow + remote-name
+    /// context with this one but has a fresh colour cache and lane state.
+    /// Used for short-lived background builds (lazy-load batches, tooltip
+    /// previews) so mutation of <see cref="MaxLane"/> on a temp instance
+    /// cannot race with the main UI-thread builder.
+    /// </summary>
+    public GraphBuilder Clone()
     {
-        BranchColorCache.Clear();
+        return new GraphBuilder(_gitFlowConfig, _remoteNames);
     }
 
     /// <summary>
     /// Generates a consistent color from a branch name using HSL color space.
-    /// Same name always produces same color across instances.
+    /// Same name always produces same color within a builder's context.
     /// </summary>
-    public static Brush GetBranchColor(string branchName)
+    public Brush GetBranchColor(string branchName)
     {
         var normalizedName = NormalizeBranchName(branchName);
 
-        if (BranchColorCache.TryGetValue(normalizedName, out var cached))
+        if (_colorCache.TryGetValue(normalizedName, out var cached))
             return cached;
 
         // Special case for HEAD label - use Leaf accent color with transparency
@@ -64,7 +93,7 @@ public class GraphBuilder
             // Leaf accent green (#28A745) with 55% opacity (same as LeafAccentSelectedBrush)
             var headBrush = new SolidColorBrush(Color.FromArgb(0x88, 0x28, 0xA7, 0x45));
             headBrush.Freeze();
-            BranchColorCache[normalizedName] = headBrush;
+            _colorCache[normalizedName] = headBrush;
             return headBrush;
         }
 
@@ -73,7 +102,7 @@ public class GraphBuilder
             var gitFlowBrush = BranchInfo.GetGitFlowColorForName(normalizedName, _gitFlowConfig);
             if (gitFlowBrush != Brushes.Transparent)
             {
-                BranchColorCache[normalizedName] = gitFlowBrush;
+                _colorCache[normalizedName] = gitFlowBrush;
                 return gitFlowBrush;
             }
         }
@@ -93,11 +122,11 @@ public class GraphBuilder
         var brush = new SolidColorBrush(color);
         brush.Freeze();
 
-        BranchColorCache[normalizedName] = brush;
+        _colorCache[normalizedName] = brush;
         return brush;
     }
 
-    private static string NormalizeBranchName(string branchName)
+    private string NormalizeBranchName(string branchName)
     {
         if (_remoteNames == null || string.IsNullOrEmpty(branchName))
             return branchName;

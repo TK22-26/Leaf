@@ -28,6 +28,7 @@
                                  Nodes="{Binding Nodes}"
                                  MaxLane="{Binding MaxLane}"
                                  RowHeight="{Binding RowHeight}"
+                                 ColorResolver="{Binding ColorResolver}"
                                  Height="{Binding GraphHeight}"
                                  MinWidth="60"
                                  LabelAreaWidth="0"
