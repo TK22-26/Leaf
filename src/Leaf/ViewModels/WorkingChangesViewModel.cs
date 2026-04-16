@@ -798,8 +798,17 @@ exit /b %errorlevel%
             {
                 await process.WaitForExitAsync();
 
-                // Clean up batch file
-                try { File.Delete(batchFile); } catch { }
+                // Clean up batch file — best-effort, if it sticks around
+                // it's in %TEMP% and the OS will reclaim it. Trace-log per
+                // plan §2.2 so recurring failures are diagnosable.
+                try
+                {
+                    File.Delete(batchFile);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Log.Info("WorkingChanges", $"Temp batch file delete skipped for {batchFile}: {ex.Message}");
+                }
 
                 if (process.ExitCode == 0)
                 {

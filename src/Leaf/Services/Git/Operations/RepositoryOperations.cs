@@ -87,7 +87,13 @@ internal class RepositoryOperations
                         var msg = File.ReadAllText(mergeMsgPath);
                         mergingBranch = _context.OutputParser.ParseMergingBranch(msg);
                     }
-                    catch { /* ignore */ }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // MERGE_MSG may be locked or removed by a concurrent git
+                        // operation — we fall back to the generic "merge" label.
+                        // Narrowed + logged per plan §2.2.
+                        Log.Info("Repository", $"Skipped MERGE_MSG read at {mergeMsgPath}: {ex.Message}");
+                    }
                 }
             }
             else if (Directory.Exists(Path.Combine(gitDir, "rebase-merge"))
@@ -229,7 +235,13 @@ internal class RepositoryOperations
                         var msg = File.ReadAllText(mergeMsgPath);
                         mergingBranch = _context.OutputParser.ParseMergingBranch(msg);
                     }
-                    catch { /* ignore */ }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // MERGE_MSG may be locked or removed by a concurrent git
+                        // operation — we fall back to the generic "merge" label.
+                        // Narrowed + logged per plan §2.2.
+                        Log.Info("Repository", $"Skipped MERGE_MSG read at {mergeMsgPath}: {ex.Message}");
+                    }
                 }
             }
             else if (Directory.Exists(Path.Combine(gitDir, "rebase-merge"))

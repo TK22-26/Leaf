@@ -698,7 +698,15 @@ public partial class GitFlowService : IGitFlowService
                         if (version != null) return version;
                     }
                 }
-                catch { /* Ignore parsing errors */ }
+                catch (Exception ex) when (ex is System.IO.IOException
+                                        or System.Text.Json.JsonException
+                                        or UnauthorizedAccessException)
+                {
+                    // Bad JSON, unreadable file, or locked by another process —
+                    // version detection is best-effort, fall through to the
+                    // next source. Narrowed + logged per plan §2.2.
+                    Log.Info("GitFlow", $"Skipped package.json at {packageJsonPath}: {ex.Message}");
+                }
             }
 
             // Try .csproj files
@@ -715,7 +723,10 @@ public partial class GitFlowService : IGitFlowService
                         if (version != null) return version;
                     }
                 }
-                catch { /* Ignore parsing errors */ }
+                catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+                {
+                    Log.Info("GitFlow", $"Skipped {csprojFile}: {ex.Message}");
+                }
             }
 
             // Try VERSION file

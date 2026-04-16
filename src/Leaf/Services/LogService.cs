@@ -126,9 +126,13 @@ public static class Log
             while (Queue.TryDequeue(out var line))
                 writer.WriteLine(line);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Don't crash the app over logging
+            // Don't crash the app over logging — but leave a breadcrumb in
+            // the debugger so silent log-flush failures are diagnosable.
+            // Using Debug.WriteLine (rather than recursing through Log.*)
+            // avoids a log→flush→fail→log loop.
+            Debug.WriteLine($"[LogService] Flush failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -143,7 +147,12 @@ public static class Log
                 File.WriteAllText(LogPath, "");
             }
         }
-        catch { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Rotation is best-effort — if it fails, the log will just keep
+            // growing past MaxLogSize. Report via Debug for diagnostics.
+            Debug.WriteLine($"[LogService] Rotate failed: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     /// <summary>
