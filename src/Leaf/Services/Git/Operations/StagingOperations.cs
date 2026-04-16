@@ -37,11 +37,21 @@ internal class StagingOperations : IStagingOperations
     public async Task<WorkingChangesInfo> GetWorkingChangesAsync(string repoPath)
     {
         var libgitTask = Task.Run(() => GetWorkingChangesViaLibGit2(repoPath));
-        var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
+
+        // The timeout CTS is cancelled as soon as we're done with it so the
+        // underlying timer is released promptly even when libgit wins the
+        // race — otherwise each abandoned Task.Delay holds a timer slot
+        // until its 5 s elapse, which accumulates under high call frequency.
+        using var timeoutCts = new CancellationTokenSource();
+        var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5), timeoutCts.Token);
 
         var completed = await Task.WhenAny(libgitTask, timeoutTask).ConfigureAwait(false);
         if (completed == libgitTask)
         {
+            // Cancel the timer first so the `using` disposal doesn't have to
+            // wait on a slow TimerQueue unregister.
+            timeoutCts.Cancel();
+
             // Await instead of .Result so a LibGit2 exception propagates as
             // itself rather than wrapped in AggregateException.
             return await libgitTask.ConfigureAwait(false);
