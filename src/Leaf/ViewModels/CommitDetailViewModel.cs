@@ -151,6 +151,15 @@ public partial class CommitDetailViewModel : ObservableObject
     /// </summary>
     public event EventHandler? SelectWorkingChangesRequested;
 
+    /// <summary>
+    /// Returns the current repository's cancellation token. Set by
+    /// MainViewModel so this VM's background git calls abort when the
+    /// session is disposed on repo switch.
+    /// </summary>
+    public Func<CancellationToken>? GetSessionToken { get; set; }
+
+    private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
+
     public CommitDetailViewModel(
         IGitService gitService,
         IClipboardService clipboardService,
@@ -197,11 +206,11 @@ public partial class CommitDetailViewModel : ObservableObject
             SelectedFile = null;
 
             // Load commit info
-            Commit = await _gitService.GetCommitAsync(repoPath, sha);
+            Commit = await _gitService.GetCommitAsync(repoPath, sha, cancellationToken: SessionToken);
 
             // Load file changes
             ShowAllFiles = false;
-            var changes = await _gitService.GetCommitChangesAsync(repoPath, sha);
+            var changes = await _gitService.GetCommitChangesAsync(repoPath, sha, cancellationToken: SessionToken);
             _changedFiles = changes;
             foreach (var change in changes)
             {
@@ -257,7 +266,7 @@ public partial class CommitDetailViewModel : ObservableObject
             };
 
             // Load file changes from the stash commit
-            var changes = await _gitService.GetCommitChangesAsync(repoPath, stash.Sha);
+            var changes = await _gitService.GetCommitChangesAsync(repoPath, stash.Sha, cancellationToken: SessionToken);
             foreach (var change in changes)
             {
                 FileChanges.Add(change);
@@ -320,7 +329,7 @@ public partial class CommitDetailViewModel : ObservableObject
         try
         {
             IsLoading = true;
-            var allFiles = await _gitService.GetCommitAllFilesAsync(RepositoryPath, Commit.Sha);
+            var allFiles = await _gitService.GetCommitAllFilesAsync(RepositoryPath, Commit.Sha, cancellationToken: SessionToken);
             FileChanges.Clear();
             foreach (var file in allFiles)
                 FileChanges.Add(file);
@@ -354,7 +363,7 @@ public partial class CommitDetailViewModel : ObservableObject
                 return;
 
             var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
-                RepositoryPath, Commit.Sha, file.Path);
+                RepositoryPath, Commit.Sha, file.Path, cancellationToken: SessionToken);
 
             OldContent = oldContent;
             NewContent = newContent;

@@ -19,7 +19,7 @@ internal class TagOperations
     /// <summary>
     /// Get all tags in the repository.
     /// </summary>
-    public Task<List<TagInfo>> GetTagsAsync(string repoPath)
+    public Task<List<TagInfo>> GetTagsAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -47,13 +47,13 @@ internal class TagOperations
             }
 
             return tags.OrderByDescending(t => t.TaggedAt ?? DateTimeOffset.MinValue).ToList();
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Create a new tag.
     /// </summary>
-    public Task CreateTagAsync(string repoPath, string tagName, string? message = null, string? targetSha = null)
+    public Task CreateTagAsync(string repoPath, string tagName, string? message = null, string? targetSha = null, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -84,13 +84,13 @@ internal class TagOperations
                 // Create lightweight tag
                 repo.ApplyTag(tagName, target.Sha);
             }
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Delete a local tag.
     /// </summary>
-    public Task DeleteTagAsync(string repoPath, string tagName)
+    public Task DeleteTagAsync(string repoPath, string tagName, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -102,7 +102,7 @@ internal class TagOperations
             }
 
             repo.Tags.Remove(tag);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -110,13 +110,13 @@ internal class TagOperations
     /// </summary>
     /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     public async Task PushTagAsync(string repoPath, string tagName, string remoteName = "origin",
-        string? credentialKey = null)
+        string? credentialKey = null, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
             ["push", remoteName, $"refs/tags/{tagName}"],
             input: null,
-            credentialKey: credentialKey);
+            credentialKey: credentialKey, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -131,13 +131,13 @@ internal class TagOperations
     /// </summary>
     /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     public async Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin",
-        string? credentialKey = null)
+        string? credentialKey = null, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
             ["push", remoteName, "--delete", $"refs/tags/{tagName}"],
             input: null,
-            credentialKey: credentialKey);
+            credentialKey: credentialKey, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {

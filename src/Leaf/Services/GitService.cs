@@ -58,375 +58,375 @@ public class GitService : IGitService
 
     #region Repository Operations
 
-    public Task<bool> IsValidRepositoryAsync(string path)
-        => _repositoryOps.IsValidRepositoryAsync(path);
+    public Task<bool> IsValidRepositoryAsync(string path, CancellationToken cancellationToken = default)
+        => _repositoryOps.IsValidRepositoryAsync(path, cancellationToken);
 
-    public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath)
+    public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath, CancellationToken cancellationToken = default)
 #pragma warning disable CS0618 // Obsolete — kept for callers that need LibGit2Sharp fallback
-        => _repositoryOps.GetRepositoryInfoAsync(repoPath);
+        => _repositoryOps.GetRepositoryInfoAsync(repoPath, cancellationToken);
 #pragma warning restore CS0618
 
-    public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath)
-        => _repositoryOps.GetRepositoryInfoFastAsync(repoPath);
+    public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _repositoryOps.GetRepositoryInfoFastAsync(repoPath, cancellationToken);
 
     #endregion
 
     #region Commit History Operations
 
-    public Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0)
-        => _commitHistoryOps.GetCommitHistoryAsync(repoPath, count, branchName, skip);
+    public Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetCommitHistoryAsync(repoPath, count, branchName, skip, cancellationToken);
 
-    public Task<CommitInfo?> GetCommitAsync(string repoPath, string sha)
-        => _commitHistoryOps.GetCommitAsync(repoPath, sha);
+    public Task<CommitInfo?> GetCommitAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetCommitAsync(repoPath, sha, cancellationToken);
 
-    public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha)
-        => _commitHistoryOps.GetCommitChangesAsync(repoPath, sha);
+    public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetCommitChangesAsync(repoPath, sha, cancellationToken);
 
-    public Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha)
-        => _commitHistoryOps.GetCommitAllFilesAsync(repoPath, sha);
+    public Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetCommitAllFilesAsync(repoPath, sha, cancellationToken);
 
-    public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha)
-        => _commitHistoryOps.GetMergeCommitsAsync(repoPath, mergeSha);
+    public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetMergeCommitsAsync(repoPath, mergeSha, cancellationToken);
 
-    public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null)
-        => _commitHistoryOps.GetCommitsBetweenAsync(repoPath, fromRef, toRef);
+    public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetCommitsBetweenAsync(repoPath, fromRef, toRef, cancellationToken);
 
-    public Task<List<CommitInfo>> SearchCommitsAsync(string repoPath, string searchText, int maxResults = 100)
-        => _commitHistoryOps.SearchCommitsAsync(repoPath, searchText, maxResults);
+    public Task<List<CommitInfo>> SearchCommitsAsync(string repoPath, string searchText, int maxResults = 100, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.SearchCommitsAsync(repoPath, searchText, maxResults, cancellationToken);
 
-    public Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath)
-        => _commitHistoryOps.GetFileBlameAsync(repoPath, filePath);
+    public Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetFileBlameAsync(repoPath, filePath, cancellationToken);
 
-    public Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200)
-        => _commitHistoryOps.GetFileHistoryAsync(repoPath, filePath, maxCount);
+    public Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetFileHistoryAsync(repoPath, filePath, maxCount, cancellationToken);
 
     #endregion
 
     #region Commit Operations
 
-    public Task CommitAsync(string repoPath, string message, string? description = null)
-        => _commitOps.CommitAsync(repoPath, message, description);
+    public Task CommitAsync(string repoPath, string message, string? description = null, CancellationToken cancellationToken = default)
+        => _commitOps.CommitAsync(repoPath, message, description, cancellationToken);
 
-    public Task RevertCommitAsync(string repoPath, string commitSha)
-        => _commitOps.RevertCommitAsync(repoPath, commitSha);
+    public Task RevertCommitAsync(string repoPath, string commitSha, CancellationToken cancellationToken = default)
+        => _commitOps.RevertCommitAsync(repoPath, commitSha, cancellationToken);
 
-    public Task RevertMergeCommitAsync(string repoPath, string commitSha, int parentIndex)
-        => _commitOps.RevertMergeCommitAsync(repoPath, commitSha, parentIndex);
+    public Task RevertMergeCommitAsync(string repoPath, string commitSha, int parentIndex, CancellationToken cancellationToken = default)
+        => _commitOps.RevertMergeCommitAsync(repoPath, commitSha, parentIndex, cancellationToken);
 
-    public Task<bool> UndoCommitAsync(string repoPath)
-        => _commitOps.UndoCommitAsync(repoPath);
+    public Task<bool> UndoCommitAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _commitOps.UndoCommitAsync(repoPath, cancellationToken);
 
-    public Task<bool> RedoCommitAsync(string repoPath)
-        => _commitOps.RedoCommitAsync(repoPath);
+    public Task<bool> RedoCommitAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _commitOps.RedoCommitAsync(repoPath, cancellationToken);
 
-    public Task<bool> IsHeadPushedAsync(string repoPath)
-        => _commitOps.IsHeadPushedAsync(repoPath);
+    public Task<bool> IsHeadPushedAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _commitOps.IsHeadPushedAsync(repoPath, cancellationToken);
 
     #endregion
 
     #region Diff Operations
 
-    public Task<(string oldContent, string newContent)> GetFileDiffAsync(string repoPath, string sha, string filePath)
-        => _diffOps.GetFileDiffAsync(repoPath, sha, filePath);
+    public Task<(string oldContent, string newContent)> GetFileDiffAsync(string repoPath, string sha, string filePath, CancellationToken cancellationToken = default)
+        => _diffOps.GetFileDiffAsync(repoPath, sha, filePath, cancellationToken);
 
-    public Task<(string oldContent, string newContent)> GetUnstagedFileDiffAsync(string repoPath, string filePath)
-        => _diffOps.GetUnstagedFileDiffAsync(repoPath, filePath);
+    public Task<(string oldContent, string newContent)> GetUnstagedFileDiffAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        => _diffOps.GetUnstagedFileDiffAsync(repoPath, filePath, cancellationToken);
 
-    public Task<(string oldContent, string newContent)> GetStagedFileDiffAsync(string repoPath, string filePath)
-        => _diffOps.GetStagedFileDiffAsync(repoPath, filePath);
+    public Task<(string oldContent, string newContent)> GetStagedFileDiffAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        => _diffOps.GetStagedFileDiffAsync(repoPath, filePath, cancellationToken);
 
-    public Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha)
-        => _diffOps.GetCommitToWorkingTreeDiffAsync(repoPath, commitSha);
+    public Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha, CancellationToken cancellationToken = default)
+        => _diffOps.GetCommitToWorkingTreeDiffAsync(repoPath, commitSha, cancellationToken);
 
-    public Task<string> GetRefToRefDiffAsync(string repoPath, string baseRef, string headRef, string? filePath = null)
-        => _diffOps.GetRefToRefDiffAsync(repoPath, baseRef, headRef, filePath);
+    public Task<string> GetRefToRefDiffAsync(string repoPath, string baseRef, string headRef, string? filePath = null, CancellationToken cancellationToken = default)
+        => _diffOps.GetRefToRefDiffAsync(repoPath, baseRef, headRef, filePath, cancellationToken);
 
     #endregion
 
     #region Branch Operations
 
-    public Task<List<BranchInfo>> GetBranchesAsync(string repoPath)
-        => _branchOps.GetBranchesAsync(repoPath);
+    public Task<List<BranchInfo>> GetBranchesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _branchOps.GetBranchesAsync(repoPath, cancellationToken);
 
-    public Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false)
-        => _branchOps.CheckoutAsync(repoPath, branchName, allowConflicts);
+    public Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false, CancellationToken cancellationToken = default)
+        => _branchOps.CheckoutAsync(repoPath, branchName, allowConflicts, cancellationToken);
 
-    public Task CheckoutCommitAsync(string repoPath, string commitSha)
-        => _branchOps.CheckoutCommitAsync(repoPath, commitSha);
+    public Task CheckoutCommitAsync(string repoPath, string commitSha, CancellationToken cancellationToken = default)
+        => _branchOps.CheckoutCommitAsync(repoPath, commitSha, cancellationToken);
 
-    public Task CreateBranchAsync(string repoPath, string branchName, bool checkout = true)
-        => _branchOps.CreateBranchAsync(repoPath, branchName, checkout);
+    public Task CreateBranchAsync(string repoPath, string branchName, bool checkout = true, CancellationToken cancellationToken = default)
+        => _branchOps.CreateBranchAsync(repoPath, branchName, checkout, cancellationToken);
 
-    public Task CreateBranchAtCommitAsync(string repoPath, string branchName, string commitSha, bool checkout = true)
-        => _branchOps.CreateBranchAtCommitAsync(repoPath, branchName, commitSha, checkout);
+    public Task CreateBranchAtCommitAsync(string repoPath, string branchName, string commitSha, bool checkout = true, CancellationToken cancellationToken = default)
+        => _branchOps.CreateBranchAtCommitAsync(repoPath, branchName, commitSha, checkout, cancellationToken);
 
-    public Task DeleteBranchAsync(string repoPath, string branchName, bool force = false)
-        => _branchOps.DeleteBranchAsync(repoPath, branchName, force);
+    public Task DeleteBranchAsync(string repoPath, string branchName, bool force = false, CancellationToken cancellationToken = default)
+        => _branchOps.DeleteBranchAsync(repoPath, branchName, force, cancellationToken);
 
-    public Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName, string? credentialKey = null)
-        => _branchOps.DeleteRemoteBranchAsync(repoPath, remoteName, branchName, credentialKey);
+    public Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName, string? credentialKey = null, CancellationToken cancellationToken = default)
+        => _branchOps.DeleteRemoteBranchAsync(repoPath, remoteName, branchName, credentialKey, cancellationToken);
 
-    public Task RenameBranchAsync(string repoPath, string oldName, string newName)
-        => _branchOps.RenameBranchAsync(repoPath, oldName, newName);
+    public Task RenameBranchAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default)
+        => _branchOps.RenameBranchAsync(repoPath, oldName, newName, cancellationToken);
 
-    public Task SetUpstreamAsync(string repoPath, string branchName, string remoteName, string remoteBranchName)
-        => _branchOps.SetUpstreamAsync(repoPath, branchName, remoteName, remoteBranchName);
+    public Task SetUpstreamAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, CancellationToken cancellationToken = default)
+        => _branchOps.SetUpstreamAsync(repoPath, branchName, remoteName, remoteBranchName, cancellationToken);
 
-    public Task ResetCurrentBranchToCommitAsync(string repoPath, string commitSha, GitResetMode mode)
-        => _branchOps.ResetCurrentBranchToCommitAsync(repoPath, commitSha, mode);
+    public Task ResetCurrentBranchToCommitAsync(string repoPath, string commitSha, GitResetMode mode, CancellationToken cancellationToken = default)
+        => _branchOps.ResetCurrentBranchToCommitAsync(repoPath, commitSha, mode, cancellationToken);
 
     #endregion
 
     #region Remote Sync Operations
 
-    public Task<List<RemoteInfo>> GetRemotesAsync(string repoPath)
-        => _remoteSyncOps.GetRemotesAsync(repoPath);
+    public Task<List<RemoteInfo>> GetRemotesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.GetRemotesAsync(repoPath, cancellationToken);
 
-    public Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null)
-        => _remoteSyncOps.AddRemoteAsync(repoPath, remoteName, url, pushUrl);
+    public Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.AddRemoteAsync(repoPath, remoteName, url, pushUrl, cancellationToken);
 
-    public Task RemoveRemoteAsync(string repoPath, string remoteName)
-        => _remoteSyncOps.RemoveRemoteAsync(repoPath, remoteName);
+    public Task RemoveRemoteAsync(string repoPath, string remoteName, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.RemoveRemoteAsync(repoPath, remoteName, cancellationToken);
 
-    public Task RenameRemoteAsync(string repoPath, string oldName, string newName)
-        => _remoteSyncOps.RenameRemoteAsync(repoPath, oldName, newName);
+    public Task RenameRemoteAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.RenameRemoteAsync(repoPath, oldName, newName, cancellationToken);
 
-    public Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false)
-        => _remoteSyncOps.SetRemoteUrlAsync(repoPath, remoteName, url, isPushUrl);
+    public Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.SetRemoteUrlAsync(repoPath, remoteName, url, isPushUrl, cancellationToken);
 
-    public Task<string> CloneAsync(string url, string localPath, string? credentialKey = null, IProgress<string>? progress = null)
-        => _remoteSyncOps.CloneAsync(url, localPath, credentialKey, progress);
+    public Task<string> CloneAsync(string url, string localPath, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.CloneAsync(url, localPath, credentialKey, progress, cancellationToken);
 
-    public Task FetchAsync(string repoPath, string remoteName = "origin", string? credentialKey = null, IProgress<string>? progress = null)
-        => _remoteSyncOps.FetchAsync(repoPath, remoteName, credentialKey, progress);
+    public Task FetchAsync(string repoPath, string remoteName = "origin", string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.FetchAsync(repoPath, remoteName, credentialKey, progress, cancellationToken);
 
-    public Task PullAsync(string repoPath, string? credentialKey = null, IProgress<string>? progress = null)
-        => _remoteSyncOps.PullAsync(repoPath, credentialKey, progress);
+    public Task PullAsync(string repoPath, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.PullAsync(repoPath, credentialKey, progress, cancellationToken);
 
-    public Task PushAsync(string repoPath, string? remoteName = null, string? credentialKey = null, IProgress<string>? progress = null)
-        => _remoteSyncOps.PushAsync(repoPath, remoteName, credentialKey, progress);
+    public Task PushAsync(string repoPath, string? remoteName = null, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.PushAsync(repoPath, remoteName, credentialKey, progress, cancellationToken);
 
-    public Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch)
-        => _remoteSyncOps.PullBranchFastForwardAsync(repoPath, branchName, remoteName, remoteBranchName, isCurrentBranch);
+    public Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.PullBranchFastForwardAsync(repoPath, branchName, remoteName, remoteBranchName, isCurrentBranch, cancellationToken);
 
-    public Task PushBranchAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch)
-        => _remoteSyncOps.PushBranchAsync(repoPath, branchName, remoteName, remoteBranchName, isCurrentBranch);
+    public Task PushBranchAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.PushBranchAsync(repoPath, branchName, remoteName, remoteBranchName, isCurrentBranch, cancellationToken);
 
     #endregion
 
     #region Staging Operations
 
-    public Task<WorkingChangesInfo> GetWorkingChangesAsync(string repoPath)
-        => _stagingOps.GetWorkingChangesAsync(repoPath);
+    public Task<WorkingChangesInfo> GetWorkingChangesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _stagingOps.GetWorkingChangesAsync(repoPath, cancellationToken);
 
-    public Task<string> GetWorkingChangesPatchAsync(string repoPath)
-        => _stagingOps.GetWorkingChangesPatchAsync(repoPath);
+    public Task<string> GetWorkingChangesPatchAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _stagingOps.GetWorkingChangesPatchAsync(repoPath, cancellationToken);
 
-    public Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100, int maxDiffChars = 50000)
-        => _stagingOps.GetStagedSummaryAsync(repoPath, maxFiles, maxDiffChars);
+    public Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100, int maxDiffChars = 50000, CancellationToken cancellationToken = default)
+        => _stagingOps.GetStagedSummaryAsync(repoPath, maxFiles, maxDiffChars, cancellationToken);
 
-    public Task StageFileAsync(string repoPath, string filePath)
-        => _stagingOps.StageFileAsync(repoPath, filePath);
+    public Task StageFileAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        => _stagingOps.StageFileAsync(repoPath, filePath, cancellationToken);
 
-    public Task UnstageFileAsync(string repoPath, string filePath)
-        => _stagingOps.UnstageFileAsync(repoPath, filePath);
+    public Task UnstageFileAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        => _stagingOps.UnstageFileAsync(repoPath, filePath, cancellationToken);
 
-    public Task UntrackFileAsync(string repoPath, string filePath)
-        => _stagingOps.UntrackFileAsync(repoPath, filePath);
+    public Task UntrackFileAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        => _stagingOps.UntrackFileAsync(repoPath, filePath, cancellationToken);
 
-    public Task StageAllAsync(string repoPath)
-        => _stagingOps.StageAllAsync(repoPath);
+    public Task StageAllAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _stagingOps.StageAllAsync(repoPath, cancellationToken);
 
-    public Task UnstageAllAsync(string repoPath)
-        => _stagingOps.UnstageAllAsync(repoPath);
+    public Task UnstageAllAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _stagingOps.UnstageAllAsync(repoPath, cancellationToken);
 
-    public Task DiscardAllChangesAsync(string repoPath)
-        => _stagingOps.DiscardAllChangesAsync(repoPath);
+    public Task DiscardAllChangesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _stagingOps.DiscardAllChangesAsync(repoPath, cancellationToken);
 
-    public Task DiscardFileChangesAsync(string repoPath, string filePath)
-        => _stagingOps.DiscardFileChangesAsync(repoPath, filePath);
+    public Task DiscardFileChangesAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        => _stagingOps.DiscardFileChangesAsync(repoPath, filePath, cancellationToken);
 
     #endregion
 
     #region Conflict Operations
 
-    public Task<List<ConflictInfo>> GetConflictsAsync(string repoPath)
-        => _conflictOps.GetConflictsAsync(repoPath);
+    public Task<List<ConflictInfo>> GetConflictsAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _conflictOps.GetConflictsAsync(repoPath, cancellationToken);
 
-    public Task ResolveConflictWithOursAsync(string repoPath, string filePath)
-        => _conflictOps.ResolveConflictWithOursAsync(repoPath, filePath);
+    public Task ResolveConflictWithOursAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        => _conflictOps.ResolveConflictWithOursAsync(repoPath, filePath, cancellationToken);
 
-    public Task ResolveConflictWithTheirsAsync(string repoPath, string filePath)
-        => _conflictOps.ResolveConflictWithTheirsAsync(repoPath, filePath);
+    public Task ResolveConflictWithTheirsAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        => _conflictOps.ResolveConflictWithTheirsAsync(repoPath, filePath, cancellationToken);
 
-    public Task MarkConflictResolvedAsync(string repoPath, string filePath)
-        => _conflictOps.MarkConflictResolvedAsync(repoPath, filePath);
+    public Task MarkConflictResolvedAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        => _conflictOps.MarkConflictResolvedAsync(repoPath, filePath, cancellationToken);
 
-    public Task ReopenConflictAsync(string repoPath, string filePath, string baseContent, string oursContent, string theirsContent)
-        => _conflictOps.ReopenConflictAsync(repoPath, filePath, baseContent, oursContent, theirsContent);
+    public Task ReopenConflictAsync(string repoPath, string filePath, string baseContent, string oursContent, string theirsContent, CancellationToken cancellationToken = default)
+        => _conflictOps.ReopenConflictAsync(repoPath, filePath, baseContent, oursContent, theirsContent, cancellationToken);
 
-    public Task<List<ConflictInfo>> GetResolvedMergeFilesAsync(string repoPath)
-        => _conflictOps.GetResolvedMergeFilesAsync(repoPath);
+    public Task<List<ConflictInfo>> GetResolvedMergeFilesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _conflictOps.GetResolvedMergeFilesAsync(repoPath, cancellationToken);
 
-    public Task<List<string>> GetStoredMergeConflictFilesAsync(string repoPath)
-        => _conflictOps.GetStoredMergeConflictFilesAsync(repoPath);
+    public Task<List<string>> GetStoredMergeConflictFilesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _conflictOps.GetStoredMergeConflictFilesAsync(repoPath, cancellationToken);
 
-    public Task SaveStoredMergeConflictFilesAsync(string repoPath, IEnumerable<string> files)
-        => _conflictOps.SaveStoredMergeConflictFilesAsync(repoPath, files);
+    public Task SaveStoredMergeConflictFilesAsync(string repoPath, IEnumerable<string> files, CancellationToken cancellationToken = default)
+        => _conflictOps.SaveStoredMergeConflictFilesAsync(repoPath, files, cancellationToken);
 
-    public Task ClearStoredMergeConflictFilesAsync(string repoPath)
-        => _conflictOps.ClearStoredMergeConflictFilesAsync(repoPath);
+    public Task ClearStoredMergeConflictFilesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _conflictOps.ClearStoredMergeConflictFilesAsync(repoPath, cancellationToken);
 
-    public Task OpenConflictInVsCodeAsync(string repoPath, string filePath)
-        => _conflictOps.OpenConflictInVsCodeAsync(repoPath, filePath);
+    public Task OpenConflictInVsCodeAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        => _conflictOps.OpenConflictInVsCodeAsync(repoPath, filePath, cancellationToken);
 
     #endregion
 
     #region Merge Operations
 
-    public Task<MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false)
-        => _mergeOps.MergeBranchAsync(repoPath, branchName, allowUnrelatedHistories);
+    public Task<MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false, CancellationToken cancellationToken = default)
+        => _mergeOps.MergeBranchAsync(repoPath, branchName, allowUnrelatedHistories, cancellationToken);
 
-    public Task<MergeResult> FastForwardAsync(string repoPath, string targetBranchName)
-        => _mergeOps.FastForwardAsync(repoPath, targetBranchName);
+    public Task<MergeResult> FastForwardAsync(string repoPath, string targetBranchName, CancellationToken cancellationToken = default)
+        => _mergeOps.FastForwardAsync(repoPath, targetBranchName, cancellationToken);
 
-    public Task<MergeResult> SquashMergeAsync(string repoPath, string branchName)
-        => _mergeOps.SquashMergeAsync(repoPath, branchName);
+    public Task<MergeResult> SquashMergeAsync(string repoPath, string branchName, CancellationToken cancellationToken = default)
+        => _mergeOps.SquashMergeAsync(repoPath, branchName, cancellationToken);
 
-    public Task CompleteMergeAsync(string repoPath, string commitMessage)
-        => _mergeOps.CompleteMergeAsync(repoPath, commitMessage);
+    public Task CompleteMergeAsync(string repoPath, string commitMessage, CancellationToken cancellationToken = default)
+        => _mergeOps.CompleteMergeAsync(repoPath, commitMessage, cancellationToken);
 
-    public Task AbortMergeAsync(string repoPath)
-        => _mergeOps.AbortMergeAsync(repoPath);
+    public Task AbortMergeAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _mergeOps.AbortMergeAsync(repoPath, cancellationToken);
 
-    public Task AbortCherryPickAsync(string repoPath)
-        => _mergeOps.AbortCherryPickAsync(repoPath);
+    public Task AbortCherryPickAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _mergeOps.AbortCherryPickAsync(repoPath, cancellationToken);
 
-    public Task AbortRevertAsync(string repoPath)
-        => _mergeOps.AbortRevertAsync(repoPath);
+    public Task AbortRevertAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _mergeOps.AbortRevertAsync(repoPath, cancellationToken);
 
-    public Task<bool> IsOrphanedConflictStateAsync(string repoPath)
-        => _mergeOps.IsOrphanedConflictStateAsync(repoPath);
+    public Task<bool> IsOrphanedConflictStateAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _mergeOps.IsOrphanedConflictStateAsync(repoPath, cancellationToken);
 
-    public Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges)
-        => _mergeOps.ResetOrphanedConflictsAsync(repoPath, discardWorkingChanges);
+    public Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges, CancellationToken cancellationToken = default)
+        => _mergeOps.ResetOrphanedConflictsAsync(repoPath, discardWorkingChanges, cancellationToken);
 
-    public Task<MergeResult> CherryPickAsync(string repoPath, string commitSha)
-        => _mergeOps.CherryPickAsync(repoPath, commitSha);
+    public Task<MergeResult> CherryPickAsync(string repoPath, string commitSha, CancellationToken cancellationToken = default)
+        => _mergeOps.CherryPickAsync(repoPath, commitSha, cancellationToken);
 
     #endregion
 
     #region Rebase Operations
 
-    public Task<MergeResult> RebaseAsync(string repoPath, string ontoBranch, IProgress<string>? progress = null)
-        => _rebaseOps.RebaseAsync(repoPath, ontoBranch, progress);
+    public Task<MergeResult> RebaseAsync(string repoPath, string ontoBranch, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        => _rebaseOps.RebaseAsync(repoPath, ontoBranch, progress, cancellationToken);
 
-    public Task AbortRebaseAsync(string repoPath)
-        => _rebaseOps.AbortRebaseAsync(repoPath);
+    public Task AbortRebaseAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _rebaseOps.AbortRebaseAsync(repoPath, cancellationToken);
 
-    public Task<MergeResult> ContinueRebaseAsync(string repoPath)
-        => _rebaseOps.ContinueRebaseAsync(repoPath);
+    public Task<MergeResult> ContinueRebaseAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _rebaseOps.ContinueRebaseAsync(repoPath, cancellationToken);
 
-    public Task<MergeResult> SkipRebaseCommitAsync(string repoPath)
-        => _rebaseOps.SkipRebaseCommitAsync(repoPath);
+    public Task<MergeResult> SkipRebaseCommitAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _rebaseOps.SkipRebaseCommitAsync(repoPath, cancellationToken);
 
-    public Task<bool> IsRebaseInProgressAsync(string repoPath)
-        => _rebaseOps.IsRebaseInProgressAsync(repoPath);
+    public Task<bool> IsRebaseInProgressAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _rebaseOps.IsRebaseInProgressAsync(repoPath, cancellationToken);
 
     #endregion
 
     #region Stash Operations
 
-    public Task StashAsync(string repoPath, string? message = null)
-        => _stashOps.StashAsync(repoPath, message);
+    public Task StashAsync(string repoPath, string? message = null, CancellationToken cancellationToken = default)
+        => _stashOps.StashAsync(repoPath, message, cancellationToken);
 
-    public Task StashStagedAsync(string repoPath, string? message = null)
-        => _stashOps.StashStagedAsync(repoPath, message);
+    public Task StashStagedAsync(string repoPath, string? message = null, CancellationToken cancellationToken = default)
+        => _stashOps.StashStagedAsync(repoPath, message, cancellationToken);
 
-    public Task<MergeResult> PopStashAsync(string repoPath)
-        => _stashOps.PopStashAsync(repoPath);
+    public Task<MergeResult> PopStashAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _stashOps.PopStashAsync(repoPath, cancellationToken);
 
-    public Task<MergeResult> PopStashAsync(string repoPath, int stashIndex)
-        => _stashOps.PopStashAsync(repoPath, stashIndex);
+    public Task<MergeResult> PopStashAsync(string repoPath, int stashIndex, CancellationToken cancellationToken = default)
+        => _stashOps.PopStashAsync(repoPath, stashIndex, cancellationToken);
 
-    public Task<List<StashInfo>> GetStashesAsync(string repoPath)
-        => _stashOps.GetStashesAsync(repoPath);
+    public Task<List<StashInfo>> GetStashesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _stashOps.GetStashesAsync(repoPath, cancellationToken);
 
-    public Task DeleteStashAsync(string repoPath, int stashIndex)
-        => _stashOps.DeleteStashAsync(repoPath, stashIndex);
+    public Task DeleteStashAsync(string repoPath, int stashIndex, CancellationToken cancellationToken = default)
+        => _stashOps.DeleteStashAsync(repoPath, stashIndex, cancellationToken);
 
-    public Task CleanupTempStashAsync(string repoPath)
-        => _stashOps.CleanupTempStashAsync(repoPath);
+    public Task CleanupTempStashAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _stashOps.CleanupTempStashAsync(repoPath, cancellationToken);
 
     #endregion
 
     #region Tag Operations
 
-    public Task<List<TagInfo>> GetTagsAsync(string repoPath)
-        => _tagOps.GetTagsAsync(repoPath);
+    public Task<List<TagInfo>> GetTagsAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _tagOps.GetTagsAsync(repoPath, cancellationToken);
 
-    public Task CreateTagAsync(string repoPath, string tagName, string? message = null, string? targetSha = null)
-        => _tagOps.CreateTagAsync(repoPath, tagName, message, targetSha);
+    public Task CreateTagAsync(string repoPath, string tagName, string? message = null, string? targetSha = null, CancellationToken cancellationToken = default)
+        => _tagOps.CreateTagAsync(repoPath, tagName, message, targetSha, cancellationToken);
 
-    public Task DeleteTagAsync(string repoPath, string tagName)
-        => _tagOps.DeleteTagAsync(repoPath, tagName);
+    public Task DeleteTagAsync(string repoPath, string tagName, CancellationToken cancellationToken = default)
+        => _tagOps.DeleteTagAsync(repoPath, tagName, cancellationToken);
 
-    public Task PushTagAsync(string repoPath, string tagName, string remoteName = "origin", string? credentialKey = null)
-        => _tagOps.PushTagAsync(repoPath, tagName, remoteName, credentialKey);
+    public Task PushTagAsync(string repoPath, string tagName, string remoteName = "origin", string? credentialKey = null, CancellationToken cancellationToken = default)
+        => _tagOps.PushTagAsync(repoPath, tagName, remoteName, credentialKey, cancellationToken);
 
-    public Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin", string? credentialKey = null)
-        => _tagOps.DeleteRemoteTagAsync(repoPath, tagName, remoteName, credentialKey);
+    public Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin", string? credentialKey = null, CancellationToken cancellationToken = default)
+        => _tagOps.DeleteRemoteTagAsync(repoPath, tagName, remoteName, credentialKey, cancellationToken);
 
     #endregion
 
     #region Hunk Operations
 
-    public Task RevertHunkAsync(string repoPath, string patchContent)
-        => _hunkOps.RevertHunkAsync(repoPath, patchContent);
+    public Task RevertHunkAsync(string repoPath, string patchContent, CancellationToken cancellationToken = default)
+        => _hunkOps.RevertHunkAsync(repoPath, patchContent, cancellationToken);
 
-    public Task StageHunkAsync(string repoPath, string patchContent)
-        => _hunkOps.StageHunkAsync(repoPath, patchContent);
+    public Task StageHunkAsync(string repoPath, string patchContent, CancellationToken cancellationToken = default)
+        => _hunkOps.StageHunkAsync(repoPath, patchContent, cancellationToken);
 
-    public Task UnstageHunkAsync(string repoPath, string patchContent)
-        => _hunkOps.UnstageHunkAsync(repoPath, patchContent);
+    public Task UnstageHunkAsync(string repoPath, string patchContent, CancellationToken cancellationToken = default)
+        => _hunkOps.UnstageHunkAsync(repoPath, patchContent, cancellationToken);
 
     #endregion
 
     #region Config Operations
 
-    public Task SetConfigAsync(string repoPath, string key, string value)
-        => _configOps.SetConfigAsync(repoPath, key, value);
+    public Task SetConfigAsync(string repoPath, string key, string value, CancellationToken cancellationToken = default)
+        => _configOps.SetConfigAsync(repoPath, key, value, cancellationToken);
 
-    public Task<string?> GetConfigAsync(string repoPath, string key)
-        => _configOps.GetConfigAsync(repoPath, key);
+    public Task<string?> GetConfigAsync(string repoPath, string key, CancellationToken cancellationToken = default)
+        => _configOps.GetConfigAsync(repoPath, key, cancellationToken);
 
     #endregion
 
     #region Worktree Operations
 
-    public Task<List<WorktreeInfo>> GetWorktreesAsync(string repoPath)
-        => _worktreeOps.GetWorktreesAsync(repoPath);
+    public Task<List<WorktreeInfo>> GetWorktreesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _worktreeOps.GetWorktreesAsync(repoPath, cancellationToken);
 
-    public Task CreateWorktreeAsync(string repoPath, string worktreePath, string branchName)
-        => _worktreeOps.CreateWorktreeAsync(repoPath, worktreePath, branchName);
+    public Task CreateWorktreeAsync(string repoPath, string worktreePath, string branchName, CancellationToken cancellationToken = default)
+        => _worktreeOps.CreateWorktreeAsync(repoPath, worktreePath, branchName, cancellationToken);
 
-    public Task CreateWorktreeWithNewBranchAsync(string repoPath, string worktreePath, string newBranchName, string? startPoint = null)
-        => _worktreeOps.CreateWorktreeWithNewBranchAsync(repoPath, worktreePath, newBranchName, startPoint);
+    public Task CreateWorktreeWithNewBranchAsync(string repoPath, string worktreePath, string newBranchName, string? startPoint = null, CancellationToken cancellationToken = default)
+        => _worktreeOps.CreateWorktreeWithNewBranchAsync(repoPath, worktreePath, newBranchName, startPoint, cancellationToken);
 
-    public Task CreateWorktreeDetachedAsync(string repoPath, string worktreePath, string commitSha)
-        => _worktreeOps.CreateWorktreeDetachedAsync(repoPath, worktreePath, commitSha);
+    public Task CreateWorktreeDetachedAsync(string repoPath, string worktreePath, string commitSha, CancellationToken cancellationToken = default)
+        => _worktreeOps.CreateWorktreeDetachedAsync(repoPath, worktreePath, commitSha, cancellationToken);
 
-    public Task RemoveWorktreeAsync(string repoPath, string worktreePath, bool force = false)
-        => _worktreeOps.RemoveWorktreeAsync(repoPath, worktreePath, force);
+    public Task RemoveWorktreeAsync(string repoPath, string worktreePath, bool force = false, CancellationToken cancellationToken = default)
+        => _worktreeOps.RemoveWorktreeAsync(repoPath, worktreePath, force, cancellationToken);
 
-    public Task LockWorktreeAsync(string repoPath, string worktreePath, string? reason = null)
-        => _worktreeOps.LockWorktreeAsync(repoPath, worktreePath, reason);
+    public Task LockWorktreeAsync(string repoPath, string worktreePath, string? reason = null, CancellationToken cancellationToken = default)
+        => _worktreeOps.LockWorktreeAsync(repoPath, worktreePath, reason, cancellationToken);
 
-    public Task UnlockWorktreeAsync(string repoPath, string worktreePath)
-        => _worktreeOps.UnlockWorktreeAsync(repoPath, worktreePath);
+    public Task UnlockWorktreeAsync(string repoPath, string worktreePath, CancellationToken cancellationToken = default)
+        => _worktreeOps.UnlockWorktreeAsync(repoPath, worktreePath, cancellationToken);
 
-    public Task PruneWorktreesAsync(string repoPath)
-        => _worktreeOps.PruneWorktreesAsync(repoPath);
+    public Task PruneWorktreesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _worktreeOps.PruneWorktreesAsync(repoPath, cancellationToken);
 
     #endregion
 }

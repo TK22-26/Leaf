@@ -21,20 +21,20 @@ internal class StashOperations
     /// <summary>
     /// Stash changes.
     /// </summary>
-    public Task StashAsync(string repoPath, string? message = null)
+    public Task StashAsync(string repoPath, string? message = null, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
             repo.Stashes.Add(signature, message ?? "Stash from Leaf");
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Stash only staged changes (requires Git 2.35+).
     /// </summary>
-    public async Task StashStagedAsync(string repoPath, string? message = null)
+    public async Task StashStagedAsync(string repoPath, string? message = null, CancellationToken cancellationToken = default)
     {
         var args = new List<string> { "stash", "push", "--staged" };
         if (!string.IsNullOrEmpty(message))
@@ -43,13 +43,13 @@ internal class StashOperations
             args.Add(message);
         }
 
-        await _context.CommandRunner.RunAsync(repoPath, args);
+        await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
     }
 
     /// <summary>
     /// Pop stashed changes (index 0).
     /// </summary>
-    public Task<Models.MergeResult> PopStashAsync(string repoPath)
+    public Task<Models.MergeResult> PopStashAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return PopStashAsync(repoPath, 0);
     }
@@ -57,7 +57,7 @@ internal class StashOperations
     /// <summary>
     /// Pop a specific stash by index with smart merge logic.
     /// </summary>
-    public Task<Models.MergeResult> PopStashAsync(string repoPath, int stashIndex)
+    public Task<Models.MergeResult> PopStashAsync(string repoPath, int stashIndex, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -152,13 +152,13 @@ internal class StashOperations
             // Patch failed for unknown reason - fall back to simple pop for error message
             Log.Info("Stash","[PopStash] Patch apply failed - falling back to simple pop for error message");
             return StashMergeHelpers.SimplePopStash(repoPath, stashIndex);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get all stashes in the repository.
     /// </summary>
-    public Task<List<StashInfo>> GetStashesAsync(string repoPath)
+    public Task<List<StashInfo>> GetStashesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -183,17 +183,17 @@ internal class StashOperations
             }
 
             return stashes;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Delete a specific stash by index.
     /// </summary>
-    public async Task DeleteStashAsync(string repoPath, int stashIndex)
+    public async Task DeleteStashAsync(string repoPath, int stashIndex, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["stash", "drop", stashIndex.ToString()]);
+            ["stash", "drop", stashIndex.ToString()], cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -204,7 +204,7 @@ internal class StashOperations
     /// <summary>
     /// Clean up any temporary stash created during smart pop operation.
     /// </summary>
-    public Task CleanupTempStashAsync(string repoPath)
+    public Task CleanupTempStashAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -226,6 +226,6 @@ internal class StashOperations
                     break;
                 }
             }
-        });
+        }, cancellationToken);
     }
 }

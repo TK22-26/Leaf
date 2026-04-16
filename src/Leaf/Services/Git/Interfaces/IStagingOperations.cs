@@ -9,15 +9,15 @@ internal interface IStagingOperations
     /// <summary>
     /// Stage a file for commit.
     /// </summary>
-    Task StageFileAsync(string repoPath, string filePath);
+    Task StageFileAsync(string repoPath, string filePath, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Unstage a file (remove from staging area).
     /// </summary>
-    Task UnstageFileAsync(string repoPath, string filePath);
+    Task UnstageFileAsync(string repoPath, string filePath, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Stage all changes.
     /// </summary>
-    Task StageAllAsync(string repoPath);
+    Task StageAllAsync(string repoPath, CancellationToken cancellationToken = default);
 }

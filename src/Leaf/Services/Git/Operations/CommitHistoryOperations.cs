@@ -21,7 +21,7 @@ internal class CommitHistoryOperations
     /// <summary>
     /// Get commit history for a repository.
     /// </summary>
-    public Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0)
+    public Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -162,13 +162,13 @@ internal class CommitHistoryOperations
             }
 
             return commitList;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get details for a specific commit.
     /// </summary>
-    public Task<CommitInfo?> GetCommitAsync(string repoPath, string sha)
+    public Task<CommitInfo?> GetCommitAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -189,13 +189,13 @@ internal class CommitHistoryOperations
                 ParentShas = commit.Parents.Select(p => p.Sha).ToList(),
                 IsHead = commit.Sha == headSha
             };
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get file changes for a commit.
     /// </summary>
-    public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha)
+    public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -226,13 +226,13 @@ internal class CommitHistoryOperations
             }
 
             return changes;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get commits that were merged in a merge commit.
     /// </summary>
-    public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha)
+    public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -270,13 +270,13 @@ internal class CommitHistoryOperations
                     ParentShas = commit.Parents.Select(p => p.Sha).ToList()
                 })
                 .ToList();
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get commits between two references (for changelog generation).
     /// </summary>
-    public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null)
+    public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -339,13 +339,13 @@ internal class CommitHistoryOperations
             }
 
             return commits;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Search commits by message or SHA.
     /// </summary>
-    public Task<List<CommitInfo>> SearchCommitsAsync(string repoPath, string searchText, int maxResults = 100)
+    public Task<List<CommitInfo>> SearchCommitsAsync(string repoPath, string searchText, int maxResults = 100, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -374,16 +374,16 @@ internal class CommitHistoryOperations
             }
 
             return results;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get blame information for a file.
     /// </summary>
-    public async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath)
+    public async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
-            repoPath, ["blame", "--line-porcelain", "--", filePath]);
+            repoPath, ["blame", "--line-porcelain", "--", filePath], cancellationToken: cancellationToken);
 
         if (!result.Success)
             throw new InvalidOperationException(result.StandardError);
@@ -440,12 +440,12 @@ internal class CommitHistoryOperations
     /// <summary>
     /// Get history for a file.
     /// </summary>
-    public async Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200)
+    public async Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
             ["log", "--follow", "--date=iso", $"--max-count={maxCount}",
-             "--pretty=format:%H%x1f%an%x1f%ad%x1f%s", "--", filePath]);
+             "--pretty=format:%H%x1f%an%x1f%ad%x1f%s", "--", filePath], cancellationToken: cancellationToken);
 
         if (!result.Success)
             throw new InvalidOperationException(result.StandardError);
@@ -478,7 +478,7 @@ internal class CommitHistoryOperations
     /// <summary>
     /// Get all files in the repository at a given commit, with changed files marked with their status.
     /// </summary>
-    public Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha)
+    public Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -524,7 +524,7 @@ internal class CommitHistoryOperations
             }
 
             return allFiles;
-        });
+        }, cancellationToken);
     }
 
     private static IEnumerable<string> EnumerateTreeEntries(TreeEntry entry, Tree root)

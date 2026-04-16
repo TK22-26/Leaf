@@ -55,12 +55,12 @@ public partial class MainViewModel
             {
                 case MergeType.Squash:
                     StatusMessage = $"Squash merging {branch.Name} into {SelectedRepository.CurrentBranch}...";
-                    result = await _gitService.SquashMergeAsync(SelectedRepository.Path, branch.Name);
+                    result = await _gitService.SquashMergeAsync(SelectedRepository.Path, branch.Name, cancellationToken: CurrentRepositoryToken);
                     break;
 
                 case MergeType.FastForwardOnly:
                     StatusMessage = $"Fast-forwarding to {branch.Name}...";
-                    result = await _gitService.FastForwardAsync(SelectedRepository.Path, branch.Name);
+                    result = await _gitService.FastForwardAsync(SelectedRepository.Path, branch.Name, cancellationToken: CurrentRepositoryToken);
                     break;
 
                 default: // MergeType.Normal
@@ -84,7 +84,7 @@ public partial class MainViewModel
 
     private async Task<MergeResult> ExecuteNormalMergeAsync(string branchName)
     {
-        var result = await _gitService.MergeBranchAsync(SelectedRepository!.Path, branchName);
+        var result = await _gitService.MergeBranchAsync(SelectedRepository!.Path, branchName, cancellationToken: CurrentRepositoryToken);
         Log.Info("Merge", $"NormalMerge: Success={result.Success}, Conflicts={result.HasConflicts}, UnrelatedHistories={result.HasUnrelatedHistories}");
 
         // Handle unrelated histories - prompt and retry
@@ -103,7 +103,7 @@ public partial class MainViewModel
 
             // Retry with flag
             StatusMessage = $"Merging {branchName} (allowing unrelated histories)...";
-            result = await _gitService.MergeBranchAsync(SelectedRepository.Path, branchName, allowUnrelatedHistories: true);
+            result = await _gitService.MergeBranchAsync(SelectedRepository.Path, branchName, allowUnrelatedHistories: true, cancellationToken: CurrentRepositoryToken);
             Log.Info("Merge", $"NormalMerge (retry unrelated): Success={result.Success}, Conflicts={result.HasConflicts}");
         }
 
@@ -133,7 +133,7 @@ public partial class MainViewModel
             StatusMessage = "Merge has conflicts - resolve to complete";
 
             // Refresh repo info to update merge banner and conflicts immediately
-            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository!.Path);
+            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository!.Path, cancellationToken: CurrentRepositoryToken);
             SelectedRepository.IsMergeInProgress = info.IsMergeInProgress;
             SelectedRepository.OperationType = info.OperationType;
             SelectedRepository.MergingBranch = info.MergingBranch;
@@ -202,7 +202,7 @@ public partial class MainViewModel
 
         try
         {
-            var result = await _gitService.FastForwardAsync(SelectedRepository.Path, targetName);
+            var result = await _gitService.FastForwardAsync(SelectedRepository.Path, targetName, cancellationToken: CurrentRepositoryToken);
 
             if (result.Success)
             {

@@ -93,6 +93,9 @@ public partial class MainViewModel
         {
             var path = dialog.FolderName;
 
+            // No session token: the path being validated is not the current
+            // repo yet, and cancelling this check on repo switch would drop
+            // the user's add-repo action mid-flight.
             if (!await _gitService.IsValidRepositoryAsync(path))
             {
                 StatusMessage = "Selected folder is not a valid Git repository";
@@ -139,6 +142,8 @@ public partial class MainViewModel
                     if (_repositoryService.ContainsRepository(repoPath))
                         continue;
 
+                    // No session token: scanning other paths is independent
+                    // of the current repo session.
                     if (await _gitService.IsValidRepositoryAsync(repoPath))
                     {
                         var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
@@ -175,6 +180,8 @@ public partial class MainViewModel
                 if (_repositoryService.ContainsRepository(repoPath))
                     return;
 
+                // No session token: validating a discovered repo is
+                // independent of which repo is currently selected.
                 if (await _gitService.IsValidRepositoryAsync(repoPath))
                 {
                     var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
@@ -215,6 +222,8 @@ public partial class MainViewModel
                 if (_repositoryService.ContainsRepository(repoPath))
                     continue;
 
+                // No session token: scan-watched-folders runs on startup
+                // and isn't tied to the current repo.
                 if (await _gitService.IsValidRepositoryAsync(repoPath))
                 {
                     var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
@@ -254,7 +263,9 @@ public partial class MainViewModel
 
         if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.ClonedRepositoryPath))
         {
-            // Add the cloned repo to the list
+            // Add the cloned repo to the list. No session token: the cloned
+            // path isn't the current repo yet, and we're about to SelectRepositoryAsync
+            // it which creates its own session.
             var repoInfo = await _gitService.GetRepositoryInfoFastAsync(dialog.ClonedRepositoryPath);
             _repositoryService.AddRepository(repoInfo);
             await SelectRepositoryAsync(repoInfo);
@@ -294,6 +305,29 @@ public partial class MainViewModel
             var previousRepository = SelectedRepository;
             bool isRepositorySwitch = previousRepository != null &&
                 !string.Equals(previousRepository.Path, repository.Path, StringComparison.OrdinalIgnoreCase);
+
+            // Rotate the repository session: dispose the old one (which
+            // cancels its token and any in-flight git operations that
+            // received it) and create a fresh session scoped to this repo.
+            // Refreshes of the same repo keep the existing session so
+            // callers don't get spuriously cancelled.
+            if (_currentSession == null ||
+                !string.Equals(_currentSession.RepositoryPath, repository.Path, StringComparison.OrdinalIgnoreCase))
+            {
+                _currentSession?.Dispose();
+                try
+                {
+                    _currentSession = _sessionFactory.Create(repository.Path);
+                }
+                catch (ArgumentException ex)
+                {
+                    // Path is no longer a valid git repo — keep the old
+                    // session null and let downstream code surface the error
+                    // through normal channels.
+                    _currentSession = null;
+                    Log.Warn("SelectRepo", $"Session create failed for {repository.Path}: {ex.Message}");
+                }
+            }
             if (isRepositorySwitch && HasActivePullRequestScreen())
             {
                 ResetPullRequestViewState(previousRepository);
@@ -327,7 +361,7 @@ public partial class MainViewModel
               // visible branch/dirty state we need to make the app usable immediately.
               stepSw.Restart();
               var graphTask = GitGraphViewModel?.LoadRepositoryAsync(repository.Path) ?? Task.CompletedTask;
-              var infoTask = _gitService.GetRepositoryInfoFastAsync(repository.Path);
+              var infoTask = _gitService.GetRepositoryInfoFastAsync(repository.Path, cancellationToken: CurrentRepositoryToken);
               var worktreeTask = LoadWorktreesForRepoAsync(repository);
 
               await Task.WhenAll(graphTask, worktreeTask);

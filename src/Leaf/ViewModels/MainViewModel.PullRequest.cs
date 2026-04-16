@@ -178,7 +178,10 @@ public partial class MainViewModel
             DetachCreatePullRequestViewModel(CreatePullRequestViewModel);
         }
 
-        var vm = new CreatePullRequestViewModel(_pullRequestService, _gitService, _notificationService);
+        var vm = new CreatePullRequestViewModel(_pullRequestService, _gitService, _notificationService)
+        {
+            GetSessionToken = () => CurrentRepositoryToken
+        };
         vm.CreateCompleted += OnCreatePullRequestCompleted;
         vm.CreateCancelled += OnCreatePullRequestCancelled;
         vm.PullRequestCreated += OnPullRequestCreated;

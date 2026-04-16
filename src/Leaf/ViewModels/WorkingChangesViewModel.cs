@@ -154,6 +154,15 @@ public partial class WorkingChangesViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Returns the current repository's cancellation token. Set by
+    /// MainViewModel so this VM's background git calls abort when the
+    /// session is disposed on repo switch.
+    /// </summary>
+    public Func<CancellationToken>? GetSessionToken { get; set; }
+
+    private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
+
     public WorkingChangesViewModel(
         IGitService gitService,
         IClipboardService clipboardService,
@@ -244,7 +253,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         {
             IsLoading = true;
             ErrorMessage = null;
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath);
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath, cancellationToken: SessionToken);
             ErrorMessage = $"Loaded: {WorkingChanges?.TotalChanges ?? 0} changes";
         }
         catch (Exception ex)
@@ -367,7 +376,7 @@ public partial class WorkingChangesViewModel : ObservableObject
     /// </summary>
     private async Task RefreshAndNotifyAsync()
     {
-        WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath!);
+        WorkingChanges = await _gitService.GetWorkingChangesAsync(_repositoryPath!, cancellationToken: SessionToken);
         OnPropertyChanged(nameof(HasChanges));
         OnPropertyChanged(nameof(FileChangesSummary));
     }
@@ -383,7 +392,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         try
         {
-            await _gitService.StageFileAsync(_repositoryPath, file.Path);
+            await _gitService.StageFileAsync(_repositoryPath, file.Path, cancellationToken: SessionToken);
             await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
@@ -403,7 +412,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         try
         {
-            await _gitService.UnstageFileAsync(_repositoryPath, file.Path);
+            await _gitService.UnstageFileAsync(_repositoryPath, file.Path, cancellationToken: SessionToken);
             await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
@@ -423,7 +432,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         try
         {
-            await _gitService.StageAllAsync(_repositoryPath);
+            await _gitService.StageAllAsync(_repositoryPath, cancellationToken: SessionToken);
             await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
@@ -443,7 +452,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         try
         {
-            await _gitService.UnstageAllAsync(_repositoryPath);
+            await _gitService.UnstageAllAsync(_repositoryPath, cancellationToken: SessionToken);
             await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
@@ -470,7 +479,7 @@ public partial class WorkingChangesViewModel : ObservableObject
 
         try
         {
-            await _gitService.DiscardFileChangesAsync(_repositoryPath, file.Path);
+            await _gitService.DiscardFileChangesAsync(_repositoryPath, file.Path, cancellationToken: SessionToken);
             await RefreshAndNotifyAsync();
             FileDeletedOrDiscarded?.Invoke(this, new FileDeletedOrDiscardedEventArgs(file.Path));
         }
@@ -552,8 +561,8 @@ public partial class WorkingChangesViewModel : ObservableObject
         try
         {
             // Stage the file first, then stash only staged changes
-            await _gitService.StageFileAsync(_repositoryPath, file.Path);
-            await _gitService.StashStagedAsync(_repositoryPath, $"Stash: {file.FileName}");
+            await _gitService.StageFileAsync(_repositoryPath, file.Path, cancellationToken: SessionToken);
+            await _gitService.StashStagedAsync(_repositoryPath, $"Stash: {file.FileName}", cancellationToken: SessionToken);
             await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
@@ -736,7 +745,7 @@ public partial class WorkingChangesViewModel : ObservableObject
             // otherwise it lingers as a staged entry after disk deletion.
             if (file.IsStaged)
             {
-                await _gitService.UnstageFileAsync(_repositoryPath, file.Path);
+                await _gitService.UnstageFileAsync(_repositoryPath, file.Path, cancellationToken: SessionToken);
             }
 
             await RefreshAndNotifyAsync();
@@ -850,7 +859,7 @@ exit /b %errorlevel%
 
         try
         {
-            await _gitService.DiscardAllChangesAsync(_repositoryPath);
+            await _gitService.DiscardAllChangesAsync(_repositoryPath, cancellationToken: SessionToken);
             await RefreshAndNotifyAsync();
             FileDeletedOrDiscarded?.Invoke(this, new FileDeletedOrDiscardedEventArgs(affectsAllFiles: true));
         }
@@ -877,7 +886,7 @@ exit /b %errorlevel%
                 ? null
                 : CommitDescription.Trim();
 
-            await _gitService.CommitAsync(_repositoryPath, CommitMessage.Trim(), description);
+            await _gitService.CommitAsync(_repositoryPath, CommitMessage.Trim(), description, cancellationToken: SessionToken);
 
             // Clear form after successful commit
             CommitMessage = string.Empty;
@@ -919,7 +928,7 @@ exit /b %errorlevel%
             Log.Info("WorkingChanges", $"AutoFill start: repo={_repositoryPath}");
 
             // Get staged diff summary
-            var summary = await _gitService.GetStagedSummaryAsync(_repositoryPath);
+            var summary = await _gitService.GetStagedSummaryAsync(_repositoryPath, cancellationToken: SessionToken);
             if (summary.Length > MaxSummaryChars)
             {
                 ErrorMessage = $"Staged summary is too large to send ({summary.Length} chars).";
@@ -1002,7 +1011,7 @@ exit /b %errorlevel%
         try
         {
             foreach (var file in folder.GetAllFiles())
-                await _gitService.StageFileAsync(_repositoryPath, file.Path);
+                await _gitService.StageFileAsync(_repositoryPath, file.Path, cancellationToken: SessionToken);
             await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
@@ -1023,7 +1032,7 @@ exit /b %errorlevel%
         try
         {
             foreach (var file in folder.GetAllFiles())
-                await _gitService.UnstageFileAsync(_repositoryPath, file.Path);
+                await _gitService.UnstageFileAsync(_repositoryPath, file.Path, cancellationToken: SessionToken);
             await RefreshAndNotifyAsync();
         }
         catch (Exception ex)
@@ -1052,7 +1061,7 @@ exit /b %errorlevel%
         try
         {
             foreach (var file in files)
-                await _gitService.DiscardFileChangesAsync(_repositoryPath, file.Path);
+                await _gitService.DiscardFileChangesAsync(_repositoryPath, file.Path, cancellationToken: SessionToken);
             await RefreshAndNotifyAsync();
             FileDeletedOrDiscarded?.Invoke(this, new FileDeletedOrDiscardedEventArgs(affectsAllFiles: true));
         }

@@ -22,7 +22,7 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = "Stashing changes...";
 
-            await _gitService.StashAsync(SelectedRepository.Path);
+            await _gitService.StashAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
             StatusMessage = "Changes stashed";
             await RefreshAsync();
@@ -59,7 +59,7 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = "Popping stash...";
 
-            var result = await _gitService.PopStashAsync(SelectedRepository.Path, selectedStash.Index);
+            var result = await _gitService.PopStashAsync(SelectedRepository.Path, selectedStash.Index, cancellationToken: CurrentRepositoryToken);
 
             Log.Info("Stash", $"PopStash: Success={result.Success}, HasConflicts={result.HasConflicts}, Error={result.ErrorMessage}");
 
@@ -76,7 +76,7 @@ public partial class MainViewModel
             {
                 Log.Warn("Stash", "PopStash: conflicts detected, checking for actual conflicts");
                 // Load conflicts first to check if there are actually any
-                var conflicts = await _gitService.GetConflictsAsync(SelectedRepository.Path);
+                var conflicts = await _gitService.GetConflictsAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
                 Log.Info("Stash", $"PopStash: actual conflicts found: {conflicts.Count}");
 
                 if (conflicts.Count == 0)
@@ -98,7 +98,8 @@ public partial class MainViewModel
                     {
                         SourceBranch = stashName,
                         TargetBranch = SelectedRepository.CurrentBranch ?? "HEAD",
-                        IsCompactFileList = _settingsService.LoadSettings().CompactFileList
+                        IsCompactFileList = _settingsService.LoadSettings().CompactFileList,
+                        GetSessionToken = () => CurrentRepositoryToken
                     };
                     await conflictViewModel.LoadConflictsAsync();
 
@@ -114,7 +115,7 @@ public partial class MainViewModel
                         if (success)
                         {
                             // Clean up any leftover temp stash from smart pop
-                            await _gitService.CleanupTempStashAsync(SelectedRepository.Path);
+                            await _gitService.CleanupTempStashAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
                             StatusMessage = "Stash applied successfully";
                         }
                         else
@@ -159,7 +160,7 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = "Deleting stash...";
 
-            await _gitService.DeleteStashAsync(SelectedRepository.Path, selectedStash.Index);
+            await _gitService.DeleteStashAsync(SelectedRepository.Path, selectedStash.Index, cancellationToken: CurrentRepositoryToken);
 
             // Clear stash selection before refresh
             GitGraphViewModel?.SelectStash(null);
@@ -183,6 +184,6 @@ public partial class MainViewModel
     public async Task StashChangesAsync(string message)
     {
         if (SelectedRepository == null) return;
-        await _gitService.StashAsync(SelectedRepository.Path, message);
+        await _gitService.StashAsync(SelectedRepository.Path, message, cancellationToken: CurrentRepositoryToken);
     }
 }

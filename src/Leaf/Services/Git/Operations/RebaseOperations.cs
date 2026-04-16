@@ -17,7 +17,7 @@ internal class RebaseOperations
     /// <summary>
     /// Rebase the current branch onto another branch.
     /// </summary>
-    public Task<Models.MergeResult> RebaseAsync(string repoPath, string ontoBranch, IProgress<string>? progress = null)
+    public Task<Models.MergeResult> RebaseAsync(string repoPath, string ontoBranch, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -47,13 +47,13 @@ internal class RebaseOperations
                 RebaseStatus.Conflicts => new Models.MergeResult { Success = false, HasConflicts = true },
                 _ => new Models.MergeResult { Success = false, ErrorMessage = $"Rebase status: {rebaseResult.Status}" }
             };
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Abort an in-progress rebase operation.
     /// </summary>
-    public Task AbortRebaseAsync(string repoPath)
+    public Task AbortRebaseAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -61,13 +61,13 @@ internal class RebaseOperations
             MergeDebugHelper.LogMergeState("BeforeAbortRebase", repoPath);
             GitCliHelpers.RunGitArgs(repoPath, "rebase", "--abort");
             MergeDebugHelper.LogMergeState("AfterAbortRebase", repoPath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Continue a rebase after resolving conflicts.
     /// </summary>
-    public Task<Models.MergeResult> ContinueRebaseAsync(string repoPath)
+    public Task<Models.MergeResult> ContinueRebaseAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -88,13 +88,13 @@ internal class RebaseOperations
                 RebaseStatus.Conflicts => new Models.MergeResult { Success = false, HasConflicts = true },
                 _ => new Models.MergeResult { Success = false, ErrorMessage = $"Rebase status: {result.Status}" }
             };
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Skip the current commit during a rebase.
     /// </summary>
-    public Task<Models.MergeResult> SkipRebaseCommitAsync(string repoPath)
+    public Task<Models.MergeResult> SkipRebaseCommitAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -105,13 +105,13 @@ internal class RebaseOperations
                 Success = result.ExitCode == 0,
                 ErrorMessage = result.Error
             };
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Check if a rebase is in progress.
     /// </summary>
-    public Task<bool> IsRebaseInProgressAsync(string repoPath)
+    public Task<bool> IsRebaseInProgressAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -120,6 +120,6 @@ internal class RebaseOperations
             var inProgress = Directory.Exists(rebaseApplyPath) || Directory.Exists(rebaseMergePath);
             Log.Info("Rebase", $"IsRebaseInProgress: {inProgress} (apply={Directory.Exists(rebaseApplyPath)}, merge={Directory.Exists(rebaseMergePath)})");
             return inProgress;
-        });
+        }, cancellationToken);
     }
 }

@@ -19,11 +19,11 @@ internal class WorktreeOperations
     /// <summary>
     /// Get all worktrees for the repository.
     /// </summary>
-    public async Task<List<WorktreeInfo>> GetWorktreesAsync(string repoPath)
+    public async Task<List<WorktreeInfo>> GetWorktreesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["worktree", "list", "--porcelain"]);
+            ["worktree", "list", "--porcelain"], cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -39,11 +39,11 @@ internal class WorktreeOperations
     /// <summary>
     /// Create a new worktree for an existing branch.
     /// </summary>
-    public async Task CreateWorktreeAsync(string repoPath, string worktreePath, string branchName)
+    public async Task CreateWorktreeAsync(string repoPath, string worktreePath, string branchName, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["worktree", "add", worktreePath, branchName]);
+            ["worktree", "add", worktreePath, branchName], cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -57,7 +57,7 @@ internal class WorktreeOperations
     /// <summary>
     /// Create a new worktree with a new branch.
     /// </summary>
-    public async Task CreateWorktreeWithNewBranchAsync(string repoPath, string worktreePath, string newBranchName, string? startPoint = null)
+    public async Task CreateWorktreeWithNewBranchAsync(string repoPath, string worktreePath, string newBranchName, string? startPoint = null, CancellationToken cancellationToken = default)
     {
         var args = new List<string> { "worktree", "add", "-b", newBranchName, worktreePath };
         if (!string.IsNullOrEmpty(startPoint))
@@ -65,7 +65,7 @@ internal class WorktreeOperations
             args.Add(startPoint);
         }
 
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -79,11 +79,11 @@ internal class WorktreeOperations
     /// <summary>
     /// Create a new worktree in detached HEAD state at a specific commit.
     /// </summary>
-    public async Task CreateWorktreeDetachedAsync(string repoPath, string worktreePath, string commitSha)
+    public async Task CreateWorktreeDetachedAsync(string repoPath, string worktreePath, string commitSha, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["worktree", "add", "--detach", worktreePath, commitSha]);
+            ["worktree", "add", "--detach", worktreePath, commitSha], cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -97,7 +97,7 @@ internal class WorktreeOperations
     /// <summary>
     /// Remove a worktree.
     /// </summary>
-    public async Task RemoveWorktreeAsync(string repoPath, string worktreePath, bool force = false)
+    public async Task RemoveWorktreeAsync(string repoPath, string worktreePath, bool force = false, CancellationToken cancellationToken = default)
     {
         var args = new List<string> { "worktree", "remove" };
         if (force)
@@ -106,7 +106,7 @@ internal class WorktreeOperations
         }
         args.Add(worktreePath);
 
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -120,7 +120,7 @@ internal class WorktreeOperations
     /// <summary>
     /// Lock a worktree to prevent removal.
     /// </summary>
-    public async Task LockWorktreeAsync(string repoPath, string worktreePath, string? reason = null)
+    public async Task LockWorktreeAsync(string repoPath, string worktreePath, string? reason = null, CancellationToken cancellationToken = default)
     {
         var args = new List<string> { "worktree", "lock" };
         if (!string.IsNullOrEmpty(reason))
@@ -130,7 +130,7 @@ internal class WorktreeOperations
         }
         args.Add(worktreePath);
 
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -144,11 +144,11 @@ internal class WorktreeOperations
     /// <summary>
     /// Unlock a worktree.
     /// </summary>
-    public async Task UnlockWorktreeAsync(string repoPath, string worktreePath)
+    public async Task UnlockWorktreeAsync(string repoPath, string worktreePath, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["worktree", "unlock", worktreePath]);
+            ["worktree", "unlock", worktreePath], cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -162,11 +162,11 @@ internal class WorktreeOperations
     /// <summary>
     /// Prune stale worktree references.
     /// </summary>
-    public async Task PruneWorktreesAsync(string repoPath)
+    public async Task PruneWorktreesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["worktree", "prune"]);
+            ["worktree", "prune"], cancellationToken: cancellationToken);
 
         if (!result.Success)
         {

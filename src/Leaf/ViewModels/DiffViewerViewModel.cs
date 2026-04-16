@@ -1,3 +1,4 @@
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Diagnostics;
@@ -28,6 +29,15 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
     private readonly IHunkService _hunkService;
     private CancellationTokenSource? _loadCts;
     private int _loadSequence;
+
+    /// <summary>
+    /// Returns the current repository's cancellation token. Set by
+    /// MainViewModel so this VM's background git calls abort when the
+    /// session is disposed on repo switch.
+    /// </summary>
+    public Func<CancellationToken>? GetSessionToken { get; set; }
+
+    private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
 
     public DiffViewerViewModel(IGitService gitService)
         : this(gitService, new HunkService())
@@ -252,7 +262,7 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
         {
             IsLoading = true;
             var patch = _hunkService.GenerateHunkPatch(FilePath, hunk);
-            await _gitService.RevertHunkAsync(RepositoryPath, patch);
+            await _gitService.RevertHunkAsync(RepositoryPath, patch, cancellationToken: SessionToken);
             HunkReverted?.Invoke(this, hunk);
         }
         catch (Exception ex)
@@ -281,7 +291,7 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
             var sw = Stopwatch.StartNew();
             Log.Info("DiffViewer", $"Blame start #{loadId} path={FilePath}");
 
-            var lines = await _gitService.GetFileBlameAsync(RepositoryPath, FilePath);
+            var lines = await _gitService.GetFileBlameAsync(RepositoryPath, FilePath, cancellationToken: SessionToken);
             if (token.IsCancellationRequested)
             {
                 Log.Info("DiffViewer", $"Blame canceled #{loadId}");
@@ -320,7 +330,7 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
             var sw = Stopwatch.StartNew();
             Log.Info("DiffViewer", $"History start #{loadId} path={FilePath}");
 
-            var commits = await _gitService.GetFileHistoryAsync(RepositoryPath, FilePath);
+            var commits = await _gitService.GetFileHistoryAsync(RepositoryPath, FilePath, cancellationToken: SessionToken);
             if (token.IsCancellationRequested)
             {
                 Log.Info("DiffViewer", $"History canceled #{loadId}");

@@ -21,21 +21,21 @@ internal class ConflictOperations : IConflictOperations
     }
 
     /// <inheritdoc />
-    public Task<List<string>> GetConflictFilesAsync(string repoPath)
+    public Task<List<string>> GetConflictFilesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() => GitCliHelpers.GetConflictFiles(repoPath));
+        return Task.Run(() => GitCliHelpers.GetConflictFiles(repoPath), cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task<int> GetConflictCountAsync(string repoPath)
+    public Task<int> GetConflictCountAsync(string repoPath, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() => GitCliHelpers.GetConflictCount(repoPath));
+        return Task.Run(() => GitCliHelpers.GetConflictCount(repoPath), cancellationToken);
     }
 
     /// <summary>
     /// Get list of conflicting files with detailed information.
     /// </summary>
-    public Task<List<ConflictInfo>> GetConflictsAsync(string repoPath)
+    public Task<List<ConflictInfo>> GetConflictsAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -147,13 +147,13 @@ internal class ConflictOperations : IConflictOperations
             }
 
             return conflicts;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Resolve a conflict by using the current branch version (ours).
     /// </summary>
-    public Task ResolveConflictWithOursAsync(string repoPath, string filePath)
+    public Task ResolveConflictWithOursAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -161,13 +161,13 @@ internal class ConflictOperations : IConflictOperations
 
             GitCliHelpers.RunGitArgs(repoPath, "checkout", "--ours", filePath);
             Commands.Stage(repo, filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Resolve a conflict by using the incoming branch version (theirs).
     /// </summary>
-    public Task ResolveConflictWithTheirsAsync(string repoPath, string filePath)
+    public Task ResolveConflictWithTheirsAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -175,25 +175,25 @@ internal class ConflictOperations : IConflictOperations
 
             GitCliHelpers.RunGitArgs(repoPath, "checkout", "--theirs", filePath);
             Commands.Stage(repo, filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Mark a conflict as resolved (after manual edit).
     /// </summary>
-    public Task MarkConflictResolvedAsync(string repoPath, string filePath)
+    public Task MarkConflictResolvedAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             Commands.Stage(repo, filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Reopen a resolved conflict by restoring the conflict state.
     /// </summary>
-    public Task ReopenConflictAsync(string repoPath, string filePath, string baseContent, string oursContent, string theirsContent)
+    public Task ReopenConflictAsync(string repoPath, string filePath, string baseContent, string oursContent, string theirsContent, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -223,13 +223,13 @@ internal class ConflictOperations : IConflictOperations
             }
 
             GitCliHelpers.RunGitArgs(repoPath, "checkout", "--conflict=merge", filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get files that have been resolved during a merge.
     /// </summary>
-    public Task<List<ConflictInfo>> GetResolvedMergeFilesAsync(string repoPath)
+    public Task<List<ConflictInfo>> GetResolvedMergeFilesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -270,13 +270,13 @@ internal class ConflictOperations : IConflictOperations
             }
 
             return resolvedFiles;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Open a conflict in VS Code for resolution.
     /// </summary>
-    public async Task OpenConflictInVsCodeAsync(string repoPath, string filePath)
+    public async Task OpenConflictInVsCodeAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         var conflicts = await GetConflictsAsync(repoPath);
         var conflict = conflicts.FirstOrDefault(c => c.FilePath == filePath);
@@ -371,23 +371,23 @@ internal class ConflictOperations : IConflictOperations
     /// <summary>
     /// Get stored merge conflict files.
     /// </summary>
-    public Task<List<string>> GetStoredMergeConflictFilesAsync(string repoPath)
+    public Task<List<string>> GetStoredMergeConflictFilesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() => GetStoredMergeConflictFiles(repoPath));
+        return Task.Run(() => GetStoredMergeConflictFiles(repoPath), cancellationToken);
     }
 
     /// <summary>
     /// Save merge conflict files to storage.
     /// </summary>
-    public Task SaveStoredMergeConflictFilesAsync(string repoPath, IEnumerable<string> files)
+    public Task SaveStoredMergeConflictFilesAsync(string repoPath, IEnumerable<string> files, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() => SaveStoredMergeConflictFiles(repoPath, files));
+        return Task.Run(() => SaveStoredMergeConflictFiles(repoPath, files), cancellationToken);
     }
 
     /// <summary>
     /// Clear stored merge conflict files.
     /// </summary>
-    public Task ClearStoredMergeConflictFilesAsync(string repoPath)
+    public Task ClearStoredMergeConflictFilesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -396,7 +396,7 @@ internal class ConflictOperations : IConflictOperations
             {
                 File.Delete(path);
             }
-        });
+        }, cancellationToken);
     }
 
     private static string GetStoredMergeConflictPath(string repoPath)

@@ -92,7 +92,7 @@ public partial class MainViewModel
                 return;
             }
 
-            var infoTask = _gitService.GetRepositoryInfoFastAsync(repoPath);
+            var infoTask = _gitService.GetRepositoryInfoFastAsync(repoPath, cancellationToken: CurrentRepositoryToken);
             await Task.WhenAll(graphTask, infoTask).ConfigureAwait(false);
             Log.Perf("FileWatcher", "GitDir: graph + info parallel", sw.ElapsedMilliseconds);
 
