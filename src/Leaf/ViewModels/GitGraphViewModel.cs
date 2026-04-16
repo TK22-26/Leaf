@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -44,8 +45,15 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     private GitFlowConfig? _activeGitFlowConfig;
     private IReadOnlyList<string>? _activeRemoteNames;
 
-    private readonly Dictionary<string, Task<MergeCommitTooltipViewModel?>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _branchTips = new(StringComparer.OrdinalIgnoreCase);
+    // ConcurrentDictionary instead of Dictionary — plan §2.3. Today every
+    // access happens on the UI thread so there is no active race, but
+    // upcoming §2.1 work (CancellationToken plumbing) and tooltip background
+    // builders both push some logic off the dispatcher. A plain Dictionary
+    // is unsafe even for concurrent reads while another thread writes;
+    // ConcurrentDictionary has the same cost profile for the low write
+    // volumes here.
+    private readonly ConcurrentDictionary<string, Task<MergeCommitTooltipViewModel?>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _branchTips = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _hiddenBranchNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _soloBranchNames = new(StringComparer.OrdinalIgnoreCase);
     private List<CommitInfo> _allCommits = [];
@@ -1041,14 +1049,15 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             return Task.FromResult<MergeCommitTooltipViewModel?>(null);
         }
 
-        if (_mergeTooltipTasks.TryGetValue(commit.Sha, out var existing))
-        {
-            return existing;
-        }
-
-        var task = BuildMergeTooltipAsync(commit, RepositoryPath);
-        _mergeTooltipTasks[commit.Sha] = task;
-        return task;
+        // GetOrAdd is the atomic primitive for "return the existing task or
+        // start a new one and cache it". Under a race, the factory can run
+        // twice (only one result is cached) — the wasted Task just gets
+        // garbage-collected. That's the right trade-off for a tooltip
+        // preview; strict-once would need a Lazy<Task> wrapper.
+        var repoPath = RepositoryPath;
+        return _mergeTooltipTasks.GetOrAdd(
+            commit.Sha,
+            _ => BuildMergeTooltipAsync(commit, repoPath));
     }
 
     private async Task<MergeCommitTooltipViewModel?> BuildMergeTooltipAsync(CommitInfo commit, string repoPath)
