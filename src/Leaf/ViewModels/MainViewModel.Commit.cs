@@ -261,12 +261,8 @@ public partial class MainViewModel
         if (commit == null || SelectedRepository == null)
             return;
 
-        var dialog = new CreateTagDialog
-        {
-            Owner = _ownerWindow
-        };
-
-        if (dialog.ShowDialog() != true)
+        var dialog = new CreateTagDialog();
+        if (!await _dialogService.ShowDialogAsync(dialog))
             return;
 
         try

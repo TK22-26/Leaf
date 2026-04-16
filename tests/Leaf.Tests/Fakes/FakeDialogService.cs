@@ -16,10 +16,14 @@ public class FakeDialogService : IDialogService
     public List<(string Message, string Title)> ErrorCalls { get; } = [];
     public List<(string Prompt, string Title, string? DefaultValue)> InputCalls { get; } = [];
 
+    // Track modal dialogs shown via ShowDialogAsync(Window).
+    public List<Window> ShownDialogs { get; } = [];
+
     // Configure responses
     public bool ConfirmationResult { get; set; } = true;
     public MessageBoxResult MessageResult { get; set; } = MessageBoxResult.OK;
     public string? InputResult { get; set; } = null;
+    public bool DialogResult { get; set; } = true;
 
     public Task<bool> ShowConfirmationAsync(string message, string title)
     {
@@ -54,5 +58,11 @@ public class FakeDialogService : IDialogService
     {
         InputCalls.Add((prompt, title, defaultValue));
         return Task.FromResult(InputResult);
+    }
+
+    public Task<bool> ShowDialogAsync(Window dialog)
+    {
+        ShownDialogs.Add(dialog);
+        return Task.FromResult(DialogResult);
     }
 }

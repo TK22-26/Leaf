@@ -27,9 +27,9 @@ public partial class MainViewModel
             var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var existingNames = remotes.Select(r => r.Name);
 
-            var dialog = new RemoteDialog(existingNames) { Owner = _ownerWindow };
+            var dialog = new RemoteDialog(existingNames);
 
-            if (dialog.ShowDialog() != true) return;
+            if (!await _dialogService.ShowDialogAsync(dialog)) return;
 
             IsBusy = true;
             StatusMessage = $"Adding remote '{dialog.RemoteName}'...";
@@ -77,12 +77,9 @@ public partial class MainViewModel
             }
 
             var existingNames = remotes.Select(r => r.Name);
-            var dialog = new RemoteDialog(existingNames, remoteInfo.Name, remoteInfo.Url, remoteInfo.PushUrl)
-            {
-                Owner = _ownerWindow
-            };
+            var dialog = new RemoteDialog(existingNames, remoteInfo.Name, remoteInfo.Url, remoteInfo.PushUrl);
 
-            if (dialog.ShowDialog() != true) return;
+            if (!await _dialogService.ShowDialogAsync(dialog)) return;
 
             IsBusy = true;
             StatusMessage = $"Updating remote '{remote.Name}'...";
@@ -271,12 +268,9 @@ public partial class MainViewModel
             // Multiple remotes - show selection dialog
             var defaultRemote = await _gitService.GetConfigAsync(SelectedRepository.Path, "leaf.defaultremote", cancellationToken: CurrentRepositoryToken) ?? "origin";
 
-            var dialog = new PushDialog(SelectedRepository.CurrentBranch, remotes, defaultRemote)
-            {
-                Owner = _ownerWindow
-            };
+            var dialog = new PushDialog(SelectedRepository.CurrentBranch, remotes, defaultRemote);
 
-            if (dialog.ShowDialog() != true) return;
+            if (!await _dialogService.ShowDialogAsync(dialog)) return;
 
             IsBusy = true;
             var selectedRemotes = dialog.SelectedRemoteNames.ToList();

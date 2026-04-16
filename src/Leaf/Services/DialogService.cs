@@ -99,6 +99,16 @@ public class DialogService : IDialogService
             return null;
         });
     }
+
+    /// <inheritdoc />
+    public async Task<bool> ShowDialogAsync(Window dialog)
+    {
+        return await _dispatcher.InvokeAsync(() =>
+        {
+            dialog.Owner = _windowService.GetMainWindow();
+            return dialog.ShowDialog() == true;
+        });
+    }
 }
 
 /// <summary>
@@ -166,5 +176,22 @@ public class TestDialogService : IDialogService
     {
         ShownMessages.Add((prompt, title));
         return Task.FromResult(InputResult);
+    }
+
+    /// <summary>
+    /// The result to return for ShowDialogAsync calls.
+    /// </summary>
+    public bool DialogResult { get; set; } = true;
+
+    /// <summary>
+    /// Record of the dialog windows shown (for test assertions).
+    /// </summary>
+    public List<Window> ShownDialogs { get; } = new();
+
+    /// <inheritdoc />
+    public Task<bool> ShowDialogAsync(Window dialog)
+    {
+        ShownDialogs.Add(dialog);
+        return Task.FromResult(DialogResult);
     }
 }
