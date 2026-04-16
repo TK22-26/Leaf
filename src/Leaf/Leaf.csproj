@@ -35,4 +35,29 @@
     <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Leaf.Core\Leaf.Core.csproj" />
+    <!-- Build-only reference: ensures Leaf.AskPass builds before Leaf but does not
+         import its assembly. The MSBuild target below copies the helper exe into
+         Leaf's output so git can locate it via GIT_ASKPASS. -->
+    <ProjectReference Include="..\Leaf.AskPass\Leaf.AskPass.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Copy Leaf.AskPass.exe (and its runtime deps) into Leaf's output directory
+       so GIT_ASKPASS can resolve via AppContext.BaseDirectory. Runs after build
+       and after publish so both flows get the helper next to Leaf.exe. -->
+  <Target Name="CopyLeafAskPassToOutput" AfterTargets="Build;Publish" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_LeafAskPassOutputs Include="$(MSBuildThisFileDirectory)..\Leaf.AskPass\bin\$(Configuration)\$(TargetFramework)\Leaf.AskPass*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LeafAskPassOutputs)"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('%(Identity)')" />
+    <Copy SourceFiles="@(_LeafAskPassOutputs)"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true"
+          Condition="'$(PublishDir)' != '' And Exists('%(Identity)')" />
+  </Target>
+
 </Project>

@@ -216,20 +216,13 @@ public partial class MainViewModel
             {
                 StatusMessage = $"Fetching {remote.Name}...";
 
-                // Get credentials for this remote
-                string? pat = null;
-                if (!string.IsNullOrEmpty(remote.Url))
-                {
-                    var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
-                    if (!string.IsNullOrEmpty(credentialKey))
-                    {
-                        pat = _credentialService.GetPat(credentialKey);
-                    }
-                }
+                // Resolve credential key only when Leaf has a stored PAT;
+                // otherwise git uses its default helpers (GCM).
+                var credentialKey = _credentialService.ResolveActiveCredentialKey(remote.Url);
 
                 try
                 {
-                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: pat);
+                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey);
                     successCount++;
                 }
                 catch (Exception ex)
@@ -282,32 +275,24 @@ public partial class MainViewModel
 
             IsBusy = true;
             var selectedRemotes = dialog.SelectedRemoteNames.ToList();
-            var pushedRemotes = new List<(RemoteInfo remote, string? pat)>();
+            var pushedRemotes = new List<(RemoteInfo remote, string? credentialKey)>();
             var failedMessages = new List<string>();
 
             foreach (var remoteName in selectedRemotes)
             {
                 StatusMessage = $"Pushing to {remoteName}...";
 
-                // Get credentials for this remote
+                // Resolve credential key from the remote URL only when a PAT
+                // is stored; otherwise rely on GCM fallback.
                 var remoteInfo = remotes.FirstOrDefault(r => r.Name == remoteName);
-                string? pat = null;
-
-                if (!string.IsNullOrEmpty(remoteInfo?.Url))
-                {
-                    var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remoteInfo.Url);
-                    if (!string.IsNullOrEmpty(credentialKey))
-                    {
-                        pat = _credentialService.GetPat(credentialKey);
-                    }
-                }
+                var credentialKey = _credentialService.ResolveActiveCredentialKey(remoteInfo?.Url);
 
                 try
                 {
-                    await _gitService.PushAsync(SelectedRepository.Path, remoteName, null, pat);
+                    await _gitService.PushAsync(SelectedRepository.Path, remoteName, credentialKey);
                     if (remoteInfo != null)
                     {
-                        pushedRemotes.Add((remoteInfo, pat));
+                        pushedRemotes.Add((remoteInfo, credentialKey));
                     }
                 }
                 catch (Exception ex)
@@ -318,11 +303,11 @@ public partial class MainViewModel
 
             // Fetch from all pushed remotes to update remote refs in the UI
             StatusMessage = "Updating remote refs...";
-            foreach (var (remote, pat) in pushedRemotes)
+            foreach (var (remote, credentialKey) in pushedRemotes)
             {
                 try
                 {
-                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: pat);
+                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey);
                 }
                 catch
                 {

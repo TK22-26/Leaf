@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -6,6 +7,8 @@ namespace Leaf.Services;
 /// <summary>
 /// Credential service using Windows Credential Manager.
 /// Stores PAT tokens securely in the Windows credential store.
+/// Diagnostic messages are written to <see cref="Debug"/> so this type has no
+/// dependency on Leaf's file logger — it is reused by Leaf.AskPass.exe.
 /// </summary>
 public class CredentialService : ICredentialService
 {
@@ -13,7 +16,7 @@ public class CredentialService : ICredentialService
 
     public void StorePat(string organization, string pat)
     {
-        Log.Info("Credentials", $"Storing PAT for {organization}");
+        Debug.WriteLine($"[Credentials] Storing PAT for {organization}");
         var targetName = GetTargetName(organization);
         WriteCredential(targetName, "git", pat);
     }
@@ -23,13 +26,13 @@ public class CredentialService : ICredentialService
         var targetName = GetTargetName(organization);
         var result = ReadCredential(targetName);
         if (result == null)
-            Log.Warn("Credentials", $"PAT retrieval failed for {organization}");
+            Debug.WriteLine($"[Credentials] PAT retrieval failed for {organization}");
         return result;
     }
 
     public void RemovePat(string organization)
     {
-        Log.Info("Credentials", $"Removing PAT for {organization}");
+        Debug.WriteLine($"[Credentials] Removing PAT for {organization}");
         var targetName = GetTargetName(organization);
         DeleteCredentialInternal(targetName);
     }
@@ -70,7 +73,7 @@ public class CredentialService : ICredentialService
     /// </summary>
     public void SaveCredential(string name, string username, string password)
     {
-        Log.Info("Credentials", $"Storing credential for {name}");
+        Debug.WriteLine($"[Credentials] Storing credential for {name}");
         var targetName = GetTargetName(name);
         WriteCredential(targetName, username, password);
     }
@@ -83,7 +86,7 @@ public class CredentialService : ICredentialService
         var targetName = GetTargetName(name);
         var result = ReadCredential(targetName);
         if (result == null)
-            Log.Warn("Credentials", $"Credential retrieval failed for {name}");
+            Debug.WriteLine($"[Credentials] Credential retrieval failed for {name}");
         return result;
     }
 
@@ -92,7 +95,7 @@ public class CredentialService : ICredentialService
     /// </summary>
     public void DeleteCredential(string name)
     {
-        Log.Info("Credentials", $"Removing credential for {name}");
+        Debug.WriteLine($"[Credentials] Removing credential for {name}");
         var targetName = GetTargetName(name);
         CredDeleteW(targetName, CRED_TYPE_GENERIC, 0);
     }

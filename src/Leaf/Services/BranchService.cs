@@ -94,12 +94,11 @@ public class BranchService : IBranchService
         IRepositorySession session,
         string remoteName,
         string branchName,
-        string? username = null,
-        string? password = null)
+        string? credentialKey = null)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
         await _gitService.DeleteRemoteBranchAsync(
-            session.RepositoryPath, remoteName, branchName, username, password);
+            session.RepositoryPath, remoteName, branchName, credentialKey);
         _eventHub.NotifyBranchesChanged();
     }
 

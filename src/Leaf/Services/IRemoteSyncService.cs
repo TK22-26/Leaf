@@ -8,6 +8,8 @@ namespace Leaf.Services;
 /// <remarks>
 /// This service is stateless - receives IRepositorySession for each operation.
 /// Clone is a special case that doesn't require an existing session.
+/// Credential parameters are storage keys (e.g. "GitHub:microsoft"); the PAT
+/// itself is resolved inside Leaf.AskPass.exe and never enters this process.
 /// </remarks>
 public interface IRemoteSyncService
 {
@@ -16,15 +18,13 @@ public interface IRemoteSyncService
     /// </summary>
     /// <param name="url">Repository URL.</param>
     /// <param name="localPath">Local path to clone to.</param>
-    /// <param name="username">Optional username for authentication.</param>
-    /// <param name="password">Optional password/token for authentication.</param>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     /// <param name="progress">Optional progress reporter.</param>
     /// <returns>Path to the cloned repository.</returns>
     Task<string> CloneAsync(
         string url,
         string localPath,
-        string? username = null,
-        string? password = null,
+        string? credentialKey = null,
         IProgress<string>? progress = null);
 
     /// <summary>
@@ -32,27 +32,23 @@ public interface IRemoteSyncService
     /// </summary>
     /// <param name="session">Repository session.</param>
     /// <param name="remoteName">Remote name (default: origin).</param>
-    /// <param name="username">Optional username for authentication.</param>
-    /// <param name="password">Optional password/token for authentication.</param>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     /// <param name="progress">Optional progress reporter.</param>
     Task FetchAsync(
         IRepositorySession session,
         string remoteName = "origin",
-        string? username = null,
-        string? password = null,
+        string? credentialKey = null,
         IProgress<string>? progress = null);
 
     /// <summary>
     /// Pulls from the tracking remote.
     /// </summary>
     /// <param name="session">Repository session.</param>
-    /// <param name="username">Optional username for authentication.</param>
-    /// <param name="password">Optional password/token for authentication.</param>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     /// <param name="progress">Optional progress reporter.</param>
     Task PullAsync(
         IRepositorySession session,
-        string? username = null,
-        string? password = null,
+        string? credentialKey = null,
         IProgress<string>? progress = null);
 
     /// <summary>
@@ -60,14 +56,12 @@ public interface IRemoteSyncService
     /// </summary>
     /// <param name="session">Repository session.</param>
     /// <param name="remoteName">Remote name (null uses tracking branch's remote or default).</param>
-    /// <param name="username">Optional username for authentication.</param>
-    /// <param name="password">Optional password/token for authentication.</param>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     /// <param name="progress">Optional progress reporter.</param>
     Task PushAsync(
         IRepositorySession session,
         string? remoteName = null,
-        string? username = null,
-        string? password = null,
+        string? credentialKey = null,
         IProgress<string>? progress = null);
 
     /// <summary>

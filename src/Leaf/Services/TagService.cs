@@ -49,11 +49,10 @@ public class TagService : ITagService
         IRepositorySession session,
         string tagName,
         string remoteName = "origin",
-        string? username = null,
-        string? password = null)
+        string? credentialKey = null)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        await _gitService.PushTagAsync(session.RepositoryPath, tagName, remoteName, username, password);
+        await _gitService.PushTagAsync(session.RepositoryPath, tagName, remoteName, credentialKey);
     }
 
     /// <inheritdoc />
@@ -61,10 +60,9 @@ public class TagService : ITagService
         IRepositorySession session,
         string tagName,
         string remoteName = "origin",
-        string? username = null,
-        string? password = null)
+        string? credentialKey = null)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        await _gitService.DeleteRemoteTagAsync(session.RepositoryPath, tagName, remoteName, username, password);
+        await _gitService.DeleteRemoteTagAsync(session.RepositoryPath, tagName, remoteName, credentialKey);
     }
 }

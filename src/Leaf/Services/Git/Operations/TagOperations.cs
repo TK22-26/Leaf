@@ -108,13 +108,15 @@ internal class TagOperations
     /// <summary>
     /// Push a tag to remote.
     /// </summary>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     public async Task PushTagAsync(string repoPath, string tagName, string remoteName = "origin",
-        string? username = null, string? password = null)
+        string? credentialKey = null)
     {
-        // Always use git command line - it properly integrates with Git Credential Manager
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["push", remoteName, $"refs/tags/{tagName}"]);
+            ["push", remoteName, $"refs/tags/{tagName}"],
+            input: null,
+            credentialKey: credentialKey);
 
         if (!result.Success)
         {
@@ -127,12 +129,15 @@ internal class TagOperations
     /// <summary>
     /// Delete a remote tag.
     /// </summary>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     public async Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin",
-        string? username = null, string? password = null)
+        string? credentialKey = null)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["push", remoteName, "--delete", $"refs/tags/{tagName}"]);
+            ["push", remoteName, "--delete", $"refs/tags/{tagName}"],
+            input: null,
+            credentialKey: credentialKey);
 
         if (!result.Success)
         {

@@ -186,20 +186,13 @@ public partial class MainViewModel
                 var remoteName = branch.RemoteName ?? "origin";
                 var branchName = GetRemoteBranchShortName(branch.Name, remoteName);
 
-                // Get credentials for remote operations (same pattern as Push/Fetch)
-                string? pat = null;
+                // Resolve credential key from the remote URL only when a PAT is
+                // stored; otherwise rely on GCM fallback.
                 var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
                 var remoteUrl = remotes.FirstOrDefault(r => r.Name == remoteName)?.Url;
-                if (!string.IsNullOrEmpty(remoteUrl))
-                {
-                    var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remoteUrl);
-                    if (!string.IsNullOrEmpty(credentialKey))
-                    {
-                        pat = _credentialService.GetPat(credentialKey);
-                    }
-                }
+                var credentialKey = _credentialService.ResolveActiveCredentialKey(remoteUrl);
 
-                await _gitService.DeleteRemoteBranchAsync(SelectedRepository.Path, remoteName, branchName, password: pat);
+                await _gitService.DeleteRemoteBranchAsync(SelectedRepository.Path, remoteName, branchName, credentialKey);
             }
             else
             {

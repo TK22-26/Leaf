@@ -25,12 +25,19 @@ public interface IGitCommandRunner
     /// <param name="workingDirectory">Working directory for git command.</param>
     /// <param name="arguments">Argument tokens (NO escaping needed).</param>
     /// <param name="input">Optional input to write to stdin.</param>
+    /// <param name="credentialKey">
+    /// Optional credential storage key (e.g. "GitHub:microsoft"). When supplied,
+    /// the git process is configured to use Leaf.AskPass.exe as GIT_ASKPASS so
+    /// the PAT never enters the git URL or command line. When null, git falls
+    /// back to its default credential helpers (Git Credential Manager).
+    /// </param>
     /// <param name="cancellationToken">Cancellation token - will KILL git process if cancelled.</param>
     /// <returns>Command result with exit code, stdout, and stderr.</returns>
     Task<GitCommandResult> RunAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,
         string? input = null,
+        string? credentialKey = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

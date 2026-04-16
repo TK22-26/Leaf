@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 
 namespace Leaf.Services;
 
@@ -8,13 +9,28 @@ namespace Leaf.Services;
 /// </summary>
 public class GitCommandRunner : IGitCommandRunner
 {
+    private const string AskPassExecutable = "Leaf.AskPass.exe";
+
+    /// <summary>
+    /// Resolved path to Leaf.AskPass.exe, or null if the helper is missing.
+    /// Evaluated once; a missing helper means credential-requiring commands
+    /// will fall back to git's default credential flow (GCM).
+    /// </summary>
+    private static readonly Lazy<string?> _askPassPath = new(() =>
+    {
+        var candidate = Path.Combine(AppContext.BaseDirectory, AskPassExecutable);
+        if (File.Exists(candidate)) return candidate;
+        Log.Warn("Git", $"{AskPassExecutable} not found at {candidate}; credential-requiring commands will fall back to Git Credential Manager.");
+        return null;
+    });
+
     /// <inheritdoc />
     public Task<GitCommandResult> RunAsync(
         string workingDirectory,
         GitCommand command,
         CancellationToken cancellationToken = default)
     {
-        return RunAsync(workingDirectory, command.ToArguments(), null, cancellationToken);
+        return RunAsync(workingDirectory, command.ToArguments(), null, null, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -22,6 +38,7 @@ public class GitCommandRunner : IGitCommandRunner
         string workingDirectory,
         IReadOnlyList<string> arguments,
         string? input = null,
+        string? credentialKey = null,
         CancellationToken cancellationToken = default)
     {
         var startInfo = new ProcessStartInfo
@@ -38,6 +55,19 @@ public class GitCommandRunner : IGitCommandRunner
         // CRITICAL: Prevent git from hanging on credential prompts in background
         startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
         startInfo.Environment["GCM_INTERACTIVE"] = "never";  // Git Credential Manager
+
+        // When a credential key is supplied, route git through Leaf.AskPass.exe
+        // instead of embedding the PAT in the URL or relying on GCM. Only the
+        // key (not the PAT) is exposed via environment variables.
+        if (!string.IsNullOrEmpty(credentialKey))
+        {
+            var askPass = _askPassPath.Value;
+            if (!string.IsNullOrEmpty(askPass))
+            {
+                startInfo.Environment["GIT_ASKPASS"] = askPass;
+                startInfo.Environment["LEAF_CREDENTIAL_KEY"] = credentialKey;
+            }
+        }
 
         // Use ArgumentList - NO string escaping needed!
         foreach (var arg in arguments)
