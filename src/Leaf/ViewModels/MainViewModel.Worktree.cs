@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Services;
 using Leaf.Services.Git.Operations;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -256,6 +257,28 @@ public partial class MainViewModel
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Build a user-facing preview of where a new worktree would be placed
+    /// for the given branch name. Reuses the same sanitization rule as
+    /// <see cref="WorktreeOperations.GenerateDefaultWorktreePath"/> so the
+    /// preview can't drift from what actually lands on disk. Returns the
+    /// fallback string when no repo is selected, when the name is invalid,
+    /// or when the name is empty.
+    /// </summary>
+    public string GetWorktreePathPreview(string branchName)
+    {
+        const string placeholder = "Path: ...";
+        if (SelectedRepository == null) return placeholder;
+
+        var trimmed = branchName?.Trim() ?? string.Empty;
+        if (!BranchNameValidator.IsValid(trimmed)) return placeholder;
+
+        var repoName = System.IO.Path.GetFileName(SelectedRepository.Path.TrimEnd(
+            System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+        var safeName = WorktreeOperations.SanitizeBranchNameForPath(trimmed);
+        return $"Path: ../{repoName}-{safeName}";
     }
 
     /// <summary>

@@ -499,22 +499,13 @@ public partial class BranchListView : UserControl
     private void WorktreeNameBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         var name = WorktreeNameBox.Text.Trim();
-        var isValid = BranchNameValidator.IsValid(name);
-        WorktreeCreateButton.IsEnabled = isValid;
+        WorktreeCreateButton.IsEnabled = BranchNameValidator.IsValid(name);
 
-        if (DataContext is MainViewModel viewModel && viewModel.SelectedRepository != null && isValid)
-        {
-            // Sanitize for path preview. The actual path-building lives in the
-            // worktree service; this is a user-facing preview only.
-            var safeName = string.Concat(name.Select(c => c == '/' || System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '-' : c));
-            var repoName = System.IO.Path.GetFileName(viewModel.SelectedRepository.Path.TrimEnd(
-                System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
-            WorktreePathPreview.Text = $"Path: ../{repoName}-{safeName}";
-        }
-        else
-        {
-            WorktreePathPreview.Text = "Path: ...";
-        }
+        // Delegate the preview to the VM so the sanitization rule stays in
+        // one place (WorktreeOperations.SanitizeBranchNameForPath).
+        WorktreePathPreview.Text = DataContext is MainViewModel viewModel
+            ? viewModel.GetWorktreePathPreview(name)
+            : "Path: ...";
     }
 
     private void WorktreeNameBox_KeyDown(object sender, KeyEventArgs e)
@@ -717,8 +708,8 @@ public partial class BranchListView : UserControl
         if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
             return;
 
-        viewModel.SelectPullRequestInSidebar(pr);
-        viewModel.SelectPullRequestCommand.Execute(pr);
+        viewModel.ActivatePullRequestAsync(pr)
+            .FireAndForget(nameof(viewModel.ActivatePullRequestAsync), isUserAction: true);
         e.Handled = true;
     }
 

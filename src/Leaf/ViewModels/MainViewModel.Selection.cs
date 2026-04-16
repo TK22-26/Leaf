@@ -124,8 +124,10 @@ public partial class MainViewModel
     /// <summary>
     /// Select a pull request in the sidebar. PR selection is always
     /// exclusive (no toggle mode) — clicking another PR replaces the
-    /// selection and fires through to the detail view via the
-    /// SelectPullRequestCommand (called separately by the click handler).
+    /// selection. Used by the right-click handler, which only needs the
+    /// selection update before the context menu opens. Left-click uses
+    /// <see cref="ActivatePullRequestAsync"/> which combines this with
+    /// the navigation step.
     /// </summary>
     public void SelectPullRequestInSidebar(PullRequestInfo pr)
     {
@@ -137,5 +139,16 @@ public partial class MainViewModel
 
         pr.IsSelected = true;
         repo.SelectedPullRequest = pr;
+    }
+
+    /// <summary>
+    /// Select a pull request in the sidebar and open its detail pane.
+    /// Single entry point for left-click activation so the view doesn't
+    /// have to sequence the sidebar-selection and navigate steps itself.
+    /// </summary>
+    public Task ActivatePullRequestAsync(PullRequestInfo pr)
+    {
+        SelectPullRequestInSidebar(pr);
+        return SelectPullRequestCommand.ExecuteAsync(pr);
     }
 }
