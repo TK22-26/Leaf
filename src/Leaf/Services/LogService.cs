@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace Leaf.Services;
@@ -93,9 +94,25 @@ public static class Log
         Enqueue("ERR ", $"[{area ?? "?"}] {message}{detail}");
     }
 
+    /// <summary>
+    /// Matches credentials embedded in HTTP(S) URLs: scheme://user:secret@host...
+    /// The password portion is redacted in place so URL shape is preserved for
+    /// debugging. Defense-in-depth: Leaf does not intentionally emit such URLs
+    /// (PATs are now resolved via Leaf.AskPass.exe), but git error messages can
+    /// echo back credential-bearing URLs and we must never persist the token.
+    /// </summary>
+    private static readonly Regex CredentialUrlPattern = new(
+        @"(?<scheme>https?://)(?<user>[^:/@\s]+):(?<secret>[^@\s]+)@",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static string Redact(string message)
+    {
+        return CredentialUrlPattern.Replace(message, "${scheme}${user}:***@");
+    }
+
     private static void Enqueue(string level, string message)
     {
-        var line = $"{DateTime.Now:HH:mm:ss.fff} +{AppTimer.ElapsedMilliseconds,6}ms {level} {message}";
+        var line = $"{DateTime.Now:HH:mm:ss.fff} +{AppTimer.ElapsedMilliseconds,6}ms {level} {Redact(message)}";
         Queue.Enqueue(line);
     }
 

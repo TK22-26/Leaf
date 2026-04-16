@@ -163,8 +163,8 @@ public class GitService : IGitService
     public Task DeleteBranchAsync(string repoPath, string branchName, bool force = false)
         => _branchOps.DeleteBranchAsync(repoPath, branchName, force);
 
-    public Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName, string? username = null, string? password = null)
-        => _branchOps.DeleteRemoteBranchAsync(repoPath, remoteName, branchName, username, password);
+    public Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName, string? credentialKey = null)
+        => _branchOps.DeleteRemoteBranchAsync(repoPath, remoteName, branchName, credentialKey);
 
     public Task RenameBranchAsync(string repoPath, string oldName, string newName)
         => _branchOps.RenameBranchAsync(repoPath, oldName, newName);
@@ -194,17 +194,17 @@ public class GitService : IGitService
     public Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false)
         => _remoteSyncOps.SetRemoteUrlAsync(repoPath, remoteName, url, isPushUrl);
 
-    public Task<string> CloneAsync(string url, string localPath, string? username = null, string? password = null, IProgress<string>? progress = null)
-        => _remoteSyncOps.CloneAsync(url, localPath, username, password, progress);
+    public Task<string> CloneAsync(string url, string localPath, string? credentialKey = null, IProgress<string>? progress = null)
+        => _remoteSyncOps.CloneAsync(url, localPath, credentialKey, progress);
 
-    public Task FetchAsync(string repoPath, string remoteName = "origin", string? username = null, string? password = null, IProgress<string>? progress = null)
-        => _remoteSyncOps.FetchAsync(repoPath, remoteName, username, password, progress);
+    public Task FetchAsync(string repoPath, string remoteName = "origin", string? credentialKey = null, IProgress<string>? progress = null)
+        => _remoteSyncOps.FetchAsync(repoPath, remoteName, credentialKey, progress);
 
-    public Task PullAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null)
-        => _remoteSyncOps.PullAsync(repoPath, username, password, progress);
+    public Task PullAsync(string repoPath, string? credentialKey = null, IProgress<string>? progress = null)
+        => _remoteSyncOps.PullAsync(repoPath, credentialKey, progress);
 
-    public Task PushAsync(string repoPath, string? remoteName = null, string? username = null, string? password = null, IProgress<string>? progress = null)
-        => _remoteSyncOps.PushAsync(repoPath, remoteName, username, password, progress);
+    public Task PushAsync(string repoPath, string? remoteName = null, string? credentialKey = null, IProgress<string>? progress = null)
+        => _remoteSyncOps.PushAsync(repoPath, remoteName, credentialKey, progress);
 
     public Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch)
         => _remoteSyncOps.PullBranchFastForwardAsync(repoPath, branchName, remoteName, remoteBranchName, isCurrentBranch);
@@ -371,11 +371,11 @@ public class GitService : IGitService
     public Task DeleteTagAsync(string repoPath, string tagName)
         => _tagOps.DeleteTagAsync(repoPath, tagName);
 
-    public Task PushTagAsync(string repoPath, string tagName, string remoteName = "origin", string? username = null, string? password = null)
-        => _tagOps.PushTagAsync(repoPath, tagName, remoteName, username, password);
+    public Task PushTagAsync(string repoPath, string tagName, string remoteName = "origin", string? credentialKey = null)
+        => _tagOps.PushTagAsync(repoPath, tagName, remoteName, credentialKey);
 
-    public Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin", string? username = null, string? password = null)
-        => _tagOps.DeleteRemoteTagAsync(repoPath, tagName, remoteName, username, password);
+    public Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin", string? credentialKey = null)
+        => _tagOps.DeleteRemoteTagAsync(repoPath, tagName, remoteName, credentialKey);
 
     #endregion
 

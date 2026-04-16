@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Leaf.Models;
+using Leaf.Utils;
 
 namespace Leaf.Services;
 
@@ -15,10 +16,25 @@ namespace Leaf.Services;
 public partial class GitFlowService : IGitFlowService
 {
     private readonly IGitService _gitService;
+    private readonly ICredentialService _credentialService;
 
-    public GitFlowService(IGitService gitService)
+    public GitFlowService(IGitService gitService, ICredentialService credentialService)
     {
         _gitService = gitService;
+        _credentialService = credentialService;
+    }
+
+    /// <summary>
+    /// Resolves the credential key for a remote in this repo, or null when
+    /// Leaf has no PAT stored (so git falls back to GCM). Uses the default
+    /// remote when none is specified, mirroring what PushAsync/PullAsync do.
+    /// </summary>
+    private async Task<string?> ResolveRemoteCredentialKeyAsync(string repoPath, string? remoteName = null)
+    {
+        var targetRemote = remoteName ?? await GetDefaultRemoteAsync(repoPath);
+        var remotes = await _gitService.GetRemotesAsync(repoPath);
+        var remoteUrl = remotes.FirstOrDefault(r => r.Name == targetRemote)?.Url;
+        return _credentialService.ResolveActiveCredentialKey(remoteUrl);
     }
 
     #region Initialization
@@ -376,7 +392,8 @@ public partial class GitFlowService : IGitFlowService
 
         progress?.Report($"Publishing feature '{featureName}' to remote...");
         await _gitService.CheckoutAsync(repoPath, branchName);
-        await _gitService.PushAsync(repoPath, progress: progress);
+        var credentialKey = await ResolveRemoteCredentialKeyAsync(repoPath);
+        await _gitService.PushAsync(repoPath, credentialKey: credentialKey, progress: progress);
         progress?.Report($"Feature '{featureName}' published successfully.");
     }
 
@@ -387,7 +404,8 @@ public partial class GitFlowService : IGitFlowService
 
         progress?.Report($"Pulling updates for feature '{featureName}'...");
         await _gitService.CheckoutAsync(repoPath, branchName);
-        await _gitService.PullAsync(repoPath, progress: progress);
+        var credentialKey = await ResolveRemoteCredentialKeyAsync(repoPath);
+        await _gitService.PullAsync(repoPath, credentialKey: credentialKey, progress: progress);
         progress?.Report($"Feature '{featureName}' updated successfully.");
     }
 
@@ -403,7 +421,8 @@ public partial class GitFlowService : IGitFlowService
         {
             progress?.Report($"Deleting remote branch...");
             var remoteName = await GetDefaultRemoteAsync(repoPath);
-            await _gitService.DeleteRemoteBranchAsync(repoPath, remoteName, branchName);
+            var credentialKey = await ResolveRemoteCredentialKeyAsync(repoPath, remoteName);
+            await _gitService.DeleteRemoteBranchAsync(repoPath, remoteName, branchName, credentialKey);
         }
 
         progress?.Report($"Feature '{featureName}' deleted.");
@@ -479,7 +498,8 @@ public partial class GitFlowService : IGitFlowService
 
         progress?.Report($"Publishing release '{version}' to remote...");
         await _gitService.CheckoutAsync(repoPath, branchName);
-        await _gitService.PushAsync(repoPath, progress: progress);
+        var credentialKey = await ResolveRemoteCredentialKeyAsync(repoPath);
+        await _gitService.PushAsync(repoPath, credentialKey: credentialKey, progress: progress);
         progress?.Report($"Release '{version}' published successfully.");
     }
 
@@ -495,7 +515,8 @@ public partial class GitFlowService : IGitFlowService
         {
             progress?.Report($"Deleting remote branch...");
             var remoteName = await GetDefaultRemoteAsync(repoPath);
-            await _gitService.DeleteRemoteBranchAsync(repoPath, remoteName, branchName);
+            var credentialKey = await ResolveRemoteCredentialKeyAsync(repoPath, remoteName);
+            await _gitService.DeleteRemoteBranchAsync(repoPath, remoteName, branchName, credentialKey);
         }
 
         progress?.Report($"Release branch '{version}' deleted.");
@@ -571,7 +592,8 @@ public partial class GitFlowService : IGitFlowService
 
         progress?.Report($"Publishing hotfix '{version}' to remote...");
         await _gitService.CheckoutAsync(repoPath, branchName);
-        await _gitService.PushAsync(repoPath, progress: progress);
+        var credentialKey = await ResolveRemoteCredentialKeyAsync(repoPath);
+        await _gitService.PushAsync(repoPath, credentialKey: credentialKey, progress: progress);
         progress?.Report($"Hotfix '{version}' published successfully.");
     }
 
@@ -587,7 +609,8 @@ public partial class GitFlowService : IGitFlowService
         {
             progress?.Report($"Deleting remote branch...");
             var remoteName = await GetDefaultRemoteAsync(repoPath);
-            await _gitService.DeleteRemoteBranchAsync(repoPath, remoteName, branchName);
+            var credentialKey = await ResolveRemoteCredentialKeyAsync(repoPath, remoteName);
+            await _gitService.DeleteRemoteBranchAsync(repoPath, remoteName, branchName, credentialKey);
         }
 
         progress?.Report($"Hotfix branch '{version}' deleted.");

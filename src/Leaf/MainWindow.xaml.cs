@@ -50,7 +50,7 @@ public partial class MainWindow : Window
         // Migrate legacy credentials to new multi-org format
         settingsService.MigrateCredentialsIfNeeded(credentialService);
 
-        var gitFlowService = new GitFlowService(gitService);
+        var gitFlowService = new GitFlowService(gitService, credentialService);
         var repositoryService = new RepositoryManagementService(settingsService);
         var autoFetchService = new AutoFetchService(gitService, credentialService);
         var folderWatcherService = new FolderWatcherService();

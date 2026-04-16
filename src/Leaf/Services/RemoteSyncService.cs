@@ -21,23 +21,21 @@ public class RemoteSyncService : IRemoteSyncService
     public async Task<string> CloneAsync(
         string url,
         string localPath,
-        string? username = null,
-        string? password = null,
+        string? credentialKey = null,
         IProgress<string>? progress = null)
     {
-        return await _gitService.CloneAsync(url, localPath, username, password, progress);
+        return await _gitService.CloneAsync(url, localPath, credentialKey, progress);
     }
 
     /// <inheritdoc />
     public async Task FetchAsync(
         IRepositorySession session,
         string remoteName = "origin",
-        string? username = null,
-        string? password = null,
+        string? credentialKey = null,
         IProgress<string>? progress = null)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        await _gitService.FetchAsync(session.RepositoryPath, remoteName, username, password, progress);
+        await _gitService.FetchAsync(session.RepositoryPath, remoteName, credentialKey, progress);
         _eventHub.NotifyBranchesChanged();
         _eventHub.NotifyCommitHistoryChanged();
     }
@@ -45,12 +43,11 @@ public class RemoteSyncService : IRemoteSyncService
     /// <inheritdoc />
     public async Task PullAsync(
         IRepositorySession session,
-        string? username = null,
-        string? password = null,
+        string? credentialKey = null,
         IProgress<string>? progress = null)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        await _gitService.PullAsync(session.RepositoryPath, username, password, progress);
+        await _gitService.PullAsync(session.RepositoryPath, credentialKey, progress);
         _eventHub.NotifyBranchesChanged();
         _eventHub.NotifyCommitHistoryChanged();
         _eventHub.NotifyWorkingDirectoryChanged();
@@ -60,12 +57,11 @@ public class RemoteSyncService : IRemoteSyncService
     public async Task PushAsync(
         IRepositorySession session,
         string? remoteName = null,
-        string? username = null,
-        string? password = null,
+        string? credentialKey = null,
         IProgress<string>? progress = null)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        await _gitService.PushAsync(session.RepositoryPath, remoteName, username, password, progress);
+        await _gitService.PushAsync(session.RepositoryPath, remoteName, credentialKey, progress);
         _eventHub.NotifyBranchesChanged();
     }
 

@@ -230,12 +230,15 @@ internal class BranchOperations
     /// <summary>
     /// Delete a remote branch.
     /// </summary>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     public async Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName,
-        string? username = null, string? password = null)
+        string? credentialKey = null)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["push", remoteName, "--delete", branchName]);
+            ["push", remoteName, "--delete", branchName],
+            input: null,
+            credentialKey: credentialKey);
 
         if (!result.Success)
         {

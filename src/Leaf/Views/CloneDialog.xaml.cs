@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Leaf.Services;
+using Leaf.Utils;
 using Microsoft.Win32;
 
 namespace Leaf.Views;
@@ -541,34 +542,17 @@ public partial class CloneDialog : Window
             CloneProgressSection.Visibility = Visibility.Visible;
             ProgressText.Text = "Cloning repository...";
 
-            // Get credentials based on URL - extract org from URL for multi-org support
-            string? username = null;
-            string? password = null;
-
-            var credentialKey = Utils.CredentialHelper.GetCredentialKeyForUrl(url);
-            if (!string.IsNullOrEmpty(credentialKey))
-            {
-                password = _credentialService.GetPat(credentialKey);
-                if (!string.IsNullOrEmpty(password))
-                {
-                    // Set username based on provider
-                    if (credentialKey.StartsWith("GitHub:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        username = "x-access-token";
-                    }
-                    else if (credentialKey.StartsWith("AzureDevOps:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        username = "git";
-                    }
-                }
-            }
+            // Resolve credential key from URL only when Leaf has a stored PAT;
+            // otherwise rely on GCM fallback. PAT lookup itself happens inside
+            // Leaf.AskPass.exe so this process never holds the secret.
+            var credentialKey = _credentialService.ResolveActiveCredentialKey(url);
 
             var progress = new Progress<string>(msg =>
             {
                 ProgressText.Text = msg;
             });
 
-            await _gitService.CloneAsync(url, localPath, username, password, progress);
+            await _gitService.CloneAsync(url, localPath, credentialKey, progress);
 
             ClonedRepositoryPath = localPath;
             DialogResult = true;

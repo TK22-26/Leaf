@@ -117,27 +117,29 @@ public interface IGitService
     /// <summary>
     /// Clone a remote repository.
     /// </summary>
-    Task<string> CloneAsync(string url, string localPath, string? username = null, string? password = null, IProgress<string>? progress = null);
+    /// <param name="credentialKey">Optional credential storage key (e.g. "GitHub:microsoft") for GIT_ASKPASS auth.</param>
+    Task<string> CloneAsync(string url, string localPath, string? credentialKey = null, IProgress<string>? progress = null);
 
     /// <summary>
     /// Fetch from remote.
     /// </summary>
-    Task FetchAsync(string repoPath, string remoteName = "origin", string? username = null, string? password = null, IProgress<string>? progress = null);
+    /// <param name="credentialKey">Optional credential storage key (e.g. "GitHub:microsoft") for GIT_ASKPASS auth.</param>
+    Task FetchAsync(string repoPath, string remoteName = "origin", string? credentialKey = null, IProgress<string>? progress = null);
 
     /// <summary>
     /// Pull from remote.
     /// </summary>
-    Task PullAsync(string repoPath, string? username = null, string? password = null, IProgress<string>? progress = null);
+    /// <param name="credentialKey">Optional credential storage key (e.g. "GitHub:microsoft") for GIT_ASKPASS auth.</param>
+    Task PullAsync(string repoPath, string? credentialKey = null, IProgress<string>? progress = null);
 
     /// <summary>
     /// Push to remote.
     /// </summary>
     /// <param name="repoPath">Path to the repository</param>
     /// <param name="remoteName">Optional remote name (uses tracking branch's remote or default if not specified)</param>
-    /// <param name="username">Optional username for authentication</param>
-    /// <param name="password">Optional password/token for authentication</param>
+    /// <param name="credentialKey">Optional credential storage key (e.g. "GitHub:microsoft") for GIT_ASKPASS auth.</param>
     /// <param name="progress">Optional progress reporter</param>
-    Task PushAsync(string repoPath, string? remoteName = null, string? username = null, string? password = null, IProgress<string>? progress = null);
+    Task PushAsync(string repoPath, string? remoteName = null, string? credentialKey = null, IProgress<string>? progress = null);
 
     /// <summary>
     /// Pull updates for a specific branch (fast-forward if possible).
@@ -428,10 +430,9 @@ public interface IGitService
     /// <param name="repoPath">Path to the repository</param>
     /// <param name="remoteName">Name of the remote (e.g., "origin")</param>
     /// <param name="branchName">Name of the branch to delete</param>
-    /// <param name="username">Optional username for authentication</param>
-    /// <param name="password">Optional password/token for authentication</param>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName,
-        string? username = null, string? password = null);
+        string? credentialKey = null);
 
     #endregion
 
@@ -459,14 +460,16 @@ public interface IGitService
     /// <summary>
     /// Push a tag to remote.
     /// </summary>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     Task PushTagAsync(string repoPath, string tagName, string remoteName = "origin",
-        string? username = null, string? password = null);
+        string? credentialKey = null);
 
     /// <summary>
     /// Delete a remote tag.
     /// </summary>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin",
-        string? username = null, string? password = null);
+        string? credentialKey = null);
 
     #endregion
 
