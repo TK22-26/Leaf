@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Graph;
@@ -523,11 +524,18 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
         {
             // Caller cancelled — not a failure.
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or LibGit2Sharp.LibGit2SharpException
+                                or IOException
+                                or UnauthorizedAccessException)
         {
-            // Don't disrupt the UI, but leave breadcrumbs so silent failures
-            // are diagnosable. Narrowed from bare `catch` per plan §2.2.
-            Log.Warn("Graph", $"RefreshWorkingChanges failed: {ex.Message}");
+            // Git command failure, libgit2 internal error, or filesystem
+            // issue during the status read. Don't disrupt the UI, but leave
+            // a breadcrumb so silent status-refresh failures are diagnosable.
+            // Per plan §2.2: narrow instead of catch-all — unknown exception
+            // types should escape to AsyncErrorHandler rather than be
+            // swallowed here.
+            Log.Warn("Graph", $"RefreshWorkingChanges failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
