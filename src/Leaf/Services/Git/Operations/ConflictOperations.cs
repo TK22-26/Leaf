@@ -44,7 +44,7 @@ internal class ConflictOperations : IConflictOperations
             var conflictPaths = new List<string>();
 
             // Use git diff to find unmerged files
-            var result = GitCliHelpers.RunGit(repoPath, "diff --name-only --diff-filter=U");
+            var result = GitCliHelpers.RunGitArgs(repoPath, "diff", "--name-only", "--diff-filter=U");
             if (result.ExitCode == 0)
             {
                 conflictPaths.AddRange(result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries));
@@ -53,7 +53,7 @@ internal class ConflictOperations : IConflictOperations
 
             if (conflictPaths.Count == 0)
             {
-                var statusResult = GitCliHelpers.RunGit(repoPath, "status --porcelain");
+                var statusResult = GitCliHelpers.RunGitArgs(repoPath, "status", "--porcelain");
                 if (statusResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(statusResult.Output))
                 {
                     conflictPaths.AddRange(_context.OutputParser.ParseConflictFilesFromPorcelain(statusResult.Output));
@@ -197,9 +197,9 @@ internal class ConflictOperations : IConflictOperations
     {
         return Task.Run(() =>
         {
-            var baseResult = GitCliHelpers.RunGitWithInput(repoPath, "hash-object -w --stdin", baseContent ?? string.Empty);
-            var oursResult = GitCliHelpers.RunGitWithInput(repoPath, "hash-object -w --stdin", oursContent ?? string.Empty);
-            var theirsResult = GitCliHelpers.RunGitWithInput(repoPath, "hash-object -w --stdin", theirsContent ?? string.Empty);
+            var baseResult = GitCliHelpers.RunGitWithInputArgs(repoPath, baseContent ?? string.Empty, "hash-object", "-w", "--stdin");
+            var oursResult = GitCliHelpers.RunGitWithInputArgs(repoPath, oursContent ?? string.Empty, "hash-object", "-w", "--stdin");
+            var theirsResult = GitCliHelpers.RunGitWithInputArgs(repoPath, theirsContent ?? string.Empty, "hash-object", "-w", "--stdin");
 
             if (baseResult.ExitCode != 0 || oursResult.ExitCode != 0 || theirsResult.ExitCode != 0)
             {
@@ -215,7 +215,7 @@ internal class ConflictOperations : IConflictOperations
                             $"100644 {oursSha} 2\t{filePath}\n" +
                             $"100644 {theirsSha} 3\t{filePath}\n";
 
-            var indexResult = GitCliHelpers.RunGitWithInput(repoPath, "update-index --index-info", indexInfo);
+            var indexResult = GitCliHelpers.RunGitWithInputArgs(repoPath, indexInfo, "update-index", "--index-info");
             if (indexResult.ExitCode != 0)
             {
                 Log.Error("Merge", $"ReopenConflict: failed to restore index: {indexResult.Error}");
@@ -233,14 +233,14 @@ internal class ConflictOperations : IConflictOperations
     {
         return Task.Run(() =>
         {
-            var unresolvedResult = GitCliHelpers.RunGit(repoPath, "diff --name-only --diff-filter=U");
+            var unresolvedResult = GitCliHelpers.RunGitArgs(repoPath, "diff", "--name-only", "--diff-filter=U");
             var unresolved = unresolvedResult.Output
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(f => f.Trim())
                 .Where(f => !string.IsNullOrEmpty(f))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var stagedResult = GitCliHelpers.RunGit(repoPath, "diff --name-only --cached");
+            var stagedResult = GitCliHelpers.RunGitArgs(repoPath, "diff", "--name-only", "--cached");
             var stagedFiles = stagedResult.Output
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(f => f.Trim())

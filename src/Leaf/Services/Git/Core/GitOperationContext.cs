@@ -7,7 +7,6 @@ namespace Leaf.Services.Git.Core;
 internal class GitOperationContext : IGitOperationContext
 {
     public IGitCommandRunner CommandRunner { get; }
-    public GitCliHelpers CliHelpers { get; }
     public IGitOutputParser OutputParser { get; }
     public IGitErrorMapper ErrorMapper { get; }
 
@@ -19,7 +18,6 @@ internal class GitOperationContext : IGitOperationContext
     public GitOperationContext(IGitCommandRunner commandRunner)
     {
         CommandRunner = commandRunner;
-        CliHelpers = new GitCliHelpers(commandRunner);
         OutputParser = new GitOutputParser();
         ErrorMapper = new GitErrorMapper();
     }

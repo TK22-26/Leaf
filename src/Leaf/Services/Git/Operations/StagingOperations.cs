@@ -152,14 +152,14 @@ internal class StagingOperations : IStagingOperations
     private static WorkingChangesInfo GetWorkingChangesViaGitCli(string repoPath)
     {
         // Get branch info
-        var headResult = GitCliHelpers.RunGit(repoPath, "symbolic-ref --short HEAD");
+        var headResult = GitCliHelpers.RunGitArgs(repoPath, "symbolic-ref", "--short", "HEAD");
         bool isDetached = headResult.ExitCode != 0;
         string? headSha = null;
         string branchName;
 
         if (isDetached)
         {
-            var shaResult = GitCliHelpers.RunGit(repoPath, "rev-parse HEAD");
+            var shaResult = GitCliHelpers.RunGitArgs(repoPath, "rev-parse", "HEAD");
             headSha = shaResult.ExitCode == 0 ? shaResult.Output.Trim() : null;
             branchName = $"HEAD detached at {headSha?[..7] ?? "unknown"}";
         }
@@ -176,7 +176,7 @@ internal class StagingOperations : IStagingOperations
         };
 
         // Parse porcelain status output
-        var statusResult = GitCliHelpers.RunGit(repoPath, "status --porcelain -uall");
+        var statusResult = GitCliHelpers.RunGitArgs(repoPath, "status", "--porcelain", "-uall");
         if (statusResult.ExitCode != 0)
             return workingChanges;
 
@@ -253,8 +253,8 @@ internal class StagingOperations : IStagingOperations
     {
         return Task.Run(() =>
         {
-            var staged = GitCliHelpers.RunGit(repoPath, "diff --cached");
-            var unstaged = GitCliHelpers.RunGit(repoPath, "diff");
+            var staged = GitCliHelpers.RunGitArgs(repoPath, "diff", "--cached");
+            var unstaged = GitCliHelpers.RunGitArgs(repoPath, "diff");
 
             var builder = new StringBuilder();
 
@@ -286,10 +286,10 @@ internal class StagingOperations : IStagingOperations
     {
         return Task.Run(() =>
         {
-            var status = GitCliHelpers.RunGit(repoPath, "status -sb");
-            var stat = GitCliHelpers.RunGit(repoPath, "diff --cached --stat");
-            var names = GitCliHelpers.RunGit(repoPath, "diff --cached --name-only");
-            var diff = GitCliHelpers.RunGit(repoPath, "diff --cached");
+            var status = GitCliHelpers.RunGitArgs(repoPath, "status", "-sb");
+            var stat = GitCliHelpers.RunGitArgs(repoPath, "diff", "--cached", "--stat");
+            var names = GitCliHelpers.RunGitArgs(repoPath, "diff", "--cached", "--name-only");
+            var diff = GitCliHelpers.RunGitArgs(repoPath, "diff", "--cached");
 
             var builder = new StringBuilder();
 

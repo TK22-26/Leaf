@@ -174,7 +174,7 @@ internal class RepositoryOperations
         {
             var sw = Log.StartTimer();
             // Check if bare repo via git CLI
-            var revParseResult = GitCliHelpers.RunGit(repoPath, "rev-parse --is-bare-repository");
+            var revParseResult = GitCliHelpers.RunGitArgs(repoPath, "rev-parse", "--is-bare-repository");
             if (revParseResult.ExitCode == 0 && revParseResult.Output.Trim() == "true")
             {
                 return new RepositoryInfo
@@ -187,14 +187,14 @@ internal class RepositoryOperations
             }
 
             // Get current branch, detached HEAD state, and HEAD SHA — all from git CLI
-            var headResult = GitCliHelpers.RunGit(repoPath, "symbolic-ref --short HEAD");
+            var headResult = GitCliHelpers.RunGitArgs(repoPath, "symbolic-ref", "--short", "HEAD");
             bool isDetached = headResult.ExitCode != 0;
             string? headSha = null;
             string currentBranch;
 
             if (isDetached)
             {
-                var shaResult = GitCliHelpers.RunGit(repoPath, "rev-parse HEAD");
+                var shaResult = GitCliHelpers.RunGitArgs(repoPath, "rev-parse", "HEAD");
                 headSha = shaResult.ExitCode == 0 ? shaResult.Output.Trim() : null;
                 currentBranch = $"HEAD ({headSha?[..7] ?? "detached"})";
             }
@@ -207,7 +207,7 @@ internal class RepositoryOperations
             int aheadBy = 0, behindBy = 0;
             if (!isDetached)
             {
-                var abResult = GitCliHelpers.RunGit(repoPath, "rev-list --left-right --count HEAD...@{upstream}");
+                var abResult = GitCliHelpers.RunGitArgs(repoPath, "rev-list", "--left-right", "--count", "HEAD...@{upstream}");
                 if (abResult.ExitCode == 0)
                 {
                     var parts = abResult.Output.Trim().Split('\t');
