@@ -64,15 +64,14 @@ public partial class MainViewModel
     /// Open settings.
     /// </summary>
     [RelayCommand]
-    public void OpenSettings()
+    public async Task OpenSettingsAsync()
     {
         var dialog = new SettingsDialog(_credentialService, _settingsService)
         {
-            Owner = _ownerWindow,
             Width = 1000,
             Height = 750
         };
-        dialog.ShowDialog();
+        await _dialogService.ShowDialogAsync(dialog);
         TerminalViewModel?.ReloadSettings();
         WorkingChangesViewModel?.RefreshAiAvailability();
         WorkingChangesViewModel?.RefreshSectionContexts();
@@ -135,13 +134,10 @@ public partial class MainViewModel
     /// Open dialog to report a new issue via GitHub CLI.
     /// </summary>
     [RelayCommand]
-    public void ReportIssue()
+    public async Task ReportIssueAsync()
     {
-        var dialog = new ReportIssueDialog
-        {
-            Owner = _ownerWindow
-        };
-        dialog.ShowDialog();
+        var dialog = new ReportIssueDialog();
+        await _dialogService.ShowDialogAsync(dialog);
     }
 
     /// <summary>

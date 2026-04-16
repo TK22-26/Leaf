@@ -36,11 +36,10 @@ public partial class MainViewModel
 
         var dialog = new MergeDialog
         {
-            DataContext = dialogViewModel,
-            Owner = Application.Current.MainWindow
+            DataContext = dialogViewModel
         };
 
-        if (dialog.ShowDialog() != true)
+        if (!await _dialogService.ShowDialogAsync(dialog))
         {
             return;
         }

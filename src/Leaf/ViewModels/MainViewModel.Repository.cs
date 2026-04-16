@@ -256,12 +256,9 @@ public partial class MainViewModel
     public async Task CloneRepositoryAsync()
     {
         var settings = _settingsService.LoadSettings();
-        var dialog = new CloneDialog(_gitService, _credentialService, _settingsService, settings.DefaultClonePath)
-        {
-            Owner = _ownerWindow
-        };
+        var dialog = new CloneDialog(_gitService, _credentialService, _settingsService, settings.DefaultClonePath);
 
-        if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.ClonedRepositoryPath))
+        if (await _dialogService.ShowDialogAsync(dialog) && !string.IsNullOrEmpty(dialog.ClonedRepositoryPath))
         {
             // Add the cloned repo to the list. No session token: the cloned
             // path isn't the current repo yet, and we're about to SelectRepositoryAsync

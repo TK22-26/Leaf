@@ -23,7 +23,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly SettingsService _settingsService;
     private readonly IRepositoryManagementService _repositoryService;
     private readonly IAutoFetchService _autoFetchService;
-    private readonly Window _ownerWindow;
     private readonly FileWatcherService _fileWatcherService;
 
     // Phase 0/1: Architecture Glue Services
@@ -261,7 +260,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IGitFlowService gitFlowService,
         IRepositoryManagementService repositoryService,
         IAutoFetchService autoFetchService,
-        Window ownerWindow,
         IDispatcherService dispatcherService,
         IRepositoryEventHub eventHub,
         IDialogService dialogService,
@@ -279,7 +277,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _settingsService = settingsService;
         _repositoryService = repositoryService;
         _autoFetchService = autoFetchService;
-        _ownerWindow = ownerWindow;
         _dispatcherService = dispatcherService;
         _dialogService = dialogService;
         _sessionFactory = sessionFactory;

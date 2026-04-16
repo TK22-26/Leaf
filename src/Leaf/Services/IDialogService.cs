@@ -44,14 +44,6 @@ public interface IDialogService
     Task ShowErrorAsync(string message, string title);
 
     /// <summary>
-    /// Shows a custom dialog window and returns the result.
-    /// </summary>
-    /// <typeparam name="T">The expected result type (typically the ViewModel).</typeparam>
-    /// <param name="viewModel">The ViewModel to set as DataContext.</param>
-    /// <returns>The dialog result, or null if cancelled.</returns>
-    Task<T?> ShowDialogAsync<T>(object viewModel) where T : class;
-
-    /// <summary>
     /// Shows an input dialog for getting text input from the user.
     /// </summary>
     /// <param name="prompt">The prompt message.</param>
@@ -59,4 +51,13 @@ public interface IDialogService
     /// <param name="defaultValue">Optional default value.</param>
     /// <returns>The entered text, or null if cancelled.</returns>
     Task<string?> ShowInputAsync(string prompt, string title, string? defaultValue = null);
+
+    /// <summary>
+    /// Shows a constructed <see cref="Window"/> as a modal dialog. Sets
+    /// the owner to the main application window before showing so
+    /// callers never touch Window/Application directly.
+    /// </summary>
+    /// <param name="dialog">The dialog window (already populated with DataContext, dimensions, etc.).</param>
+    /// <returns>True if <see cref="Window.DialogResult"/> was true, false otherwise (including null / user-closed).</returns>
+    Task<bool> ShowDialogAsync(Window dialog);
 }

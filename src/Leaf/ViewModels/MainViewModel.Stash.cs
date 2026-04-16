@@ -106,7 +106,6 @@ public partial class MainViewModel
                     var conflictView = new Views.ConflictResolutionView
                     {
                         DataContext = conflictViewModel,
-                        Owner = _ownerWindow
                     };
 
                     conflictViewModel.MergeCompleted += async (s, success) =>
@@ -125,7 +124,7 @@ public partial class MainViewModel
                         await RefreshAsync();
                     };
 
-                    conflictView.ShowDialog();
+                    await _dialogService.ShowDialogAsync(conflictView);
                 }
             }
             else

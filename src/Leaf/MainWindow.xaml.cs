@@ -65,7 +65,8 @@ public partial class MainWindow : Window
         // ViewModelFactory for transient ViewModel creation
         var viewModelFactory = new ViewModelFactory(gitService, dialogService, repositoryEventHub, clipboardService, fileSystemService);
 
-        // Create view model with all services
+        // Create view model with all services. The VM no longer takes a
+        // Window reference — dialogs go through IDialogService.
         var viewModel = new MainViewModel(
             gitService,
             credentialService,
@@ -73,7 +74,6 @@ public partial class MainWindow : Window
             gitFlowService,
             repositoryService,
             autoFetchService,
-            this,
             dispatcherService,
             repositoryEventHub,
             dialogService,

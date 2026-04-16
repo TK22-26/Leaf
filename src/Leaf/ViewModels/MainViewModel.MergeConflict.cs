@@ -26,11 +26,10 @@ public partial class MainViewModel
 
         var conflictWindow = new Views.ConflictResolutionView
         {
-            DataContext = MergeConflictResolutionViewModel,
-            Owner = System.Windows.Application.Current.MainWindow
+            DataContext = MergeConflictResolutionViewModel
         };
 
-        conflictWindow.ShowDialog();
+        await _dialogService.ShowDialogAsync(conflictWindow);
     }
 
     /// <summary>
@@ -256,11 +255,10 @@ public partial class MainViewModel
 
         var conflictWindow = new Views.ConflictResolutionView
         {
-            DataContext = MergeConflictResolutionViewModel,
-            Owner = System.Windows.Application.Current.MainWindow
+            DataContext = MergeConflictResolutionViewModel
         };
 
-        conflictWindow.ShowDialog();
+        await _dialogService.ShowDialogAsync(conflictWindow);
     }
 
     [RelayCommand]

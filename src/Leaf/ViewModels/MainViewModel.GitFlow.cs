@@ -41,12 +41,8 @@ public partial class MainViewModel
     {
         if (SelectedRepository == null) return;
 
-        var dialog = new Views.GitFlowInitDialog(_gitFlowService, _settingsService, SelectedRepository.Path)
-        {
-            Owner = _ownerWindow
-        };
-
-        if (dialog.ShowDialog() == true && dialog.Result != null)
+        var dialog = new Views.GitFlowInitDialog(_gitFlowService, _settingsService, SelectedRepository.Path);
+        if (await _dialogService.ShowDialogAsync(dialog) && dialog.Result != null)
         {
             StatusMessage = "GitFlow initialized successfully";
             SelectedRepository.BranchesLoaded = false;
@@ -71,12 +67,8 @@ public partial class MainViewModel
             return;
         }
 
-        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Feature)
-        {
-            Owner = _ownerWindow
-        };
-
-        if (dialog.ShowDialog() == true)
+        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Feature);
+        if (await _dialogService.ShowDialogAsync(dialog))
         {
             StatusMessage = $"Started feature {dialog.BranchName}";
             SelectedRepository.BranchesLoaded = false;
@@ -101,12 +93,8 @@ public partial class MainViewModel
             return;
         }
 
-        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Release)
-        {
-            Owner = _ownerWindow
-        };
-
-        if (dialog.ShowDialog() == true)
+        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Release);
+        if (await _dialogService.ShowDialogAsync(dialog))
         {
             StatusMessage = $"Started release {dialog.BranchName}";
             SelectedRepository.BranchesLoaded = false;
@@ -131,12 +119,8 @@ public partial class MainViewModel
             return;
         }
 
-        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Hotfix)
-        {
-            Owner = _ownerWindow
-        };
-
-        if (dialog.ShowDialog() == true)
+        var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository.Path, Models.GitFlowBranchType.Hotfix);
+        if (await _dialogService.ShowDialogAsync(dialog))
         {
             StatusMessage = $"Started hotfix {dialog.BranchName}";
             SelectedRepository.BranchesLoaded = false;
@@ -172,19 +156,15 @@ public partial class MainViewModel
             return;
         }
 
-        var dialog = new Views.FinishBranchDialog(_gitFlowService, SelectedRepository.Path, branch.Name, branchType, flowName)
-        {
-            Owner = _ownerWindow
-        };
-
-        var result = dialog.ShowDialog();
+        var dialog = new Views.FinishBranchDialog(_gitFlowService, SelectedRepository.Path, branch.Name, branchType, flowName);
+        var finished = await _dialogService.ShowDialogAsync(dialog);
 
         // Always refresh to detect conflicts or other state changes
         if (SelectedRepository != null)
             SelectedRepository.BranchesLoaded = false;
         await RefreshAsync();
 
-        if (result == true)
+        if (finished)
         {
             StatusMessage = $"Finished {branchType.ToString().ToLower()} {flowName}";
         }
