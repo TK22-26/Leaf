@@ -46,19 +46,19 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = "Opening VS Code for merge...";
 
-            var conflicts = await _gitService.GetConflictsAsync(SelectedRepository.Path);
+            var conflicts = await _gitService.GetConflictsAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var firstConflict = conflicts.FirstOrDefault();
 
             if (firstConflict != null)
             {
-                await _gitService.OpenConflictInVsCodeAsync(SelectedRepository.Path, firstConflict.FilePath);
+                await _gitService.OpenConflictInVsCodeAsync(SelectedRepository.Path, firstConflict.FilePath, cancellationToken: CurrentRepositoryToken);
 
                 // Refresh to check if resolved
                 await RefreshAsync();
 
                 // If there are more conflicts, we could prompt to open the next one,
                 // but let's just refresh for now.
-                var remaining = await _gitService.GetConflictsAsync(SelectedRepository.Path);
+                var remaining = await _gitService.GetConflictsAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
                 if (remaining.Count == 0)
                 {
                     StatusMessage = "All conflicts resolved in VS Code.";
@@ -97,7 +97,7 @@ public partial class MainViewModel
             Log.Info("Merge", $"AbortMerge: repo={SelectedRepository.Name}");
 
             // Check if we're in an orphaned conflict state (conflicts without MERGE_HEAD)
-            var isOrphaned = await _gitService.IsOrphanedConflictStateAsync(SelectedRepository.Path);
+            var isOrphaned = await _gitService.IsOrphanedConflictStateAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             Log.Info("Merge", $"AbortMerge: isOrphaned={isOrphaned}");
 
             if (isOrphaned)
@@ -142,12 +142,12 @@ public partial class MainViewModel
                     ? "Resetting index and restoring files..."
                     : "Resetting index...";
 
-                await _gitService.ResetOrphanedConflictsAsync(SelectedRepository.Path, discardChanges);
+                await _gitService.ResetOrphanedConflictsAsync(SelectedRepository.Path, discardChanges, cancellationToken: CurrentRepositoryToken);
 
                 // Clean up stored merge conflict file
                 try
                 {
-                    await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path);
+                    await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
                 }
                 catch (Exception clearEx) when (clearEx is IOException or UnauthorizedAccessException)
                 {
@@ -171,25 +171,25 @@ public partial class MainViewModel
                 {
                     case Models.GitOperationType.CherryPick:
                         StatusMessage = "Aborting cherry-pick...";
-                        await _gitService.AbortCherryPickAsync(SelectedRepository.Path);
+                        await _gitService.AbortCherryPickAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
                         StatusMessage = "Cherry-pick aborted";
                         break;
 
                     case Models.GitOperationType.Revert:
                         StatusMessage = "Aborting revert...";
-                        await _gitService.AbortRevertAsync(SelectedRepository.Path);
+                        await _gitService.AbortRevertAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
                         StatusMessage = "Revert aborted";
                         break;
 
                     case Models.GitOperationType.Rebase:
                         StatusMessage = "Aborting rebase...";
-                        await _gitService.AbortRebaseAsync(SelectedRepository.Path);
+                        await _gitService.AbortRebaseAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
                         StatusMessage = "Rebase aborted";
                         break;
 
                     default:
                         StatusMessage = "Aborting merge...";
-                        await _gitService.AbortMergeAsync(SelectedRepository.Path);
+                        await _gitService.AbortMergeAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
                         StatusMessage = "Merge aborted";
                         break;
                 }
@@ -200,7 +200,7 @@ public partial class MainViewModel
             // Clean up the stored merge conflict file immediately after abort
             try
             {
-                await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path);
+                await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             }
             catch (Exception clearEx)
             {
@@ -230,7 +230,7 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = "Opening VS Code for merge...";
 
-            await _gitService.OpenConflictInVsCodeAsync(SelectedRepository.Path, conflict.FilePath);
+            await _gitService.OpenConflictInVsCodeAsync(SelectedRepository.Path, conflict.FilePath, cancellationToken: CurrentRepositoryToken);
 
             await RefreshAsync();
         }
@@ -291,14 +291,14 @@ public partial class MainViewModel
 
             MergeConflictResolutionViewModel = null;
             _mergeConflictRepoPath = null;
-            _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path)
+            _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken)
                 .FireAndForget(nameof(_gitService.ClearStoredMergeConflictFilesAsync), isUserAction: false);
             return;
         }
 
         if (string.IsNullOrEmpty(SelectedRepository.MergingBranch))
         {
-            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path);
+            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             SelectedRepository.MergingBranch = info.MergingBranch;
         }
 
@@ -314,7 +314,8 @@ public partial class MainViewModel
 
             var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, _dispatcherService, SelectedRepository.Path)
             {
-                IsCompactFileList = _settingsService.LoadSettings().CompactFileList
+                IsCompactFileList = _settingsService.LoadSettings().CompactFileList,
+                GetSessionToken = () => CurrentRepositoryToken
             };
             conflictViewModel.MergeCompleted += OnMergeConflictResolutionCompleted;
             MergeConflictResolutionViewModel = conflictViewModel;

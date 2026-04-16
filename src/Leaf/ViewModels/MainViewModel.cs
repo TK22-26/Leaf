@@ -32,9 +32,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IClipboardService _clipboardService;
     private readonly IFolderWatcherService _folderWatcherService;
     private readonly IPullRequestService _pullRequestService;
+    private readonly IRepositorySessionFactory _sessionFactory;
     private readonly INotificationService? _notificationService;
     private IRepositorySession? _currentSession;
     private bool _disposed;
+
+    /// <summary>
+    /// Cancellation token scoped to the current repository.
+    /// Cancels when the user switches repositories — lets background git
+    /// operations abort promptly instead of fighting for resources with the
+    /// newly selected repo's loading. Pass this to every IGitService call.
+    /// </summary>
+    public CancellationToken CurrentRepositoryToken =>
+        _currentSession?.CancellationToken ?? CancellationToken.None;
 
     private string? _pendingBranchBaseSha;
 
@@ -272,6 +282,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _ownerWindow = ownerWindow;
         _dispatcherService = dispatcherService;
         _dialogService = dialogService;
+        _sessionFactory = sessionFactory;
         _clipboardService = clipboardService;
         _folderWatcherService = folderWatcherService;
         _pullRequestService = pullRequestService;
@@ -294,8 +305,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Subscribe to auto-fetch completion
         _autoFetchService.FetchCompleted += OnAutoFetchCompleted;
 
-        _gitGraphViewModel = new GitGraphViewModel(gitService);
-        _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService, settingsService);
+        // Provide each child VM with a getter for the active session token so
+        // its background git calls abort when the user switches repositories.
+        Func<CancellationToken> tokenGetter = () => CurrentRepositoryToken;
+
+        _gitGraphViewModel = new GitGraphViewModel(gitService) { GetSessionToken = tokenGetter };
+        _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService, settingsService)
+            { GetSessionToken = tokenGetter };
 
         // Create AI and gitignore services for WorkingChangesViewModel
         var commitMessageParser = new CommitMessageParser();
@@ -303,13 +319,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var aiCommitService = new AiCommitMessageService(settingsService, ollamaService, commitMessageParser);
         var gitignoreService = new GitignoreService(gitService);
 
-        _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService, settingsService);
+        _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService, settingsService)
+            { GetSessionToken = tokenGetter };
         _workingChangesViewModel.FileSelected += OnWorkingChangesFileSelected;
         _workingChangesViewModel.FileDeletedOrDiscarded += OnFileDeletedOrDiscarded;
-        _diffViewerViewModel = new DiffViewerViewModel(gitService);
+        _diffViewerViewModel = new DiffViewerViewModel(gitService) { GetSessionToken = tokenGetter };
         _diffViewerViewModel.CloseRequested += OnDiffViewerCloseRequested;
         _diffViewerViewModel.HunkReverted += OnDiffViewerHunkReverted;
-        _terminalViewModel = new TerminalViewModel(gitService, settingsService);
+        _terminalViewModel = new TerminalViewModel(gitService, settingsService) { GetSessionToken = tokenGetter };
         _terminalViewModel.CommandExecuted += OnTerminalCommandExecuted;
 
         // Wire up file watcher events

@@ -24,7 +24,7 @@ public partial class MainViewModel
         try
         {
             // Get existing remote names
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var existingNames = remotes.Select(r => r.Name);
 
             var dialog = new RemoteDialog(existingNames) { Owner = _ownerWindow };
@@ -38,7 +38,7 @@ public partial class MainViewModel
                 SelectedRepository.Path,
                 dialog.RemoteName,
                 dialog.FetchUrl,
-                dialog.PushUrl);
+                dialog.PushUrl, cancellationToken: CurrentRepositoryToken);
 
             // Refresh branches to show the new remote
             SelectedRepository.BranchesLoaded = false;
@@ -67,7 +67,7 @@ public partial class MainViewModel
         try
         {
             // Get existing remote names and the full remote info
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var remoteInfo = remotes.FirstOrDefault(r => r.Name == remote.Name);
 
             if (remoteInfo == null)
@@ -90,16 +90,16 @@ public partial class MainViewModel
             // Check if name changed - rename first
             if (!string.Equals(remote.Name, dialog.RemoteName, StringComparison.OrdinalIgnoreCase))
             {
-                await _gitService.RenameRemoteAsync(SelectedRepository.Path, remote.Name, dialog.RemoteName);
+                await _gitService.RenameRemoteAsync(SelectedRepository.Path, remote.Name, dialog.RemoteName, cancellationToken: CurrentRepositoryToken);
             }
 
             // Update URLs
             var currentRemoteName = dialog.RemoteName; // Use new name if renamed
-            await _gitService.SetRemoteUrlAsync(SelectedRepository.Path, currentRemoteName, dialog.FetchUrl, isPushUrl: false);
+            await _gitService.SetRemoteUrlAsync(SelectedRepository.Path, currentRemoteName, dialog.FetchUrl, isPushUrl: false, cancellationToken: CurrentRepositoryToken);
 
             if (dialog.PushUrl != null)
             {
-                await _gitService.SetRemoteUrlAsync(SelectedRepository.Path, currentRemoteName, dialog.PushUrl, isPushUrl: true);
+                await _gitService.SetRemoteUrlAsync(SelectedRepository.Path, currentRemoteName, dialog.PushUrl, isPushUrl: true, cancellationToken: CurrentRepositoryToken);
             }
 
             // Refresh branches
@@ -137,7 +137,7 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = $"Removing remote '{remoteName}'...";
 
-            await _gitService.RemoveRemoteAsync(SelectedRepository.Path, remoteName);
+            await _gitService.RemoveRemoteAsync(SelectedRepository.Path, remoteName, cancellationToken: CurrentRepositoryToken);
 
             // Refresh branches
             SelectedRepository.BranchesLoaded = false;
@@ -165,7 +165,7 @@ public partial class MainViewModel
 
         try
         {
-            await _gitService.SetConfigAsync(SelectedRepository.Path, "leaf.defaultremote", remoteName);
+            await _gitService.SetConfigAsync(SelectedRepository.Path, "leaf.defaultremote", remoteName, cancellationToken: CurrentRepositoryToken);
 
             // Refresh branches to update the default indicator
             SelectedRepository.BranchesLoaded = false;
@@ -214,7 +214,7 @@ public partial class MainViewModel
         try
         {
             IsBusy = true;
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
             var successCount = 0;
             foreach (var remote in remotes)
@@ -227,7 +227,7 @@ public partial class MainViewModel
 
                 try
                 {
-                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey);
+                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey, cancellationToken: CurrentRepositoryToken);
                     successCount++;
                 }
                 catch (Exception ex)
@@ -259,7 +259,7 @@ public partial class MainViewModel
 
         try
         {
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
             if (remotes.Count <= 1)
             {
@@ -269,7 +269,7 @@ public partial class MainViewModel
             }
 
             // Multiple remotes - show selection dialog
-            var defaultRemote = await _gitService.GetConfigAsync(SelectedRepository.Path, "leaf.defaultremote") ?? "origin";
+            var defaultRemote = await _gitService.GetConfigAsync(SelectedRepository.Path, "leaf.defaultremote", cancellationToken: CurrentRepositoryToken) ?? "origin";
 
             var dialog = new PushDialog(SelectedRepository.CurrentBranch, remotes, defaultRemote)
             {
@@ -294,7 +294,7 @@ public partial class MainViewModel
 
                 try
                 {
-                    await _gitService.PushAsync(SelectedRepository.Path, remoteName, credentialKey);
+                    await _gitService.PushAsync(SelectedRepository.Path, remoteName, credentialKey, cancellationToken: CurrentRepositoryToken);
                     if (remoteInfo != null)
                     {
                         pushedRemotes.Add((remoteInfo, credentialKey));
@@ -312,7 +312,7 @@ public partial class MainViewModel
             {
                 try
                 {
-                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey);
+                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey, cancellationToken: CurrentRepositoryToken);
                 }
                 catch (InvalidOperationException ex)
                 {

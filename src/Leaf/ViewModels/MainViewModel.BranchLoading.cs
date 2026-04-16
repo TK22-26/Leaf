@@ -16,7 +16,7 @@ public partial class MainViewModel
     private async Task PrepareGraphContextAsync(string repoPath)
     {
         var sw = Log.StartTimer();
-        var remotesTask = _gitService.GetRemotesAsync(repoPath);
+        var remotesTask = _gitService.GetRemotesAsync(repoPath, cancellationToken: CurrentRepositoryToken);
         var gitFlowConfigTask = _gitFlowService.GetConfigAsync(repoPath);
 
         await Task.WhenAll(remotesTask, gitFlowConfigTask).ConfigureAwait(false);
@@ -48,12 +48,12 @@ public partial class MainViewModel
             var branchLoadSw = Log.StartTimer();
 
             // Fetch all git data in parallel (each runs on background thread)
-            var branchesTask = TimedTask("GetBranchesAsync", _gitService.GetBranchesAsync(repo.Path));
-            var remotesTask = TimedTask("GetRemotesAsync", _gitService.GetRemotesAsync(repo.Path));
-            var defaultRemoteTask = TimedTask("GetConfigAsync(leaf.defaultremote)", _gitService.GetConfigAsync(repo.Path, "leaf.defaultremote"));
+            var branchesTask = TimedTask("GetBranchesAsync", _gitService.GetBranchesAsync(repo.Path, cancellationToken: CurrentRepositoryToken));
+            var remotesTask = TimedTask("GetRemotesAsync", _gitService.GetRemotesAsync(repo.Path, cancellationToken: CurrentRepositoryToken));
+            var defaultRemoteTask = TimedTask("GetConfigAsync(leaf.defaultremote)", _gitService.GetConfigAsync(repo.Path, "leaf.defaultremote", cancellationToken: CurrentRepositoryToken));
             var gitFlowConfigTask = TimedTask("GetGitFlowConfigAsync", _gitFlowService.GetConfigAsync(repo.Path));
-            var worktreesTask = TimedTask("GetWorktreesAsync", _gitService.GetWorktreesAsync(repo.Path));
-            var tagsTask = TimedTask("GetTagsAsync", _gitService.GetTagsAsync(repo.Path));
+            var worktreesTask = TimedTask("GetWorktreesAsync", _gitService.GetWorktreesAsync(repo.Path, cancellationToken: CurrentRepositoryToken));
+            var tagsTask = TimedTask("GetTagsAsync", _gitService.GetTagsAsync(repo.Path, cancellationToken: CurrentRepositoryToken));
             var pullRequestsTask = TimedTask("LoadPullRequestsForRepoAsync", LoadPullRequestsForRepoAsync(repo, forceReload));
 
             await Task.WhenAll(branchesTask, remotesTask, defaultRemoteTask, gitFlowConfigTask, worktreesTask, tagsTask, pullRequestsTask)
@@ -303,7 +303,7 @@ public partial class MainViewModel
 
         if (SelectedRepository != null && string.IsNullOrWhiteSpace(remoteName))
         {
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             remoteName = remotes.FirstOrDefault(r => r.Name == "origin")?.Name
                          ?? remotes.FirstOrDefault()?.Name
                          ?? "origin";
@@ -343,7 +343,7 @@ public partial class MainViewModel
         if (SelectedRepository == null)
             return null;
 
-        var branches = await _gitService.GetBranchesAsync(SelectedRepository.Path);
+        var branches = await _gitService.GetBranchesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
         var localBranches = branches.Where(b => !b.IsRemote && !b.Name.Equals(excludeBranch, StringComparison.OrdinalIgnoreCase)).ToList();
 
         if (localBranches.Count == 0)

@@ -25,6 +25,15 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
 
     private readonly IGitService _gitService;
 
+    /// <summary>
+    /// Returns the current repository's cancellation token. Set by
+    /// MainViewModel so this VM's background git calls abort when the
+    /// session is disposed on repo switch.
+    /// </summary>
+    public Func<CancellationToken>? GetSessionToken { get; set; }
+
+    private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
+
     // The active builder that owns colour state for the currently-displayed
     // graph. Swapped atomically with <see cref="Nodes"/> and
     // <see cref="ColorResolver"/> at the end of a background build so the
@@ -336,9 +345,9 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             RepositoryPath = path;
 
             // Load working changes, commits, and stashes in parallel
-            var workingChangesTask = _gitService.GetWorkingChangesAsync(path);
-            var commitsTask = _gitService.GetCommitHistoryAsync(path, InitialBatchSize);
-            var stashesTask = _gitService.GetStashesAsync(path);
+            var workingChangesTask = _gitService.GetWorkingChangesAsync(path, cancellationToken: SessionToken);
+            var commitsTask = _gitService.GetCommitHistoryAsync(path, InitialBatchSize, cancellationToken: SessionToken);
+            var stashesTask = _gitService.GetStashesAsync(path, cancellationToken: SessionToken);
 
             await Task.WhenAll(workingChangesTask, commitsTask, stashesTask);
 
@@ -510,7 +519,7 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
 
         try
         {
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(RepositoryPath);
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(RepositoryPath, cancellationToken: SessionToken);
 
             // Recalculate total height (stashes are included in Commits)
             int rowCount = Commits.Count;
@@ -620,7 +629,7 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             var moreCommits = await _gitService.GetCommitHistoryAsync(
                 RepositoryPath,
                 BatchSize,
-                skip: _loadedCommitCount);
+                skip: _loadedCommitCount, cancellationToken: SessionToken);
 
             // Check if we've reached the end
             if (moreCommits.Count < BatchSize)
@@ -1093,7 +1102,7 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
 
     private async Task<MergeCommitTooltipViewModel?> BuildMergeTooltipAsync(CommitInfo commit, string repoPath)
     {
-        var mergeCommits = await _gitService.GetMergeCommitsAsync(repoPath, commit.Sha);
+        var mergeCommits = await _gitService.GetMergeCommitsAsync(repoPath, commit.Sha, cancellationToken: SessionToken);
         if (mergeCommits.Count == 0)
         {
             return null;

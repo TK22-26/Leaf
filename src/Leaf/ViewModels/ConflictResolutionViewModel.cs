@@ -170,6 +170,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
 
     public event EventHandler<bool>? MergeCompleted;
 
+    /// <summary>
+    /// Returns the current repository's cancellation token. Set by
+    /// MainViewModel so this VM's background git calls abort when the
+    /// session is disposed on repo switch.
+    /// </summary>
+    public Func<CancellationToken>? GetSessionToken { get; set; }
+
+    private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
+
     public ConflictResolutionViewModel(
         IGitService gitService,
         IClipboardService clipboardService,
@@ -207,11 +216,11 @@ public partial class ConflictResolutionViewModel : ObservableObject
                 IsLoading = true;
 
             Log.Info("Merge", $"LoadConflicts: repo={System.IO.Path.GetFileName(_repoPath)}");
-            var latestConflicts = await _gitService.GetConflictsAsync(_repoPath);
+            var latestConflicts = await _gitService.GetConflictsAsync(_repoPath, cancellationToken: SessionToken);
             foreach (var conflict in latestConflicts)
                 conflict.IsResolved = false;
 
-            var resolvedFiles = await _gitService.GetResolvedMergeFilesAsync(_repoPath);
+            var resolvedFiles = await _gitService.GetResolvedMergeFilesAsync(_repoPath, cancellationToken: SessionToken);
             var latestByPath = new Dictionary<string, ConflictInfo>(StringComparer.OrdinalIgnoreCase);
             foreach (var conflict in latestConflicts)
                 latestByPath[conflict.FilePath] = conflict;
@@ -250,7 +259,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
                 SelectedConflict = Conflicts.FirstOrDefault(c => !c.IsResolved) ?? Conflicts.FirstOrDefault();
 
             UpdateCounts();
-            await _gitService.SaveStoredMergeConflictFilesAsync(_repoPath, latestByPath.Keys);
+            await _gitService.SaveStoredMergeConflictFilesAsync(_repoPath, latestByPath.Keys, cancellationToken: SessionToken);
 
             OnPropertyChanged(nameof(ConflictedConflicts));
             OnPropertyChanged(nameof(ResolvedConflicts));
@@ -618,7 +627,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         try
         {
             IsResolving = true;
-            await _gitService.ResolveConflictWithOursAsync(_repoPath, SelectedConflict.FilePath);
+            await _gitService.ResolveConflictWithOursAsync(_repoPath, SelectedConflict.FilePath, cancellationToken: SessionToken);
 
             SelectedConflict.MergedContent = SelectedConflict.OursContent;
             SelectedConflict.IsResolved = true;
@@ -639,7 +648,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         try
         {
             IsResolving = true;
-            await _gitService.ResolveConflictWithTheirsAsync(_repoPath, SelectedConflict.FilePath);
+            await _gitService.ResolveConflictWithTheirsAsync(_repoPath, SelectedConflict.FilePath, cancellationToken: SessionToken);
 
             SelectedConflict.MergedContent = SelectedConflict.TheirsContent;
             SelectedConflict.IsResolved = true;
@@ -671,7 +680,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
                 System.IO.Path.Combine(_repoPath, SelectedConflict.FilePath),
                 mergedContent);
 
-            await _gitService.MarkConflictResolvedAsync(_repoPath, SelectedConflict.FilePath);
+            await _gitService.MarkConflictResolvedAsync(_repoPath, SelectedConflict.FilePath, cancellationToken: SessionToken);
 
             SelectedConflict.MergedContent = mergedContent;
             SelectedConflict.IsResolved = true;
@@ -694,7 +703,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
             IsResolving = true;
             var commitMessage = $"Merge branch '{SourceBranch}' into {TargetBranch}";
             Log.Info("Merge", $"CompleteMerge: message={commitMessage}");
-            await _gitService.CompleteMergeAsync(_repoPath, commitMessage);
+            await _gitService.CompleteMergeAsync(_repoPath, commitMessage, cancellationToken: SessionToken);
             Log.Info("Merge", "CompleteMerge: success");
             Cleanup();
             MergeCompleted?.Invoke(this, true);
@@ -719,7 +728,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         {
             IsResolving = true;
             Log.Info("Merge", "AbortMerge (from ConflictResolutionVM)");
-            await _gitService.AbortMergeAsync(_repoPath);
+            await _gitService.AbortMergeAsync(_repoPath, cancellationToken: SessionToken);
             Log.Info("Merge", "AbortMerge: completed");
             Cleanup();
             MergeCompleted?.Invoke(this, false);
@@ -757,7 +766,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         try
         {
             IsResolving = true;
-            await _gitService.ReopenConflictAsync(_repoPath, conflict.FilePath, conflict.BaseContent, conflict.OursContent, conflict.TheirsContent);
+            await _gitService.ReopenConflictAsync(_repoPath, conflict.FilePath, conflict.BaseContent, conflict.OursContent, conflict.TheirsContent, cancellationToken: SessionToken);
 
             conflict.IsResolved = false;
             UpdateCounts();
@@ -941,7 +950,7 @@ public partial class ConflictResolutionViewModel : ObservableObject
         // Persist merge-conflict resolution state — if this faults, the user
         // loses recovery state across a restart, so it's strictly a user-action
         // error regardless of how UpdateCounts was triggered.
-        _gitService.SaveStoredMergeConflictFilesAsync(_repoPath, Conflicts.Select(c => c.FilePath))
+        _gitService.SaveStoredMergeConflictFilesAsync(_repoPath, Conflicts.Select(c => c.FilePath), cancellationToken: SessionToken)
             .FireAndForget(nameof(_gitService.SaveStoredMergeConflictFilesAsync), isUserAction: true);
     }
 

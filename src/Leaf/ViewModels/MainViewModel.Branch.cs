@@ -118,7 +118,7 @@ public partial class MainViewModel
                 }
 
                 StatusMessage = $"Renaming branch '{_pendingRenameBranchName}'...";
-                await _gitService.RenameBranchAsync(SelectedRepository.Path, _pendingRenameBranchName, branchName);
+                await _gitService.RenameBranchAsync(SelectedRepository.Path, _pendingRenameBranchName, branchName, cancellationToken: CurrentRepositoryToken);
                 StatusMessage = $"Renamed branch to '{branchName}'";
                 SelectedRepository.BranchesLoaded = false;
                 await RefreshAsync();
@@ -126,13 +126,13 @@ public partial class MainViewModel
             else if (!string.IsNullOrWhiteSpace(_pendingBranchBaseSha))
             {
                 StatusMessage = $"Creating branch '{branchName}' at {_pendingBranchBaseSha[..7]}...";
-                await _gitService.CreateBranchAtCommitAsync(SelectedRepository.Path, branchName, _pendingBranchBaseSha);
+                await _gitService.CreateBranchAtCommitAsync(SelectedRepository.Path, branchName, _pendingBranchBaseSha, cancellationToken: CurrentRepositoryToken);
                 StatusMessage = $"Created and checked out branch '{branchName}'";
             }
             else
             {
                 StatusMessage = $"Creating branch '{branchName}'...";
-                await _gitService.CreateBranchAsync(SelectedRepository.Path, branchName);
+                await _gitService.CreateBranchAsync(SelectedRepository.Path, branchName, cancellationToken: CurrentRepositoryToken);
                 StatusMessage = $"Created and checked out branch '{branchName}'";
             }
             SelectedRepository.BranchesLoaded = false;
@@ -189,11 +189,11 @@ public partial class MainViewModel
 
                 // Resolve credential key from the remote URL only when a PAT is
                 // stored; otherwise rely on GCM fallback.
-                var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+                var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
                 var remoteUrl = remotes.FirstOrDefault(r => r.Name == remoteName)?.Url;
                 var credentialKey = _credentialService.ResolveActiveCredentialKey(remoteUrl);
 
-                await _gitService.DeleteRemoteBranchAsync(SelectedRepository.Path, remoteName, branchName, credentialKey);
+                await _gitService.DeleteRemoteBranchAsync(SelectedRepository.Path, remoteName, branchName, credentialKey, cancellationToken: CurrentRepositoryToken);
             }
             else
             {
@@ -204,11 +204,11 @@ public partial class MainViewModel
                     if (switchTarget != null)
                     {
                         StatusMessage = $"Switching to {switchTarget}...";
-                        await _gitService.CheckoutAsync(SelectedRepository.Path, switchTarget);
+                        await _gitService.CheckoutAsync(SelectedRepository.Path, switchTarget, cancellationToken: CurrentRepositoryToken);
                     }
                 }
 
-                await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: false);
+                await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: false, cancellationToken: CurrentRepositoryToken);
             }
 
             StatusMessage = $"Deleted branch {branch.Name}";
@@ -220,7 +220,7 @@ public partial class MainViewModel
             {
                 try
                 {
-                    await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: true);
+                    await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: true, cancellationToken: CurrentRepositoryToken);
                     StatusMessage = $"Force deleted branch {branch.Name}";
                     await RefreshAsync();
                     return;
@@ -264,7 +264,7 @@ public partial class MainViewModel
                     localName,
                     remoteNameValue,
                     branch.Name,
-                    isCurrentBranch: false);
+                    isCurrentBranch: false, cancellationToken: CurrentRepositoryToken);
 
                 StatusMessage = $"Created local {localName} from {branch.Name}";
                 await RefreshAsync();
@@ -277,7 +277,7 @@ public partial class MainViewModel
                 branch.Name,
                 remoteName,
                 remoteBranchName,
-                branch.IsCurrent);
+                branch.IsCurrent, cancellationToken: CurrentRepositoryToken);
 
             StatusMessage = $"Pulled {branch.Name}";
             await RefreshAsync();
@@ -309,7 +309,7 @@ public partial class MainViewModel
                 branch.Name,
                 remoteName,
                 remoteBranchName,
-                branch.IsCurrent);
+                branch.IsCurrent, cancellationToken: CurrentRepositoryToken);
 
             StatusMessage = $"Pushed {branch.Name}";
             await RefreshAsync();
@@ -342,7 +342,7 @@ public partial class MainViewModel
             StatusMessage = $"Setting upstream for {branch.Name}...";
 
             var (remoteName, remoteBranchName) = await ResolveRemoteTargetAsync(branch);
-            await _gitService.SetUpstreamAsync(SelectedRepository.Path, branch.Name, remoteName, remoteBranchName);
+            await _gitService.SetUpstreamAsync(SelectedRepository.Path, branch.Name, remoteName, remoteBranchName, cancellationToken: CurrentRepositoryToken);
 
             StatusMessage = $"Upstream set for {branch.Name}";
             SelectedRepository.BranchesLoaded = false;
@@ -406,7 +406,7 @@ public partial class MainViewModel
                     : branch.Name;
 
                 // Check if local/remote branches exist and where they point
-                var branches = await _gitService.GetBranchesAsync(SelectedRepository.Path);
+                var branches = await _gitService.GetBranchesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
                 localBranch = branches.FirstOrDefault(b =>
                     !b.IsRemote && string.Equals(b.Name, localBranchName, StringComparison.OrdinalIgnoreCase));
                 var remoteBranchName = $"{remoteName}/{localBranchName}";
@@ -432,7 +432,7 @@ public partial class MainViewModel
                 branchName = branch.Name;
             }
 
-            await _gitService.CheckoutAsync(SelectedRepository.Path, branchName, allowConflicts: true);
+            await _gitService.CheckoutAsync(SelectedRepository.Path, branchName, allowConflicts: true, cancellationToken: CurrentRepositoryToken);
 
             // Fast-forward local branch to match remote if behind
             if (needsPull)
@@ -445,7 +445,7 @@ public partial class MainViewModel
                         branchName,
                         pullRemoteName!,
                         branchName,
-                        isCurrentBranch: true);
+                        isCurrentBranch: true, cancellationToken: CurrentRepositoryToken);
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -460,7 +460,7 @@ public partial class MainViewModel
 
             // Refresh repo info, branches, and graph in parallel (all independent git calls)
             SelectedRepository.BranchesLoaded = false;
-            var repoInfoTask = _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path);
+            var repoInfoTask = _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var branchesTask = LoadBranchesForRepoAsync(SelectedRepository, skipFilterApplication: true);
             var graphTask = GitGraphViewModel?.RefreshAfterCheckoutAsync(branchName, detachedHeadSha: null) ?? Task.CompletedTask;
 
@@ -525,11 +525,11 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = $"Checking out tag {tag.Name}...";
 
-            await _gitService.CheckoutCommitAsync(SelectedRepository.Path, tag.TargetSha);
+            await _gitService.CheckoutCommitAsync(SelectedRepository.Path, tag.TargetSha, cancellationToken: CurrentRepositoryToken);
 
             // Refresh repo info, branches, and graph in parallel (all independent git calls)
             SelectedRepository.BranchesLoaded = false;
-            var infoTask = _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path);
+            var infoTask = _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var branchesTask = LoadBranchesForRepoAsync(SelectedRepository, skipFilterApplication: true);
             var graphTask = GitGraphViewModel?.RefreshAfterCheckoutAsync(newBranchName: null, detachedHeadSha: tag.TargetSha) ?? Task.CompletedTask;
 
@@ -576,13 +576,13 @@ public partial class MainViewModel
             StatusMessage = $"Deleting tag {tag.Name}...";
 
             // Delete locally first
-            await _gitService.DeleteTagAsync(SelectedRepository.Path, tag.Name);
+            await _gitService.DeleteTagAsync(SelectedRepository.Path, tag.Name, cancellationToken: CurrentRepositoryToken);
 
             // Also delete from remote origin (ignore errors if tag doesn't exist on remote)
             try
             {
                 StatusMessage = $"Deleting tag {tag.Name} from remote...";
-                await _gitService.DeleteRemoteTagAsync(SelectedRepository.Path, tag.Name, "origin");
+                await _gitService.DeleteRemoteTagAsync(SelectedRepository.Path, tag.Name, "origin", cancellationToken: CurrentRepositoryToken);
             }
             catch (InvalidOperationException ex)
             {

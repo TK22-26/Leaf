@@ -44,7 +44,7 @@ public partial class MainViewModel
                 IsBusy = true;
                 StatusMessage = $"Reverting {commit.ShortSha} (parent {parentIndex})...";
 
-                await _gitService.RevertMergeCommitAsync(SelectedRepository.Path, commit.Sha, parentIndex);
+                await _gitService.RevertMergeCommitAsync(SelectedRepository.Path, commit.Sha, parentIndex, cancellationToken: CurrentRepositoryToken);
 
                 StatusMessage = $"Reverted {commit.ShortSha}";
                 await RefreshAsync();
@@ -67,7 +67,7 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = $"Reverting {commit.ShortSha}...";
 
-            await _gitService.RevertCommitAsync(SelectedRepository.Path, commit.Sha);
+            await _gitService.RevertCommitAsync(SelectedRepository.Path, commit.Sha, cancellationToken: CurrentRepositoryToken);
 
             Log.Info("Merge", $"RevertCommit: success sha={commit.ShortSha}");
             StatusMessage = $"Reverted {commit.ShortSha}";
@@ -122,7 +122,7 @@ public partial class MainViewModel
             StatusMessage = $"Resetting {branchName} to {request.Commit.ShortSha} ({modeLabel})...";
 
             await _gitService.ResetCurrentBranchToCommitAsync(
-                SelectedRepository.Path, request.Commit.Sha, request.Mode);
+                SelectedRepository.Path, request.Commit.Sha, request.Mode, cancellationToken: CurrentRepositoryToken);
 
             StatusMessage = $"Reset {branchName} to {request.Commit.ShortSha} ({modeLabel})";
             await RefreshAsync();
@@ -148,10 +148,10 @@ public partial class MainViewModel
 
         try
         {
-            await _gitService.CheckoutCommitAsync(SelectedRepository.Path, commit.Sha);
+            await _gitService.CheckoutCommitAsync(SelectedRepository.Path, commit.Sha, cancellationToken: CurrentRepositoryToken);
 
             // Refresh the repo info to update detached HEAD state
-            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path);
+            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             SelectedRepository.CurrentBranch = info.CurrentBranch;
             SelectedRepository.IsDetachedHead = info.IsDetachedHead;
             SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
@@ -191,7 +191,7 @@ public partial class MainViewModel
 
         try
         {
-            var result = await _gitService.CherryPickAsync(SelectedRepository.Path, commit.Sha);
+            var result = await _gitService.CherryPickAsync(SelectedRepository.Path, commit.Sha, cancellationToken: CurrentRepositoryToken);
             if (result.Success)
             {
                 Log.Info("Merge", "CherryPickCommit: success");
@@ -232,7 +232,7 @@ public partial class MainViewModel
 
         try
         {
-            var diffText = await _gitService.GetCommitToWorkingTreeDiffAsync(SelectedRepository.Path, commit.Sha);
+            var diffText = await _gitService.GetCommitToWorkingTreeDiffAsync(SelectedRepository.Path, commit.Sha, cancellationToken: CurrentRepositoryToken);
             if (string.IsNullOrWhiteSpace(diffText))
             {
                 StatusMessage = "No differences between commit and working directory";
@@ -273,7 +273,7 @@ public partial class MainViewModel
         {
             IsBusy = true;
             StatusMessage = $"Creating tag '{dialog.TagName}'...";
-            await _gitService.CreateTagAsync(SelectedRepository.Path, dialog.TagName, dialog.TagMessage, commit.Sha);
+            await _gitService.CreateTagAsync(SelectedRepository.Path, dialog.TagName, dialog.TagMessage, commit.Sha, cancellationToken: CurrentRepositoryToken);
             StatusMessage = $"Created tag '{dialog.TagName}'";
             await RefreshAsync();
         }
@@ -300,7 +300,7 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = "Undoing last commit...";
 
-            var success = await _gitService.UndoCommitAsync(SelectedRepository.Path);
+            var success = await _gitService.UndoCommitAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             if (success)
             {
                 StatusMessage = "Commit undone (changes preserved in working directory)";
@@ -334,7 +334,7 @@ public partial class MainViewModel
             IsBusy = true;
             StatusMessage = "Redoing last undone commit...";
 
-            var success = await _gitService.RedoCommitAsync(SelectedRepository.Path);
+            var success = await _gitService.RedoCommitAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             if (success)
             {
                 StatusMessage = "Commit redone";

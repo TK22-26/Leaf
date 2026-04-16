@@ -27,7 +27,7 @@ public partial class MainViewModel
                 {
                     try
                     {
-                        await _gitService.FetchAsync(repo.Path);
+                        await _gitService.FetchAsync(repo.Path, cancellationToken: CurrentRepositoryToken);
                     }
                     catch (Exception ex)
                     {
@@ -66,11 +66,11 @@ public partial class MainViewModel
             // Resolve credential key from the remote URL only if Leaf has a PAT
             // stored — otherwise git falls back to GCM. The PAT itself is
             // looked up in-process by Leaf.AskPass.exe.
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var remoteUrl = remotes.FirstOrDefault(r => r.Name == remoteName)?.Url;
             var credentialKey = _credentialService.ResolveActiveCredentialKey(remoteUrl);
 
-            await _gitService.FetchAsync(SelectedRepository.Path, remoteName, credentialKey: credentialKey);
+            await _gitService.FetchAsync(SelectedRepository.Path, remoteName, credentialKey: credentialKey, cancellationToken: CurrentRepositoryToken);
 
             StatusMessage = $"Fetched from {remoteName}";
             await SelectRepositoryAsync(SelectedRepository, fetchInBackground: false);
@@ -108,7 +108,7 @@ public partial class MainViewModel
         try
         {
             await BeginBusyAsync("Pulling...");
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
             // Check if SyncAllRemotes is enabled for multi-remote repos
             if (remotes.Count > 1)
@@ -124,7 +124,7 @@ public partial class MainViewModel
 
                         try
                         {
-                            await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: fetchCredentialKey);
+                            await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: fetchCredentialKey, cancellationToken: CurrentRepositoryToken);
                         }
                         catch (Exception ex)
                         {
@@ -141,7 +141,7 @@ public partial class MainViewModel
                                     ?? remotes.FirstOrDefault()?.Url;
             var pullCredentialKey = _credentialService.ResolveActiveCredentialKey(trackingRemoteUrl);
 
-            await _gitService.PullAsync(SelectedRepository.Path, pullCredentialKey);
+            await _gitService.PullAsync(SelectedRepository.Path, pullCredentialKey, cancellationToken: CurrentRepositoryToken);
 
             StatusMessage = "Pull complete";
             await RefreshAsync();
@@ -167,7 +167,7 @@ public partial class MainViewModel
         try
         {
             await BeginBusyAsync("Pushing...");
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
             // Check if there are multiple remotes
             if (remotes.Count > 1)
@@ -191,7 +191,7 @@ public partial class MainViewModel
             var remote = remotes.FirstOrDefault();
             var pushCredentialKey = _credentialService.ResolveActiveCredentialKey(remote?.Url);
 
-            await _gitService.PushAsync(SelectedRepository.Path, remote?.Name, pushCredentialKey);
+            await _gitService.PushAsync(SelectedRepository.Path, remote?.Name, pushCredentialKey, cancellationToken: CurrentRepositoryToken);
 
             // Fetch to update remote refs in the UI
             if (remote != null)
@@ -199,7 +199,7 @@ public partial class MainViewModel
                 StatusMessage = "Updating remote refs...";
                 try
                 {
-                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: pushCredentialKey);
+                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: pushCredentialKey, cancellationToken: CurrentRepositoryToken);
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -244,7 +244,7 @@ public partial class MainViewModel
 
             try
             {
-                await _gitService.PushAsync(SelectedRepository.Path, remote.Name, credentialKey);
+                await _gitService.PushAsync(SelectedRepository.Path, remote.Name, credentialKey, cancellationToken: CurrentRepositoryToken);
                 successCount++;
                 pushedRemotes.Add((remote, credentialKey));
             }
@@ -261,7 +261,7 @@ public partial class MainViewModel
         {
             try
             {
-                await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey);
+                await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey, cancellationToken: CurrentRepositoryToken);
             }
             catch (InvalidOperationException ex)
             {

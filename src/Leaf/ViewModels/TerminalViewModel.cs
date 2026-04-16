@@ -1,5 +1,7 @@
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Threading;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -19,6 +21,15 @@ public sealed partial class TerminalViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _commandCts;
 
     public event EventHandler<TerminalCommandExecutedEventArgs>? CommandExecuted;
+
+    /// <summary>
+    /// Returns the current repository's cancellation token. Set by
+    /// MainViewModel so this VM's background git calls abort when the
+    /// session is disposed on repo switch.
+    /// </summary>
+    public Func<CancellationToken>? GetSessionToken { get; set; }
+
+    private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
 
     public TerminalViewModel(IGitService gitService, SettingsService settingsService)
     {

@@ -25,7 +25,7 @@ public partial class MainViewModel
         {
             // Get the file content from the commit
             var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
-                SelectedRepository.Path, commitSha, file.Path);
+                SelectedRepository.Path, commitSha, file.Path, cancellationToken: CurrentRepositoryToken);
 
             // Compute the diff
             var diffService = new Services.DiffService();
@@ -288,7 +288,7 @@ public partial class MainViewModel
         try
         {
             var (oldContent, newContent) = await _gitService.GetUnstagedFileDiffAsync(
-                SelectedRepository.Path, file.Path);
+                SelectedRepository.Path, file.Path, cancellationToken: CurrentRepositoryToken);
 
             var diffService = new Services.DiffService();
             var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
@@ -321,7 +321,7 @@ public partial class MainViewModel
         try
         {
             var (oldContent, newContent) = await _gitService.GetStagedFileDiffAsync(
-                SelectedRepository.Path, file.Path);
+                SelectedRepository.Path, file.Path, cancellationToken: CurrentRepositoryToken);
 
             var diffService = new Services.DiffService();
             var result = diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
