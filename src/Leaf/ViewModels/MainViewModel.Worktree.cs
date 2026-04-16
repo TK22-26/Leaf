@@ -24,7 +24,10 @@ public partial class MainViewModel
         var sw = Log.StartTimer();
         try
         {
-            var worktrees = await _gitService.GetWorktreesAsync(repo.Path, cancellationToken: CurrentRepositoryToken).ConfigureAwait(false);
+            // No session token: this method is callable for any repo
+            // (LoadWorktreesForAllReposAsync iterates all) — a repo-switch
+            // cancellation would drop worktree data for unrelated repos.
+            var worktrees = await _gitService.GetWorktreesAsync(repo.Path).ConfigureAwait(false);
 
             // Mark the current worktree
             var normalizedRepoPath = Path.GetFullPath(repo.Path);
@@ -119,8 +122,11 @@ public partial class MainViewModel
             }
             else
             {
-                // Add worktree as a repository
-                targetRepo = await _gitService.GetRepositoryInfoFastAsync(worktree.Path, cancellationToken: CurrentRepositoryToken);
+                // Add worktree as a repository. No session token: we're about
+                // to SelectRepositoryAsync this target, which creates its own
+                // session. Using the current-repo token would cancel this
+                // probe the moment SelectRepositoryAsync rotates the session.
+                targetRepo = await _gitService.GetRepositoryInfoFastAsync(worktree.Path);
                 _repositoryService.AddRepository(targetRepo);
             }
 

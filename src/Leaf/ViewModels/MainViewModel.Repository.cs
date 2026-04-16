@@ -93,13 +93,16 @@ public partial class MainViewModel
         {
             var path = dialog.FolderName;
 
-            if (!await _gitService.IsValidRepositoryAsync(path, cancellationToken: CurrentRepositoryToken))
+            // No session token: the path being validated is not the current
+            // repo yet, and cancelling this check on repo switch would drop
+            // the user's add-repo action mid-flight.
+            if (!await _gitService.IsValidRepositoryAsync(path))
             {
                 StatusMessage = "Selected folder is not a valid Git repository";
                 return;
             }
 
-            var repoInfo = await _gitService.GetRepositoryInfoFastAsync(path, cancellationToken: CurrentRepositoryToken);
+            var repoInfo = await _gitService.GetRepositoryInfoFastAsync(path);
             _repositoryService.AddRepository(repoInfo);
             Log.Info("Repository", $"Added repository: {repoInfo.Name} ({path})");
             await SelectRepositoryAsync(repoInfo);
@@ -139,9 +142,11 @@ public partial class MainViewModel
                     if (_repositoryService.ContainsRepository(repoPath))
                         continue;
 
-                    if (await _gitService.IsValidRepositoryAsync(repoPath, cancellationToken: CurrentRepositoryToken))
+                    // No session token: scanning other paths is independent
+                    // of the current repo session.
+                    if (await _gitService.IsValidRepositoryAsync(repoPath))
                     {
-                        var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath, cancellationToken: CurrentRepositoryToken);
+                        var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
                         _repositoryService.AddRepository(repoInfo);
                         addedCount++;
                     }
@@ -175,9 +180,11 @@ public partial class MainViewModel
                 if (_repositoryService.ContainsRepository(repoPath))
                     return;
 
-                if (await _gitService.IsValidRepositoryAsync(repoPath, cancellationToken: CurrentRepositoryToken))
+                // No session token: validating a discovered repo is
+                // independent of which repo is currently selected.
+                if (await _gitService.IsValidRepositoryAsync(repoPath))
                 {
-                    var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath, cancellationToken: CurrentRepositoryToken);
+                    var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
                     _repositoryService.AddRepository(repoInfo);
                     Log.Info("Repository", $"Discovered repository: {repoInfo.Name} ({repoPath})");
 
@@ -215,9 +222,11 @@ public partial class MainViewModel
                 if (_repositoryService.ContainsRepository(repoPath))
                     continue;
 
-                if (await _gitService.IsValidRepositoryAsync(repoPath, cancellationToken: CurrentRepositoryToken))
+                // No session token: scan-watched-folders runs on startup
+                // and isn't tied to the current repo.
+                if (await _gitService.IsValidRepositoryAsync(repoPath))
                 {
-                    var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath, cancellationToken: CurrentRepositoryToken);
+                    var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
                     await _dispatcherService.InvokeAsync(() => _repositoryService.AddRepository(repoInfo));
                 }
             }
@@ -254,8 +263,10 @@ public partial class MainViewModel
 
         if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.ClonedRepositoryPath))
         {
-            // Add the cloned repo to the list
-            var repoInfo = await _gitService.GetRepositoryInfoFastAsync(dialog.ClonedRepositoryPath, cancellationToken: CurrentRepositoryToken);
+            // Add the cloned repo to the list. No session token: the cloned
+            // path isn't the current repo yet, and we're about to SelectRepositoryAsync
+            // it which creates its own session.
+            var repoInfo = await _gitService.GetRepositoryInfoFastAsync(dialog.ClonedRepositoryPath);
             _repositoryService.AddRepository(repoInfo);
             await SelectRepositoryAsync(repoInfo);
             StatusMessage = $"Cloned {repoInfo.Name} successfully";
