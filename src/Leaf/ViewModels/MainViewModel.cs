@@ -512,6 +512,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
             commitDetail.SelectWorkingChangesRequested -= OnSelectWorkingChangesRequested;
         }
 
+        // Transient VMs wired up outside the constructor still need to be
+        // detached — they hold refs to long-lived services.
+        DetachCreatePullRequestViewModel(CreatePullRequestViewModel);
+        DetachPullRequestDetailViewModel(PullRequestDetailViewModel);
+
+        // The last MergeConflictResolutionViewModel (if any) must detach its
+        // MergeCompleted subscription and run its own Cleanup() so the
+        // DispatcherTimer + CTS fields inside don't root the VM.
+        var mergeConflictVm = MergeConflictResolutionViewModel;
+        if (mergeConflictVm != null)
+        {
+            mergeConflictVm.MergeCompleted -= OnMergeConflictResolutionCompleted;
+            mergeConflictVm.Cleanup();
+        }
+
         // Stop the auto-fetch timer so no pending callbacks race with disposal.
         _autoFetchService.Stop();
 

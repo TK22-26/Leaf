@@ -407,7 +407,8 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
+        // No finalizer on this type, so no GC.SuppressFinalize — the
+        // standard pattern only requires it when a finalizer is present.
         CancellationTokenSourceExtensions.DisposeAndClear(ref _loadCts);
-        GC.SuppressFinalize(this);
     }
 }

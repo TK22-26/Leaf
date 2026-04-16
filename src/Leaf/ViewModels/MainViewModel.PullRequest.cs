@@ -58,6 +58,26 @@ public partial class MainViewModel
         viewModel.PullRequestCreated -= OnPullRequestCreated;
     }
 
+    private void DetachPullRequestDetailViewModel(PullRequestDetailViewModel? viewModel)
+    {
+        if (viewModel == null)
+            return;
+
+        viewModel.FileSelected -= OnPullRequestFileSelected;
+        viewModel.MutationCompleted -= OnPullRequestMutationCompleted;
+    }
+
+    private void OnPullRequestMutationCompleted(object? sender, EventArgs e)
+    {
+        // Refresh PR list after merge/close/update
+        if (SelectedRepository != null)
+        {
+            SelectedRepository.PullRequestsLoaded = false;
+            LoadBranchesForRepoAsync(SelectedRepository, forceReload: true)
+                .FireAndForget(nameof(LoadBranchesForRepoAsync), isUserAction: true);
+        }
+    }
+
     private void ResetPullRequestViewState(RepositoryInfo? repositoryToClearSelection = null)
     {
         ContentMode = ContentMode.Graph;
@@ -378,16 +398,7 @@ public partial class MainViewModel
     {
         var vm = new PullRequestDetailViewModel(_pullRequestService, _notificationService);
         vm.FileSelected += OnPullRequestFileSelected;
-        vm.MutationCompleted += (_, _) =>
-        {
-            // Refresh PR list after merge/close/update
-            if (SelectedRepository != null)
-            {
-                SelectedRepository.PullRequestsLoaded = false;
-                LoadBranchesForRepoAsync(SelectedRepository, forceReload: true)
-                    .FireAndForget(nameof(LoadBranchesForRepoAsync), isUserAction: true);
-            }
-        };
+        vm.MutationCompleted += OnPullRequestMutationCompleted;
         return vm;
     }
 
