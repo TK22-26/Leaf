@@ -34,9 +34,9 @@ internal class StagingOperations : IStagingOperations
     /// timeout semantics without blocking any thread — Task.Delay is
     /// timer-driven, not thread-bound.
     /// </remarks>
-    public async Task<WorkingChangesInfo> GetWorkingChangesAsync(string repoPath)
+    public async Task<WorkingChangesInfo> GetWorkingChangesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
-        var libgitTask = Task.Run(() => GetWorkingChangesViaLibGit2(repoPath));
+        var libgitTask = Task.Run(() => GetWorkingChangesViaLibGit2(repoPath), cancellationToken);
 
         // The timeout CTS is cancelled as soon as we're done with it so the
         // underlying timer is released promptly even when libgit wins the
@@ -63,7 +63,7 @@ internal class StagingOperations : IStagingOperations
         // (LibGit2Sharp RetrieveStatus doesn't honour cancellation). We
         // discard its eventual result; the CLI fallback runs in parallel
         // and is what we hand back to the caller.
-        return await Task.Run(() => GetWorkingChangesViaGitCli(repoPath)).ConfigureAwait(false);
+        return await Task.Run(() => GetWorkingChangesViaGitCli(repoPath), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -249,7 +249,7 @@ internal class StagingOperations : IStagingOperations
     /// <summary>
     /// Get the combined diff of staged and unstaged changes.
     /// </summary>
-    public Task<string> GetWorkingChangesPatchAsync(string repoPath)
+    public Task<string> GetWorkingChangesPatchAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -276,13 +276,13 @@ internal class StagingOperations : IStagingOperations
             }
 
             return builder.ToString();
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get a compact summary of staged changes including diff content.
     /// </summary>
-    public Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100, int maxDiffChars = 50000)
+    public Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100, int maxDiffChars = 50000, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -350,33 +350,33 @@ internal class StagingOperations : IStagingOperations
             }
 
             return builder.ToString().TrimEnd();
-        });
+        }, cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task StageFileAsync(string repoPath, string filePath)
+    public Task StageFileAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             Commands.Stage(repo, filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task UnstageFileAsync(string repoPath, string filePath)
+    public Task UnstageFileAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             Commands.Unstage(repo, filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Remove a tracked file from the index (git rm --cached) without deleting it from disk.
     /// </summary>
-    public Task UntrackFileAsync(string repoPath, string filePath)
+    public Task UntrackFileAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -386,48 +386,48 @@ internal class StagingOperations : IStagingOperations
 
             repo.Index.Remove(filePath);
             repo.Index.Write();
-        });
+        }, cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task StageAllAsync(string repoPath)
+    public Task StageAllAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             Commands.Stage(repo, "*");
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Unstage all files (remove all from staging area).
     /// </summary>
-    public Task UnstageAllAsync(string repoPath)
+    public Task UnstageAllAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             repo.Reset(ResetMode.Mixed);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Discard all working directory changes (destructive - cannot be undone).
     /// </summary>
-    public Task DiscardAllChangesAsync(string repoPath)
+    public Task DiscardAllChangesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             repo.Reset(ResetMode.Hard);
             repo.RemoveUntrackedFiles();
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Discard changes to a single file.
     /// </summary>
-    public Task DiscardFileChangesAsync(string repoPath, string filePath)
+    public Task DiscardFileChangesAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -455,7 +455,7 @@ internal class StagingOperations : IStagingOperations
                     CheckoutModifiers = CheckoutModifiers.Force
                 });
             }
-        });
+        }, cancellationToken);
     }
 
     private static FileChangeStatus MapFileStatus(FileStatus status, bool staged)

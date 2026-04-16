@@ -9,10 +9,10 @@ internal interface IConflictOperations
     /// <summary>
     /// Get list of files currently in conflict.
     /// </summary>
-    Task<List<string>> GetConflictFilesAsync(string repoPath);
+    Task<List<string>> GetConflictFilesAsync(string repoPath, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get the count of conflicting files.
     /// </summary>
-    Task<int> GetConflictCountAsync(string repoPath);
+    Task<int> GetConflictCountAsync(string repoPath, CancellationToken cancellationToken = default);
 }

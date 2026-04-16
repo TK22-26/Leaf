@@ -17,9 +17,9 @@ internal class ConfigOperations
     /// <summary>
     /// Set a git config value.
     /// </summary>
-    public async Task SetConfigAsync(string repoPath, string key, string value)
+    public async Task SetConfigAsync(string repoPath, string key, string value, CancellationToken cancellationToken = default)
     {
-        var result = await _context.CommandRunner.RunAsync(repoPath, ["config", key, value]);
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["config", key, value], cancellationToken: cancellationToken);
         if (!result.Success)
         {
             throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
@@ -31,18 +31,18 @@ internal class ConfigOperations
     /// <summary>
     /// Get a git config value.
     /// </summary>
-    public async Task<string?> GetConfigAsync(string repoPath, string key)
+    public async Task<string?> GetConfigAsync(string repoPath, string key, CancellationToken cancellationToken = default)
     {
-        var result = await _context.CommandRunner.RunAsync(repoPath, ["config", "--get", key]);
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["config", "--get", key], cancellationToken: cancellationToken);
         return result.Success ? result.StandardOutput.Trim() : null;
     }
 
     /// <summary>
     /// Remove a git config value.
     /// </summary>
-    public async Task UnsetConfigAsync(string repoPath, string key)
+    public async Task UnsetConfigAsync(string repoPath, string key, CancellationToken cancellationToken = default)
     {
-        var result = await _context.CommandRunner.RunAsync(repoPath, ["config", "--unset", key]);
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["config", "--unset", key], cancellationToken: cancellationToken);
         // --unset returns error if key doesn't exist, which is OK
         if (!result.Success && !result.StandardError.Contains("not exist"))
         {

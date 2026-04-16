@@ -20,7 +20,7 @@ internal class BranchOperations
     /// <summary>
     /// Get all branches in the repository.
     /// </summary>
-    public Task<List<BranchInfo>> GetBranchesAsync(string repoPath)
+    public Task<List<BranchInfo>> GetBranchesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -42,13 +42,13 @@ internal class BranchOperations
                     BehindBy = b.TrackingDetails?.BehindBy ?? 0
                 })
                 .ToList();
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Checkout a branch.
     /// </summary>
-    public async Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false)
+    public async Task CheckoutAsync(string repoPath, string branchName, bool allowConflicts = false, CancellationToken cancellationToken = default)
     {
         await Task.Run(() =>
         {
@@ -135,13 +135,13 @@ internal class BranchOperations
             }
 
             Commands.Checkout(repo, branch);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Checkout a specific commit (detached HEAD).
     /// </summary>
-    public Task CheckoutCommitAsync(string repoPath, string commitSha)
+    public Task CheckoutCommitAsync(string repoPath, string commitSha, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -173,13 +173,13 @@ internal class BranchOperations
 
             // Checkout the commit (detached HEAD)
             Commands.Checkout(repo, commit);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Create a new branch.
     /// </summary>
-    public Task CreateBranchAsync(string repoPath, string branchName, bool checkout = true)
+    public Task CreateBranchAsync(string repoPath, string branchName, bool checkout = true, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -189,13 +189,13 @@ internal class BranchOperations
             {
                 Commands.Checkout(repo, branch);
             }
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Create a new branch at a specific commit.
     /// </summary>
-    public Task CreateBranchAtCommitAsync(string repoPath, string branchName, string commitSha, bool checkout = true)
+    public Task CreateBranchAtCommitAsync(string repoPath, string branchName, string commitSha, bool checkout = true, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -211,16 +211,16 @@ internal class BranchOperations
             {
                 Commands.Checkout(repo, branch);
             }
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Delete a local branch.
     /// </summary>
-    public async Task DeleteBranchAsync(string repoPath, string branchName, bool force = false)
+    public async Task DeleteBranchAsync(string repoPath, string branchName, bool force = false, CancellationToken cancellationToken = default)
     {
         var flag = force ? "-D" : "-d";
-        var result = await _context.CommandRunner.RunAsync(repoPath, ["branch", flag, branchName]);
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["branch", flag, branchName], cancellationToken: cancellationToken);
         if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(result.StandardError.Trim());
@@ -232,13 +232,13 @@ internal class BranchOperations
     /// </summary>
     /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     public async Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName,
-        string? credentialKey = null)
+        string? credentialKey = null, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
             ["push", remoteName, "--delete", branchName],
             input: null,
-            credentialKey: credentialKey);
+            credentialKey: credentialKey, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -249,11 +249,11 @@ internal class BranchOperations
     /// <summary>
     /// Rename a local branch.
     /// </summary>
-    public async Task RenameBranchAsync(string repoPath, string oldName, string newName)
+    public async Task RenameBranchAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["branch", "-m", oldName, newName]);
+            ["branch", "-m", oldName, newName], cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -264,11 +264,11 @@ internal class BranchOperations
     /// <summary>
     /// Set upstream tracking for a branch.
     /// </summary>
-    public async Task SetUpstreamAsync(string repoPath, string branchName, string remoteName, string remoteBranchName)
+    public async Task SetUpstreamAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["branch", "--set-upstream-to", $"{remoteName}/{remoteBranchName}", branchName]);
+            ["branch", "--set-upstream-to", $"{remoteName}/{remoteBranchName}", branchName], cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -279,10 +279,10 @@ internal class BranchOperations
     /// <summary>
     /// Reset the current branch to a specific commit.
     /// </summary>
-    public async Task ResetCurrentBranchToCommitAsync(string repoPath, string commitSha, GitResetMode mode)
+    public async Task ResetCurrentBranchToCommitAsync(string repoPath, string commitSha, GitResetMode mode, CancellationToken cancellationToken = default)
     {
         // Guard: reject detached HEAD — git symbolic-ref --quiet HEAD exits 1 when detached
-        var headResult = await _context.CommandRunner.RunAsync(repoPath, ["symbolic-ref", "--quiet", "HEAD"]);
+        var headResult = await _context.CommandRunner.RunAsync(repoPath, ["symbolic-ref", "--quiet", "HEAD"], cancellationToken: cancellationToken);
         if (!headResult.Success)
         {
             if (string.IsNullOrWhiteSpace(headResult.StandardError))
@@ -291,7 +291,7 @@ internal class BranchOperations
         }
 
         var command = new ResetCommand { Target = commitSha, Mode = mode };
-        var result = await _context.CommandRunner.RunAsync(repoPath, command);
+        var result = await _context.CommandRunner.RunAsync(repoPath, command, cancellationToken: cancellationToken);
         if (!result.Success)
             throw new InvalidOperationException(result.StandardError);
     }

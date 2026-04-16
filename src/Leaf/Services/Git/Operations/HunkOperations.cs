@@ -17,12 +17,12 @@ internal class HunkOperations
     /// <summary>
     /// Revert a single hunk by applying a reverse patch to the working directory.
     /// </summary>
-    public async Task RevertHunkAsync(string repoPath, string patchContent)
+    public async Task RevertHunkAsync(string repoPath, string patchContent, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
             ["apply", "--reverse"],
-            patchContent);
+            patchContent, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -33,12 +33,12 @@ internal class HunkOperations
     /// <summary>
     /// Stage a single hunk by applying a patch to the index (staging area).
     /// </summary>
-    public async Task StageHunkAsync(string repoPath, string patchContent)
+    public async Task StageHunkAsync(string repoPath, string patchContent, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
             ["apply", "--cached"],
-            patchContent);
+            patchContent, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -49,12 +49,12 @@ internal class HunkOperations
     /// <summary>
     /// Unstage a single hunk by applying a reverse patch to the index.
     /// </summary>
-    public async Task UnstageHunkAsync(string repoPath, string patchContent)
+    public async Task UnstageHunkAsync(string repoPath, string patchContent, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
             ["apply", "--cached", "--reverse"],
-            patchContent);
+            patchContent, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {

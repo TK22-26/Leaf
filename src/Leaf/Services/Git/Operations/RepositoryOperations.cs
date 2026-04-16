@@ -22,7 +22,7 @@ internal class RepositoryOperations
     /// <summary>
     /// Check if a path contains a valid Git repository.
     /// </summary>
-    public Task<bool> IsValidRepositoryAsync(string path)
+    public Task<bool> IsValidRepositoryAsync(string path, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -39,7 +39,7 @@ internal class RepositoryOperations
                 Leaf.Services.Log.Info("Repo", $"IsValid({path}) failed: {ex.GetType().Name}: {ex.Message}");
                 return false;
             }
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -47,7 +47,7 @@ internal class RepositoryOperations
     /// Prefer <see cref="GetRepositoryInfoFastAsync"/> for performance-critical paths.
     /// </summary>
     [System.Obsolete("Use GetRepositoryInfoFastAsync for performance-critical paths.")]
-    public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath)
+    public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -161,14 +161,14 @@ internal class RepositoryOperations
                 IsDetachedHead = isDetached,
                 DetachedHeadSha = isDetached ? headSha : null
             };
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get repository status information using fast git CLI commands instead of LibGit2Sharp.
     /// ~20x faster than <see cref="GetRepositoryInfoAsync"/> on large repos.
     /// </summary>
-    public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath)
+    public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -293,6 +293,6 @@ internal class RepositoryOperations
                 IsDetachedHead = isDetached,
                 DetachedHeadSha = isDetached ? headSha : null
             };
-        });
+        }, cancellationToken);
     }
 }

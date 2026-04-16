@@ -22,7 +22,7 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Get all remotes in the repository.
     /// </summary>
-    public Task<List<RemoteInfo>> GetRemotesAsync(string repoPath)
+    public Task<List<RemoteInfo>> GetRemotesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -36,15 +36,15 @@ internal class RemoteSyncOperations
                     PushUrl = r.PushUrl != r.Url ? r.PushUrl : null
                 })
                 .ToList();
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Add a new remote to the repository.
     /// </summary>
-    public async Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null)
+    public async Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null, CancellationToken cancellationToken = default)
     {
-        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "add", remoteName, url]);
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "add", remoteName, url], cancellationToken: cancellationToken);
         if (!result.Success)
         {
             throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
@@ -56,7 +56,7 @@ internal class RemoteSyncOperations
         if (!string.IsNullOrEmpty(pushUrl))
         {
             var pushResult = await _context.CommandRunner.RunAsync(repoPath,
-                ["remote", "set-url", "--push", remoteName, pushUrl]);
+                ["remote", "set-url", "--push", remoteName, pushUrl], cancellationToken: cancellationToken);
             if (!pushResult.Success)
             {
                 throw new InvalidOperationException(string.IsNullOrEmpty(pushResult.StandardError)
@@ -69,9 +69,9 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Remove a remote from the repository.
     /// </summary>
-    public async Task RemoveRemoteAsync(string repoPath, string remoteName)
+    public async Task RemoveRemoteAsync(string repoPath, string remoteName, CancellationToken cancellationToken = default)
     {
-        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "remove", remoteName]);
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "remove", remoteName], cancellationToken: cancellationToken);
         if (!result.Success)
         {
             throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
@@ -83,9 +83,9 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Rename a remote.
     /// </summary>
-    public async Task RenameRemoteAsync(string repoPath, string oldName, string newName)
+    public async Task RenameRemoteAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default)
     {
-        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "rename", oldName, newName]);
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "rename", oldName, newName], cancellationToken: cancellationToken);
         if (!result.Success)
         {
             throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
@@ -97,13 +97,13 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Set a remote's URL.
     /// </summary>
-    public async Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false)
+    public async Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false, CancellationToken cancellationToken = default)
     {
         var args = isPushUrl
             ? new[] { "remote", "set-url", "--push", remoteName, url }
             : new[] { "remote", "set-url", remoteName, url };
 
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
         if (!result.Success)
         {
             throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
@@ -117,7 +117,7 @@ internal class RemoteSyncOperations
     /// </summary>
     /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     public async Task<string> CloneAsync(string url, string localPath, string? credentialKey = null,
-        IProgress<string>? progress = null)
+        IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         progress?.Report("Cloning repository...");
 
@@ -125,7 +125,7 @@ internal class RemoteSyncOperations
             Path.GetDirectoryName(localPath) ?? ".",
             ["clone", "--progress", url, localPath],
             input: null,
-            credentialKey: credentialKey);
+            credentialKey: credentialKey, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -142,7 +142,7 @@ internal class RemoteSyncOperations
     /// </summary>
     /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     public async Task FetchAsync(string repoPath, string remoteName = "origin", string? credentialKey = null,
-        IProgress<string>? progress = null)
+        IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         progress?.Report("Fetching...");
 
@@ -150,7 +150,7 @@ internal class RemoteSyncOperations
             repoPath,
             ["fetch", "--prune", remoteName],
             input: null,
-            credentialKey: credentialKey);
+            credentialKey: credentialKey, cancellationToken: cancellationToken);
 
         if (!result.Success && !string.IsNullOrEmpty(result.StandardError))
         {
@@ -163,7 +163,7 @@ internal class RemoteSyncOperations
     /// </summary>
     /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     public async Task PullAsync(string repoPath, string? credentialKey = null,
-        IProgress<string>? progress = null)
+        IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         progress?.Report("Pulling...");
 
@@ -171,7 +171,7 @@ internal class RemoteSyncOperations
             repoPath,
             ["pull"],
             input: null,
-            credentialKey: credentialKey);
+            credentialKey: credentialKey, cancellationToken: cancellationToken);
 
         if (!result.Success && !string.IsNullOrEmpty(result.StandardError))
         {
@@ -187,7 +187,7 @@ internal class RemoteSyncOperations
     /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     /// <param name="progress">Optional progress reporter</param>
     public async Task PushAsync(string repoPath, string? remoteName = null, string? credentialKey = null,
-        IProgress<string>? progress = null)
+        IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         // Check if we're in detached HEAD state
         string branchName;
@@ -217,7 +217,7 @@ internal class RemoteSyncOperations
             repoPath,
             args,
             input: null,
-            credentialKey: credentialKey);
+            credentialKey: credentialKey, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -243,13 +243,13 @@ internal class RemoteSyncOperations
     /// Pull updates for a specific branch (fast-forward if possible).
     /// </summary>
     public async Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName,
-        string remoteBranchName, bool isCurrentBranch)
+        string remoteBranchName, bool isCurrentBranch, CancellationToken cancellationToken = default)
     {
         var args = isCurrentBranch
             ? new[] { "pull", "--ff-only", remoteName, remoteBranchName }
             : new[] { "fetch", remoteName, $"{remoteBranchName}:{branchName}" };
 
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -261,13 +261,13 @@ internal class RemoteSyncOperations
     /// Push a specific branch to remote.
     /// </summary>
     public async Task PushBranchAsync(string repoPath, string branchName, string remoteName,
-        string remoteBranchName, bool isCurrentBranch)
+        string remoteBranchName, bool isCurrentBranch, CancellationToken cancellationToken = default)
     {
         var args = isCurrentBranch
             ? new[] { "push", remoteName, branchName }
             : new[] { "push", remoteName, $"{branchName}:{remoteBranchName}" };
 
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {

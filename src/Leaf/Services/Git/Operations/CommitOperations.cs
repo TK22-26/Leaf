@@ -19,7 +19,7 @@ internal class CommitOperations
     /// <summary>
     /// Create a commit with staged files.
     /// </summary>
-    public Task CommitAsync(string repoPath, string message, string? description = null)
+    public Task CommitAsync(string repoPath, string message, string? description = null, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -31,20 +31,20 @@ internal class CommitOperations
 
             var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
             repo.Commit(fullMessage, signature, signature);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Revert a commit (creates a new commit).
     /// </summary>
-    public async Task RevertCommitAsync(string repoPath, string commitSha)
+    public async Task RevertCommitAsync(string repoPath, string commitSha, CancellationToken cancellationToken = default)
     {
         Log.Info("Merge", $"RevertCommit: commit={commitSha}");
         MergeDebugHelper.LogMergeState("BeforeRevert", repoPath);
 
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["revert", commitSha]);
+            ["revert", commitSha], cancellationToken: cancellationToken);
 
         MergeDebugHelper.LogMergeState("AfterRevert", repoPath);
 
@@ -60,14 +60,14 @@ internal class CommitOperations
     /// <summary>
     /// Revert a merge commit using the specified parent index.
     /// </summary>
-    public async Task RevertMergeCommitAsync(string repoPath, string commitSha, int parentIndex)
+    public async Task RevertMergeCommitAsync(string repoPath, string commitSha, int parentIndex, CancellationToken cancellationToken = default)
     {
         Log.Info("Merge", $"RevertMergeCommit: commit={commitSha} parent={parentIndex}");
         MergeDebugHelper.LogMergeState("BeforeRevertMerge", repoPath);
 
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["revert", "-m", parentIndex.ToString(), commitSha]);
+            ["revert", "-m", parentIndex.ToString(), commitSha], cancellationToken: cancellationToken);
 
         MergeDebugHelper.LogMergeState("AfterRevertMerge", repoPath);
 
@@ -83,7 +83,7 @@ internal class CommitOperations
     /// <summary>
     /// Undo last commit (soft reset HEAD~1). Only works if not pushed.
     /// </summary>
-    public Task<bool> UndoCommitAsync(string repoPath)
+    public Task<bool> UndoCommitAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -110,17 +110,17 @@ internal class CommitOperations
             }
 
             return false; // No parent commit to reset to
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Redo the last undone commit (if available).
     /// </summary>
-    public async Task<bool> RedoCommitAsync(string repoPath)
+    public async Task<bool> RedoCommitAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["reset", "--soft", "ORIG_HEAD"]);
+            ["reset", "--soft", "ORIG_HEAD"], cancellationToken: cancellationToken);
 
         return result.Success;
     }
@@ -128,7 +128,7 @@ internal class CommitOperations
     /// <summary>
     /// Check if the current HEAD has been pushed to remote.
     /// </summary>
-    public Task<bool> IsHeadPushedAsync(string repoPath)
+    public Task<bool> IsHeadPushedAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -141,6 +141,6 @@ internal class CommitOperations
             var remoteTip = repo.Head.TrackedBranch.Tip;
 
             return localTip.Sha == remoteTip?.Sha;
-        });
+        }, cancellationToken);
     }
 }
