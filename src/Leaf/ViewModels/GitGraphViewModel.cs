@@ -14,7 +14,7 @@ namespace Leaf.ViewModels;
 /// <summary>
 /// ViewModel for the Git graph and commit list view.
 /// </summary>
-public partial class GitGraphViewModel : ObservableObject
+public partial class GitGraphViewModel : ObservableObject, IDisposable
 {
     /// <summary>
     /// Special SHA value indicating working changes are selected.
@@ -1085,5 +1085,13 @@ public partial class GitGraphViewModel : ObservableObject
             tooltipGraphBuilder.MaxLane,
             RowHeight,
             tooltipGraphBuilder);
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        // Cancel + dispose the last in-flight graph build CTS so the handle
+        // is released at VM end-of-life (pickup from plan §1.5).
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _graphBuildCts);
     }
 }
