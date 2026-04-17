@@ -456,5 +456,14 @@ public class GitService : IGitService
     public Task DeinitSubmoduleAsync(string repoPath, string path, bool force, CancellationToken cancellationToken = default)
         => _submoduleOps.DeinitAsync(repoPath, path, force, cancellationToken);
 
+    public Task AddSubmoduleAsync(string repoPath, string url, string path, string? branch, CancellationToken cancellationToken = default)
+        => _submoduleOps.AddAsync(repoPath, url, path, branch, cancellationToken);
+
+    public Task UpdateSubmoduleToRemoteAsync(string repoPath, string path, CancellationToken cancellationToken = default)
+        => _submoduleOps.UpdateToRemoteAsync(repoPath, path, cancellationToken);
+
+    public Task RemoveSubmoduleAsync(string repoPath, SubmoduleInfo submodule, CancellationToken cancellationToken = default)
+        => _submoduleOps.RemoveAsync(repoPath, submodule, cancellationToken);
+
     #endregion
 }

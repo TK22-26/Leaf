@@ -174,6 +174,116 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Open the add-submodule dialog and register the result. Leaves
+    /// the resulting <c>.gitmodules</c> + gitlink staged so the user
+    /// can inspect and commit via the normal commit path.
+    /// </summary>
+    [RelayCommand]
+    public async Task AddSubmoduleAsync()
+    {
+        if (SelectedRepository == null) return;
+
+        var dialog = new Views.AddSubmoduleDialog();
+        if (await _dialogService.ShowDialogAsync(dialog) != true)
+            return;
+
+        try
+        {
+            await BeginBusyAsync($"Adding submodule at {dialog.Path}...");
+            await _gitService.AddSubmoduleAsync(
+                SelectedRepository.Path,
+                dialog.Url,
+                dialog.Path,
+                dialog.Branch,
+                CurrentRepositoryToken);
+            await RefreshAfterSubmoduleMutationAsync();
+            StatusMessage = $"Submodule added at {dialog.Path}. Commit to finalize.";
+        }
+        catch (Exception ex)
+        {
+            await ReportOperationFailureAsync("Add submodule", ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Update a submodule to the tip of its tracked branch
+    /// (<c>git submodule update --remote</c>). Only meaningful when the
+    /// submodule has a <c>branch</c> configured — callers should hide
+    /// the menu item otherwise, but the command itself also throws
+    /// early with a clear message if you invoke it anyway.
+    /// </summary>
+    [RelayCommand]
+    public async Task UpdateSubmoduleToRemoteAsync(SubmoduleInfo? submodule)
+    {
+        if (SelectedRepository == null || submodule == null) return;
+        if (string.IsNullOrWhiteSpace(submodule.Branch))
+        {
+            StatusMessage = $"{submodule.Path} has no tracking branch configured.";
+            return;
+        }
+
+        try
+        {
+            await BeginBusyAsync($"Updating {submodule.Path} to tip of {submodule.Branch}...");
+            await _gitService.UpdateSubmoduleToRemoteAsync(
+                SelectedRepository.Path,
+                submodule.Path,
+                CurrentRepositoryToken);
+            await RefreshAfterSubmoduleMutationAsync();
+            StatusMessage = $"Updated {submodule.Path} to latest on {submodule.Branch}.";
+        }
+        catch (Exception ex)
+        {
+            await ReportOperationFailureAsync($"Update submodule {submodule.Path} to remote", ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Fully remove a submodule — deinit, cache cleanup, and staged
+    /// removal of the gitlink and <c>.gitmodules</c> entry. Commit is
+    /// left to the user so they can write a message.
+    /// </summary>
+    [RelayCommand]
+    public async Task RemoveSubmoduleAsync(SubmoduleInfo? submodule)
+    {
+        if (SelectedRepository == null || submodule == null) return;
+
+        var confirmed = await _dialogService.ShowConfirmationAsync(
+            $"Remove submodule '{submodule.Path}'?\n\n" +
+            "This unregisters the submodule, deletes its working tree, and stages the " +
+            "removal from .gitmodules. You'll still need to commit to finalize the change.",
+            "Remove Submodule");
+        if (!confirmed) return;
+
+        try
+        {
+            await BeginBusyAsync($"Removing {submodule.Path}...");
+            await _gitService.RemoveSubmoduleAsync(
+                SelectedRepository.Path,
+                submodule,
+                CurrentRepositoryToken);
+            await RefreshAfterSubmoduleMutationAsync();
+            StatusMessage = $"Removed {submodule.Path}. Commit to finalize.";
+        }
+        catch (Exception ex)
+        {
+            await ReportOperationFailureAsync($"Remove submodule {submodule.Path}", ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
     /// Full refresh after a submodule mutation: branches need a forced
     /// reload because <c>LoadBranchesForRepoAsync</c> otherwise
     /// short-circuits when the repo already has cached state. Then

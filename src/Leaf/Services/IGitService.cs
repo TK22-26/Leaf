@@ -685,5 +685,26 @@ public interface IGitService
     /// </summary>
     Task DeinitSubmoduleAsync(string repoPath, string path, bool force, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Register a new submodule (clone URL + target path, optional
+    /// tracking branch). Leaves the resulting <c>.gitmodules</c> and
+    /// gitlink staged — the caller commits.
+    /// </summary>
+    Task AddSubmoduleAsync(string repoPath, string url, string path, string? branch, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pull the submodule at <paramref name="path"/> to the tip of its
+    /// tracked branch (<c>git submodule update --remote</c>).
+    /// </summary>
+    Task UpdateSubmoduleToRemoteAsync(string repoPath, string path, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Full removal of a submodule: deinit, strip the cached
+    /// <c>.git/modules/&lt;name&gt;</c> directory, and <c>git rm</c> the
+    /// path so <c>.gitmodules</c> and the gitlink disappear. Produces
+    /// staged changes; the caller commits.
+    /// </summary>
+    Task RemoveSubmoduleAsync(string repoPath, SubmoduleInfo submodule, CancellationToken cancellationToken = default);
+
     #endregion
 }

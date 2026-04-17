@@ -286,26 +286,49 @@
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Symbol="Add" />
                         </Button>
-                        <!--  Update All Submodules button (SUBMODULES category)  -->
-                        <Button
-                            x:Name="UpdateAllSubmodulesButton"
+                        <!--  SUBMODULES header actions (Update All + Add)  -->
+                        <StackPanel
+                            x:Name="SubmodulesHeaderActions"
                             Grid.Column="1"
-                            Margin="0"
-                            Padding="4"
-                            VerticalAlignment="Center"
-                            HorizontalContentAlignment="Center"
-                            VerticalContentAlignment="Center"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Command="{Binding DataContext.UpdateAllSubmodulesCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                            Cursor="Hand"
-                            ToolTip="Update all submodules (recursive)"
+                            Orientation="Horizontal"
                             Visibility="Collapsed">
-                            <ic:SymbolIcon
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Symbol="ArrowClockwise" />
-                        </Button>
+                            <Button
+                                AutomationProperties.AutomationId="UpdateAllSubmodulesButton"
+                                AutomationProperties.Name="Update all submodules"
+                                Margin="0,0,2,0"
+                                Padding="4"
+                                VerticalAlignment="Center"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{Binding DataContext.UpdateAllSubmodulesCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                Cursor="Hand"
+                                ToolTip="Update all submodules (recursive)">
+                                <ic:SymbolIcon
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Symbol="ArrowClockwise" />
+                            </Button>
+                            <Button
+                                AutomationProperties.AutomationId="AddSubmoduleButton"
+                                AutomationProperties.Name="Add submodule"
+                                Margin="0"
+                                Padding="4"
+                                VerticalAlignment="Center"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{Binding DataContext.AddSubmoduleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                Cursor="Hand"
+                                ToolTip="Add submodule">
+                                <ic:SymbolIcon
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Symbol="Add" />
+                            </Button>
+                        </StackPanel>
                         <!--  Add Worktree button (WORKTREES category)  -->
                         <Button
                             x:Name="AddWorktreeButton"
@@ -428,7 +451,7 @@
                             <Setter TargetName="CategoryIcon" Property="Symbol" Value="Box" />
                             <Setter TargetName="CategoryIcon" Property="Foreground" Value="#06B6D4" />
                             <Setter TargetName="CategoryName" Property="Foreground" Value="#06B6D4" />
-                            <Setter TargetName="UpdateAllSubmodulesButton" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="SubmodulesHeaderActions" Property="Visibility" Value="Visible" />
                         </DataTrigger>
                     </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>
@@ -1017,6 +1040,11 @@
                                     CommandParameter="{Binding}"
                                     Header="Update to Recorded Commit" />
                                 <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.UpdateSubmoduleToRemoteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Update to Branch Tip"
+                                    Visibility="{Binding Branch, Converter={StaticResource NullToVisibilityConverter}}" />
+                                <MenuItem
                                     Command="{Binding PlacementTarget.Tag.SyncSubmoduleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                     CommandParameter="{Binding}"
                                     Header="Sync URL" />
@@ -1027,6 +1055,11 @@
                                     Foreground="#DC2626"
                                     Header="Deinitialize..."
                                     IsEnabled="{Binding IsInitialized}" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.RemoveSubmoduleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Foreground="#DC2626"
+                                    Header="Remove..." />
                             </ContextMenu>
                         </Border.ContextMenu>
                         <Grid>

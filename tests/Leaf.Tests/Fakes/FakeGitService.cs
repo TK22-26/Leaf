@@ -163,4 +163,7 @@ public class FakeGitService : IGitService
     public Task InitAndUpdateSubmodulesAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task SyncSubmodulesAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task DeinitSubmoduleAsync(string repoPath, string path, bool force, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task AddSubmoduleAsync(string repoPath, string url, string path, string? branch, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task UpdateSubmoduleToRemoteAsync(string repoPath, string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task RemoveSubmoduleAsync(string repoPath, SubmoduleInfo submodule, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
