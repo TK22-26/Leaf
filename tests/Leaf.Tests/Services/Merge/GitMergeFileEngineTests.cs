@@ -186,6 +186,24 @@ public class GitMergeFileEngineTests
     }
 
     [Fact]
+    public async Task Merge_LookalikeInMidOurs_FailsLoudlyNotSilently()
+    {
+        // Ours has a literal "<<<<<<<" line in the middle (not the first line) AND there's
+        // a separate conflict. Parser's one-line lookahead can't disambiguate this — the
+        // engine must fail loudly via MergeEngineException so the VM's engine-error overlay
+        // can offer Use Ours / Use Theirs. Silent corruption (prior behaviour) is worse
+        // than failing the specific file.
+        var engine = CreateEngine();
+        const string baseText = "line1\ncommon\nline3\n";
+        const string oursText = "line1\ncontent-a\n<<<<<<< mid\ncontent-b\n";
+        const string theirsText = "line1\nother\nline3\n";
+
+        var act = async () => await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+        await act.Should().ThrowAsync<MergeEngineException>()
+            .WithMessage("*zdiff3 marker line*");
+    }
+
+    [Fact]
     public async Task Merge_LookalikeMarkerInsideOursOfRealConflict_AcceptOursRoundTripsCleanly()
     {
         // Ours content legitimately contains "<<<<<<<"; git emits it inside the conflict's

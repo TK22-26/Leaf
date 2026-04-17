@@ -286,9 +286,20 @@ public sealed class GitMergeFileEngine : IMergeEngine
     /// Uses a fast-path exact-cursor-match (correct for symmetric edits and repeated content),
     /// falling back to forward-search when the current cursor doesn't match (correct for
     /// one-sided deletions where the other cursor needs to skip past a removed line).
-    /// Never throws — a cursor that can't find the output line anywhere simply stays put
-    /// and the subsequent <see cref="CarveSlice"/> handles the anchoring at conflict boundaries.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Structural-line defense:</b> if the output line looks like a zdiff3 marker
+    /// (<c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>, <c>|||||||</c>, <c>=======</c>, or
+    /// <c>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</c>) and does not appear anywhere at-or-after the
+    /// current cursors of ours and theirs, the parser must have misidentified a conflict
+    /// block boundary. Git does not emit structural marker lines in auto-merged output
+    /// — every such line comes from user content. Failing loudly converts silent corruption
+    /// (parser anchors in the wrong place, AcceptOurs emits stray structural lines) into
+    /// a user-visible <see cref="MergeEngineException"/> that the VM's engine-error overlay
+    /// handles gracefully (Use Ours / Use Theirs / external merge tool).
+    /// </para>
+    /// </remarks>
     private static void AdvanceCursorsForAutoMergedLine(
         string outputLine,
         IReadOnlyList<string> oursLines,
@@ -299,10 +310,53 @@ public sealed class GitMergeFileEngine : IMergeEngine
         ref int baseCursor,
         int outputLineNumber)
     {
-        _ = outputLineNumber; // reserved for diagnostic logging if we need it later
+        if (LooksLikeMarker(outputLine))
+        {
+            bool inOurs = ContainsAtOrAfter(oursLines, oursCursor, outputLine);
+            bool inTheirs = ContainsAtOrAfter(theirsLines, theirsCursor, outputLine);
+            if (!inOurs && !inTheirs)
+            {
+                throw new MergeEngineException(
+                    $"Merge engine output contains a zdiff3 marker line ('{outputLine}') at output " +
+                    $"line {outputLineNumber} that does not appear in either ours or theirs at or " +
+                    "after the current cursor. The parser likely misidentified a conflict block " +
+                    "boundary due to marker-lookalike content in one of the input sides. Resolve " +
+                    "this file using 'Use Ours', 'Use Theirs', or an external merge tool.");
+            }
+        }
+
         TryAdvanceCursor(ref oursCursor, oursLines, outputLine);
         TryAdvanceCursor(ref theirsCursor, theirsLines, outputLine);
         TryAdvanceCursor(ref baseCursor, baseLines, outputLine);
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when the line begins with a seven-character zdiff3 marker run
+    /// (<c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>, <c>|||||||</c>, <c>=======</c>, or
+    /// <c>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</c>). The separator marker must be exactly seven
+    /// <c>=</c>s with nothing after; openers and closers may carry a label.
+    /// </summary>
+    private static bool LooksLikeMarker(string line)
+    {
+        if (line.Length < 7) return false;
+        char c = line[0];
+        if (c != '<' && c != '>' && c != '|' && c != '=') return false;
+        for (int i = 1; i < 7; i++)
+        {
+            if (line[i] != c) return false;
+        }
+        if (c == '=' && line.Length != 7) return false;
+        if (c != '=' && line.Length > 7 && line[7] != ' ') return false;
+        return true;
+    }
+
+    private static bool ContainsAtOrAfter(IReadOnlyList<string> lines, int cursor, string target)
+    {
+        for (int i = cursor; i < lines.Count; i++)
+        {
+            if (string.Equals(lines[i], target, StringComparison.Ordinal)) return true;
+        }
+        return false;
     }
 
     private static void TryAdvanceCursor(ref int cursor, IReadOnlyList<string> lines, string outputLine)
