@@ -1,383 +1,157 @@
-using DiffPlex;
-using DiffPlex.Chunkers;
-using DiffPlex.DiffBuilder;
-using DiffPlex.DiffBuilder.Model;
+using System.Collections.ObjectModel;
 using Leaf.Models;
+using Leaf.Models.Merge;
+using Leaf.Services.Merge;
 
 namespace Leaf.Services;
 
 /// <summary>
-/// Performs three-way merges using DiffPlex for diff computation.
-/// Identifies unchanged, auto-mergeable, and conflicting regions.
+/// Phase 1 adapter — bridges the legacy <see cref="IThreeWayMergeService"/> surface to
+/// the new <see cref="IMergeEngine"/> pipeline (<c>git merge-file</c>-backed).
+/// Produces <see cref="FileMergeResult"/> / <see cref="MergeRegion"/> shaped output so
+/// the existing <c>ConflictResolutionViewModel</c> continues to work until Phase 2c
+/// replaces it with the new merge editor that consumes
+/// <see cref="MergeDocument"/> directly.
 /// </summary>
+/// <remarks>
+/// The old custom line-by-line merger (384 lines of Myers-diff three-way logic) has
+/// been entirely removed. Byte-for-byte parity with <c>git merge</c> now comes from
+/// the engine; this class exclusively shapes the result for legacy consumers.
+/// </remarks>
 public class ThreeWayMergeService : IThreeWayMergeService
 {
-    /// <inheritdoc/>
-    public FileMergeResult PerformMerge(string baseContent, string oursContent, string theirsContent,
-        bool ignoreWhitespace = false)
+    private readonly IMergeEngine _engine;
+
+    /// <summary>
+    /// Default constructor used when dependency injection is unavailable (convenience
+    /// constructor of <c>ConflictResolutionViewModel</c>). Constructs a fresh engine
+    /// backed by a fresh <see cref="GitCommandRunner"/>. Production code goes through DI.
+    /// </summary>
+    public ThreeWayMergeService() : this(new GitMergeFileEngine(new GitCommandRunner()))
     {
-        return PerformMerge(string.Empty, baseContent, oursContent, theirsContent, ignoreWhitespace);
     }
 
-    /// <inheritdoc/>
-    public FileMergeResult PerformMerge(string filePath, string baseContent, string oursContent,
-        string theirsContent, bool ignoreWhitespace = false)
+    public ThreeWayMergeService(IMergeEngine engine)
     {
-        Log.Info("ThreeWayMerge", $"PerformMerge starting for {filePath}");
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
-        var result = new FileMergeResult { FilePath = filePath };
-
-        // Normalize line endings
-        baseContent = NormalizeLineEndings(baseContent);
-        oursContent = NormalizeLineEndings(oursContent);
-        theirsContent = NormalizeLineEndings(theirsContent);
-        Log.Perf("ThreeWayMerge", $"Normalized", sw.ElapsedMilliseconds);
-
-        // Split into lines
-        var baseLines = SplitLines(baseContent);
-        var oursLines = SplitLines(oursContent);
-        var theirsLines = SplitLines(theirsContent);
-        Log.Perf("ThreeWayMerge", $"Split: base={baseLines.Length}, ours={oursLines.Length}, theirs={theirsLines.Length}", sw.ElapsedMilliseconds);
-
-        // Get diffs using DiffPlex
-        var oursDiff = InlineDiffBuilder.Diff(baseContent, oursContent, ignoreWhitespace);
-        Log.Perf("ThreeWayMerge", "oursDiff", sw.ElapsedMilliseconds);
-        var theirsDiff = InlineDiffBuilder.Diff(baseContent, theirsContent, ignoreWhitespace);
-        Log.Perf("ThreeWayMerge", "theirsDiff", sw.ElapsedMilliseconds);
-
-        // Build change maps: baseLineIndex -> what happened
-        // Walk through and build merge regions
-        var regions = BuildMergeRegions(baseLines, oursLines, theirsLines);
-        Log.Perf("ThreeWayMerge", $"BuildMergeRegions returned {regions.Count} regions", sw.ElapsedMilliseconds);
-
-        foreach (var region in regions)
-        {
-            result.Regions.Add(region);
-        }
-
-        result.CalculateLineNumbers();
-        Log.Perf("ThreeWayMerge", $"PerformMerge complete, {result.Regions.Count} regions", sw.ElapsedMilliseconds);
-        return result;
+        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
     }
 
-    private static string NormalizeLineEndings(string content)
+    public Task<FileMergeResult> PerformMergeAsync(
+        string baseContent,
+        string oursContent,
+        string theirsContent,
+        bool ignoreWhitespace = false,
+        CancellationToken cancellationToken = default)
+        => PerformMergeAsync("<merge>", baseContent, oursContent, theirsContent, ignoreWhitespace, cancellationToken);
+
+    public async Task<FileMergeResult> PerformMergeAsync(
+        string filePath,
+        string baseContent,
+        string oursContent,
+        string theirsContent,
+        bool ignoreWhitespace = false,
+        CancellationToken cancellationToken = default)
     {
-        return content.Replace("\r\n", "\n").Replace("\r", "\n");
-    }
+        ArgumentNullException.ThrowIfNull(filePath);
+        ArgumentNullException.ThrowIfNull(baseContent);
+        ArgumentNullException.ThrowIfNull(oursContent);
+        ArgumentNullException.ThrowIfNull(theirsContent);
 
-    private static string[] SplitLines(string content)
-    {
-        if (string.IsNullOrEmpty(content))
-            return [];
+        var document = await _engine.MergeAsync(
+            filePath,
+            baseContent,
+            oursContent,
+            theirsContent,
+            ignoreWhitespace: ignoreWhitespace,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        return content.Split('\n');
-    }
-
-    private static List<MergeRegion> BuildMergeRegions(
-        string[] baseLines,
-        string[] oursLines,
-        string[] theirsLines)
-    {
-        var regions = new List<MergeRegion>();
-        int regionIndex = 0;
-
-        // Use DiffPlex's line-by-line diff for accurate three-way merge
-        var differ = new Differ();
-        var lineChunker = new LineChunker();
-        var oursResult = differ.CreateDiffs(string.Join("\n", baseLines), string.Join("\n", oursLines), false, false, lineChunker);
-        var theirsResult = differ.CreateDiffs(string.Join("\n", baseLines), string.Join("\n", theirsLines), false, false, lineChunker);
-
-        // Build position-based change tracking
-        var oursBlockMap = BuildBlockMap(oursResult.DiffBlocks);
-        var theirsBlockMap = BuildBlockMap(theirsResult.DiffBlocks);
-
-        int baseIdx = 0;
-        int oursIdx = 0;
-        int theirsIdx = 0;
-        int loopCount = 0;
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
-        while (baseIdx < baseLines.Length || oursIdx < oursLines.Length || theirsIdx < theirsLines.Length)
-        {
-            loopCount++;
-            if (loopCount % 1000 == 0)
-            {
-                Log.Perf("ThreeWayMerge", $"BuildMergeRegions loop {loopCount}: baseIdx={baseIdx}/{baseLines.Length}, oursIdx={oursIdx}/{oursLines.Length}, theirsIdx={theirsIdx}/{theirsLines.Length}, regions={regions.Count}", sw.ElapsedMilliseconds);
-            }
-
-            // If we've exhausted base lines but still have remaining lines in ours/theirs, break to handle them
-            if (baseIdx >= baseLines.Length)
-            {
-                break;
-            }
-
-            // Check if either side has changes at this position
-            var oursBlock = oursBlockMap.GetValueOrDefault(baseIdx);
-            var theirsBlock = theirsBlockMap.GetValueOrDefault(baseIdx); // BUG FIX: was oursBlockMap
-
-            bool oursChanged = oursIdx < oursLines.Length && oursBlockMap.ContainsKey(baseIdx);
-            bool theirsChanged = theirsIdx < theirsLines.Length && theirsBlockMap.ContainsKey(baseIdx);
-
-            if (!oursChanged && !theirsChanged)
-            {
-                // Unchanged - collect consecutive unchanged lines
-                var unchangedLines = new List<string>();
-                while (baseIdx < baseLines.Length &&
-                       !oursBlockMap.ContainsKey(baseIdx) &&
-                       !theirsBlockMap.ContainsKey(baseIdx))
-                {
-                    if (oursIdx < oursLines.Length)
-                        unchangedLines.Add(oursLines[oursIdx]);
-                    baseIdx++;
-                    oursIdx++;
-                    theirsIdx++;
-                }
-
-                if (unchangedLines.Count > 0)
-                {
-                    regions.Add(new MergeRegion
-                    {
-                        Index = regionIndex++,
-                        Type = MergeRegionType.Unchanged,
-                        Content = string.Join("\n", unchangedLines)
-                    });
-                }
-            }
-            else
-            {
-                // At least one side has changes
-                var (oursChunk, oursDeleted, oursAdvance) = ExtractChunk(oursBlockMap, baseIdx, oursLines);
-                var (theirsChunk, theirsDeleted, theirsAdvance) = ExtractChunk(theirsBlockMap, baseIdx, theirsLines);
-
-                // Get the base content being replaced
-                int deletedCount = Math.Max(oursDeleted, theirsDeleted);
-                var baseChunk = baseLines.Skip(baseIdx).Take(deletedCount).ToList();
-
-                MergeRegion region;
-
-                if (oursChunk.SequenceEqual(theirsChunk))
-                {
-                    // False conflict - both sides made identical changes
-                    region = new MergeRegion
-                    {
-                        Index = regionIndex++,
-                        Type = MergeRegionType.Unchanged,
-                        Content = string.Join("\n", oursChunk)
-                    };
-                }
-                else if (oursDeleted == 0 && oursChunk.Count == 0 && theirsChunk.Count > 0)
-                {
-                    // Only theirs changed (addition)
-                    region = new MergeRegion
-                    {
-                        Index = regionIndex++,
-                        Type = MergeRegionType.TheirsOnly,
-                        Content = string.Join("\n", theirsChunk)
-                    };
-                }
-                else if (theirsDeleted == 0 && theirsChunk.Count == 0 && oursChunk.Count > 0)
-                {
-                    // Only ours changed (addition)
-                    region = new MergeRegion
-                    {
-                        Index = regionIndex++,
-                        Type = MergeRegionType.OursOnly,
-                        Content = string.Join("\n", oursChunk)
-                    };
-                }
-                else if (!oursBlockMap.ContainsKey(baseIdx) && theirsBlockMap.ContainsKey(baseIdx))
-                {
-                    // Only theirs has changes at this position
-                    region = new MergeRegion
-                    {
-                        Index = regionIndex++,
-                        Type = MergeRegionType.TheirsOnly,
-                        Content = string.Join("\n", theirsChunk.Count > 0 ? theirsChunk : baseChunk)
-                    };
-                }
-                else if (oursBlockMap.ContainsKey(baseIdx) && !theirsBlockMap.ContainsKey(baseIdx))
-                {
-                    // Only ours has changes at this position
-                    region = new MergeRegion
-                    {
-                        Index = regionIndex++,
-                        Type = MergeRegionType.OursOnly,
-                        Content = string.Join("\n", oursChunk.Count > 0 ? oursChunk : baseChunk)
-                    };
-                }
-                else
-                {
-                    // True conflict - both sides changed differently
-                    region = new MergeRegion
-                    {
-                        Index = regionIndex++,
-                        Type = MergeRegionType.Conflict,
-                        OursLines = oursChunk.Count > 0 ? oursChunk : [.. baseChunk],
-                        TheirsLines = theirsChunk.Count > 0 ? theirsChunk : [.. baseChunk]
-                    };
-                }
-
-                regions.Add(region);
-
-                baseIdx += deletedCount > 0 ? deletedCount : 1;
-                oursIdx += oursAdvance > 0 ? oursAdvance : 1;
-                theirsIdx += theirsAdvance > 0 ? theirsAdvance : 1;
-            }
-
-            // Safety check to prevent infinite loop
-            if (baseIdx >= baseLines.Length && oursIdx >= oursLines.Length && theirsIdx >= theirsLines.Length)
-                break;
-        }
-
-        // Handle any remaining lines
-        var oursRemaining = oursIdx < oursLines.Length ? oursLines.Skip(oursIdx).ToList() : [];
-        var theirsRemaining = theirsIdx < theirsLines.Length ? theirsLines.Skip(theirsIdx).ToList() : [];
-
-        Log.Info("ThreeWayMerge", $"Remaining lines: ours={oursRemaining.Count}, theirs={theirsRemaining.Count}");
-
-        if (oursRemaining.Count > 0 && theirsRemaining.Count > 0)
-        {
-            // Both have remaining - check if they're the same
-            if (oursRemaining.SequenceEqual(theirsRemaining))
-            {
-                regions.Add(new MergeRegion
-                {
-                    Index = regionIndex++,
-                    Type = MergeRegionType.Unchanged,
-                    Content = string.Join("\n", oursRemaining)
-                });
-            }
-            else
-            {
-                // Different remaining content - conflict
-                regions.Add(new MergeRegion
-                {
-                    Index = regionIndex++,
-                    Type = MergeRegionType.Conflict,
-                    OursLines = oursRemaining,
-                    TheirsLines = theirsRemaining
-                });
-            }
-        }
-        else if (oursRemaining.Count > 0)
-        {
-            regions.Add(new MergeRegion
-            {
-                Index = regionIndex++,
-                Type = MergeRegionType.OursOnly,
-                Content = string.Join("\n", oursRemaining)
-            });
-        }
-        else if (theirsRemaining.Count > 0)
-        {
-            regions.Add(new MergeRegion
-            {
-                Index = regionIndex++,
-                Type = MergeRegionType.TheirsOnly,
-                Content = string.Join("\n", theirsRemaining)
-            });
-        }
-
-        return MergeConsecutiveRegions(regions);
-    }
-
-    private static Dictionary<int, DiffBlock> BuildBlockMap(IList<DiffPlex.Model.DiffBlock> blocks)
-    {
-        var map = new Dictionary<int, DiffBlock>();
-        foreach (var block in blocks)
-        {
-            // DeleteStartA is the position in the old (base) text
-            if (block.DeleteStartA >= 0)
-            {
-                map[block.DeleteStartA] = new DiffBlock
-                {
-                    DeleteStart = block.DeleteStartA,
-                    DeleteCount = block.DeleteCountA,
-                    InsertStart = block.InsertStartB,
-                    InsertCount = block.InsertCountB
-                };
-            }
-        }
-        return map;
-    }
-
-    private static (List<string> chunk, int deleted, int inserted) ExtractChunk(
-        Dictionary<int, DiffBlock> blockMap,
-        int basePos,
-        string[] modifiedLines)
-    {
-        if (!blockMap.TryGetValue(basePos, out var block))
-            return ([], 0, 0);
-
-        var chunk = new List<string>();
-        for (int i = 0; i < block.InsertCount && block.InsertStart + i < modifiedLines.Length; i++)
-        {
-            chunk.Add(modifiedLines[block.InsertStart + i]);
-        }
-
-        return (chunk, block.DeleteCount, block.InsertCount);
+        return ConvertToLegacy(document);
     }
 
     /// <summary>
-    /// Merge consecutive regions of the same type to reduce region count.
+    /// Convert a <see cref="MergeDocument"/> (engine output) into the legacy
+    /// <see cref="FileMergeResult"/> shape expected by the Phase 1 UI. Auto-merged
+    /// content becomes <see cref="MergeRegionType.Unchanged"/> regions; conflicting
+    /// content becomes <see cref="MergeRegionType.Conflict"/> regions carrying the
+    /// ours/theirs lines verbatim.
     /// </summary>
-    private static List<MergeRegion> MergeConsecutiveRegions(List<MergeRegion> regions)
+    /// <remarks>
+    /// Phase 1 intentionally collapses <see cref="MergeRegionType.OursOnly"/> and
+    /// <see cref="MergeRegionType.TheirsOnly"/> into <see cref="MergeRegionType.Unchanged"/> —
+    /// git merge-file auto-resolves those internally, so they appear as regular auto-merged
+    /// content in the output. The legacy UI's <c>HasAutoMergedChanges</c> flag therefore
+    /// degrades to <c>false</c> even when such changes did occur upstream. This is acceptable
+    /// because the legacy UI is being replaced in Phase 2c; the indicator is informational only.
+    /// </remarks>
+    internal static FileMergeResult ConvertToLegacy(MergeDocument document)
     {
-        if (regions.Count <= 1)
-            return regions;
-
-        var merged = new List<MergeRegion>();
-        MergeRegion? current = null;
-
-        foreach (var region in regions)
+        var result = new FileMergeResult
         {
-            if (current == null)
+            FilePath = document.FilePath,
+            Regions = new ObservableCollection<MergeRegion>(),
+        };
+
+        var conflictRanges = document.Ranges
+            .Where(r => r.IsConflicting)
+            .OrderBy(r => r.ResultMarkedRange.StartLine)
+            .ToList();
+
+        var mergedLines = document.InitialMergedLines;
+        int outputCursor = 0; // 0-based index into mergedLines for the next non-conflict output line.
+        int conflictCounter = 0;
+        int regionIndex = 0;
+
+        foreach (var range in conflictRanges)
+        {
+            var markedStart = range.ResultMarkedRange.StartLine - 1; // 0-based
+            var markedEndExclusive = range.ResultMarkedRange.EndLineExclusive - 1;
+
+            if (markedStart > outputCursor)
             {
-                current = region;
-                continue;
+                var slice = new List<string>(markedStart - outputCursor);
+                for (int i = outputCursor; i < markedStart; i++)
+                {
+                    slice.Add(mergedLines[i]);
+                }
+                result.Regions.Add(new MergeRegion
+                {
+                    Index = regionIndex++,
+                    Type = MergeRegionType.Unchanged,
+                    Content = string.Join("\n", slice),
+                });
             }
 
-            // Only merge non-conflict regions of the same type
-            if (current.Type == region.Type && !current.IsConflict && !region.IsConflict)
+            conflictCounter++;
+            result.Regions.Add(new MergeRegion
             {
-                // Merge content
-                if (!string.IsNullOrEmpty(current.Content) && !string.IsNullOrEmpty(region.Content))
-                {
-                    current.Content = current.Content + "\n" + region.Content;
-                }
-                else if (!string.IsNullOrEmpty(region.Content))
-                {
-                    current.Content = region.Content;
-                }
-            }
-            else
-            {
-                merged.Add(current);
-                current = region;
-            }
+                Index = regionIndex++,
+                ConflictNumber = conflictCounter,
+                Type = MergeRegionType.Conflict,
+                OursLines = range.OursLines.ToList(),
+                TheirsLines = range.TheirsLines.ToList(),
+                OursStartLineNumber = range.Ours.IsEmpty ? 1 : range.Ours.StartLine,
+                TheirsStartLineNumber = range.Theirs.IsEmpty ? 1 : range.Theirs.StartLine,
+            });
+
+            outputCursor = markedEndExclusive;
         }
 
-        if (current != null)
-            merged.Add(current);
-
-        // Re-index and assign 1-based conflict numbers
-        int conflictNumber = 0;
-        for (int i = 0; i < merged.Count; i++)
+        if (outputCursor < mergedLines.Count)
         {
-            merged[i].Index = i;
-            if (merged[i].IsConflict)
-                merged[i].ConflictNumber = ++conflictNumber;
+            var slice = new List<string>(mergedLines.Count - outputCursor);
+            for (int i = outputCursor; i < mergedLines.Count; i++)
+            {
+                slice.Add(mergedLines[i]);
+            }
+            result.Regions.Add(new MergeRegion
+            {
+                Index = regionIndex,
+                Type = MergeRegionType.Unchanged,
+                Content = string.Join("\n", slice),
+            });
         }
 
-        return merged;
-    }
-
-    private class DiffBlock
-    {
-        public int DeleteStart { get; set; }
-        public int DeleteCount { get; set; }
-        public int InsertStart { get; set; }
-        public int InsertCount { get; set; }
+        result.CalculateLineNumbers();
+        return result;
     }
 }

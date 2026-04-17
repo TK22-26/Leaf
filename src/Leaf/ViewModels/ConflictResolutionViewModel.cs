@@ -337,7 +337,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
         FileMergeResult result;
         try
         {
-            result = await Task.Run(() => _mergeService.PerformMerge(filePath, baseContent ?? string.Empty, oursContent ?? string.Empty, theirsContent ?? string.Empty), ct).ConfigureAwait(true);
+            // The Phase 1 engine is async-I/O bound (it shells out to `git merge-file`),
+            // so no Task.Run wrap is needed — the call doesn't block the UI thread.
+            result = await _mergeService.PerformMergeAsync(
+                filePath,
+                baseContent ?? string.Empty,
+                oursContent ?? string.Empty,
+                theirsContent ?? string.Empty,
+                ignoreWhitespace: false,
+                cancellationToken: ct).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {

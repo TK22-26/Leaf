@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 
 namespace Leaf.Services;
 
@@ -10,6 +11,13 @@ namespace Leaf.Services;
 public class GitCommandRunner : IGitCommandRunner
 {
     private const string AskPassExecutable = "Leaf.AskPass.exe";
+
+    // Git emits UTF-8 by default on all platforms. The .NET default for
+    // ProcessStartInfo.StandardOutputEncoding is the console's code page
+    // (typically Windows-1252 on en-US) which silently corrupts non-ASCII
+    // output — see the merge engine tests for a concrete failure case.
+    // Explicit UTF-8 (no BOM) matches Git's wire format exactly.
+    private static readonly Encoding GitOutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
     /// <summary>
     /// Resolved path to Leaf.AskPass.exe, or null if the helper is missing.
@@ -50,6 +58,8 @@ public class GitCommandRunner : IGitCommandRunner
             RedirectStandardInput = input != null,
             UseShellExecute = false,
             CreateNoWindow = true,
+            StandardOutputEncoding = GitOutputEncoding,
+            StandardErrorEncoding = GitOutputEncoding,
         };
 
         // CRITICAL: Prevent git from hanging on credential prompts in background

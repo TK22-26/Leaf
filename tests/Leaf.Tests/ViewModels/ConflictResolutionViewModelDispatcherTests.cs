@@ -59,21 +59,20 @@ public class ConflictResolutionViewModelDispatcherTests
 /// </summary>
 internal class FakeMergeService : IThreeWayMergeService
 {
-    public FileMergeResult PerformMerge(string baseContent, string oursContent, string theirsContent, bool ignoreWhitespace = false)
-    {
-        return new FileMergeResult
-        {
-            FilePath = string.Empty,
-            Regions = []
-        };
-    }
+    public Task<FileMergeResult> PerformMergeAsync(
+        string baseContent,
+        string oursContent,
+        string theirsContent,
+        bool ignoreWhitespace = false,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(new FileMergeResult { FilePath = string.Empty, Regions = [] });
 
-    public FileMergeResult PerformMerge(string filePath, string baseContent, string oursContent, string theirsContent, bool ignoreWhitespace = false)
-    {
-        return new FileMergeResult
-        {
-            FilePath = filePath,
-            Regions = []
-        };
-    }
+    public Task<FileMergeResult> PerformMergeAsync(
+        string filePath,
+        string baseContent,
+        string oursContent,
+        string theirsContent,
+        bool ignoreWhitespace = false,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(new FileMergeResult { FilePath = filePath, Regions = [] });
 }
