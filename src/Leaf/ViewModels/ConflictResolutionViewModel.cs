@@ -352,6 +352,19 @@ public partial class ConflictResolutionViewModel : ObservableObject
             Log.Info("Merge", $"BuildMergeResult: cancelled for {filePath}");
             return;
         }
+        catch (Leaf.Services.Merge.MergeEngineException ex)
+        {
+            // Engine refused this file — fail loudly to the user via a status message
+            // but don't crash the view. The conflict panel falls back to showing the
+            // raw conflict markers from disk so the user can resolve manually or
+            // escalate via the external merge tool (§5.2).
+            Log.Error("Merge", $"BuildMergeResult: engine error for {filePath}: {ex.Message}");
+            CurrentMergeResult = null;
+            MergedContent = string.Empty;
+            MergedLines.Clear();
+            _lastBuiltFilePath = filePath;
+            return;
+        }
 
         if (ct.IsCancellationRequested || SelectedConflict?.FilePath != filePath)
         {

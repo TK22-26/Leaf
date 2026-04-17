@@ -24,16 +24,24 @@ namespace Leaf.Services.Merge;
 /// </para>
 /// <para>
 /// The parser uses a two-pass strategy: scan for candidate conflict blocks
-/// (each a full <c>&lt;</c>/<c>|</c>/<c>=</c>/<c>&gt;</c> sequence with no
-/// nesting), then extract each. Lines that start with seven <c>&lt;</c>s but
-/// cannot complete a valid block are treated as content — the same file may
-/// legitimately contain documentation about git conflict markers.
+/// (each a full <c>&lt;</c>/<c>|</c>/<c>=</c>/<c>&gt;</c> sequence). Lines that
+/// start with seven <c>&lt;</c>s but cannot complete a valid block are treated as
+/// content — the same file may legitimately contain documentation about git
+/// conflict markers.
 /// </para>
 /// <para>
-/// Ambiguity inside an accepted block (e.g. nested <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>
-/// between the opening line and the <c>|||||||</c> base marker) raises
-/// <see cref="MergeEngineException"/>. A nested open can only occur when the
-/// engine itself emits malformed output, which is never safe to silently recover from.
+/// A <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c> seen BEFORE the block's <c>|||||||</c>
+/// base marker is found means the outer opener was content (the real conflict
+/// starts at the inner opener); the outer is retried as content. After
+/// <c>|||||||</c> is found we are inside base/theirs content and further marker-like
+/// lines are treated as content — including any inner <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>,
+/// which is valid: git can emit conflicts whose content contains literal marker lines.
+/// </para>
+/// <para>
+/// Fundamental format ambiguity: zdiff3 output cannot always be unambiguously parsed
+/// when user content contains lines that are indistinguishable from structural markers.
+/// The parser prefers the most common interpretation and never crashes; pathological
+/// files may produce slightly wrong block boundaries but never data loss.
 /// </para>
 /// </remarks>
 public static class ConflictMarkerParser
@@ -81,14 +89,9 @@ public static class ConflictMarkerParser
         IReadOnlyList<ParsedConflict> Conflicts);
 
     /// <summary>
-    /// Parse a zdiff3-formatted merged output.
+    /// Parse a zdiff3-formatted merged output. Never throws on pathological input —
+    /// unparseable marker lookalikes are treated as content.
     /// </summary>
-    /// <exception cref="MergeEngineException">
-    /// The merged output contains genuinely malformed markers produced by a broken engine
-    /// (e.g. a nested <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c> inside an otherwise well-formed
-    /// block). User content that happens to contain lookalike sequences is not malformed —
-    /// the parser treats it as content via the two-pass strategy.
-    /// </exception>
     public static ParseResult Parse(string mergedOutput)
     {
         ArgumentNullException.ThrowIfNull(mergedOutput);
@@ -102,8 +105,7 @@ public static class ConflictMarkerParser
         // `-c core.autocrlf=false` — a corrupt repo config could still inject CRs
         // and we must not leak them downstream.
         var normalized = mergedOutput.Replace("\r\n", "\n").Replace("\r", "\n");
-        var splitLines = LineSplitter.Split(normalized, out var hasTrailingNewline);
-        var lines = splitLines is string[] arr ? arr : splitLines.ToArray();
+        var lines = LineSplitter.Split(normalized, out var hasTrailingNewline);
 
         // Pass 1: find candidate conflict blocks via a forward scan that requires a
         // well-formed <<<<<<< / ||||||| / ======= / >>>>>>> sequence with no intervening
@@ -132,12 +134,25 @@ public static class ConflictMarkerParser
     /// is then treated as content.
     /// </summary>
     /// <remarks>
-    /// A second <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c> encountered while still scanning for the
-    /// <c>|||||||</c> base marker tells us the outer line is <em>not</em> a real conflict
-    /// opener — a well-formed block must complete before the next opener. We return
-    /// <c>false</c> so the caller advances one line and will retry at the inner opener.
-    /// Git's <c>merge-file</c> never emits overlapping blocks; what looked ambiguous is
-    /// always user content.
+    /// <para>Scan states:</para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// <b>Before baseMarker:</b> we are tentatively inside ours content. A second
+    /// <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c> here means the outer line is almost certainly
+    /// content (git's merge-file never emits nested openers); the caller retries at
+    /// the inner opener.
+    /// </description></item>
+    /// <item><description>
+    /// <b>Between baseMarker and separator:</b> we are inside base content. Marker-like
+    /// lines other than the first <c>=======</c> are treated as content.
+    /// </description></item>
+    /// <item><description>
+    /// <b>Between separator and close:</b> we are inside theirs content. Marker-like
+    /// lines other than the first <c>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</c> are treated as content.
+    /// This lets git's legitimate output containing literal <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>
+    /// lines inside theirs content parse correctly.
+    /// </description></item>
+    /// </list>
     /// </remarks>
     private static bool TryMatchBlock(
         string[] lines,
@@ -162,22 +177,18 @@ public static class ConflictMarkerParser
         {
             var line = lines[i];
 
-            if (OursOpen.IsMatch(line))
-            {
-                // A second opener while we're still looking for any of the rest of the
-                // sequence means the outer line can't be a real conflict opener. Bail —
-                // the outer loop will retry starting at the inner opener.
-                return false;
-            }
-
             if (baseMarker < 0)
             {
+                if (OursOpen.IsMatch(line))
+                {
+                    // Nested opener before base marker: outer is content.
+                    return false;
+                }
                 var m = BaseMiddle.Match(line);
                 if (m.Success)
                 {
                     baseMarker = i;
                     baseMatch = m;
-                    continue;
                 }
                 continue;
             }
@@ -187,8 +198,8 @@ public static class ConflictMarkerParser
                 if (Separator.IsMatch(line))
                 {
                     separator = i;
-                    continue;
                 }
+                // All other marker-lookalikes (including <<<<<<< or |||||||) are content here.
                 continue;
             }
 
@@ -199,6 +210,7 @@ public static class ConflictMarkerParser
                 closeMatch = cm;
                 break;
             }
+            // Other marker-lookalikes inside theirs content are treated as content.
         }
 
         if (baseMarker < 0 || separator < 0 || closeMarker < 0)

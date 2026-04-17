@@ -167,6 +167,53 @@ public class GitMergeFileEngineTests
     }
 
     [Fact]
+    public async Task Merge_OneSidedDeletionBeforeConflict_DoesNotThrow()
+    {
+        // The common real-world case: ours deletes a line, theirs keeps it and also
+        // modifies a later line. Git auto-accepts the deletion and produces a conflict
+        // only for the later line. The range walker must not crash when one cursor
+        // lags behind due to a one-sided deletion.
+        var engine = CreateEngine();
+        const string baseText = "header\nb\ncommon\nd\nfooter\n";
+        const string oursText = "header\ncommon\nd-ours\nfooter\n";
+        const string theirsText = "header\nb\ncommon\nd-theirs\nfooter\n";
+
+        var doc = await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+
+        doc.ConflictCount.Should().Be(1);
+        doc.Ranges.Single().OursLines.Should().Equal("d-ours");
+        doc.Ranges.Single().TheirsLines.Should().Equal("d-theirs");
+    }
+
+    [Fact]
+    public async Task Merge_LookalikeMarkerInsideOursOfRealConflict_DoesNotCrash()
+    {
+        // Ours contains a literal "<<<<<<<" line and the conflict is elsewhere in the file.
+        // Parser must not misidentify or crash.
+        var engine = CreateEngine();
+        const string baseText = "line1\nline2\nline3\n";
+        const string oursText = "line1\n<<<<<<< example\nline3-modified\n";
+        const string theirsText = "line1\nline2\nline3-different\n";
+
+        // Should not throw — whatever the parser decides about the lookalike,
+        // it must not throw MergeEngineException.
+        var act = async () => await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task Merge_LookalikeMarkerInsideTheirsOfRealConflict_DoesNotCrash()
+    {
+        var engine = CreateEngine();
+        const string baseText = "line1\nline2\nline3\n";
+        const string oursText = "line1\nline2\nline3-ours\n";
+        const string theirsText = "line1\n<<<<<<< example\nline3-theirs\n";
+
+        var act = async () => await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
     public async Task Merge_RepeatedContentAcrossConflicts_AssignsCorrectInputRanges()
     {
         // File with repeated blank lines and boilerplate. The naive "forward-search for
@@ -242,6 +289,41 @@ public class GitMergeFileEngineTests
         var doc = await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
         doc.HasConflicts.Should().BeFalse();
         doc.InitialMergedText.Should().Contain("<<<<<<< documentation");
+    }
+
+    [Fact]
+    public async Task Merge_LookalikeMarkerAdjacentToRealConflict_BothHandled()
+    {
+        // Real end-to-end case: the file contains a lookalike "<<<<<<<" line before a
+        // real conflict. The parser must locate the real conflict correctly and preserve
+        // the lookalike line as content. This exercises the fix path for NEW-C-1/NEW-C-2
+        // on actual git-merge-file output.
+        var engine = CreateEngine();
+        const string baseText =
+            "intro\n" +
+            "<<<<<<< docs about markers\n" +
+            "end-docs\n" +
+            "target\n" +
+            "outro\n";
+        const string oursText =
+            "intro\n" +
+            "<<<<<<< docs about markers\n" +
+            "end-docs\n" +
+            "target-ours\n" +
+            "outro\n";
+        const string theirsText =
+            "intro\n" +
+            "<<<<<<< docs about markers\n" +
+            "end-docs\n" +
+            "target-theirs\n" +
+            "outro\n";
+
+        var doc = await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+
+        doc.ConflictCount.Should().Be(1);
+        doc.InitialMergedText.Should().Contain("<<<<<<< docs about markers");
+        doc.Ranges.Single().OursLines.Should().Equal("target-ours");
+        doc.Ranges.Single().TheirsLines.Should().Equal("target-theirs");
     }
 
     [Fact]

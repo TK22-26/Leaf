@@ -15,7 +15,7 @@ internal static class LineSplitter
     /// by this method; callers that need to defend against them (e.g. when receiving
     /// raw git stdout) should normalise first.
     /// </summary>
-    public static IReadOnlyList<string> Split(string text, out bool hasTrailingNewline)
+    public static string[] Split(string text, out bool hasTrailingNewline)
     {
         if (string.IsNullOrEmpty(text))
         {

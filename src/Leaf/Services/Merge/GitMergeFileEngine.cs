@@ -259,9 +259,11 @@ public sealed class GitMergeFileEngine : IMergeEngine
 
     /// <summary>
     /// Advance the ours/theirs/base cursors to consume a single auto-merged output line.
-    /// Every auto-merged line must appear at the current cursor position of at least one
-    /// of ours/theirs (and possibly base, if unchanged). Breaking this invariant is a
-    /// fatal engine error.
+    /// Uses a fast-path exact-cursor-match (correct for symmetric edits and repeated content),
+    /// falling back to forward-search when the current cursor doesn't match (correct for
+    /// one-sided deletions where the other cursor needs to skip past a removed line).
+    /// Never throws — a cursor that can't find the output line anywhere simply stays put
+    /// and the subsequent <see cref="CarveSlice"/> handles the anchoring at conflict boundaries.
     /// </summary>
     private static void AdvanceCursorsForAutoMergedLine(
         string outputLine,
@@ -273,36 +275,43 @@ public sealed class GitMergeFileEngine : IMergeEngine
         ref int baseCursor,
         int outputLineNumber)
     {
-        bool matchesOurs = oursCursor < oursLines.Count
-            && string.Equals(oursLines[oursCursor], outputLine, StringComparison.Ordinal);
-        bool matchesTheirs = theirsCursor < theirsLines.Count
-            && string.Equals(theirsLines[theirsCursor], outputLine, StringComparison.Ordinal);
+        _ = outputLineNumber; // reserved for diagnostic logging if we need it later
+        TryAdvanceCursor(ref oursCursor, oursLines, outputLine);
+        TryAdvanceCursor(ref theirsCursor, theirsLines, outputLine);
+        TryAdvanceCursor(ref baseCursor, baseLines, outputLine);
+    }
 
-        if (!matchesOurs && !matchesTheirs)
+    private static void TryAdvanceCursor(ref int cursor, IReadOnlyList<string> lines, string outputLine)
+    {
+        // Fast path: exact match at the current cursor (keeps cursors aligned across
+        // repeated content and prevents jumps that would skip real occurrences).
+        if (cursor < lines.Count && string.Equals(lines[cursor], outputLine, StringComparison.Ordinal))
         {
-            throw new MergeEngineException(
-                $"Merge invariant violated at output line {outputLineNumber}: auto-merged line " +
-                "appears in neither ours nor theirs at the current cursor positions. " +
-                "The engine output does not correspond to its inputs.");
+            cursor++;
+            return;
         }
 
-        if (matchesOurs) oursCursor++;
-        if (matchesTheirs) theirsCursor++;
-
-        // Base advances when the line is unchanged vs. base on at least one side —
-        // i.e. the same line exists at baseCursor. When both sides modified context
-        // identically we still advance base. When only one side modified and the
-        // other carried base verbatim, base advances iff the carried line matches.
-        if (baseCursor < baseLines.Count
-            && string.Equals(baseLines[baseCursor], outputLine, StringComparison.Ordinal))
+        // Slow path: forward-search from the current cursor. Handles one-sided
+        // deletions where the output moved past a line that was removed from this side.
+        for (int i = cursor + 1; i < lines.Count; i++)
         {
-            baseCursor++;
+            if (string.Equals(lines[i], outputLine, StringComparison.Ordinal))
+            {
+                cursor = i + 1;
+                return;
+            }
         }
+        // Not found anywhere ahead — leave cursor alone. CarveSlice has its own
+        // forward-search fallback for conflict-boundary anchoring.
     }
 
     /// <summary>
-    /// Carve a slice of length <c>needle.Count</c> from <paramref name="haystack"/>
-    /// starting at <paramref name="cursor"/>, verifying content match. Throws on mismatch.
+    /// Carve a slice of length <c>needle.Count</c> from <paramref name="haystack"/> for a
+    /// conflict's side. Tries an exact match at <paramref name="cursor"/> first (correct when
+    /// the walker stayed in sync); falls back to forward-search from <paramref name="cursor"/>
+    /// (correct for one-sided deletions that leave the cursor behind). Throws only when the
+    /// needle cannot be found at or after the cursor — that indicates a real engine-output vs.
+    /// input mismatch, not a recoverable condition.
     /// </summary>
     private static LineRange CarveSlice(
         IReadOnlyList<string> haystack,
@@ -316,26 +325,38 @@ public sealed class GitMergeFileEngine : IMergeEngine
             return new LineRange(cursor + 1, cursor + 1);
         }
 
-        if (cursor + needle.Count > haystack.Count)
+        if (MatchesAt(haystack, cursor, needle))
         {
-            throw new MergeEngineException(
-                $"Merge invariant violated: conflict block at output line {conflictStartOutputLine} " +
-                $"reports {needle.Count} line(s) of '{sideName}' content, but only " +
-                $"{haystack.Count - cursor} line(s) remain in the '{sideName}' input at cursor {cursor + 1}.");
+            return new LineRange(cursor + 1, cursor + 1 + needle.Count);
         }
 
-        for (int j = 0; j < needle.Count; j++)
+        var maxStart = haystack.Count - needle.Count;
+        for (int i = cursor + 1; i <= maxStart; i++)
         {
-            if (!string.Equals(haystack[cursor + j], needle[j], StringComparison.Ordinal))
+            if (MatchesAt(haystack, i, needle))
             {
-                throw new MergeEngineException(
-                    $"Merge invariant violated: conflict block at output line {conflictStartOutputLine} " +
-                    $"reports '{sideName}' content that does not match the '{sideName}' input at cursor " +
-                    $"{cursor + j + 1}. Engine output does not correspond to its inputs.");
+                return new LineRange(i + 1, i + 1 + needle.Count);
             }
         }
 
-        return new LineRange(cursor + 1, cursor + 1 + needle.Count);
+        throw new MergeEngineException(
+            $"Merge invariant violated: conflict block at output line {conflictStartOutputLine} " +
+            $"reports '{sideName}' content of {needle.Count} line(s) that cannot be located in " +
+            $"the '{sideName}' input starting from cursor {cursor + 1}. The engine's output does " +
+            "not correspond to its inputs.");
+    }
+
+    private static bool MatchesAt(IReadOnlyList<string> haystack, int pos, IReadOnlyList<string> needle)
+    {
+        if (pos < 0 || pos + needle.Count > haystack.Count) return false;
+        for (int j = 0; j < needle.Count; j++)
+        {
+            if (!string.Equals(haystack[pos + j], needle[j], StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static string DetectLineEnding(params string[] candidates)
