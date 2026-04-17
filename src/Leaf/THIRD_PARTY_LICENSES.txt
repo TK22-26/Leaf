@@ -32,7 +32,9 @@ AvalonEdit
 
 License: MIT License
 Project URL: https://github.com/icsharpcode/AvalonEdit
-NuGet Package: AvalonEdit
+Source: Vendored at src/Leaf/TextEdit/ (from upstream tag v6.3.1).
+        See src/Leaf/TextEdit/UPSTREAM.md for provenance and re-import
+        procedure.
 
 Copyright (c) AvalonEdit Contributors
 
