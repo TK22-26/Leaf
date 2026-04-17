@@ -33,70 +33,6 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Open the first unresolved conflict in the configured external
-    /// merge tool. No-op (with a status message) if no tool is selected.
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(HasExternalMergeTool))]
-    public async Task OpenInMergeToolAsync()
-    {
-        if (SelectedRepository == null) return;
-
-        var mergeTool = await _externalToolConfig.GetCurrentToolAsync(
-            SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
-        if (mergeTool == null)
-        {
-            HasExternalMergeTool = false;
-            StatusMessage = "No external merge tool configured. See Settings → External Tools.";
-            return;
-        }
-
-        try
-        {
-            await BeginBusyAsync($"Opening {mergeTool.DisplayName} for merge...");
-
-            var conflicts = await _gitService.GetConflictsAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-            var firstConflict = conflicts.FirstOrDefault();
-
-            if (firstConflict != null)
-            {
-                var staged = await _gitService.OpenConflictInMergeToolAsync(
-                    SelectedRepository.Path,
-                    firstConflict.FilePath,
-                    (b, l, r, m, ct) => _externalToolLauncher.LaunchMergeAsync(mergeTool, b, l, r, m, ct),
-                    cancellationToken: CurrentRepositoryToken);
-
-                await RefreshAsync();
-
-                var remaining = await _gitService.GetConflictsAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                if (!staged)
-                {
-                    StatusMessage = $"{mergeTool.DisplayName} did not produce a staged result.";
-                }
-                else if (remaining.Count == 0)
-                {
-                    StatusMessage = $"All conflicts resolved in {mergeTool.DisplayName}.";
-                }
-                else
-                {
-                    StatusMessage = $"Conflict resolved. {remaining.Count} remaining.";
-                }
-            }
-            else
-            {
-                StatusMessage = "No conflicts found to open.";
-            }
-        }
-        catch (Exception ex)
-        {
-            await ReportOperationFailureAsync($"Open {mergeTool.DisplayName}", ex);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    /// <summary>
     /// Abort the current in-progress merge.
     /// </summary>
     [RelayCommand]
@@ -253,13 +189,20 @@ public partial class MainViewModel
         {
             await BeginBusyAsync($"Opening {mergeTool.DisplayName} for merge...");
 
-            await _gitService.OpenConflictInMergeToolAsync(
+            var staged = await _gitService.OpenConflictInMergeToolAsync(
                 SelectedRepository.Path,
                 conflict.FilePath,
                 (b, l, r, m, ct) => _externalToolLauncher.LaunchMergeAsync(mergeTool, b, l, r, m, ct),
                 cancellationToken: CurrentRepositoryToken);
 
             await RefreshAsync();
+
+            // Mirror the status feedback users get from per-conflict
+            // resolution in Leaf's own merge view — without it a failed
+            // external merge silently returns as if nothing happened.
+            StatusMessage = staged
+                ? $"{conflict.FilePath} resolved in {mergeTool.DisplayName}."
+                : $"{mergeTool.DisplayName} did not produce a staged result for {conflict.FilePath}.";
         }
         catch (Exception ex)
         {

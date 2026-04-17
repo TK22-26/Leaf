@@ -495,6 +495,7 @@ public partial class CommitDetailViewModel : ObservableObject
         catch (Exception ex) when (ex is InvalidOperationException
                                 or IOException
                                 or UnauthorizedAccessException
+                                or System.ComponentModel.Win32Exception
                                 or OperationCanceledException)
         {
             Log.Warn("ExternalDiff", $"Open diff in external tool failed: {ex.GetType().Name}: {ex.Message}");

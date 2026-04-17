@@ -74,6 +74,9 @@ public partial class SettingsDialog : Window
             new("Logging", "Configure diagnostic logging for troubleshooting", "Logging", Symbol.Bug),
             new("Log Level", "Set log verbosity: off, normal, or verbose", "Logging", Symbol.Bug),
             new("Diagnostics", "Enable diagnostic logging to file", "Logging", Symbol.Bug),
+            new("External Tools", "Configure external diff and merge tools", "ExternalTools", Symbol.Wrench),
+            new("Diff Tool", "Choose an external diff tool (VS Code, Beyond Compare, etc.)", "ExternalTools", Symbol.Wrench),
+            new("Merge Tool", "Choose an external merge tool for conflict resolution", "ExternalTools", Symbol.Wrench),
         };
 
         // Configure UserControls
@@ -247,6 +250,7 @@ public partial class SettingsDialog : Window
         GitHubSettings.Visibility = Visibility.Collapsed;
         AiSettings.Visibility = Visibility.Collapsed;
         GitFlowSettings.Visibility = Visibility.Collapsed;
+        ExternalToolsSettings.Visibility = Visibility.Collapsed;
 
         // Show search results
         ContentSearchResults.Visibility = Visibility.Visible;
@@ -291,6 +295,7 @@ public partial class SettingsDialog : Window
             "Ollama" => NavOllama,
             "Logging" => NavLogging,
             "GitFlow" => NavGitFlow,
+            "ExternalTools" => NavExternalTools,
             _ => null
         };
 

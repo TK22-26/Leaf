@@ -67,4 +67,37 @@ public class ExternalToolLauncherServiceTests
         // CommandLineToArgvW re-splits cleanly on the other side.
         result.Should().Be("\"C:/My Documents/a.txt\" \"C:/b.txt\"");
     }
+
+    [Fact]
+    public void ExpandTemplate_ExpandedPathContainingPlaceholderName_NotReSubstituted()
+    {
+        // If the user has a temp file literally called "foo$REMOTE.txt"
+        // and we ran the old naive Replace chain, expanding $LOCAL first
+        // would produce a string containing $REMOTE, which the second
+        // Replace would then clobber. Single-pass regex must match only
+        // the original template tokens.
+        var result = ExternalToolLauncherService.ExpandTemplate(
+            "\"$LOCAL\" \"$REMOTE\"",
+            local: "C:/tmp/foo$REMOTE.txt",
+            remote: "C:/tmp/right.txt",
+            baseFile: null,
+            merged: null);
+
+        result.Should().Be("\"C:/tmp/foo$REMOTE.txt\" \"C:/tmp/right.txt\"");
+    }
+
+    [Fact]
+    public void ExpandTemplate_WordBoundary_DoesNotMatchSuffixedIdentifier()
+    {
+        // `$LOCALE` is a user-authored token, not ours — the \b in the
+        // regex keeps it intact.
+        var result = ExternalToolLauncherService.ExpandTemplate(
+            "--env $LOCALE --file $LOCAL",
+            local: "/x",
+            remote: "/y",
+            baseFile: null,
+            merged: null);
+
+        result.Should().Be("--env $LOCALE --file /x");
+    }
 }

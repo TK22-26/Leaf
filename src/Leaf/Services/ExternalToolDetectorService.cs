@@ -36,15 +36,19 @@ public sealed class ExternalToolDetectorService : IExternalToolDetectorService
                 return snapshot;
 
             var installed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            // Diff and merge presets share names; scanning either set
-            // covers both. We iterate presets directly so adding a new
-            // tool doesn't require touching detection code.
+            // Iterate every preset name and probe either kind — today
+            // every tool ships with both, but a future merge-only (or
+            // diff-only) preset would otherwise silently drop off the
+            // Detect list. Prefer the Diff variant when both exist
+            // because it has the lighter install footprint for tools
+            // like Beyond Compare.
             foreach (var name in ExternalToolPresets.All.Select(t => t.Name).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                var diffPreset = ExternalToolPresets.TryGet(name, ExternalToolKind.Diff);
-                if (diffPreset == null) continue;
+                var preset = ExternalToolPresets.TryGet(name, ExternalToolKind.Diff)
+                             ?? ExternalToolPresets.TryGet(name, ExternalToolKind.Merge);
+                if (preset == null) continue;
 
-                var resolved = await Task.Run(() => ResolveUncached(diffPreset), cancellationToken).ConfigureAwait(false);
+                var resolved = await Task.Run(() => ResolveUncached(preset), cancellationToken).ConfigureAwait(false);
                 if (resolved != null)
                 {
                     installed.Add(name);

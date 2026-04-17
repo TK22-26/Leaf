@@ -891,11 +891,13 @@ public partial class WorkingChangesViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Diff the HEAD revision of a working-tree file against the
-    /// current working copy in the configured external diff tool. The
-    /// right side points at the live working file (not a temp copy) so
-    /// the tool can save edits in place. Disabled when no external
-    /// diff tool is configured.
+    /// Diff a working-changes file in the configured external diff tool.
+    /// For unstaged files the baseline is the index (or HEAD if the file
+    /// isn't in the index) and the right side is the live working copy
+    /// — so edits saved through the tool land back in the working tree.
+    /// For staged files both sides are snapshots (HEAD vs index), so
+    /// the tool sees read-only content. Disabled when no external diff
+    /// tool is configured.
     /// </summary>
     [RelayCommand(CanExecute = nameof(HasExternalDiffTool))]
     public async Task OpenInExternalDiffToolAsync(FileStatusInfo? file)
@@ -915,26 +917,42 @@ public partial class WorkingChangesViewModel : ObservableObject
                 return;
             }
 
-            // Working tree file: right side must point at the real path so
-            // the user can save edits back through the tool.
+            // Pick the baseline that matches what the user sees in Leaf's
+            // internal two-pane diff: unstaged = index-or-HEAD vs working,
+            // staged = HEAD vs index. Using GetFileDiffAsync("HEAD", ...)
+            // would diff parent-of-HEAD vs HEAD, which is wrong on both
+            // counts.
+            var (oldContent, stagedNewContent) = file.IsStaged
+                ? await _gitService.GetStagedFileDiffAsync(_repositoryPath, file.Path, SessionToken)
+                : await _gitService.GetUnstagedFileDiffAsync(_repositoryPath, file.Path, SessionToken);
+
             var normalizedFilePath = file.Path.Replace('/', '\\');
             var workingPath = Path.GetFullPath(Path.Combine(_repositoryPath, normalizedFilePath));
-            if (!File.Exists(workingPath))
-                return;
-
-            var (oldContent, _) = await _gitService.GetFileDiffAsync(
-                _repositoryPath, "HEAD", file.Path, cancellationToken: SessionToken);
 
             var tempDir = Path.Combine(Path.GetTempPath(), "LeafDiff", Guid.NewGuid().ToString());
             Directory.CreateDirectory(tempDir);
             var fileName = Path.GetFileName(file.Path);
             var extension = Path.GetExtension(file.Path);
-            var headTempPath = Path.Combine(tempDir, $"{fileName}.HEAD{extension}");
+            var leftPath = Path.Combine(tempDir, $"{fileName}.baseline{extension}");
 
             try
             {
-                await File.WriteAllTextAsync(headTempPath, oldContent, SessionToken);
-                await _externalToolLauncher.LaunchDiffAsync(diffTool, headTempPath, workingPath, SessionToken);
+                await File.WriteAllTextAsync(leftPath, oldContent, SessionToken);
+
+                if (file.IsStaged)
+                {
+                    // Staged snapshot — write the index content to a temp
+                    // file too. Editing it wouldn't round-trip anywhere.
+                    var rightPath = Path.Combine(tempDir, $"{fileName}.staged{extension}");
+                    await File.WriteAllTextAsync(rightPath, stagedNewContent, SessionToken);
+                    await _externalToolLauncher.LaunchDiffAsync(diffTool, leftPath, rightPath, SessionToken);
+                }
+                else if (File.Exists(workingPath))
+                {
+                    // Unstaged — point the tool at the live working file
+                    // so in-place edits make it back to disk.
+                    await _externalToolLauncher.LaunchDiffAsync(diffTool, leftPath, workingPath, SessionToken);
+                }
             }
             finally
             {
@@ -948,6 +966,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         catch (Exception ex) when (ex is InvalidOperationException
                                 or IOException
                                 or UnauthorizedAccessException
+                                or System.ComponentModel.Win32Exception
                                 or OperationCanceledException)
         {
             Log.Warn("ExternalDiff", $"Open diff in external tool failed: {ex.GetType().Name}: {ex.Message}");

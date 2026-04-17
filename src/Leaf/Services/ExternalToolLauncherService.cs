@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Leaf.Models;
 
 namespace Leaf.Services;
@@ -48,33 +49,30 @@ public sealed class ExternalToolLauncherService : IExternalToolLauncherService
     }
 
     /// <summary>
-    /// Visible for tests. Replaces the four supported placeholders;
-    /// calls with a null argument throw if the template references that
-    /// placeholder, because that signals a programming mistake (a diff
-    /// tool with $BASE in its template, for example).
+    /// Visible for tests. Replaces the four supported placeholders in a
+    /// single left-to-right pass so an expanded path that contains
+    /// another placeholder's literal name (e.g. a file called
+    /// <c>foo$REMOTE.txt</c>) isn't mangled by recursive substitution.
+    /// Calls with a null argument throw if the template references that
+    /// placeholder — that signals a programming mistake, not user error.
     /// </summary>
     internal static string ExpandTemplate(string template, string local, string remote, string? baseFile, string? merged)
     {
-        var result = template
-            .Replace("$LOCAL", local)
-            .Replace("$REMOTE", remote);
-
-        if (result.Contains("$BASE"))
+        return _placeholderPattern.Replace(template, match => match.Groups[1].Value switch
         {
-            if (baseFile == null)
-                throw new InvalidOperationException("Args template references $BASE but no base path was supplied.");
-            result = result.Replace("$BASE", baseFile);
-        }
-
-        if (result.Contains("$MERGED"))
-        {
-            if (merged == null)
-                throw new InvalidOperationException("Args template references $MERGED but no merged path was supplied.");
-            result = result.Replace("$MERGED", merged);
-        }
-
-        return result;
+            "LOCAL" => local,
+            "REMOTE" => remote,
+            "BASE" => baseFile ?? throw new InvalidOperationException(
+                "Args template references $BASE but no base path was supplied."),
+            "MERGED" => merged ?? throw new InvalidOperationException(
+                "Args template references $MERGED but no merged path was supplied."),
+            _ => match.Value
+        });
     }
+
+    private static readonly Regex _placeholderPattern = new(
+        @"\$(LOCAL|REMOTE|BASE|MERGED)\b",
+        RegexOptions.Compiled);
 
     private async Task<int> LaunchAsync(ExternalTool tool, string args, CancellationToken cancellationToken)
     {

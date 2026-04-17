@@ -100,7 +100,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(OpenConflictInMergeToolCommand))]
-    [NotifyCanExecuteChangedFor(nameof(OpenInMergeToolCommand))]
     private bool _hasExternalMergeTool;
 
     [ObservableProperty]
