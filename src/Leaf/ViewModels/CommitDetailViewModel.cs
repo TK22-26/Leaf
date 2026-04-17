@@ -373,6 +373,22 @@ public partial class CommitDetailViewModel : ObservableObject
             if (string.IsNullOrEmpty(RepositoryPath) || Commit == null)
                 return;
 
+            if (file.IsSubmodule)
+            {
+                // Submodule pointer changes have no line-diff — the
+                // interesting content is the pair of recorded commit
+                // SHAs. Render them as a synthetic two-pane diff so the
+                // existing viewer highlights the change without any
+                // submodule-aware UI work.
+                OldContent = file.SubmoduleOldSha.Length > 0
+                    ? $"Subproject commit {file.SubmoduleOldSha}"
+                    : string.Empty;
+                NewContent = file.SubmoduleNewSha.Length > 0
+                    ? $"Subproject commit {file.SubmoduleNewSha}"
+                    : string.Empty;
+                return;
+            }
+
             var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
                 RepositoryPath, Commit.Sha, file.Path, cancellationToken: SessionToken);
 
