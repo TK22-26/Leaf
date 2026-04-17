@@ -3,9 +3,11 @@ using System.IO;
 using System.Threading;
 using System.Windows;
 using CommunityToolkit.Mvvm.Input;
+using Leaf.Composition;
 using Leaf.Models;
 using Leaf.Services;
 using Leaf.Views;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
 
 namespace Leaf.ViewModels;
@@ -303,26 +305,41 @@ public partial class MainViewModel
             bool isRepositorySwitch = previousRepository != null &&
                 !string.Equals(previousRepository.Path, repository.Path, StringComparison.OrdinalIgnoreCase);
 
-            // Rotate the repository session: dispose the old one (which
-            // cancels its token and any in-flight git operations that
-            // received it) and create a fresh session scoped to this repo.
-            // Refreshes of the same repo keep the existing session so
-            // callers don't get spuriously cancelled.
-            if (_currentSession == null ||
-                !string.Equals(_currentSession.RepositoryPath, repository.Path, StringComparison.OrdinalIgnoreCase))
+            // Rotate the repository scope: dispose the old one (cascading
+            // to IRepositorySession, which cancels its token and any
+            // in-flight git operations that received it) and create a
+            // fresh scope bound to this repo. Refreshes of the same repo
+            // keep the existing scope so callers don't get spuriously
+            // cancelled.
+            if (_currentScope == null ||
+                !string.Equals(_currentScopeRepoPath, repository.Path, StringComparison.OrdinalIgnoreCase))
             {
-                _currentSession?.Dispose();
+                var previousScope = _currentScope;
+                _currentScope = null;
+                _currentScopeRepoPath = null;
+
+                var newScope = _scopeFactory.CreateScope();
                 try
                 {
-                    _currentSession = _sessionFactory.Create(repository.Path);
+                    newScope.ServiceProvider.GetRequiredService<RepositoryScopeContext>().Path = repository.Path;
+                    // Force-resolve now so a bad path throws here rather
+                    // than on the first git operation deeper in the UI.
+                    _ = newScope.ServiceProvider.GetRequiredService<IRepositorySession>();
+
+                    _currentScope = newScope;
+                    _currentScopeRepoPath = repository.Path;
                 }
                 catch (ArgumentException ex)
                 {
-                    // Path is no longer a valid git repo — keep the old
-                    // session null and let downstream code surface the error
-                    // through normal channels.
-                    _currentSession = null;
-                    Log.Warn("SelectRepo", $"Session create failed for {repository.Path}: {ex.Message}");
+                    // Path is no longer a valid git repo — scrub the
+                    // half-built scope and let downstream code surface the
+                    // error through normal channels.
+                    newScope.Dispose();
+                    Log.Warn("SelectRepo", $"Scope create failed for {repository.Path}: {ex.Message}");
+                }
+                finally
+                {
+                    previousScope?.Dispose();
                 }
             }
             if (isRepositorySwitch && HasActivePullRequestScreen())

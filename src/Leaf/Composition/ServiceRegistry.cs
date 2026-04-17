@@ -99,12 +99,30 @@ public static class ServiceRegistry
         services.AddSingleton<IAiCommitMessageService, AiCommitMessageService>();
     }
 
-    // Phase 4 replaces the factory with IServiceScopeFactory-driven session
-    // resolution. Until then, keep the factory as a singleton so existing
-    // callers keep working.
+    // Phase 4: per-repo scope. The factory stays a singleton because its
+    // job is validation + path normalization, not lifetime management.
+    // IRepositorySession is scoped and constructed on first resolve via
+    // the factory + the scope-local context. MEDI disposes the session
+    // automatically when the scope is disposed — which is precisely what
+    // the pre-DI code was doing by hand in MainViewModel.
     private static void AddRepositoryScopedServices(IServiceCollection services)
     {
         services.AddSingleton<IRepositorySessionFactory, RepositorySessionFactory>();
+
+        services.AddScoped<RepositoryScopeContext>();
+        services.AddScoped<IRepositorySession>(sp =>
+        {
+            var context = sp.GetRequiredService<RepositoryScopeContext>();
+            if (string.IsNullOrEmpty(context.Path))
+            {
+                throw new InvalidOperationException(
+                    "RepositoryScopeContext.Path must be set before resolving IRepositorySession. " +
+                    "Set the path on the scope's RepositoryScopeContext immediately after creating the scope.");
+            }
+
+            var factory = sp.GetRequiredService<IRepositorySessionFactory>();
+            return factory.Create(context.Path);
+        });
     }
 
     // MainViewModel is per-app (one window, one VM). Child VMs stay new'd
