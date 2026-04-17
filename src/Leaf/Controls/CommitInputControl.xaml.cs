@@ -72,6 +72,34 @@ public partial class CommitInputControl : UserControl
             typeof(CommitInputControl),
             new PropertyMetadata(false));
 
+    public static readonly DependencyProperty IsAmendModeProperty =
+        DependencyProperty.Register(
+            nameof(IsAmendMode),
+            typeof(bool),
+            typeof(CommitInputControl),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
+
+    public static readonly DependencyProperty CanAmendProperty =
+        DependencyProperty.Register(
+            nameof(CanAmend),
+            typeof(bool),
+            typeof(CommitInputControl),
+            new PropertyMetadata(false));
+
+    public static readonly DependencyProperty CommitButtonLabelProperty =
+        DependencyProperty.Register(
+            nameof(CommitButtonLabel),
+            typeof(string),
+            typeof(CommitInputControl),
+            new PropertyMetadata("Commit"));
+
+    public static readonly DependencyProperty IsOptionsExpandedProperty =
+        DependencyProperty.Register(
+            nameof(IsOptionsExpanded),
+            typeof(bool),
+            typeof(CommitInputControl),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
+
     public CommitInputControl()
     {
         InitializeComponent();
@@ -156,5 +184,48 @@ public partial class CommitInputControl : UserControl
     {
         get => (bool)GetValue(IsAiAvailableProperty);
         set => SetValue(IsAiAvailableProperty, value);
+    }
+
+    /// <summary>
+    /// Whether the next commit should amend HEAD instead of creating a
+    /// new commit. Two-way binding — the user toggles the checkbox; the
+    /// VM loads HEAD's message into the input when the flag flips.
+    /// </summary>
+    public bool IsAmendMode
+    {
+        get => (bool)GetValue(IsAmendModeProperty);
+        set => SetValue(IsAmendModeProperty, value);
+    }
+
+    /// <summary>
+    /// Whether amend is currently allowed: HEAD must exist and must not
+    /// already be pushed to the remote. Drives the checkbox's IsEnabled
+    /// state and its tooltip.
+    /// </summary>
+    public bool CanAmend
+    {
+        get => (bool)GetValue(CanAmendProperty);
+        set => SetValue(CanAmendProperty, value);
+    }
+
+    /// <summary>
+    /// Label on the primary button — "Commit" normally, "Amend" when
+    /// <see cref="IsAmendMode"/> is true.
+    /// </summary>
+    public string CommitButtonLabel
+    {
+        get => (string)GetValue(CommitButtonLabelProperty);
+        set => SetValue(CommitButtonLabelProperty, value);
+    }
+
+    /// <summary>
+    /// Whether the collapsible "Options" row is expanded, revealing the
+    /// amend checkbox. Two-way — persisted at the VM layer so the choice
+    /// survives across launches.
+    /// </summary>
+    public bool IsOptionsExpanded
+    {
+        get => (bool)GetValue(IsOptionsExpandedProperty);
+        set => SetValue(IsOptionsExpandedProperty, value);
     }
 }

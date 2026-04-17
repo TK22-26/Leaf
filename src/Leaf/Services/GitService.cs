@@ -104,8 +104,11 @@ public class GitService : IGitService
 
     #region Commit Operations
 
-    public Task CommitAsync(string repoPath, string message, string? description = null, CancellationToken cancellationToken = default)
-        => _commitOps.CommitAsync(repoPath, message, description, cancellationToken);
+    public Task CommitAsync(string repoPath, string message, string? description = null, bool amend = false, CancellationToken cancellationToken = default)
+        => _commitOps.CommitAsync(repoPath, message, description, amend, cancellationToken);
+
+    public Task<CommitInfo?> GetHeadCommitAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetHeadCommitAsync(repoPath, cancellationToken);
 
     public Task RevertCommitAsync(string repoPath, string commitSha, CancellationToken cancellationToken = default)
         => _commitOps.RevertCommitAsync(repoPath, commitSha, cancellationToken);

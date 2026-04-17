@@ -177,20 +177,36 @@ internal class CommitHistoryOperations
             if (commit == null) return null;
 
             var headSha = repo.Head?.Tip?.Sha;
-
-            return new CommitInfo
-            {
-                Sha = commit.Sha,
-                Message = commit.Message,
-                MessageShort = commit.MessageShort,
-                Author = commit.Author.Name,
-                AuthorEmail = commit.Author.Email,
-                Date = commit.Author.When,
-                ParentShas = commit.Parents.Select(p => p.Sha).ToList(),
-                IsHead = commit.Sha == headSha
-            };
+            return ToCommitInfo(commit, headSha);
         }, cancellationToken);
     }
+
+    /// <summary>
+    /// Get HEAD's commit without requiring the caller to resolve its SHA
+    /// first. Returns null in an unborn/empty repository (HEAD has no tip).
+    /// </summary>
+    public Task<CommitInfo?> GetHeadCommitAsync(string repoPath, CancellationToken cancellationToken = default)
+    {
+        return Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+            var tip = repo.Head?.Tip;
+            if (tip == null) return null;
+            return ToCommitInfo(tip, tip.Sha);
+        }, cancellationToken);
+    }
+
+    private static CommitInfo ToCommitInfo(Commit commit, string? headSha) => new()
+    {
+        Sha = commit.Sha,
+        Message = commit.Message,
+        MessageShort = commit.MessageShort,
+        Author = commit.Author.Name,
+        AuthorEmail = commit.Author.Email,
+        Date = commit.Author.When,
+        ParentShas = commit.Parents.Select(p => p.Sha).ToList(),
+        IsHead = commit.Sha == headSha
+    };
 
     /// <summary>
     /// Get file changes for a commit.

@@ -110,7 +110,8 @@ public class FakeGitService : IGitService
     public Task StageAllAsync(string repoPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task UnstageAllAsync(string repoPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task DiscardAllChangesAsync(string repoPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task CommitAsync(string repoPath, string message, string? description = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task CommitAsync(string repoPath, string message, string? description = null, bool amend = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<CommitInfo?> GetHeadCommitAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult<CommitInfo?>(null);
     public Task<List<ConflictInfo>> GetConflictsAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new List<ConflictInfo>());
     public Task ResolveConflictWithOursAsync(string repoPath, string filePath, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task ResolveConflictWithTheirsAsync(string repoPath, string filePath, CancellationToken cancellationToken = default) => Task.CompletedTask;

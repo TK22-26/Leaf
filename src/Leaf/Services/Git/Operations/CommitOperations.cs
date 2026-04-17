@@ -17,9 +17,11 @@ internal class CommitOperations
     }
 
     /// <summary>
-    /// Create a commit with staged files.
+    /// Create a commit with staged files. When <paramref name="amend"/> is
+    /// true, the new commit replaces HEAD — preserving the original author
+    /// but updating the committer and the message/description.
     /// </summary>
-    public Task CommitAsync(string repoPath, string message, string? description = null, CancellationToken cancellationToken = default)
+    public Task CommitAsync(string repoPath, string message, string? description = null, bool amend = false, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -29,8 +31,24 @@ internal class CommitOperations
                 ? message
                 : $"{message}\n\n{description}";
 
-            var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
-            repo.Commit(fullMessage, signature, signature);
+            var committer = repo.Config.BuildSignature(DateTimeOffset.Now);
+
+            if (amend)
+            {
+                // Amend requires a HEAD commit to replace. An unborn branch
+                // has nothing to amend — fail loudly rather than silently
+                // falling back to a regular commit (which would silently
+                // change the meaning of the caller's request).
+                var tip = repo.Head.Tip
+                    ?? throw new InvalidOperationException("Cannot amend: HEAD has no commit yet.");
+
+                // Preserve original author on amend (matches `git commit --amend` default behaviour).
+                repo.Commit(fullMessage, tip.Author, committer, new CommitOptions { AmendPreviousCommit = true });
+            }
+            else
+            {
+                repo.Commit(fullMessage, committer, committer);
+            }
         }, cancellationToken);
     }
 
