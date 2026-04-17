@@ -1,0 +1,75 @@
+<Window x:Class="Leaf.Views.AddSubmoduleDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add Submodule"
+        Width="480"
+        MinHeight="280"
+        MaxHeight="480"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Repository URL" FontWeight="SemiBold"/>
+        <TextBox x:Name="UrlTextBox"
+                 Grid.Row="1"
+                 Margin="0,6,0,4"
+                 TextChanged="ValidationChanged"/>
+        <TextBlock Grid.Row="2"
+                   Margin="0,0,0,12"
+                   FontSize="11"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   Text="HTTPS or SSH clone URL — same form as git submodule add expects."/>
+
+        <TextBlock Grid.Row="3" Text="Path in this repo" FontWeight="SemiBold"/>
+        <TextBox x:Name="PathTextBox"
+                 Grid.Row="4"
+                 Margin="0,6,0,4"
+                 TextChanged="ValidationChanged"/>
+        <TextBlock Grid.Row="5"
+                   Margin="0,0,0,12"
+                   FontSize="11"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   Text="Where the submodule should live. Forward-slash separated, relative to the repo root."/>
+
+        <TextBlock Grid.Row="6" FontWeight="SemiBold">
+            Tracking branch
+            <Run FontWeight="Normal"
+                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                 Text=" (optional)"/>
+        </TextBlock>
+        <Grid Grid.Row="7" Margin="0,6,0,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBox x:Name="BranchTextBox"/>
+            <TextBlock Grid.Row="1"
+                       Margin="0,4,0,8"
+                       FontSize="11"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Text="Leave blank to pin to the remote's HEAD commit. When set, 'Update to Branch Tip' becomes available."/>
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="OkButton"
+                        Width="80"
+                        Margin="0,0,8,0"
+                        IsEnabled="False"
+                        Click="OkButton_Click">
+                    Add
+                </Button>
+                <Button Width="80" Click="CancelButton_Click">Cancel</Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

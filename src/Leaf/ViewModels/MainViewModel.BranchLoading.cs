@@ -54,9 +54,10 @@ public partial class MainViewModel
             var gitFlowConfigTask = TimedTask("GetGitFlowConfigAsync", _gitFlowService.GetConfigAsync(repo.Path));
             var worktreesTask = TimedTask("GetWorktreesAsync", _gitService.GetWorktreesAsync(repo.Path, cancellationToken: CurrentRepositoryToken));
             var tagsTask = TimedTask("GetTagsAsync", _gitService.GetTagsAsync(repo.Path, cancellationToken: CurrentRepositoryToken));
+            var submodulesTask = TimedTask("GetSubmodulesAsync", _gitService.GetSubmodulesAsync(repo.Path, cancellationToken: CurrentRepositoryToken));
             var pullRequestsTask = TimedTask("LoadPullRequestsForRepoAsync", LoadPullRequestsForRepoAsync(repo, forceReload));
 
-            await Task.WhenAll(branchesTask, remotesTask, defaultRemoteTask, gitFlowConfigTask, worktreesTask, tagsTask, pullRequestsTask)
+            await Task.WhenAll(branchesTask, remotesTask, defaultRemoteTask, gitFlowConfigTask, worktreesTask, tagsTask, submodulesTask, pullRequestsTask)
                 .ConfigureAwait(false);
             Log.Perf("LoadBranches", "All parallel tasks completed", branchLoadSw.ElapsedMilliseconds);
 
@@ -182,6 +183,23 @@ public partial class MainViewModel
                     worktreesCategory.Worktrees.Add(worktree);
                 }
                 categories.Add(worktreesCategory);
+            }
+
+            var submodules = await submodulesTask.ConfigureAwait(false);
+            if (submodules.Count > 0)
+            {
+                var submodulesCategory = new BranchCategory
+                {
+                    Name = "SUBMODULES",
+                    Icon = "\uE8B7", // Package/box-like icon
+                    BranchCount = submodules.Count,
+                    IsExpanded = false,
+                };
+                foreach (var submodule in submodules.OrderBy(s => s.Path, StringComparer.OrdinalIgnoreCase))
+                {
+                    submodulesCategory.Submodules.Add(submodule);
+                }
+                categories.Add(submodulesCategory);
             }
 
             var pullRequests = await pullRequestsTask.ConfigureAwait(false);

@@ -655,4 +655,56 @@ public interface IGitService
     Task PruneWorktreesAsync(string repoPath, CancellationToken cancellationToken = default);
 
     #endregion
+
+    #region Submodule Operations
+
+    /// <summary>
+    /// List all submodules registered in the repository along with
+    /// their current status, recorded commit, and optional tracking
+    /// branch. Returns an empty list when the repo has no submodules.
+    /// </summary>
+    Task<List<SubmoduleInfo>> GetSubmodulesAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Clone + check out each submodule at the commit the parent tree
+    /// records. Empty <paramref name="paths"/> targets every submodule.
+    /// </summary>
+    Task InitAndUpdateSubmodulesAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Copy URLs from <c>.gitmodules</c> into <c>.git/config</c> for the
+    /// named paths (or all submodules when the list is empty). Needed
+    /// after a submodule URL moves upstream.
+    /// </summary>
+    Task SyncSubmodulesAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Remove a submodule's working tree and drop its entry from
+    /// <c>.git/config</c>. The registration in <c>.gitmodules</c>
+    /// remains — full removal is a separate operation.
+    /// </summary>
+    Task DeinitSubmoduleAsync(string repoPath, string path, bool force, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Register a new submodule (clone URL + target path, optional
+    /// tracking branch). Leaves the resulting <c>.gitmodules</c> and
+    /// gitlink staged — the caller commits.
+    /// </summary>
+    Task AddSubmoduleAsync(string repoPath, string url, string path, string? branch, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pull the submodule at <paramref name="path"/> to the tip of its
+    /// tracked branch (<c>git submodule update --remote</c>).
+    /// </summary>
+    Task UpdateSubmoduleToRemoteAsync(string repoPath, string path, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Full removal of a submodule: deinit, strip the cached
+    /// <c>.git/modules/&lt;name&gt;</c> directory, and <c>git rm</c> the
+    /// path so <c>.gitmodules</c> and the gitlink disappear. Produces
+    /// staged changes; the caller commits.
+    /// </summary>
+    Task RemoveSubmoduleAsync(string repoPath, SubmoduleInfo submodule, CancellationToken cancellationToken = default);
+
+    #endregion
 }

@@ -230,6 +230,26 @@ internal class CommitHistoryOperations
 
             foreach (var change in diff)
             {
+                // libgit2sharp reports submodule pointers as tree entries
+                // in git-link mode (0160000). The line-diff machinery
+                // doesn't apply to these — we carry the commit SHAs so
+                // the commit detail view can render them directly.
+                var isSubmodule = change.Mode == Mode.GitLink
+                                  || change.OldMode == Mode.GitLink;
+
+                var oldSha = string.Empty;
+                var newSha = string.Empty;
+                if (isSubmodule)
+                {
+                    oldSha = change.OldOid?.Sha ?? string.Empty;
+                    newSha = change.Oid?.Sha ?? string.Empty;
+                    // When a submodule is added or removed the "empty"
+                    // side reports an all-zero oid that libgit2sharp
+                    // surfaces literally — suppress it for cleaner UI.
+                    if (oldSha == new string('0', 40)) oldSha = string.Empty;
+                    if (newSha == new string('0', 40)) newSha = string.Empty;
+                }
+
                 changes.Add(new FileChangeInfo
                 {
                     Path = change.Path,
@@ -237,7 +257,10 @@ internal class CommitHistoryOperations
                     Status = MapChangeStatus(change.Status),
                     LinesAdded = 0,
                     LinesDeleted = 0,
-                    IsBinary = false
+                    IsBinary = false,
+                    IsSubmodule = isSubmodule,
+                    SubmoduleOldSha = oldSha,
+                    SubmoduleNewSha = newSha,
                 });
             }
 

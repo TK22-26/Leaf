@@ -17,6 +17,7 @@ public class BranchCategoryItemsConverter : IValueConverter
             if (category.IsTagsCategory) return category.Tags;
             if (category.IsWorktreesCategory) return category.Worktrees;
             if (category.IsPullRequestsCategory) return category.PullRequests;
+            if (category.IsSubmodulesCategory) return category.Submodules;
             if (category.IsRemoteCategory) return category.RemoteGroups;
 
             // LOCAL and GITFLOW: merge directory groups with ungrouped branches

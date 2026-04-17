@@ -26,6 +26,7 @@ public class GitService : IGitService
     private readonly HunkOperations _hunkOps;
     private readonly ConfigOperations _configOps;
     private readonly WorktreeOperations _worktreeOps;
+    private readonly SubmoduleOperations _submoduleOps;
 
     public event EventHandler<GitCommandEventArgs>? GitCommandExecuted;
 
@@ -54,6 +55,7 @@ public class GitService : IGitService
         _hunkOps = new HunkOperations(_context);
         _configOps = new ConfigOperations(_context);
         _worktreeOps = new WorktreeOperations(_context);
+        _submoduleOps = new SubmoduleOperations(_context);
     }
 
     #region Repository Operations
@@ -437,6 +439,31 @@ public class GitService : IGitService
 
     public Task PruneWorktreesAsync(string repoPath, CancellationToken cancellationToken = default)
         => _worktreeOps.PruneWorktreesAsync(repoPath, cancellationToken);
+
+    #endregion
+
+    #region Submodule Operations
+
+    public Task<List<SubmoduleInfo>> GetSubmodulesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _submoduleOps.GetSubmodulesAsync(repoPath, cancellationToken);
+
+    public Task InitAndUpdateSubmodulesAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default)
+        => _submoduleOps.InitAndUpdateAsync(repoPath, paths, recursive, cancellationToken);
+
+    public Task SyncSubmodulesAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default)
+        => _submoduleOps.SyncAsync(repoPath, paths, recursive, cancellationToken);
+
+    public Task DeinitSubmoduleAsync(string repoPath, string path, bool force, CancellationToken cancellationToken = default)
+        => _submoduleOps.DeinitAsync(repoPath, path, force, cancellationToken);
+
+    public Task AddSubmoduleAsync(string repoPath, string url, string path, string? branch, CancellationToken cancellationToken = default)
+        => _submoduleOps.AddAsync(repoPath, url, path, branch, cancellationToken);
+
+    public Task UpdateSubmoduleToRemoteAsync(string repoPath, string path, CancellationToken cancellationToken = default)
+        => _submoduleOps.UpdateToRemoteAsync(repoPath, path, cancellationToken);
+
+    public Task RemoveSubmoduleAsync(string repoPath, SubmoduleInfo submodule, CancellationToken cancellationToken = default)
+        => _submoduleOps.RemoveAsync(repoPath, submodule, cancellationToken);
 
     #endregion
 }

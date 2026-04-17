@@ -286,6 +286,49 @@
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Symbol="Add" />
                         </Button>
+                        <!--  SUBMODULES header actions (Update All + Add)  -->
+                        <StackPanel
+                            x:Name="SubmodulesHeaderActions"
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            Visibility="Collapsed">
+                            <Button
+                                AutomationProperties.AutomationId="UpdateAllSubmodulesButton"
+                                AutomationProperties.Name="Update all submodules"
+                                Margin="0,0,2,0"
+                                Padding="4"
+                                VerticalAlignment="Center"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{Binding DataContext.UpdateAllSubmodulesCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                Cursor="Hand"
+                                ToolTip="Update all submodules (recursive)">
+                                <ic:SymbolIcon
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Symbol="ArrowClockwise" />
+                            </Button>
+                            <Button
+                                AutomationProperties.AutomationId="AddSubmoduleButton"
+                                AutomationProperties.Name="Add submodule"
+                                Margin="0"
+                                Padding="4"
+                                VerticalAlignment="Center"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{Binding DataContext.AddSubmoduleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                Cursor="Hand"
+                                ToolTip="Add submodule">
+                                <ic:SymbolIcon
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Symbol="Add" />
+                            </Button>
+                        </StackPanel>
                         <!--  Add Worktree button (WORKTREES category)  -->
                         <Button
                             x:Name="AddWorktreeButton"
@@ -403,6 +446,12 @@
                             <Setter TargetName="CategoryIcon" Property="Foreground" Value="#8250DF" />
                             <Setter TargetName="CategoryName" Property="Foreground" Value="#8250DF" />
                             <Setter TargetName="PullRequestHeaderActions" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsSubmodulesCategory}" Value="True">
+                            <Setter TargetName="CategoryIcon" Property="Symbol" Value="Box" />
+                            <Setter TargetName="CategoryIcon" Property="Foreground" Value="#06B6D4" />
+                            <Setter TargetName="CategoryName" Property="Foreground" Value="#06B6D4" />
+                            <Setter TargetName="SubmodulesHeaderActions" Property="Visibility" Value="Visible" />
                         </DataTrigger>
                     </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>
@@ -963,6 +1012,123 @@
                             </StackPanel>
                         </Grid>
                     </Border>
+                </DataTemplate>
+
+                <!--  Submodule item template  -->
+                <DataTemplate DataType="{x:Type models:SubmoduleInfo}">
+                    <Border
+                        Padding="2,3"
+                        HorizontalAlignment="Stretch"
+                        Background="Transparent"
+                        CornerRadius="2"
+                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                        ToolTip="{Binding TooltipText}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.OpenSubmoduleAsRepositoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Open as Repository"
+                                    IsEnabled="{Binding IsInitialized}" />
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.InitSubmoduleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Initialize" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.UpdateSubmoduleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Update to Recorded Commit" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.UpdateSubmoduleToRemoteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Update to Branch Tip"
+                                    Visibility="{Binding Branch, Converter={StaticResource NullToVisibilityConverter}}" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.SyncSubmoduleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Sync URL" />
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.DeinitSubmoduleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Foreground="#DC2626"
+                                    Header="Deinitialize..."
+                                    IsEnabled="{Binding IsInitialized}" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.RemoveSubmoduleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Foreground="#DC2626"
+                                    Header="Remove..." />
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <!--  Submodule icon — recolored by status via DataTriggers  -->
+                            <ic:SymbolIcon
+                                x:Name="SubmoduleIcon"
+                                Grid.Column="0"
+                                Margin="0,0,6,0"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                IconVariant="Regular"
+                                Symbol="Box" />
+
+                            <!--  Path + optional branch  -->
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                TextTrimming="CharacterEllipsis">
+                                <Run Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding Path, Mode=OneWay}" /><Run Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="{Binding Branch, Mode=OneWay, StringFormat=' ({0})', TargetNullValue=''}" />
+                            </TextBlock>
+
+                            <!--  Status badge (dirty / uninitialized / conflicted)  -->
+                            <Border
+                                x:Name="SubmoduleStatusBadge"
+                                Grid.Column="2"
+                                Margin="4,0,0,0"
+                                Padding="4,1"
+                                VerticalAlignment="Center"
+                                CornerRadius="6"
+                                Visibility="Collapsed">
+                                <TextBlock
+                                    x:Name="SubmoduleStatusText"
+                                    FontSize="9"
+                                    FontWeight="SemiBold"
+                                    Text="" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding Status}" Value="Uninitialized">
+                            <Setter TargetName="SubmoduleIcon" Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
+                            <Setter TargetName="SubmoduleStatusBadge" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="SubmoduleStatusBadge" Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}" />
+                            <Setter TargetName="SubmoduleStatusText" Property="Text" Value="NOT INIT" />
+                            <Setter TargetName="SubmoduleStatusText" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Status}" Value="OutOfSync">
+                            <Setter TargetName="SubmoduleIcon" Property="Foreground" Value="#F59E0B" />
+                            <Setter TargetName="SubmoduleStatusBadge" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="SubmoduleStatusBadge" Property="Background" Value="#33F59E0B" />
+                            <Setter TargetName="SubmoduleStatusText" Property="Text" Value="DIRTY" />
+                            <Setter TargetName="SubmoduleStatusText" Property="Foreground" Value="#F59E0B" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Status}" Value="Conflicted">
+                            <Setter TargetName="SubmoduleIcon" Property="Foreground" Value="#DC2626" />
+                            <Setter TargetName="SubmoduleStatusBadge" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="SubmoduleStatusBadge" Property="Background" Value="#33DC2626" />
+                            <Setter TargetName="SubmoduleStatusText" Property="Text" Value="CONFLICT" />
+                            <Setter TargetName="SubmoduleStatusText" Property="Foreground" Value="#DC2626" />
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
                 </DataTemplate>
 
                 <!--  Pull Request item template  -->

@@ -157,4 +157,13 @@ public class FakeGitService : IGitService
     public Task LockWorktreeAsync(string repoPath, string worktreePath, string? reason = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task UnlockWorktreeAsync(string repoPath, string worktreePath, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task PruneWorktreesAsync(string repoPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    // Submodule operations
+    public Task<List<SubmoduleInfo>> GetSubmodulesAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new List<SubmoduleInfo>());
+    public Task InitAndUpdateSubmodulesAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task SyncSubmodulesAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task DeinitSubmoduleAsync(string repoPath, string path, bool force, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task AddSubmoduleAsync(string repoPath, string url, string path, string? branch, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task UpdateSubmoduleToRemoteAsync(string repoPath, string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task RemoveSubmoduleAsync(string repoPath, SubmoduleInfo submodule, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
