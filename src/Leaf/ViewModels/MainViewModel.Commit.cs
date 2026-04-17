@@ -41,8 +41,7 @@ public partial class MainViewModel
 
             try
             {
-                IsBusy = true;
-                StatusMessage = $"Reverting {commit.ShortSha} (parent {parentIndex})...";
+                await BeginBusyAsync($"Reverting {commit.ShortSha} (parent {parentIndex})...");
 
                 await _gitService.RevertMergeCommitAsync(SelectedRepository.Path, commit.Sha, parentIndex, cancellationToken: CurrentRepositoryToken);
 
@@ -64,8 +63,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Reverting {commit.ShortSha}...";
+            await BeginBusyAsync($"Reverting {commit.ShortSha}...");
 
             await _gitService.RevertCommitAsync(SelectedRepository.Path, commit.Sha, cancellationToken: CurrentRepositoryToken);
 
@@ -117,9 +115,8 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
             var modeLabel = request.Mode.ToString().ToLower();
-            StatusMessage = $"Resetting {branchName} to {request.Commit.ShortSha} ({modeLabel})...";
+            await BeginBusyAsync($"Resetting {branchName} to {request.Commit.ShortSha} ({modeLabel})...");
 
             await _gitService.ResetCurrentBranchToCommitAsync(
                 SelectedRepository.Path, request.Commit.Sha, request.Mode, cancellationToken: CurrentRepositoryToken);
@@ -143,8 +140,7 @@ public partial class MainViewModel
         if (commit == null || SelectedRepository == null)
             return;
 
-        IsBusy = true;
-        StatusMessage = $"Checking out commit {commit.ShortSha}...";
+        await BeginBusyAsync($"Checking out commit {commit.ShortSha}...");
 
         try
         {
@@ -186,8 +182,7 @@ public partial class MainViewModel
             return;
 
         Log.Info("Merge", $"CherryPickCommit: sha={commit.ShortSha}");
-        IsBusy = true;
-        StatusMessage = $"Cherry-picking {commit.ShortSha}...";
+        await BeginBusyAsync($"Cherry-picking {commit.ShortSha}...");
 
         try
         {
@@ -267,8 +262,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Creating tag '{dialog.TagName}'...";
+            await BeginBusyAsync($"Creating tag '{dialog.TagName}'...");
             await _gitService.CreateTagAsync(SelectedRepository.Path, dialog.TagName, dialog.TagMessage, commit.Sha, cancellationToken: CurrentRepositoryToken);
             StatusMessage = $"Created tag '{dialog.TagName}'";
             await RefreshAsync();
@@ -293,8 +287,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = "Undoing last commit...";
+            await BeginBusyAsync("Undoing last commit...");
 
             var success = await _gitService.UndoCommitAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             if (success)
@@ -327,8 +320,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = "Redoing last undone commit...";
+            await BeginBusyAsync("Redoing last undone commit...");
 
             var success = await _gitService.RedoCommitAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             if (success)

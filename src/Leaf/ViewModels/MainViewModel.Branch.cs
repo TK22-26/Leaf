@@ -109,7 +109,10 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
+            // Initial placeholder — each branch below sets its own specific
+            // StatusMessage; BeginBusyAsync is used up-front to get the
+            // progress bar rendering before the git call starts.
+            await BeginBusyAsync("Saving branch...");
             if (_isRenameBranchInput && !string.IsNullOrWhiteSpace(_pendingRenameBranchName))
             {
                 if (string.Equals(branchName, _pendingRenameBranchName, StringComparison.OrdinalIgnoreCase))
@@ -179,8 +182,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Deleting branch {branch.Name}...";
+            await BeginBusyAsync($"Deleting branch {branch.Name}...");
 
             if (branch.IsRemote)
             {
@@ -249,8 +251,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Pulling {branch.Name}...";
+            await BeginBusyAsync($"Pulling {branch.Name}...");
 
             if (branch.IsRemote)
             {
@@ -300,8 +301,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Pushing {branch.Name}...";
+            await BeginBusyAsync($"Pushing {branch.Name}...");
 
             var (remoteName, remoteBranchName) = await ResolveRemoteTargetAsync(branch);
             await _gitService.PushBranchAsync(
@@ -338,8 +338,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Setting upstream for {branch.Name}...";
+            await BeginBusyAsync($"Setting upstream for {branch.Name}...");
 
             var (remoteName, remoteBranchName) = await ResolveRemoteTargetAsync(branch);
             await _gitService.SetUpstreamAsync(SelectedRepository.Path, branch.Name, remoteName, remoteBranchName, cancellationToken: CurrentRepositoryToken);
@@ -522,8 +521,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Checking out tag {tag.Name}...";
+            await BeginBusyAsync($"Checking out tag {tag.Name}...");
 
             await _gitService.CheckoutCommitAsync(SelectedRepository.Path, tag.TargetSha, cancellationToken: CurrentRepositoryToken);
 
@@ -572,8 +570,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Deleting tag {tag.Name}...";
+            await BeginBusyAsync($"Deleting tag {tag.Name}...");
 
             // Delete locally first
             await _gitService.DeleteTagAsync(SelectedRepository.Path, tag.Name, cancellationToken: CurrentRepositoryToken);

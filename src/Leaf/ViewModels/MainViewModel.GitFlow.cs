@@ -182,8 +182,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Publishing {branchType.ToString().ToLower()} {flowName}...";
+            await BeginBusyAsync($"Publishing {branchType.ToString().ToLower()} {flowName}...");
 
             var progress = new Progress<string>(msg => StatusMessage = msg);
 

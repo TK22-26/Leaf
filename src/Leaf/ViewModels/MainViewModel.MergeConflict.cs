@@ -42,8 +42,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = "Opening VS Code for merge...";
+            await BeginBusyAsync("Opening VS Code for merge...");
 
             var conflicts = await _gitService.GetConflictsAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var firstConflict = conflicts.FirstOrDefault();
@@ -92,7 +91,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
+            await BeginBusyAsync("Aborting...");
             Log.Info("Merge", $"AbortMerge: repo={SelectedRepository.Name}");
 
             // Check if we're in an orphaned conflict state (conflicts without MERGE_HEAD)
@@ -226,8 +225,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = "Opening VS Code for merge...";
+            await BeginBusyAsync("Opening VS Code for merge...");
 
             await _gitService.OpenConflictInVsCodeAsync(SelectedRepository.Path, conflict.FilePath, cancellationToken: CurrentRepositoryToken);
 
