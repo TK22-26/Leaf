@@ -36,13 +36,14 @@ public partial class MainViewModel
 
     private async Task RunSubmoduleInitUpdateAsync(SubmoduleInfo? submodule, string verbProgressive, string verbPast)
     {
-        if (SelectedRepository == null || submodule == null) return;
+        var originRepo = SelectedRepository;
+        if (originRepo == null || submodule == null) return;
 
         try
         {
             await BeginBusyAsync($"{verbProgressive} {submodule.Path}...");
             await _gitService.InitAndUpdateSubmodulesAsync(
-                SelectedRepository.Path,
+                originRepo.Path,
                 [submodule.Path],
                 recursive: false,
                 CurrentRepositoryToken);
@@ -54,7 +55,7 @@ public partial class MainViewModel
         }
         finally
         {
-            await RefreshAfterSubmoduleMutationAsync();
+            await RefreshAfterSubmoduleMutationAsync(originRepo);
             IsBusy = false;
         }
     }
@@ -66,13 +67,14 @@ public partial class MainViewModel
     [RelayCommand]
     public async Task UpdateAllSubmodulesAsync()
     {
-        if (SelectedRepository == null) return;
+        var originRepo = SelectedRepository;
+        if (originRepo == null) return;
 
         try
         {
             await BeginBusyAsync("Updating all submodules (recursive)...");
             await _gitService.InitAndUpdateSubmodulesAsync(
-                SelectedRepository.Path,
+                originRepo.Path,
                 [],
                 recursive: true,
                 CurrentRepositoryToken);
@@ -84,7 +86,7 @@ public partial class MainViewModel
         }
         finally
         {
-            await RefreshAfterSubmoduleMutationAsync();
+            await RefreshAfterSubmoduleMutationAsync(originRepo);
             IsBusy = false;
         }
     }
@@ -96,13 +98,14 @@ public partial class MainViewModel
     [RelayCommand]
     public async Task SyncSubmoduleAsync(SubmoduleInfo? submodule)
     {
-        if (SelectedRepository == null || submodule == null) return;
+        var originRepo = SelectedRepository;
+        if (originRepo == null || submodule == null) return;
 
         try
         {
             await BeginBusyAsync($"Syncing {submodule.Path}...");
             await _gitService.SyncSubmodulesAsync(
-                SelectedRepository.Path,
+                originRepo.Path,
                 [submodule.Path],
                 recursive: false,
                 CurrentRepositoryToken);
@@ -114,7 +117,7 @@ public partial class MainViewModel
         }
         finally
         {
-            await RefreshAfterSubmoduleMutationAsync();
+            await RefreshAfterSubmoduleMutationAsync(originRepo);
             IsBusy = false;
         }
     }
@@ -128,7 +131,8 @@ public partial class MainViewModel
     [RelayCommand]
     public async Task DeinitSubmoduleAsync(SubmoduleInfo? submodule)
     {
-        if (SelectedRepository == null || submodule == null) return;
+        var originRepo = SelectedRepository;
+        if (originRepo == null || submodule == null) return;
 
         var force = submodule.IsDirty;
         var prompt = force
@@ -143,7 +147,7 @@ public partial class MainViewModel
         {
             await BeginBusyAsync($"Deinitializing {submodule.Path}...");
             await _gitService.DeinitSubmoduleAsync(
-                SelectedRepository.Path,
+                originRepo.Path,
                 submodule.Path,
                 force,
                 CurrentRepositoryToken);
@@ -155,7 +159,7 @@ public partial class MainViewModel
         }
         finally
         {
-            await RefreshAfterSubmoduleMutationAsync();
+            await RefreshAfterSubmoduleMutationAsync(originRepo);
             IsBusy = false;
         }
     }
@@ -180,7 +184,22 @@ public partial class MainViewModel
         {
             await BeginBusyAsync($"Opening {submodule.Path}...");
 
-            var fullPath = Path.GetFullPath(Path.Combine(SelectedRepository.Path, submodule.Path));
+            var repoRoot = Path.GetFullPath(SelectedRepository.Path);
+            var fullPath = Path.GetFullPath(Path.Combine(repoRoot, submodule.Path));
+
+            // Belt-and-braces: the parser rejects traversal segments,
+            // but a non-parser path into SubmoduleInfo (a future fake in
+            // tests, say) would otherwise let a malicious repo send
+            // the user to an arbitrary directory.
+            var rootWithSep = repoRoot.EndsWith(Path.DirectorySeparatorChar)
+                ? repoRoot
+                : repoRoot + Path.DirectorySeparatorChar;
+            if (!fullPath.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase))
+            {
+                StatusMessage = $"Refusing to open '{submodule.Path}': resolves outside the repository.";
+                return;
+            }
+
             if (!Directory.Exists(fullPath))
             {
                 StatusMessage = $"Submodule directory not found on disk: {fullPath}";
@@ -221,7 +240,8 @@ public partial class MainViewModel
     [RelayCommand]
     public async Task AddSubmoduleAsync()
     {
-        if (SelectedRepository == null) return;
+        var originRepo = SelectedRepository;
+        if (originRepo == null) return;
 
         var dialog = new Views.AddSubmoduleDialog();
         if (await _dialogService.ShowDialogAsync(dialog) != true)
@@ -231,7 +251,7 @@ public partial class MainViewModel
         {
             await BeginBusyAsync($"Adding submodule at {dialog.Path}...");
             await _gitService.AddSubmoduleAsync(
-                SelectedRepository.Path,
+                originRepo.Path,
                 dialog.Url,
                 dialog.Path,
                 dialog.Branch,
@@ -244,7 +264,7 @@ public partial class MainViewModel
         }
         finally
         {
-            await RefreshAfterSubmoduleMutationAsync();
+            await RefreshAfterSubmoduleMutationAsync(originRepo);
             IsBusy = false;
         }
     }
@@ -259,7 +279,8 @@ public partial class MainViewModel
     [RelayCommand]
     public async Task UpdateSubmoduleToRemoteAsync(SubmoduleInfo? submodule)
     {
-        if (SelectedRepository == null || submodule == null) return;
+        var originRepo = SelectedRepository;
+        if (originRepo == null || submodule == null) return;
         if (string.IsNullOrWhiteSpace(submodule.Branch))
         {
             StatusMessage = $"{submodule.Path} has no tracking branch configured.";
@@ -270,7 +291,7 @@ public partial class MainViewModel
         {
             await BeginBusyAsync($"Updating {submodule.Path} to tip of {submodule.Branch}...");
             await _gitService.UpdateSubmoduleToRemoteAsync(
-                SelectedRepository.Path,
+                originRepo.Path,
                 submodule.Path,
                 CurrentRepositoryToken);
             StatusMessage = $"Updated {submodule.Path} to latest on {submodule.Branch}.";
@@ -281,7 +302,7 @@ public partial class MainViewModel
         }
         finally
         {
-            await RefreshAfterSubmoduleMutationAsync();
+            await RefreshAfterSubmoduleMutationAsync(originRepo);
             IsBusy = false;
         }
     }
@@ -294,7 +315,8 @@ public partial class MainViewModel
     [RelayCommand]
     public async Task RemoveSubmoduleAsync(SubmoduleInfo? submodule)
     {
-        if (SelectedRepository == null || submodule == null) return;
+        var originRepo = SelectedRepository;
+        if (originRepo == null || submodule == null) return;
 
         var confirmed = await _dialogService.ShowConfirmationAsync(
             $"Remove submodule '{submodule.Path}'?\n\n" +
@@ -307,7 +329,7 @@ public partial class MainViewModel
         {
             await BeginBusyAsync($"Removing {submodule.Path}...");
             await _gitService.RemoveSubmoduleAsync(
-                SelectedRepository.Path,
+                originRepo.Path,
                 submodule,
                 CurrentRepositoryToken);
             StatusMessage = $"Removed {submodule.Path}. Commit to finalize.";
@@ -318,22 +340,34 @@ public partial class MainViewModel
         }
         finally
         {
-            await RefreshAfterSubmoduleMutationAsync();
+            await RefreshAfterSubmoduleMutationAsync(originRepo);
             IsBusy = false;
         }
     }
 
     /// <summary>
-    /// Full refresh after a submodule mutation: branches need a forced
-    /// reload because <c>LoadBranchesForRepoAsync</c> otherwise
-    /// short-circuits when the repo already has cached state. Then
-    /// fall through to the standard refresh so the graph + working
-    /// changes pick up the mutation too.
+    /// Full refresh after a submodule mutation. Callers capture
+    /// <see cref="SelectedRepository"/> at op-start and pass it here
+    /// so a repo-switch mid-operation doesn't cause us to reload the
+    /// *new* repo's branches (which would silently leave the origin
+    /// repo holding stale pre-mutation data). If the user did switch
+    /// we mark the origin's branch cache stale so the next visit
+    /// picks up the real post-mutation state.
     /// </summary>
-    private async Task RefreshAfterSubmoduleMutationAsync()
+    private async Task RefreshAfterSubmoduleMutationAsync(RepositoryInfo? originRepo)
     {
-        if (SelectedRepository == null) return;
-        await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
+        if (originRepo == null) return;
+
+        if (SelectedRepository != originRepo)
+        {
+            // User navigated away — don't churn the current repo, but
+            // make sure the origin picks up the mutation next time it
+            // becomes active.
+            originRepo.BranchesLoaded = false;
+            return;
+        }
+
+        await LoadBranchesForRepoAsync(originRepo, forceReload: true);
         await RefreshAsync();
     }
 }

@@ -308,6 +308,94 @@ public class SubmoduleOperationsTests
         result.Should().ContainKey("libs/foo");
     }
 
+    // ---- Security: path-traversal / rooted-path rejection ----------------
+    //
+    // A hostile `.gitmodules` could try to send RemoveAsync's cache
+    // delete at arbitrary directories (git CVE-2018-11235 class). The
+    // parser must drop these entries instead of passing them along.
+
+    [Fact]
+    public void ParseConfig_NameWithParentTraversal_Dropped()
+    {
+        const string output =
+            "submodule...path=evil\n" +
+            "submodule...url=https://evil.example.com\n";
+
+        var result = SubmoduleOperations.ParseGitmodulesConfig(output);
+
+        result.Should().NotContainKey("..");
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ParseConfig_NameContainingDotDotSegment_Dropped()
+    {
+        const string output =
+            "submodule.libs/../etc.path=evil\n" +
+            "submodule.libs/../etc.url=https://evil.example.com\n";
+
+        var result = SubmoduleOperations.ParseGitmodulesConfig(output);
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ParseConfig_PathWithParentTraversal_Dropped()
+    {
+        const string output =
+            "submodule.libs/foo.path=../outside\n" +
+            "submodule.libs/foo.url=x\n";
+
+        var result = SubmoduleOperations.ParseGitmodulesConfig(output);
+
+        // Path rejected → entry purged in the post-pass.
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ParseConfig_RootedPathValue_Dropped()
+    {
+        const string output =
+            "submodule.libs/foo.path=C:/Windows/Temp/evil\n" +
+            "submodule.libs/foo.url=x\n";
+
+        var result = SubmoduleOperations.ParseGitmodulesConfig(output);
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void IsSafeRelativeComponent_HandlesKnownShapes()
+    {
+        // Safe shapes the parser should accept.
+        SubmoduleOperations.IsSafeRelativeComponent("libs/foo").Should().BeTrue();
+        SubmoduleOperations.IsSafeRelativeComponent("vendor/nested/thing").Should().BeTrue();
+        SubmoduleOperations.IsSafeRelativeComponent("foo-bar_baz.qux").Should().BeTrue();
+
+        // Unsafe shapes the parser must drop.
+        SubmoduleOperations.IsSafeRelativeComponent("").Should().BeFalse();
+        SubmoduleOperations.IsSafeRelativeComponent("..").Should().BeFalse();
+        SubmoduleOperations.IsSafeRelativeComponent("a/..").Should().BeFalse();
+        SubmoduleOperations.IsSafeRelativeComponent("../outside").Should().BeFalse();
+        SubmoduleOperations.IsSafeRelativeComponent(".").Should().BeFalse();
+        SubmoduleOperations.IsSafeRelativeComponent("/absolute/posix").Should().BeFalse();
+        SubmoduleOperations.IsSafeRelativeComponent("C:/absolute/windows").Should().BeFalse();
+        SubmoduleOperations.IsSafeRelativeComponent("a\\b").Should().BeFalse();
+    }
+
+    [Fact]
+    public void ParseStatus_UnsafePathFromGit_Skipped()
+    {
+        // Defense in depth: if a rogue git build emits a traversal path,
+        // the downstream parser should still drop it rather than let it
+        // reach filesystem-touching code.
+        const string output = " aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ../outside\n";
+
+        var result = SubmoduleOperations.ParseSubmoduleStatusOutput(output, new Dictionary<string, SubmoduleOperations.ModuleConfigEntry>());
+
+        result.Should().BeEmpty();
+    }
+
     // ---- CLI argv construction (thin wrappers) ---------------------------
     //
     // These catch regressions in the exact git CLI shape each mutation

@@ -165,6 +165,16 @@ internal class SubmoduleOperations
             // users still see the slashes git itself uses.
             path = path.Replace('\\', '/');
 
+            // Defense-in-depth — git should never emit traversal or
+            // rooted paths here, but `ParseGitmodulesConfig` already
+            // enforces the same invariant and we want mutation-facing
+            // data to pass through a single checkpoint.
+            if (!IsSafeRelativeComponent(path))
+            {
+                Log.Warn("Submodule", $"Rejecting unsafe submodule path '{path}' from submodule-status output");
+                continue;
+            }
+
             var status = MapPrefixToStatus(prefix, rawLine);
 
             byPath.TryGetValue(path, out var cfg);
@@ -263,6 +273,17 @@ internal class SubmoduleOperations
     /// keys shaped <c>submodule.&lt;name&gt;.&lt;field&gt;</c>. Anything
     /// else is ignored.
     /// </summary>
+    /// <remarks>
+    /// Security: <c>.gitmodules</c> is user-editable and ships inside
+    /// the repo, so a hostile commit could set
+    /// <c>[submodule ".."]</c> or absolute paths for <c>name</c> /
+    /// <c>path</c>. Leaf later joins those into
+    /// <c>.git/modules/&lt;name&gt;</c> for the delete step of
+    /// <see cref="RemoveAsync"/>, so a missing guard lets a malicious
+    /// repo trick the user into wiping arbitrary directories when they
+    /// hit Remove. We filter at parse time — same class of fix git
+    /// itself applied for CVE-2018-11235.
+    /// </remarks>
     internal static Dictionary<string, ModuleConfigEntry> ParseGitmodulesConfig(string output)
     {
         var map = new Dictionary<string, ModuleConfigEntry>(StringComparer.Ordinal);
@@ -287,6 +308,12 @@ internal class SubmoduleOperations
             var name = rest[..lastDot];
             var field = rest[(lastDot + 1)..];
 
+            if (!IsSafeRelativeComponent(name))
+            {
+                Log.Warn("Submodule", $"Rejecting submodule with unsafe name '{name}' from .gitmodules");
+                continue;
+            }
+
             if (!map.TryGetValue(name, out var entry))
             {
                 entry = new ModuleConfigEntry { Name = name };
@@ -295,7 +322,21 @@ internal class SubmoduleOperations
 
             switch (field)
             {
-                case "path": entry.Path = value.Replace('\\', '/'); break;
+                case "path":
+                    var normalised = value.Replace('\\', '/');
+                    if (!IsSafeRelativeComponent(normalised))
+                    {
+                        Log.Warn("Submodule", $"Rejecting submodule '{name}' with unsafe path '{value}' from .gitmodules");
+                        // Leave Path empty so the drop step below purges
+                        // this entry entirely — we never want it to
+                        // reach RemoveAsync or the sidebar.
+                        entry.Path = string.Empty;
+                    }
+                    else
+                    {
+                        entry.Path = normalised;
+                    }
+                    break;
                 case "url": entry.Url = value; break;
                 case "branch": entry.Branch = value; break;
             }
@@ -303,13 +344,35 @@ internal class SubmoduleOperations
 
         // Drop entries missing a path — they can't be matched to status
         // output, and a submodule without a path in .gitmodules is not
-        // a real registration from git's POV.
+        // a real registration from git's POV. Also catches entries we
+        // cleared above for safety reasons.
         foreach (var key in map.Where(kv => string.IsNullOrEmpty(kv.Value.Path)).Select(kv => kv.Key).ToList())
         {
             map.Remove(key);
         }
 
         return map;
+    }
+
+    /// <summary>
+    /// True when <paramref name="value"/> is safe to join onto a
+    /// repository path: not empty, not rooted, contains no
+    /// parent-directory segments (<c>..</c>), and uses only forward
+    /// slashes (already normalised by the caller). Anything that
+    /// fails these checks gets dropped at parse time so the unsafe
+    /// data can never reach a filesystem mutation.
+    /// </summary>
+    internal static bool IsSafeRelativeComponent(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (Path.IsPathRooted(value)) return false;
+        if (value.Contains('\\')) return false;
+
+        foreach (var segment in value.Split('/'))
+        {
+            if (segment is "." or "..") return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -451,7 +514,20 @@ internal class SubmoduleOperations
         // Files inside the cache dir can briefly hold pack-index locks
         // after deinit, so we retry with a short backoff before giving
         // up loudly.
-        var cacheDir = Path.Combine(repoPath, ".git", "modules", submodule.Name.Replace('/', Path.DirectorySeparatorChar));
+        //
+        // Safety: `ParseGitmodulesConfig` already rejects unsafe names,
+        // but a belt-and-braces containment check here catches any
+        // future code path that constructs a `SubmoduleInfo` without
+        // going through the parser. We resolve both sides through
+        // `GetFullPath` and require the cache dir to live strictly
+        // under `.git/modules/`.
+        var modulesRoot = Path.GetFullPath(Path.Combine(repoPath, ".git", "modules"));
+        var cacheDir = Path.GetFullPath(Path.Combine(modulesRoot, submodule.Name.Replace('/', Path.DirectorySeparatorChar)));
+        if (!IsUnder(cacheDir, modulesRoot))
+        {
+            throw new InvalidOperationException(
+                $"Refusing to remove submodule '{submodule.Name}': resolved cache path '{cacheDir}' escapes '{modulesRoot}'.");
+        }
         if (Directory.Exists(cacheDir))
         {
             await RemoveDirectoryWithRetryAsync(cacheDir, cancellationToken);
@@ -508,6 +584,10 @@ internal class SubmoduleOperations
     /// built-in recursive delete aborts mid-tree on them. Checks the
     /// cancellation token between entries so a repo-switch mid-delete
     /// bails out promptly instead of churning through a large pack.
+    /// Reparse points (junctions / symlinks) are removed as links
+    /// without recursing — git never creates them inside
+    /// <c>.git/modules</c>, but if one appears we must not follow it
+    /// lest we delete the unrelated target.
     /// </summary>
     private static void DeleteTree(string dir, CancellationToken cancellationToken)
     {
@@ -524,9 +604,34 @@ internal class SubmoduleOperations
         foreach (var child in Directory.EnumerateDirectories(dir))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            DeleteTree(child, cancellationToken);
+            var childAttrs = File.GetAttributes(child);
+            if ((childAttrs & FileAttributes.ReparsePoint) != 0)
+            {
+                // Junction / symlink — drop the link only, not the
+                // target it points at.
+                Directory.Delete(child, recursive: false);
+            }
+            else
+            {
+                DeleteTree(child, cancellationToken);
+            }
         }
         Directory.Delete(dir, recursive: false);
+    }
+
+    /// <summary>
+    /// True when <paramref name="candidate"/> lives at or below
+    /// <paramref name="root"/> on disk. Both paths must already be
+    /// resolved via <see cref="Path.GetFullPath(string)"/>. Uses
+    /// <see cref="StringComparison.OrdinalIgnoreCase"/> because
+    /// Windows filesystems are case-insensitive by default.
+    /// </summary>
+    private static bool IsUnder(string candidate, string root)
+    {
+        var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task RunAndThrowOnFailure(string repoPath, IReadOnlyList<string> args, string message, CancellationToken cancellationToken)
