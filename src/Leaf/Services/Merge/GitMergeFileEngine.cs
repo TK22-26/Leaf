@@ -166,9 +166,14 @@ public sealed class GitMergeFileEngine : IMergeEngine
             // Cleanup must never throw. Fire-and-forget to a background task so the
             // 50-150ms retry ladder doesn't block the caller's async path if the
             // first delete attempt hits a transient file lock (AV, indexer).
-            // The task itself catches and logs everything.
+            // The task itself catches and logs everything. Prune completed tasks
+            // on each merge so the list doesn't accumulate forever across a session.
             var cleanup = TryDeleteTempDirAsync(tempDir);
-            lock (_cleanupLock) { _pendingCleanupTasks.Add(cleanup); }
+            lock (_cleanupLock)
+            {
+                _pendingCleanupTasks.RemoveAll(t => t.IsCompleted);
+                _pendingCleanupTasks.Add(cleanup);
+            }
         }
     }
 

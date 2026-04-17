@@ -1138,12 +1138,22 @@ public partial class ConflictResolutionViewModel : ObservableObject
     /// A lone marker-lookalike (e.g. user documentation that contains <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>
     /// but no <c>=======</c>/<c>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</c>) is content, not unresolved state.
     /// </summary>
-    private static bool ContainsConflictMarkers(string content)
+    /// <remarks>
+    /// Accepts both LF and CRLF line endings. <c>AvalonEdit</c> preserves the document's
+    /// original line-ending style and inserts <c>Environment.NewLine</c> (= <c>\r\n</c> on
+    /// Windows) for user-typed newlines; without CRLF-tolerance here, a CRLF file with
+    /// unresolved markers could sneak past the gate and be committed silently.
+    /// </remarks>
+    internal static bool ContainsConflictMarkers(string content)
     {
         bool sawOpen = false;
         bool sawSeparator = false;
-        foreach (var line in content.Split('\n'))
+        foreach (var rawLine in content.Split('\n'))
         {
+            var line = rawLine.Length > 0 && rawLine[rawLine.Length - 1] == '\r'
+                ? rawLine.Substring(0, rawLine.Length - 1)
+                : rawLine;
+
             if (!sawOpen)
             {
                 if (line.StartsWith("<<<<<<<", StringComparison.Ordinal))
