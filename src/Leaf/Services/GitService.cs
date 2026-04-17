@@ -26,6 +26,7 @@ public class GitService : IGitService
     private readonly HunkOperations _hunkOps;
     private readonly ConfigOperations _configOps;
     private readonly WorktreeOperations _worktreeOps;
+    private readonly SubmoduleOperations _submoduleOps;
 
     public event EventHandler<GitCommandEventArgs>? GitCommandExecuted;
 
@@ -54,6 +55,7 @@ public class GitService : IGitService
         _hunkOps = new HunkOperations(_context);
         _configOps = new ConfigOperations(_context);
         _worktreeOps = new WorktreeOperations(_context);
+        _submoduleOps = new SubmoduleOperations(_context);
     }
 
     #region Repository Operations
@@ -437,6 +439,13 @@ public class GitService : IGitService
 
     public Task PruneWorktreesAsync(string repoPath, CancellationToken cancellationToken = default)
         => _worktreeOps.PruneWorktreesAsync(repoPath, cancellationToken);
+
+    #endregion
+
+    #region Submodule Operations
+
+    public Task<List<SubmoduleInfo>> GetSubmodulesAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _submoduleOps.GetSubmodulesAsync(repoPath, cancellationToken);
 
     #endregion
 }

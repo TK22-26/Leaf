@@ -655,4 +655,15 @@ public interface IGitService
     Task PruneWorktreesAsync(string repoPath, CancellationToken cancellationToken = default);
 
     #endregion
+
+    #region Submodule Operations
+
+    /// <summary>
+    /// List all submodules registered in the repository along with
+    /// their current status, recorded commit, and optional tracking
+    /// branch. Returns an empty list when the repo has no submodules.
+    /// </summary>
+    Task<List<SubmoduleInfo>> GetSubmodulesAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    #endregion
 }
