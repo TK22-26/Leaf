@@ -4,160 +4,413 @@
         xmlns:vm="clr-namespace:Leaf.ViewModels"
         xmlns:models="clr-namespace:Leaf.Models"
         xmlns:converters="clr-namespace:Leaf.Converters"
+        xmlns:ic="http://schemas.fluenticons.com/winfx/xaml"
         Title="Reflog"
-        Width="900"
-        Height="600"
-        MinWidth="640"
-        MinHeight="360"
-        WindowStartupLocation="CenterOwner">
+        Width="1040"
+        Height="660"
+        MinWidth="720"
+        MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource ApplicationBackgroundBrush}">
     <Window.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+
+        <!--
+            Operation-type badge colours. Chosen to match the conventions used
+            elsewhere in Leaf (red = destructive, amber = rebase-family,
+            blue = navigation, green = commit, slate = misc). Each row's badge
+            picks its colour via a DataTrigger on `OperationType`.
+        -->
+        <SolidColorBrush x:Key="OpBrushCommit"     Color="#28A745" />
+        <SolidColorBrush x:Key="OpBrushAmend"      Color="#F59E0B" />
+        <SolidColorBrush x:Key="OpBrushCheckout"   Color="#3B82F6" />
+        <SolidColorBrush x:Key="OpBrushReset"      Color="#DC2626" />
+        <SolidColorBrush x:Key="OpBrushMerge"      Color="#8250DF" />
+        <SolidColorBrush x:Key="OpBrushRebase"     Color="#F59E0B" />
+        <SolidColorBrush x:Key="OpBrushCherryPick" Color="#C026D3" />
+        <SolidColorBrush x:Key="OpBrushRevert"     Color="#DC2626" />
+        <SolidColorBrush x:Key="OpBrushPull"       Color="#06B6D4" />
+        <SolidColorBrush x:Key="OpBrushPush"       Color="#06B6D4" />
+        <SolidColorBrush x:Key="OpBrushClone"      Color="#06B6D4" />
+        <SolidColorBrush x:Key="OpBrushBranch"     Color="#10B981" />
+        <SolidColorBrush x:Key="OpBrushStash"      Color="#64748B" />
+        <SolidColorBrush x:Key="OpBrushOther"      Color="#64748B" />
+
+        <!--
+            Row style: transparent by default, darker on hover, Leaf-green
+            translucent on selection. We bind DataGridRow-level triggers
+            rather than the DataGrid's default selection brushes so the
+            out-of-the-box Fluent blue doesn't bleed through on single-
+            vs full-row selection edge cases.
+        -->
+        <Style x:Key="ReflogRowStyle" TargetType="DataGridRow">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource LeafAccentSelectedBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ReflogCellStyle" TargetType="DataGridCell">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Style.Triggers>
+                <!--
+                    Kill the default Fluent focus-cell blue rectangle — we
+                    already paint the whole row green on selection, so the
+                    per-cell blue overlay looks wrong.
+                -->
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <Setter Property="BorderThickness" Value="0" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ReflogColumnHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+        </Style>
     </Window.Resources>
-    <Grid Margin="12">
+    <Grid Margin="16">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Filter toolbar -->
-        <Grid Grid.Row="0" Margin="0,0,0,8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+        <!-- Title row -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
+            <TextBlock Text="Reflog"
+                       FontSize="20"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding StatusSummary}"
+                       FontSize="12"
+                       Margin="12,3,0,0"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
 
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Ref" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                <ComboBox Width="180"
-                          Margin="0,0,12,0"
-                          ItemsSource="{Binding RefOptions}"
-                          SelectedItem="{Binding SelectedRef}"/>
+        <!-- Filter card -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="12"
+                Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-                <TextBlock Text="Operation" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                <ComboBox Width="130"
-                          Margin="0,0,12,0"
-                          ItemsSource="{Binding OperationTypeOptions}"
-                          SelectedItem="{Binding SelectedOperationType}"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Ref"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,6,0"/>
+                    <ComboBox Width="200"
+                              Margin="0,0,14,0"
+                              VerticalAlignment="Center"
+                              ItemsSource="{Binding RefOptions}"
+                              SelectedItem="{Binding SelectedRef}"/>
 
-                <TextBlock Text="From" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                <DatePicker Width="120"
-                            Margin="0,0,8,0"
-                            SelectedDate="{Binding StartDate}"/>
+                    <TextBlock Text="Operation"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,6,0"/>
+                    <ComboBox Width="140"
+                              Margin="0,0,14,0"
+                              VerticalAlignment="Center"
+                              ItemsSource="{Binding OperationTypeOptions}"
+                              SelectedItem="{Binding SelectedOperationType}"/>
 
-                <TextBlock Text="To" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                <DatePicker Width="120"
-                            Margin="0,0,12,0"
-                            SelectedDate="{Binding EndDate}"/>
+                    <TextBlock Text="From"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,6,0"/>
+                    <DatePicker Width="130"
+                                Margin="0,0,8,0"
+                                VerticalAlignment="Center"
+                                SelectedDate="{Binding StartDate}"/>
 
-                <Button Command="{Binding ClearFiltersCommand}" Padding="8,2">Clear</Button>
-            </StackPanel>
+                    <TextBlock Text="To"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,6,0"/>
+                    <DatePicker Width="130"
+                                Margin="0,0,14,0"
+                                VerticalAlignment="Center"
+                                SelectedDate="{Binding EndDate}"/>
 
-            <TextBox Grid.Column="1"
-                     Margin="12,0"
-                     VerticalAlignment="Center"
-                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
-                     ToolTip="Search SHA, ref, or message (case-insensitive)"/>
+                    <Button Command="{Binding ClearFiltersCommand}"
+                            Padding="10,4"
+                            VerticalAlignment="Center">
+                        Clear
+                    </Button>
+                </StackPanel>
 
-            <Button Grid.Column="2"
-                    Command="{Binding LoadCommand}"
-                    Padding="10,2"
-                    ToolTip="Re-read reflog from git">
-                Refresh
-            </Button>
-        </Grid>
+                <TextBox Grid.Column="1"
+                         Margin="14,0"
+                         VerticalAlignment="Center"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
+                         ToolTip="Search SHA, ref, or message (case-insensitive)"/>
+
+                <Button Grid.Column="2"
+                        Command="{Binding LoadCommand}"
+                        Padding="12,4"
+                        VerticalAlignment="Center"
+                        ToolTip="Re-read reflog from git">
+                    Refresh
+                </Button>
+            </Grid>
+        </Border>
 
         <!-- Error banner -->
-        <Border Grid.Row="1"
-                Padding="8,4"
-                Margin="0,0,0,8"
-                Background="#33DC2626"
-                CornerRadius="3"
+        <Border Grid.Row="2"
+                Padding="10,6"
+                Margin="0,0,0,12"
+                Background="#22DC2626"
+                BorderBrush="#55DC2626"
+                BorderThickness="1"
+                CornerRadius="4"
                 Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibilityConverter}}">
             <TextBlock Text="{Binding ErrorMessage}"
                        Foreground="#DC2626"
                        TextWrapping="Wrap"/>
         </Border>
 
-        <!-- Entries grid -->
-        <DataGrid Grid.Row="2"
-                  x:Name="EntriesGrid"
-                  AutoGenerateColumns="False"
-                  CanUserAddRows="False"
-                  CanUserDeleteRows="False"
-                  CanUserReorderColumns="True"
-                  CanUserSortColumns="True"
-                  HeadersVisibility="Column"
-                  IsReadOnly="True"
-                  SelectionMode="Single"
-                  SelectionUnit="FullRow"
-                  ItemsSource="{Binding Entries}"
-                  SelectedItem="{Binding SelectedEntry}"
-                  GridLinesVisibility="None"
-                  RowHeaderWidth="0">
-            <DataGrid.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Header="Checkout (detached HEAD)"
-                              Command="{Binding CheckoutCommand}"/>
-                    <MenuItem Header="Reset current branch to here">
-                        <MenuItem Header="Soft (keep index + working tree)"
-                                  Command="{Binding ResetSoftCommand}"/>
-                        <MenuItem Header="Mixed (keep working tree, reset index)"
-                                  Command="{Binding ResetMixedCommand}"/>
-                        <MenuItem Header="Hard (discard index + working tree)"
-                                  Command="{Binding ResetHardCommand}"
-                                  Foreground="#DC2626"/>
-                    </MenuItem>
-                    <Separator/>
-                    <MenuItem Header="Create branch here..."
-                              Command="{Binding CreateBranchHereCommand}"/>
-                    <MenuItem Header="Copy hash"
-                              Command="{Binding CopyHashCommand}"/>
-                </ContextMenu>
-            </DataGrid.ContextMenu>
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Timestamp"
-                                    Binding="{Binding Timestamp, StringFormat='yyyy-MM-dd HH:mm'}"
-                                    Width="Auto"
-                                    IsReadOnly="True"
-                                    SortDirection="Descending"/>
-                <DataGridTextColumn Header="Ref"
-                                    Binding="{Binding Ref}"
-                                    Width="Auto"
-                                    IsReadOnly="True"/>
-                <DataGridTextColumn Header="Operation"
-                                    Binding="{Binding OperationType}"
-                                    Width="Auto"
-                                    IsReadOnly="True"/>
-                <DataGridTextColumn Header="SHA"
-                                    Binding="{Binding ShortSha}"
-                                    Width="Auto"
-                                    IsReadOnly="True"
-                                    FontFamily="Consolas"/>
-                <DataGridTextColumn Header="Message"
-                                    Binding="{Binding Message}"
-                                    Width="*"
-                                    IsReadOnly="True"/>
-            </DataGrid.Columns>
-        </DataGrid>
+        <!-- Entries card -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                ClipToBounds="True">
+            <DataGrid x:Name="EntriesGrid"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      CanUserReorderColumns="True"
+                      CanUserSortColumns="True"
+                      HeadersVisibility="Column"
+                      IsReadOnly="True"
+                      SelectionMode="Single"
+                      SelectionUnit="FullRow"
+                      ItemsSource="{Binding Entries}"
+                      SelectedItem="{Binding SelectedEntry}"
+                      GridLinesVisibility="None"
+                      RowHeaderWidth="0"
+                      Background="Transparent"
+                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                      BorderThickness="0"
+                      RowStyle="{StaticResource ReflogRowStyle}"
+                      CellStyle="{StaticResource ReflogCellStyle}"
+                      ColumnHeaderStyle="{StaticResource ReflogColumnHeaderStyle}">
+                <DataGrid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Checkout (detached HEAD)"
+                                  Command="{Binding CheckoutCommand}"/>
+                        <MenuItem Header="Reset current branch to here">
+                            <MenuItem Header="Soft (keep index + working tree)"
+                                      Command="{Binding ResetSoftCommand}"/>
+                            <MenuItem Header="Mixed (keep working tree, reset index)"
+                                      Command="{Binding ResetMixedCommand}"/>
+                            <MenuItem Header="Hard (discard index + working tree)"
+                                      Command="{Binding ResetHardCommand}"
+                                      Foreground="#DC2626"/>
+                        </MenuItem>
+                        <Separator/>
+                        <MenuItem Header="Create branch here..."
+                                  Command="{Binding CreateBranchHereCommand}"/>
+                        <MenuItem Header="Copy hash"
+                                  Command="{Binding CopyHashCommand}"/>
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
+                <DataGrid.Columns>
+                    <!--
+                        Timestamp: secondary-tone to let the message take the
+                        visual lead. Fixed-width font keeps numbers aligned.
+                    -->
+                    <DataGridTextColumn Header="When"
+                                        Binding="{Binding Timestamp, StringFormat='yyyy-MM-dd HH:mm'}"
+                                        Width="Auto"
+                                        IsReadOnly="True"
+                                        SortDirection="Descending">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontFamily" Value="Consolas"/>
+                                <Setter Property="FontSize" Value="12"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
 
-        <!-- Footer status -->
-        <Grid Grid.Row="3" Margin="0,8,0,0">
+                    <!--
+                        Operation: coloured pill. Template-driven so the
+                        pill background can bind via DataTrigger on the
+                        OperationType enum value.
+                    -->
+                    <DataGridTemplateColumn Header="Operation" Width="Auto" SortMemberPath="OperationType">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border x:Name="OpBadge"
+                                        Padding="6,1"
+                                        Margin="0,0,0,0"
+                                        VerticalAlignment="Center"
+                                        CornerRadius="3"
+                                        Background="{StaticResource OpBrushOther}">
+                                    <TextBlock Text="{Binding OperationType}"
+                                               FontSize="10"
+                                               FontWeight="SemiBold"
+                                               Foreground="White"/>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Commit">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushCommit}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Amend">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushAmend}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Checkout">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushCheckout}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Reset">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushReset}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Merge">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushMerge}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Rebase">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushRebase}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="CherryPick">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushCherryPick}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Revert">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushRevert}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Pull">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushPull}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Push">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushPush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Clone">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushClone}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Branch">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushBranch}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Stash">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushStash}"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTextColumn Header="SHA"
+                                        Binding="{Binding ShortSha}"
+                                        Width="SizeToCells"
+                                        MinWidth="72"
+                                        IsReadOnly="True">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontFamily" Value="Consolas"/>
+                                <Setter Property="FontSize" Value="12"/>
+                                <Setter Property="Foreground" Value="{DynamicResource LeafAccentHoverBrush}"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+
+                    <!--
+                        Cap the Ref column so a long branch name like
+                        `refs/heads/feature/very/nested/thing` doesn't
+                        push the Message column off-screen. The tooltip
+                        still exposes the full ref for hover inspection.
+                    -->
+                    <DataGridTextColumn Header="Ref"
+                                        Binding="{Binding Ref}"
+                                        Width="SizeToCells"
+                                        MinWidth="80"
+                                        MaxWidth="260"
+                                        IsReadOnly="True">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontSize" Value="12"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                                <Setter Property="ToolTip" Value="{Binding Ref}"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+
+                    <DataGridTextColumn Header="Message"
+                                        Binding="{Binding Message}"
+                                        Width="*"
+                                        IsReadOnly="True">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontSize" Value="13"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- Footer -->
+        <Grid Grid.Row="4" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Text="{Binding StatusSummary}"
+            <TextBlock Grid.Column="0"
+                       Text="Right-click an entry for actions."
                        VerticalAlignment="Center"
-                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                       FontSize="11"/>
 
             <Button Grid.Column="1"
-                    Padding="12,4"
+                    Padding="16,6"
                     IsCancel="True"
                     Click="CloseButton_Click">
                 Close
