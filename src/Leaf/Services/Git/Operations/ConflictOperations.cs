@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using Leaf.Models;
 using Leaf.Services;
@@ -274,9 +273,20 @@ internal class ConflictOperations : IConflictOperations
     }
 
     /// <summary>
-    /// Open a conflict in VS Code for resolution.
+    /// Drive a three-way merge through an external tool. The caller
+    /// supplies a <paramref name="launch"/> delegate that knows how to
+    /// invoke the tool and returns the tool's exit code — we handle the
+    /// git-side concerns (extracting base/ours/theirs, writing temp files,
+    /// copying the tool's output back, staging) so callers don't have to
+    /// know about index stages or libgit2sharp. Returns true when the
+    /// merge was accepted and staged; false when the tool reported
+    /// failure or the user discarded the merge.
     /// </summary>
-    public async Task OpenConflictInVsCodeAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+    public async Task<bool> OpenConflictInMergeToolAsync(
+        string repoPath,
+        string filePath,
+        Func<string, string, string, string, CancellationToken, Task<int>> launch,
+        CancellationToken cancellationToken = default)
     {
         var conflicts = await GetConflictsAsync(repoPath);
         var conflict = conflicts.FirstOrDefault(c => c.FilePath == filePath);
@@ -297,9 +307,9 @@ internal class ConflictOperations : IConflictOperations
         var remotePath = Path.Combine(tempDir, $"{fileName}.remote{extension}");
         var mergedPath = Path.Combine(tempDir, $"{fileName}{extension}");
 
-        await File.WriteAllTextAsync(basePath, conflict.BaseContent);
-        await File.WriteAllTextAsync(localPath, conflict.OursContent);
-        await File.WriteAllTextAsync(remotePath, conflict.TheirsContent);
+        await File.WriteAllTextAsync(basePath, conflict.BaseContent, cancellationToken);
+        await File.WriteAllTextAsync(localPath, conflict.OursContent, cancellationToken);
+        await File.WriteAllTextAsync(remotePath, conflict.TheirsContent, cancellationToken);
 
         var repoFilePath = Path.Combine(repoPath, filePath);
         if (File.Exists(repoFilePath))
@@ -308,53 +318,23 @@ internal class ConflictOperations : IConflictOperations
         }
         else
         {
-            await File.WriteAllTextAsync(mergedPath, conflict.OursContent);
+            await File.WriteAllTextAsync(mergedPath, conflict.OursContent, cancellationToken);
         }
 
         try
         {
-            var startInfo = new ProcessStartInfo
+            var exitCode = await launch(basePath, localPath, remotePath, mergedPath, cancellationToken);
+            if (exitCode != 0 || !File.Exists(mergedPath))
             {
-                FileName = "code",
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            startInfo.ArgumentList.Add("-n");
-            startInfo.ArgumentList.Add("--wait");
-            startInfo.ArgumentList.Add("--merge");
-            startInfo.ArgumentList.Add(basePath);
-            startInfo.ArgumentList.Add(localPath);
-            startInfo.ArgumentList.Add(remotePath);
-            startInfo.ArgumentList.Add(mergedPath);
-
-            using var process = Process.Start(startInfo);
-            if (process == null)
-            {
-                throw new InvalidOperationException("Failed to launch VS Code.");
+                return false;
             }
 
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
-            try
-            {
-                await process.WaitForExitAsync(timeoutCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                process.Kill();
-                throw new InvalidOperationException("VS Code merge timed out after 30 minutes.");
-            }
+            var mergedContent = await File.ReadAllTextAsync(mergedPath, cancellationToken);
+            await File.WriteAllTextAsync(repoFilePath, mergedContent, cancellationToken);
 
-            if (process.ExitCode == 0)
-            {
-                if (File.Exists(mergedPath))
-                {
-                    var mergedContent = await File.ReadAllTextAsync(mergedPath);
-                    await File.WriteAllTextAsync(repoFilePath, mergedContent);
-
-                    using var repo = new Repository(repoPath);
-                    Commands.Stage(repo, filePath);
-                }
-            }
+            using var repo = new Repository(repoPath);
+            Commands.Stage(repo, filePath);
+            return true;
         }
         finally
         {

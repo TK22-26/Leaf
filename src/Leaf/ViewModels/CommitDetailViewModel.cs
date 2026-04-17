@@ -15,6 +15,8 @@ public partial class CommitDetailViewModel : ObservableObject
     private readonly IGitService _gitService;
     private readonly IClipboardService _clipboardService;
     private readonly IFileSystemService _fileSystemService;
+    private readonly IExternalToolConfigService _externalToolConfig;
+    private readonly IExternalToolLauncherService _externalToolLauncher;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasParent))]
@@ -164,11 +166,15 @@ public partial class CommitDetailViewModel : ObservableObject
         IGitService gitService,
         IClipboardService clipboardService,
         IFileSystemService fileSystemService,
+        IExternalToolConfigService externalToolConfig,
+        IExternalToolLauncherService externalToolLauncher,
         SettingsService settingsService)
     {
         _gitService = gitService;
         _clipboardService = clipboardService;
         _fileSystemService = fileSystemService;
+        _externalToolConfig = externalToolConfig;
+        _externalToolLauncher = externalToolLauncher;
         IsCompactFileList = settingsService.LoadSettings().CompactFileList;
     }
 
@@ -430,6 +436,50 @@ public partial class CommitDetailViewModel : ObservableObject
         var normalizedFilePath = file.Path.Replace('/', '\\');
         var fullPath = Path.GetFullPath(Path.Combine(RepositoryPath, normalizedFilePath));
         _clipboardService.SetText(fullPath);
+    }
+
+    /// <summary>
+    /// Diff the file's parent-revision content against this commit's
+    /// revision in the user's configured external diff tool. We write
+    /// both sides to temp files rather than point the tool at the
+    /// working tree, because the commit being viewed may not be HEAD.
+    /// No-op with a status message if no tool is configured.
+    /// </summary>
+    [RelayCommand]
+    public async Task OpenInExternalDiffToolAsync(FileChangeInfo? file)
+    {
+        if (string.IsNullOrEmpty(RepositoryPath) || Commit == null || file == null)
+            return;
+
+        var diffTool = await _externalToolConfig.GetCurrentToolAsync(
+            RepositoryPath, ExternalToolKind.Diff, SessionToken);
+        if (diffTool == null)
+        {
+            return;
+        }
+
+        var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
+            RepositoryPath, Commit.Sha, file.Path, cancellationToken: SessionToken);
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "LeafDiff", Guid.NewGuid().ToString());
+        Directory.CreateDirectory(tempDir);
+
+        var fileName = Path.GetFileName(file.Path);
+        var extension = Path.GetExtension(file.Path);
+        var leftPath = Path.Combine(tempDir, $"{fileName}.before{extension}");
+        var rightPath = Path.Combine(tempDir, $"{fileName}.after{extension}");
+
+        try
+        {
+            await File.WriteAllTextAsync(leftPath, oldContent, SessionToken);
+            await File.WriteAllTextAsync(rightPath, newContent, SessionToken);
+            await _externalToolLauncher.LaunchDiffAsync(diffTool, leftPath, rightPath, SessionToken);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); }
+            catch { /* best-effort cleanup */ }
+        }
     }
 
     /// <summary>

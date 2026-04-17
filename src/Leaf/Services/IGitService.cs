@@ -430,9 +430,17 @@ public interface IGitService
     Task<Models.MergeResult> FastForwardAsync(string repoPath, string targetBranchName, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Open a conflict in VS Code for resolution.
+    /// Drive a three-way merge through an external tool. The caller
+    /// provides a launch delegate (basePath, localPath, remotePath,
+    /// mergedPath, ct) that returns the tool's exit code; this method
+    /// handles temp-file prep, writing the merged result back, and
+    /// staging. Returns true when the merge was accepted and staged.
     /// </summary>
-    Task OpenConflictInVsCodeAsync(string repoPath, string filePath, CancellationToken cancellationToken = default);
+    Task<bool> OpenConflictInMergeToolAsync(
+        string repoPath,
+        string filePath,
+        Func<string, string, string, string, CancellationToken, Task<int>> launch,
+        CancellationToken cancellationToken = default);
 
     #region Branch Deletion
 

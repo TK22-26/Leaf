@@ -49,6 +49,8 @@ public partial class WorkingChangesViewModel : ObservableObject
     private readonly IAiCommitMessageService _aiCommitService;
     private readonly IGitignoreService _gitignoreService;
     private readonly SettingsService _settingsService;
+    private readonly IExternalToolConfigService _externalToolConfig;
+    private readonly IExternalToolLauncherService _externalToolLauncher;
     private string? _repositoryPath;
     private CancellationTokenSource? _aiCancellationTokenSource;
 
@@ -204,6 +206,8 @@ public partial class WorkingChangesViewModel : ObservableObject
         IDialogService dialogService,
         IAiCommitMessageService aiCommitService,
         IGitignoreService gitignoreService,
+        IExternalToolConfigService externalToolConfig,
+        IExternalToolLauncherService externalToolLauncher,
         SettingsService settingsService)
     {
         _gitService = gitService;
@@ -212,6 +216,8 @@ public partial class WorkingChangesViewModel : ObservableObject
         _dialogService = dialogService;
         _aiCommitService = aiCommitService;
         _gitignoreService = gitignoreService;
+        _externalToolConfig = externalToolConfig;
+        _externalToolLauncher = externalToolLauncher;
         _settingsService = settingsService;
         _isOptionsExpanded = _settingsService.LoadSettings().IsCommitOptionsExpanded;
         RefreshAiAvailability();
@@ -463,6 +469,7 @@ public partial class WorkingChangesViewModel : ObservableObject
             OpenFileCommand = OpenFileCommand,
             OpenInExplorerCommand = OpenInExplorerCommand,
             CopyFilePathCommand = CopyFilePathCommand,
+            OpenInExternalDiffToolCommand = OpenInExternalDiffToolCommand,
             DeleteFileCommand = DeleteFileCommand,
             AdminDeleteCommand = AdminDeleteReservedFileCommand,
             FileSelectedCommand = SelectUnstagedFileCommand,
@@ -491,6 +498,7 @@ public partial class WorkingChangesViewModel : ObservableObject
             OpenFileCommand = OpenFileCommand,
             OpenInExplorerCommand = OpenInExplorerCommand,
             CopyFilePathCommand = CopyFilePathCommand,
+            OpenInExternalDiffToolCommand = OpenInExternalDiffToolCommand,
             DeleteFileCommand = DeleteFileCommand,
             AdminDeleteCommand = null, // Not applicable for staged files
             FileSelectedCommand = SelectStagedFileCommand,
@@ -875,6 +883,52 @@ public partial class WorkingChangesViewModel : ObservableObject
         var normalizedFilePath = file.Path.Replace('/', '\\');
         var fullPath = Path.GetFullPath(Path.Combine(_repositoryPath, normalizedFilePath));
         _clipboardService.SetText(fullPath);
+    }
+
+    /// <summary>
+    /// Diff the HEAD revision of a working-tree file against the
+    /// current working copy in the configured external diff tool. The
+    /// right side points at the live working file (not a temp copy) so
+    /// the tool can save edits in place. No-op if no tool is configured
+    /// or if the file has no HEAD counterpart (newly added).
+    /// </summary>
+    [RelayCommand]
+    public async Task OpenInExternalDiffToolAsync(FileStatusInfo? file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        var diffTool = await _externalToolConfig.GetCurrentToolAsync(
+            _repositoryPath, ExternalToolKind.Diff, SessionToken);
+        if (diffTool == null)
+            return;
+
+        // Working tree file: right side must point at the real path so
+        // the user can save edits back through the tool.
+        var normalizedFilePath = file.Path.Replace('/', '\\');
+        var workingPath = Path.GetFullPath(Path.Combine(_repositoryPath, normalizedFilePath));
+        if (!File.Exists(workingPath))
+            return;
+
+        var (oldContent, _) = await _gitService.GetFileDiffAsync(
+            _repositoryPath, "HEAD", file.Path, cancellationToken: SessionToken);
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "LeafDiff", Guid.NewGuid().ToString());
+        Directory.CreateDirectory(tempDir);
+        var fileName = Path.GetFileName(file.Path);
+        var extension = Path.GetExtension(file.Path);
+        var headTempPath = Path.Combine(tempDir, $"{fileName}.HEAD{extension}");
+
+        try
+        {
+            await File.WriteAllTextAsync(headTempPath, oldContent, SessionToken);
+            await _externalToolLauncher.LaunchDiffAsync(diffTool, headTempPath, workingPath, SessionToken);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); }
+            catch { /* best-effort cleanup */ }
+        }
     }
 
     /// <summary>

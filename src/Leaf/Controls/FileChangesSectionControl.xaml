@@ -161,6 +161,10 @@
                                     CommandParameter="{Binding}"
                                     Header="Open in Explorer" />
                                 <MenuItem
+                                    Command="{Binding Data.OpenInExternalDiffToolCommand, Source={StaticResource ContextProxy}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Open diff in external tool" />
+                                <MenuItem
                                     Command="{Binding Data.CopyFilePathCommand, Source={StaticResource ContextProxy}}"
                                     CommandParameter="{Binding}"
                                     Header="Copy file path" />
@@ -366,6 +370,10 @@
                                             Command="{Binding Data.OpenInExplorerCommand, Source={StaticResource ContextProxy}}"
                                             CommandParameter="{Binding}"
                                             Header="Open in Explorer" />
+                                        <MenuItem
+                                            Command="{Binding Data.OpenInExternalDiffToolCommand, Source={StaticResource ContextProxy}}"
+                                            CommandParameter="{Binding}"
+                                            Header="Open diff in external tool" />
                                         <MenuItem
                                             Command="{Binding Data.CopyFilePathCommand, Source={StaticResource ContextProxy}}"
                                             CommandParameter="{Binding}"

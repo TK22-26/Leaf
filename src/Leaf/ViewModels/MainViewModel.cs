@@ -37,6 +37,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IDiffService _diffService;
     private readonly IExternalToolConfigService _externalToolConfig;
     private readonly IExternalToolDetectorService _externalToolDetector;
+    private readonly IExternalToolLauncherService _externalToolLauncher;
     private readonly INotificationService? _notificationService;
 
     // The per-repo DI scope. Owns the current IRepositorySession (scoped)
@@ -358,6 +359,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IDiffService diffService,
         IExternalToolConfigService externalToolConfig,
         IExternalToolDetectorService externalToolDetector,
+        IExternalToolLauncherService externalToolLauncher,
         INotificationService? notificationService = null)
     {
         _gitService = gitService;
@@ -375,6 +377,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pullRequestService = pullRequestService;
         _externalToolConfig = externalToolConfig;
         _externalToolDetector = externalToolDetector;
+        _externalToolLauncher = externalToolLauncher;
         _notificationService = notificationService;
         _fileWatcherService = new FileWatcherService();
 
@@ -409,7 +412,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Func<CancellationToken> tokenGetter = () => CurrentRepositoryToken;
 
         _gitGraphViewModel = new GitGraphViewModel(gitService) { GetSessionToken = tokenGetter };
-        _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService, settingsService)
+        _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService, externalToolConfig, externalToolLauncher, settingsService)
             { GetSessionToken = tokenGetter };
 
         // Create AI and gitignore services for WorkingChangesViewModel
@@ -418,7 +421,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var aiCommitService = new AiCommitMessageService(settingsService, ollamaService, commitMessageParser);
         var gitignoreService = new GitignoreService(gitService);
 
-        _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService, settingsService)
+        _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService, externalToolConfig, externalToolLauncher, settingsService)
             { GetSessionToken = tokenGetter };
         _workingChangesViewModel.FileSelected += OnWorkingChangesFileSelected;
         _workingChangesViewModel.FileDeletedOrDiscarded += OnFileDeletedOrDiscarded;

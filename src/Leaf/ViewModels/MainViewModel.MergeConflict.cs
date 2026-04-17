@@ -33,33 +33,47 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Open the first unresolved conflict in VS Code.
+    /// Open the first unresolved conflict in the configured external
+    /// merge tool. No-op (with a status message) if no tool is selected.
     /// </summary>
     [RelayCommand]
-    public async Task OpenInVsCodeAsync()
+    public async Task OpenInMergeToolAsync()
     {
         if (SelectedRepository == null) return;
 
+        var mergeTool = await _externalToolConfig.GetCurrentToolAsync(
+            SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
+        if (mergeTool == null)
+        {
+            StatusMessage = "No external merge tool configured. See Settings → External Tools.";
+            return;
+        }
+
         try
         {
-            await BeginBusyAsync("Opening VS Code for merge...");
+            await BeginBusyAsync($"Opening {mergeTool.DisplayName} for merge...");
 
             var conflicts = await _gitService.GetConflictsAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var firstConflict = conflicts.FirstOrDefault();
 
             if (firstConflict != null)
             {
-                await _gitService.OpenConflictInVsCodeAsync(SelectedRepository.Path, firstConflict.FilePath, cancellationToken: CurrentRepositoryToken);
+                var staged = await _gitService.OpenConflictInMergeToolAsync(
+                    SelectedRepository.Path,
+                    firstConflict.FilePath,
+                    (b, l, r, m, ct) => _externalToolLauncher.LaunchMergeAsync(mergeTool, b, l, r, m, ct),
+                    cancellationToken: CurrentRepositoryToken);
 
-                // Refresh to check if resolved
                 await RefreshAsync();
 
-                // If there are more conflicts, we could prompt to open the next one,
-                // but let's just refresh for now.
                 var remaining = await _gitService.GetConflictsAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                if (remaining.Count == 0)
+                if (!staged)
                 {
-                    StatusMessage = "All conflicts resolved in VS Code.";
+                    StatusMessage = $"{mergeTool.DisplayName} did not produce a staged result.";
+                }
+                else if (remaining.Count == 0)
+                {
+                    StatusMessage = $"All conflicts resolved in {mergeTool.DisplayName}.";
                 }
                 else
                 {
@@ -73,7 +87,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            await ReportOperationFailureAsync("Open VS Code", ex);
+            await ReportOperationFailureAsync($"Open {mergeTool.DisplayName}", ex);
         }
         finally
         {
@@ -219,21 +233,33 @@ public partial class MainViewModel
     }
 
     [RelayCommand]
-    public async Task OpenConflictInVsCodeAsync(ConflictInfo? conflict)
+    public async Task OpenConflictInMergeToolAsync(ConflictInfo? conflict)
     {
         if (SelectedRepository == null || conflict == null) return;
 
+        var mergeTool = await _externalToolConfig.GetCurrentToolAsync(
+            SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
+        if (mergeTool == null)
+        {
+            StatusMessage = "No external merge tool configured. See Settings → External Tools.";
+            return;
+        }
+
         try
         {
-            await BeginBusyAsync("Opening VS Code for merge...");
+            await BeginBusyAsync($"Opening {mergeTool.DisplayName} for merge...");
 
-            await _gitService.OpenConflictInVsCodeAsync(SelectedRepository.Path, conflict.FilePath, cancellationToken: CurrentRepositoryToken);
+            await _gitService.OpenConflictInMergeToolAsync(
+                SelectedRepository.Path,
+                conflict.FilePath,
+                (b, l, r, m, ct) => _externalToolLauncher.LaunchMergeAsync(mergeTool, b, l, r, m, ct),
+                cancellationToken: CurrentRepositoryToken);
 
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            await ReportOperationFailureAsync("Open VS Code", ex);
+            await ReportOperationFailureAsync($"Open {mergeTool.DisplayName}", ex);
         }
         finally
         {

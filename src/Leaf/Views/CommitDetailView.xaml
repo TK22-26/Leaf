@@ -92,6 +92,10 @@
                                 CommandParameter="{Binding}"
                                 Header="Open in Explorer" />
                             <MenuItem
+                                Command="{Binding PlacementTarget.Tag.OpenInExternalDiffToolCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                CommandParameter="{Binding}"
+                                Header="Open diff in external tool" />
+                            <MenuItem
                                 Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                 CommandParameter="{Binding}"
                                 Header="Copy file path" />
@@ -698,6 +702,10 @@
                                                     Command="{Binding PlacementTarget.Tag.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                     CommandParameter="{Binding}"
                                                     Header="Open in Explorer" />
+                                                <MenuItem
+                                                    Command="{Binding PlacementTarget.Tag.OpenInExternalDiffToolCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                    CommandParameter="{Binding}"
+                                                    Header="Open diff in external tool" />
                                                 <MenuItem
                                                     Command="{Binding PlacementTarget.Tag.CopyFilePathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                     CommandParameter="{Binding}"

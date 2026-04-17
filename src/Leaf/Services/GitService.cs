@@ -280,8 +280,12 @@ public class GitService : IGitService
     public Task ClearStoredMergeConflictFilesAsync(string repoPath, CancellationToken cancellationToken = default)
         => _conflictOps.ClearStoredMergeConflictFilesAsync(repoPath, cancellationToken);
 
-    public Task OpenConflictInVsCodeAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
-        => _conflictOps.OpenConflictInVsCodeAsync(repoPath, filePath, cancellationToken);
+    public Task<bool> OpenConflictInMergeToolAsync(
+        string repoPath,
+        string filePath,
+        Func<string, string, string, string, CancellationToken, Task<int>> launch,
+        CancellationToken cancellationToken = default)
+        => _conflictOps.OpenConflictInMergeToolAsync(repoPath, filePath, launch, cancellationToken);
 
     #endregion
 

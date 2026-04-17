@@ -130,7 +130,7 @@ public class FakeGitService : IGitService
     public Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
     public Task<MergeResult> FastForwardAsync(string repoPath, string targetBranchName, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
-    public Task OpenConflictInVsCodeAsync(string repoPath, string filePath, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<bool> OpenConflictInMergeToolAsync(string repoPath, string filePath, Func<string, string, string, string, CancellationToken, Task<int>> launch, CancellationToken cancellationToken = default) => Task.FromResult(false);
     public Task DeleteBranchAsync(string repoPath, string branchName, bool force = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName, string? credentialKey = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<List<TagInfo>> GetTagsAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new List<TagInfo>());
