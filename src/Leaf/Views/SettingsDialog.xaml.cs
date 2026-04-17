@@ -14,8 +14,8 @@ public partial class SettingsDialog : Window
 {
     private readonly CredentialService _credentialService;
     private readonly SettingsService _settingsService;
-    private readonly IExternalToolConfigService? _externalToolConfig;
-    private readonly IExternalToolDetectorService? _externalToolDetector;
+    private readonly IExternalToolConfigService _externalToolConfig;
+    private readonly IExternalToolDetectorService _externalToolDetector;
     private readonly string? _currentRepoPath;
     private readonly AppSettings _settings;
     private bool _suppressNavSelection;
@@ -24,16 +24,11 @@ public partial class SettingsDialog : Window
     // Search items for settings
     private readonly List<SettingsSearchItem> _allSearchItems;
 
-    public SettingsDialog(CredentialService credentialService, SettingsService settingsService)
-        : this(credentialService, settingsService, null, null, null)
-    {
-    }
-
     public SettingsDialog(
         CredentialService credentialService,
         SettingsService settingsService,
-        IExternalToolConfigService? externalToolConfig,
-        IExternalToolDetectorService? externalToolDetector,
+        IExternalToolConfigService externalToolConfig,
+        IExternalToolDetectorService externalToolDetector,
         string? currentRepoPath)
     {
         InitializeComponent();
@@ -180,28 +175,37 @@ public partial class SettingsDialog : Window
                 break;
             case "ExternalTools":
                 ExternalToolsSettings.Visibility = Visibility.Visible;
-                BindExternalToolsIfNeeded();
+                BindExternalToolsIfNeededAsync()
+                    .FireAndForget(nameof(BindExternalToolsIfNeededAsync), isUserAction: true);
                 break;
         }
     }
 
-    private async void BindExternalToolsIfNeeded()
+    /// <summary>
+    /// Lazily bind the External Tools section to its services the first
+    /// time the user navigates to it. Guarded by <c>_externalToolsBound</c>
+    /// so we don't re-read git config on every click. The flag is set
+    /// before awaiting so concurrent clicks don't trigger overlapping
+    /// binds; failures reset it so a retry is possible.
+    /// </summary>
+    private async Task BindExternalToolsIfNeededAsync()
     {
         if (_externalToolsBound) return;
-        if (_externalToolConfig == null || _externalToolDetector == null)
-        {
-            // Legacy callers that built the dialog without the services
-            // still see the section, but with an empty state. Future
-            // callers should use the DI-aware ctor.
-            return;
-        }
+        _externalToolsBound = true;
 
         // `git config --global` ignores CWD but the CommandRunner still
         // needs a valid directory. Fall back to UserProfile when Leaf
         // was opened without any repo active.
         var repoPath = _currentRepoPath ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        _externalToolsBound = true;
-        await ExternalToolsSettings.BindAsync(_externalToolConfig, _externalToolDetector, repoPath);
+        try
+        {
+            await ExternalToolsSettings.BindAsync(_externalToolConfig, _externalToolDetector, repoPath);
+        }
+        catch
+        {
+            _externalToolsBound = false;
+            throw;
+        }
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)

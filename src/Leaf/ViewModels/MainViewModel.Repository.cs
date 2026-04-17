@@ -258,7 +258,7 @@ public partial class MainViewModel
     public async Task CloneRepositoryAsync()
     {
         var settings = _settingsService.LoadSettings();
-        var dialog = new CloneDialog(_gitService, _credentialService, _settingsService, settings.DefaultClonePath);
+        var dialog = new CloneDialog(_gitService, _credentialService, _settingsService, _externalToolConfig, _externalToolDetector, settings.DefaultClonePath);
 
         if (await _dialogService.ShowDialogAsync(dialog) && !string.IsNullOrEmpty(dialog.ClonedRepositoryPath))
         {

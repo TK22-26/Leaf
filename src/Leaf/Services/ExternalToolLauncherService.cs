@@ -107,7 +107,19 @@ public sealed class ExternalToolLauncherService : IExternalToolLauncherService
         {
             // Caller cancelled — do our best to tear down the child
             // rather than leave it orphaned blocking $MERGED writes.
-            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+            try
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+            }
+            catch (Exception killEx) when (killEx is InvalidOperationException
+                                        or System.ComponentModel.Win32Exception
+                                        or NotSupportedException)
+            {
+                // Process already exited, or the OS denied termination.
+                // Cancellation is already in flight, so log and carry on.
+                Log.Warn("ExternalTool", $"Failed to kill tool process on cancellation: {killEx.Message}");
+            }
             throw;
         }
 

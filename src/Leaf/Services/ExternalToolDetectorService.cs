@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using Leaf.Models;
 
@@ -11,20 +12,28 @@ namespace Leaf.Services;
 /// </summary>
 public sealed class ExternalToolDetectorService : IExternalToolDetectorService
 {
+    // _gate guards the one-shot scan that builds _cachedInstalledNames.
+    // Single-entry path cache (_cachedPaths) uses ConcurrentDictionary
+    // directly so concurrent diff-tool launches don't race the unsynced
+    // Dictionary mutations the old version had.
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private IReadOnlySet<string>? _cachedInstalledNames;
-    private readonly Dictionary<string, string?> _cachedPaths = new(StringComparer.OrdinalIgnoreCase);
+    private volatile IReadOnlySet<string>? _cachedInstalledNames;
+    private readonly ConcurrentDictionary<string, string?> _cachedPaths = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<IReadOnlySet<string>> GetInstalledToolNamesAsync(CancellationToken cancellationToken = default)
     {
-        if (_cachedInstalledNames != null)
-            return _cachedInstalledNames;
+        // volatile read pairs with the volatile write below so the set's
+        // contents are observed once the reference is visible.
+        var snapshot = _cachedInstalledNames;
+        if (snapshot != null)
+            return snapshot;
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_cachedInstalledNames != null)
-                return _cachedInstalledNames;
+            snapshot = _cachedInstalledNames;
+            if (snapshot != null)
+                return snapshot;
 
             var installed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             // Diff and merge presets share names; scanning either set
@@ -43,7 +52,7 @@ public sealed class ExternalToolDetectorService : IExternalToolDetectorService
             }
 
             _cachedInstalledNames = installed;
-            return _cachedInstalledNames;
+            return installed;
         }
         finally
         {
@@ -57,34 +66,22 @@ public sealed class ExternalToolDetectorService : IExternalToolDetectorService
         if (_cachedPaths.TryGetValue(key, out var cached))
             return cached;
 
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            if (_cachedPaths.TryGetValue(key, out cached))
-                return cached;
-
-            var resolved = await Task.Run(() => ResolveUncached(tool), cancellationToken).ConfigureAwait(false);
-            _cachedPaths[key] = resolved;
-            return resolved;
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        // GetOrAdd would race the expensive disk probe; we do it outside
+        // the dictionary and let the last writer win. The key includes
+        // the command so two calls for the same tool always produce the
+        // same resolved path (modulo disk state), making redundant work
+        // harmless.
+        var resolved = await Task.Run(() => ResolveUncached(tool), cancellationToken).ConfigureAwait(false);
+        _cachedPaths[key] = resolved;
+        return resolved;
     }
 
     public void InvalidateCache()
     {
-        _gate.Wait();
-        try
-        {
-            _cachedInstalledNames = null;
-            _cachedPaths.Clear();
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        // Non-blocking: used from UI thread when the user clicks Detect.
+        // Writes are visible through the volatile field + ConcurrentDictionary.
+        _cachedInstalledNames = null;
+        _cachedPaths.Clear();
     }
 
     private static string? ResolveUncached(ExternalTool tool)
