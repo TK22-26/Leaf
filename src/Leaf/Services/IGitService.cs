@@ -94,14 +94,21 @@ public interface IGitService
     Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Set a git config value.
+    /// Set a git config value. Scope defaults to Local (<c>.git/config</c>);
+    /// pass <see cref="GitConfigScope.Global"/> to target <c>~/.gitconfig</c>.
     /// </summary>
-    Task SetConfigAsync(string repoPath, string key, string value, CancellationToken cancellationToken = default);
+    Task SetConfigAsync(string repoPath, string key, string value, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Get a git config value.
+    /// Get a git config value. Scope defaults to Local (reads from
+    /// <c>.git/config</c>, falling back to inherited global/system values).
     /// </summary>
-    Task<string?> GetConfigAsync(string repoPath, string key, CancellationToken cancellationToken = default);
+    Task<string?> GetConfigAsync(string repoPath, string key, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Remove a git config key. Scope defaults to Local.
+    /// </summary>
+    Task UnsetConfigAsync(string repoPath, string key, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get repository status information.
