@@ -326,7 +326,20 @@ public interface IGitService
     /// <param name="repoPath">Path to repository</param>
     /// <param name="message">Commit message (required, max 72 chars recommended)</param>
     /// <param name="description">Optional extended description</param>
-    Task CommitAsync(string repoPath, string message, string? description = null, CancellationToken cancellationToken = default);
+    /// <param name="amend">
+    /// If true, replace the current HEAD commit with a new one containing
+    /// the staged changes and the supplied message. Caller is responsible
+    /// for gating this on <see cref="IsHeadPushedAsync"/> — amending a
+    /// published commit rewrites history.
+    /// </param>
+    Task CommitAsync(string repoPath, string message, string? description = null, bool amend = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get the commit at HEAD, or null if the repository is in an
+    /// unborn/empty state. Convenience for flows like commit amend that
+    /// need HEAD's current message without separately resolving its SHA.
+    /// </summary>
+    Task<CommitInfo?> GetHeadCommitAsync(string repoPath, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get list of conflicting files during a merge.

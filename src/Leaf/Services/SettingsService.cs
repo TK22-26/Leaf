@@ -199,6 +199,11 @@ public class AppSettings
     // UI display
     public bool CompactFileList { get; set; } = false;
 
+    // Whether the collapsible "Options" row under the commit input is
+    // expanded (reveals the Amend checkbox). Persisted so users who
+    // amend often don't have to re-open it every launch.
+    public bool IsCommitOptionsExpanded { get; set; } = false;
+
     // Logging
     public string LogLevel { get; set; } = "Normal";
 

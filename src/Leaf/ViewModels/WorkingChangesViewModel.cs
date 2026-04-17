@@ -98,6 +98,30 @@ public partial class WorkingChangesViewModel : ObservableObject
     [ObservableProperty]
     private FileChangesSectionContext? _stagedSectionContext;
 
+    // Amend state (plan §5.1). When enabled, the next commit replaces
+    // HEAD — author preserved, message/description replaced, staged
+    // changes folded into the new HEAD. `CanAmend` gates the checkbox
+    // so users can't accidentally amend a commit that's already been
+    // published; the check is refreshed on repo set and after each
+    // commit. `_preAmendMessage`/`_preAmendDescription` let us restore
+    // whatever the user had typed if they turn amend mode back off.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCommit))]
+    [NotifyPropertyChangedFor(nameof(CommitButtonLabel))]
+    private bool _isAmendMode;
+
+    [ObservableProperty]
+    private bool _canAmend;
+
+    // Persisted UI state for the collapsible Options row that hosts the
+    // amend checkbox. Loaded from settings at construction, saved on each
+    // change so the panel remembers whether the user expanded it.
+    [ObservableProperty]
+    private bool _isOptionsExpanded;
+
+    private string? _preAmendMessage;
+    private string? _preAmendDescription;
+
     /// <summary>
     /// Event raised when a file is selected for diff viewing.
     /// </summary>
@@ -125,12 +149,22 @@ public partial class WorkingChangesViewModel : ObservableObject
     public bool HasChanges => WorkingChanges?.HasChanges ?? false;
 
     /// <summary>
-    /// True if can commit (has staged files and non-empty message).
+    /// True if can commit. In normal mode: requires staged files plus a
+    /// non-empty message. In amend mode: just a non-empty message — the
+    /// user may be amending solely to change the commit message, with no
+    /// staged changes.
     /// </summary>
     public bool CanCommit =>
-        WorkingChanges?.HasStagedChanges == true &&
         !string.IsNullOrWhiteSpace(CommitMessage) &&
-        CommitMessage.Length <= MaxMessageLength;
+        CommitMessage.Length <= MaxMessageLength &&
+        (IsAmendMode || WorkingChanges?.HasStagedChanges == true);
+
+    /// <summary>
+    /// Label shown on the primary commit button. Flips to "Amend" when
+    /// amend mode is active so the user sees at a glance that their next
+    /// action will rewrite HEAD rather than create a new commit.
+    /// </summary>
+    public string CommitButtonLabel => IsAmendMode ? "Amend" : "Commit";
 
     /// <summary>
     /// Summary of file changes for display.
@@ -179,7 +213,16 @@ public partial class WorkingChangesViewModel : ObservableObject
         _aiCommitService = aiCommitService;
         _gitignoreService = gitignoreService;
         _settingsService = settingsService;
+        _isOptionsExpanded = _settingsService.LoadSettings().IsCommitOptionsExpanded;
         RefreshAiAvailability();
+    }
+
+    partial void OnIsOptionsExpandedChanged(bool value)
+    {
+        var settings = _settingsService.LoadSettings();
+        if (settings.IsCommitOptionsExpanded == value) return;
+        settings.IsCommitOptionsExpanded = value;
+        _settingsService.SaveSettings(settings);
     }
 
     /// <summary>
@@ -200,7 +243,9 @@ public partial class WorkingChangesViewModel : ObservableObject
     public async Task SetRepositoryAsync(string? repoPath)
     {
         _repositoryPath = repoPath;
+        IsAmendMode = false;
         await RefreshAsync();
+        await RefreshAmendStateAsync();
     }
 
     /// <summary>
@@ -214,6 +259,8 @@ public partial class WorkingChangesViewModel : ObservableObject
         CommitDescription = string.Empty;
         ErrorMessage = null;
         IsLoading = false;
+        IsAmendMode = false;
+        CanAmend = false;
         OnPropertyChanged(nameof(HasChanges));
         OnPropertyChanged(nameof(FileChangesSummary));
     }
@@ -223,6 +270,7 @@ public partial class WorkingChangesViewModel : ObservableObject
     /// </summary>
     public void SetWorkingChanges(string repoPath, WorkingChangesInfo? workingChanges)
     {
+        var repoChanged = !string.Equals(_repositoryPath, repoPath, StringComparison.OrdinalIgnoreCase);
         _repositoryPath = repoPath;
         WorkingChanges = workingChanges;
 
@@ -231,9 +279,125 @@ public partial class WorkingChangesViewModel : ObservableObject
             Log.Warn("WorkingChanges", "SetWorkingChanges: null data received");
         }
 
+        if (repoChanged)
+        {
+            IsAmendMode = false;
+        }
+
         // Force notification for dependent properties
         OnPropertyChanged(nameof(HasChanges));
         OnPropertyChanged(nameof(FileChangesSummary));
+
+        // Fire-and-forget — amend eligibility is a UI hint; worst case the
+        // checkbox stays enabled for a tick longer than ideal.
+        RefreshAmendStateAsync().FireAndForget(nameof(RefreshAmendStateAsync), isUserAction: false);
+    }
+
+    /// <summary>
+    /// Recompute <see cref="CanAmend"/>: HEAD must exist and must not be
+    /// the same commit the remote already has. Called on repo switch and
+    /// after every commit/push that changes those conditions. Silently
+    /// tolerates service failures — amend is a nicety, not a primary flow.
+    /// </summary>
+    private async Task RefreshAmendStateAsync()
+    {
+        if (string.IsNullOrEmpty(_repositoryPath))
+        {
+            CanAmend = false;
+            return;
+        }
+
+        try
+        {
+            var head = await _gitService.GetHeadCommitAsync(_repositoryPath, cancellationToken: SessionToken);
+            if (head == null)
+            {
+                CanAmend = false;
+            }
+            else
+            {
+                var isPushed = await _gitService.IsHeadPushedAsync(_repositoryPath, cancellationToken: SessionToken);
+                CanAmend = !isPushed;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or System.IO.IOException
+                                or UnauthorizedAccessException
+                                or OperationCanceledException)
+        {
+            Log.Info("Amend", $"RefreshAmendState failed: {ex.GetType().Name}: {ex.Message}");
+            CanAmend = false;
+        }
+
+        // If the user had amend mode on but the repo is no longer in an
+        // amendable state (e.g. HEAD was just pushed), flip it off so the
+        // next commit doesn't silently rewrite published history. The
+        // OnIsAmendModeChanged handler restores their pre-amend draft.
+        if (!CanAmend && IsAmendMode)
+        {
+            IsAmendMode = false;
+        }
+    }
+
+    /// <summary>
+    /// Handle amend-mode toggle: on enable, stash what the user had typed
+    /// and populate message/description from HEAD. On disable, restore
+    /// whatever was there before (so toggling doesn't lose drafts).
+    /// </summary>
+    partial void OnIsAmendModeChanged(bool value)
+    {
+        if (value)
+        {
+            _preAmendMessage = CommitMessage;
+            _preAmendDescription = CommitDescription;
+            LoadHeadMessageAsync().FireAndForget(nameof(LoadHeadMessageAsync), isUserAction: false);
+        }
+        else
+        {
+            CommitMessage = _preAmendMessage ?? string.Empty;
+            CommitDescription = _preAmendDescription ?? string.Empty;
+            _preAmendMessage = null;
+            _preAmendDescription = null;
+        }
+    }
+
+    private async Task LoadHeadMessageAsync()
+    {
+        if (string.IsNullOrEmpty(_repositoryPath)) return;
+
+        try
+        {
+            var head = await _gitService.GetHeadCommitAsync(_repositoryPath, cancellationToken: SessionToken);
+            if (head == null) return;
+
+            // The user may have toggled amend mode off while this was in
+            // flight. Dropping the result is safer than overwriting the
+            // draft they just had restored.
+            if (!IsAmendMode) return;
+
+            // HEAD's full message is "<subject>\n\n<body...>" — split on
+            // the first blank line so the subject and body map cleanly to
+            // the message and description fields.
+            var message = head.Message ?? string.Empty;
+            var firstBlankLine = message.IndexOf("\n\n", StringComparison.Ordinal);
+            if (firstBlankLine >= 0)
+            {
+                CommitMessage = message[..firstBlankLine].Trim();
+                CommitDescription = message[(firstBlankLine + 2)..].TrimEnd();
+            }
+            else
+            {
+                CommitMessage = message.Trim();
+                CommitDescription = string.Empty;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or System.IO.IOException
+                                or UnauthorizedAccessException
+                                or OperationCanceledException)
+        {
+            Log.Info("Amend", $"LoadHeadMessage failed: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -870,7 +1034,8 @@ exit /b %errorlevel%
     }
 
     /// <summary>
-    /// Commit staged changes.
+    /// Commit staged changes — or amend HEAD when <see cref="IsAmendMode"/>
+    /// is active.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanCommit))]
     public async Task CommitAsync()
@@ -878,6 +1043,7 @@ exit /b %errorlevel%
         if (string.IsNullOrEmpty(_repositoryPath) || !CanCommit)
             return;
 
+        var amend = IsAmendMode;
         try
         {
             IsLoading = true;
@@ -886,17 +1052,29 @@ exit /b %errorlevel%
                 ? null
                 : CommitDescription.Trim();
 
-            await _gitService.CommitAsync(_repositoryPath, CommitMessage.Trim(), description, cancellationToken: SessionToken);
+            await _gitService.CommitAsync(
+                _repositoryPath,
+                CommitMessage.Trim(),
+                description,
+                amend: amend,
+                cancellationToken: SessionToken);
 
-            // Clear form after successful commit
+            // Clear form + flip out of amend mode on success. The
+            // pre-amend buffers are deliberately not restored — after a
+            // successful amend the buffers are stale and a fresh state is
+            // what the user expects.
+            _preAmendMessage = null;
+            _preAmendDescription = null;
+            IsAmendMode = false;
             CommitMessage = string.Empty;
             CommitDescription = string.Empty;
 
             await RefreshAndNotifyAsync();
+            await RefreshAmendStateAsync();
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Commit failed: {ex.Message}";
+            ErrorMessage = $"{(amend ? "Amend" : "Commit")} failed: {ex.Message}";
         }
         finally
         {

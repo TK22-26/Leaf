@@ -90,12 +90,16 @@
             Grid.Row="3"
             Margin="8"
             AutoFillCommand="{Binding AutoFillCommitMessageCommand}"
+            CanAmend="{Binding CanAmend}"
             CanCommit="{Binding CanCommit}"
+            CommitButtonLabel="{Binding CommitButtonLabel}"
             CommitCommand="{Binding CommitCommand}"
             CommitDescription="{Binding CommitDescription, Mode=TwoWay}"
             CommitMessage="{Binding CommitMessage, Mode=TwoWay}"
             IsAiAvailable="{Binding IsAiAvailable}"
+            IsAmendMode="{Binding IsAmendMode, Mode=TwoWay}"
             IsLoading="{Binding IsLoading}"
+            IsOptionsExpanded="{Binding IsOptionsExpanded, Mode=TwoWay}"
             RemainingChars="{Binding RemainingChars}" />
     </Grid>
 </UserControl>
