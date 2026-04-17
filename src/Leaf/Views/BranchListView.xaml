@@ -1022,7 +1022,7 @@
                         Background="Transparent"
                         CornerRadius="2"
                         Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                        ToolTip="{Binding Url}">
+                        ToolTip="{Binding TooltipText}">
                         <Border.ContextMenu>
                             <ContextMenu>
                                 <MenuItem

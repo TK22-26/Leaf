@@ -7,9 +7,11 @@ using Leaf.Services;
 namespace Leaf.ViewModels;
 
 /// <summary>
-/// MainViewModel partial — submodule operations (init/update/sync/deinit
-/// and "Open as Repository"). All commands refresh branches after
-/// mutation so the sidebar reflects the new submodule state.
+/// MainViewModel partial — submodule operations (init/update/sync/deinit,
+/// add/remove/update-to-remote, and "Open as Repository"). Every command
+/// that mutates submodule state refreshes the sidebar in a <c>finally</c>
+/// block so a failed mutation still reflects whatever partial state git
+/// left on disk.
 /// </summary>
 public partial class MainViewModel
 {
@@ -18,56 +20,41 @@ public partial class MainViewModel
     /// whether the submodule is uninitialized or out-of-sync.
     /// </summary>
     [RelayCommand]
-    public async Task InitSubmoduleAsync(SubmoduleInfo? submodule)
-    {
-        if (SelectedRepository == null || submodule == null) return;
-
-        try
-        {
-            await BeginBusyAsync($"Initializing {submodule.Path}...");
-            await _gitService.InitAndUpdateSubmodulesAsync(
-                SelectedRepository.Path,
-                [submodule.Path],
-                recursive: false,
-                CurrentRepositoryToken);
-            await RefreshAfterSubmoduleMutationAsync();
-            StatusMessage = $"Initialized {submodule.Path}.";
-        }
-        catch (Exception ex)
-        {
-            await ReportOperationFailureAsync($"Init submodule {submodule.Path}", ex);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
+    public Task InitSubmoduleAsync(SubmoduleInfo? submodule) =>
+        RunSubmoduleInitUpdateAsync(submodule, verbProgressive: "Initializing", verbPast: "Initialized");
 
     /// <summary>
     /// Update a submodule to the commit recorded in the parent tree.
+    /// Thin alias for <see cref="InitSubmoduleAsync"/> — the underlying
+    /// <c>git submodule update --init</c> is idempotent — but the
+    /// distinct menu entry matches the two mental models users
+    /// actually have (init vs update to recorded).
     /// </summary>
     [RelayCommand]
-    public async Task UpdateSubmoduleAsync(SubmoduleInfo? submodule)
+    public Task UpdateSubmoduleAsync(SubmoduleInfo? submodule) =>
+        RunSubmoduleInitUpdateAsync(submodule, verbProgressive: "Updating", verbPast: "Updated");
+
+    private async Task RunSubmoduleInitUpdateAsync(SubmoduleInfo? submodule, string verbProgressive, string verbPast)
     {
         if (SelectedRepository == null || submodule == null) return;
 
         try
         {
-            await BeginBusyAsync($"Updating {submodule.Path}...");
+            await BeginBusyAsync($"{verbProgressive} {submodule.Path}...");
             await _gitService.InitAndUpdateSubmodulesAsync(
                 SelectedRepository.Path,
                 [submodule.Path],
                 recursive: false,
                 CurrentRepositoryToken);
-            await RefreshAfterSubmoduleMutationAsync();
-            StatusMessage = $"Updated {submodule.Path}.";
+            StatusMessage = $"{verbPast} {submodule.Path}.";
         }
         catch (Exception ex)
         {
-            await ReportOperationFailureAsync($"Update submodule {submodule.Path}", ex);
+            await ReportOperationFailureAsync($"{verbProgressive} submodule {submodule.Path}", ex);
         }
         finally
         {
+            await RefreshAfterSubmoduleMutationAsync();
             IsBusy = false;
         }
     }
@@ -89,7 +76,6 @@ public partial class MainViewModel
                 [],
                 recursive: true,
                 CurrentRepositoryToken);
-            await RefreshAfterSubmoduleMutationAsync();
             StatusMessage = "Submodules updated.";
         }
         catch (Exception ex)
@@ -98,6 +84,7 @@ public partial class MainViewModel
         }
         finally
         {
+            await RefreshAfterSubmoduleMutationAsync();
             IsBusy = false;
         }
     }
@@ -119,7 +106,6 @@ public partial class MainViewModel
                 [submodule.Path],
                 recursive: false,
                 CurrentRepositoryToken);
-            await RefreshAfterSubmoduleMutationAsync();
             StatusMessage = $"Synced {submodule.Path}.";
         }
         catch (Exception ex)
@@ -128,6 +114,7 @@ public partial class MainViewModel
         }
         finally
         {
+            await RefreshAfterSubmoduleMutationAsync();
             IsBusy = false;
         }
     }
@@ -160,12 +147,65 @@ public partial class MainViewModel
                 submodule.Path,
                 force,
                 CurrentRepositoryToken);
-            await RefreshAfterSubmoduleMutationAsync();
             StatusMessage = $"Deinitialized {submodule.Path}.";
         }
         catch (Exception ex)
         {
             await ReportOperationFailureAsync($"Deinit submodule {submodule.Path}", ex);
+        }
+        finally
+        {
+            await RefreshAfterSubmoduleMutationAsync();
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Treat the submodule like a standalone repository — add it to
+    /// Leaf's repo list (if not already there) and switch to it. A
+    /// no-op on uninitialized submodules because there's no repo on
+    /// disk yet.
+    /// </summary>
+    [RelayCommand]
+    public async Task OpenSubmoduleAsRepositoryAsync(SubmoduleInfo? submodule)
+    {
+        if (SelectedRepository == null || submodule == null) return;
+        if (!submodule.IsInitialized)
+        {
+            StatusMessage = $"{submodule.Path} is not initialized. Init it first.";
+            return;
+        }
+
+        try
+        {
+            await BeginBusyAsync($"Opening {submodule.Path}...");
+
+            var fullPath = Path.GetFullPath(Path.Combine(SelectedRepository.Path, submodule.Path));
+            if (!Directory.Exists(fullPath))
+            {
+                StatusMessage = $"Submodule directory not found on disk: {fullPath}";
+                return;
+            }
+
+            var existing = _repositoryService.FindRepository(fullPath);
+            RepositoryInfo target;
+            if (existing != null)
+            {
+                target = existing;
+            }
+            else
+            {
+                // No session token: SelectRepositoryAsync immediately
+                // rotates to a fresh session for the new repo.
+                target = await _gitService.GetRepositoryInfoFastAsync(fullPath);
+                _repositoryService.AddRepository(target);
+            }
+
+            await SelectRepositoryAsync(target);
+        }
+        catch (Exception ex)
+        {
+            await ReportOperationFailureAsync($"Open submodule {submodule.Path} as repo", ex);
         }
         finally
         {
@@ -196,7 +236,6 @@ public partial class MainViewModel
                 dialog.Path,
                 dialog.Branch,
                 CurrentRepositoryToken);
-            await RefreshAfterSubmoduleMutationAsync();
             StatusMessage = $"Submodule added at {dialog.Path}. Commit to finalize.";
         }
         catch (Exception ex)
@@ -205,6 +244,7 @@ public partial class MainViewModel
         }
         finally
         {
+            await RefreshAfterSubmoduleMutationAsync();
             IsBusy = false;
         }
     }
@@ -233,7 +273,6 @@ public partial class MainViewModel
                 SelectedRepository.Path,
                 submodule.Path,
                 CurrentRepositoryToken);
-            await RefreshAfterSubmoduleMutationAsync();
             StatusMessage = $"Updated {submodule.Path} to latest on {submodule.Branch}.";
         }
         catch (Exception ex)
@@ -242,6 +281,7 @@ public partial class MainViewModel
         }
         finally
         {
+            await RefreshAfterSubmoduleMutationAsync();
             IsBusy = false;
         }
     }
@@ -270,7 +310,6 @@ public partial class MainViewModel
                 SelectedRepository.Path,
                 submodule,
                 CurrentRepositoryToken);
-            await RefreshAfterSubmoduleMutationAsync();
             StatusMessage = $"Removed {submodule.Path}. Commit to finalize.";
         }
         catch (Exception ex)
@@ -279,6 +318,7 @@ public partial class MainViewModel
         }
         finally
         {
+            await RefreshAfterSubmoduleMutationAsync();
             IsBusy = false;
         }
     }
@@ -295,52 +335,5 @@ public partial class MainViewModel
         if (SelectedRepository == null) return;
         await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
         await RefreshAsync();
-    }
-
-    /// <summary>
-    /// Treat the submodule like a standalone repository — add it to
-    /// Leaf's repo list (if not already there) and switch to it. A
-    /// no-op on uninitialized submodules because there's no repo on
-    /// disk yet.
-    /// </summary>
-    [RelayCommand]
-    public async Task OpenSubmoduleAsRepositoryAsync(SubmoduleInfo? submodule)
-    {
-        if (SelectedRepository == null || submodule == null) return;
-        if (!submodule.IsInitialized)
-        {
-            StatusMessage = $"{submodule.Path} is not initialized. Init it first.";
-            return;
-        }
-
-        try
-        {
-            var fullPath = Path.GetFullPath(Path.Combine(SelectedRepository.Path, submodule.Path));
-            if (!Directory.Exists(fullPath))
-            {
-                StatusMessage = $"Submodule directory not found on disk: {fullPath}";
-                return;
-            }
-
-            var existing = _repositoryService.FindRepository(fullPath);
-            RepositoryInfo target;
-            if (existing != null)
-            {
-                target = existing;
-            }
-            else
-            {
-                // No session token: SelectRepositoryAsync immediately
-                // rotates to a fresh session for the new repo.
-                target = await _gitService.GetRepositoryInfoFastAsync(fullPath);
-                _repositoryService.AddRepository(target);
-            }
-
-            await SelectRepositoryAsync(target);
-        }
-        catch (Exception ex)
-        {
-            await ReportOperationFailureAsync($"Open submodule {submodule.Path} as repo", ex);
-        }
     }
 }

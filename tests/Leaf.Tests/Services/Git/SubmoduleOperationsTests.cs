@@ -1,5 +1,7 @@
 using FluentAssertions;
 using Leaf.Models;
+using Leaf.Services;
+using Leaf.Services.Git.Core;
 using Leaf.Services.Git.Operations;
 using Xunit;
 
@@ -55,14 +57,108 @@ public class SubmoduleOperationsTests
     }
 
     [Fact]
-    public void ParseStatus_OutOfSyncPrefix_MapsToOutOfSyncStatus()
+    public void ParseStatus_OutOfSyncPrefix_ShaIsWorkingNotRecorded()
     {
+        // For `+` prefix `git submodule status` prints the *working*
+        // commit; the recorded SHA is what the parent tree stores and
+        // only comes from `status --cached`. When no cached map is
+        // provided, RecordedSha must be empty rather than a duplicate
+        // of the working SHA — that was the pre-audit bug.
         const string output = "+1234567890123456789012345678901234567890 libs/foo (v1.2.3-4-gdeadbee)\n";
 
         var result = SubmoduleOperations.ParseSubmoduleStatusOutput(output, new Dictionary<string, SubmoduleOperations.ModuleConfigEntry>());
 
         result[0].Status.Should().Be(SubmoduleStatus.OutOfSync);
         result[0].IsDirty.Should().BeTrue();
+        result[0].WorkingSha.Should().Be("1234567890123456789012345678901234567890");
+        result[0].RecordedSha.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ParseStatus_OutOfSync_WithCachedMap_UsesMapForRecordedSha()
+    {
+        const string output = "+1111111111111111111111111111111111111111 libs/foo (v1)\n";
+        var cached = new Dictionary<string, string>
+        {
+            ["libs/foo"] = "2222222222222222222222222222222222222222",
+        };
+
+        var result = SubmoduleOperations.ParseSubmoduleStatusOutput(
+            output,
+            new Dictionary<string, SubmoduleOperations.ModuleConfigEntry>(),
+            cached);
+
+        result[0].WorkingSha.Should().Be("1111111111111111111111111111111111111111");
+        result[0].RecordedSha.Should().Be("2222222222222222222222222222222222222222");
+    }
+
+    [Fact]
+    public void ParseStatus_UpToDate_WithCachedMap_BothShasMatch()
+    {
+        // When working == recorded, both sources agree — the cached
+        // map takes precedence but produces the same value.
+        const string output = " aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa libs/foo (heads/main)\n";
+        var cached = new Dictionary<string, string>
+        {
+            ["libs/foo"] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        };
+
+        var result = SubmoduleOperations.ParseSubmoduleStatusOutput(
+            output,
+            new Dictionary<string, SubmoduleOperations.ModuleConfigEntry>(),
+            cached);
+
+        result[0].WorkingSha.Should().Be("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        result[0].RecordedSha.Should().Be("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    }
+
+    [Fact]
+    public void ParseStatus_UninitializedWithoutCachedMap_UsesLineShaAsRecorded()
+    {
+        // For `-` the line's SHA IS the recorded one (no working tree
+        // to report) — the fallback path must preserve that meaning.
+        const string output = "-abcabcabcabcabcabcabcabcabcabcabcabcabca libs/foo\n";
+
+        var result = SubmoduleOperations.ParseSubmoduleStatusOutput(
+            output,
+            new Dictionary<string, SubmoduleOperations.ModuleConfigEntry>());
+
+        result[0].Status.Should().Be(SubmoduleStatus.Uninitialized);
+        result[0].WorkingSha.Should().BeNull();
+        result[0].RecordedSha.Should().Be("abcabcabcabcabcabcabcabcabcabcabcabcabca");
+    }
+
+    [Fact]
+    public void ParseStatus_UnknownPrefix_FallsThroughToUpToDate()
+    {
+        // Defensive: a new git version introducing, say, 'X' should
+        // still produce a list entry rather than crash the sidebar.
+        // The log warning (not asserted here) is the signal to
+        // investigate.
+        const string output = "X1111111111111111111111111111111111111111 libs/foo\n";
+
+        var result = SubmoduleOperations.ParseSubmoduleStatusOutput(
+            output,
+            new Dictionary<string, SubmoduleOperations.ModuleConfigEntry>());
+
+        result.Should().HaveCount(1);
+        result[0].Status.Should().Be(SubmoduleStatus.UpToDate);
+    }
+
+    // ---- ParseRecordedShaByPath ------------------------------------------
+
+    [Fact]
+    public void ParseRecordedShaByPath_BuildsPathToShaMap()
+    {
+        const string cachedOutput =
+            " aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa libs/a\n" +
+            " bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb libs/b (heads/main)\n";
+
+        var result = SubmoduleOperations.ParseRecordedShaByPath(cachedOutput);
+
+        result.Should().HaveCount(2);
+        result["libs/a"].Should().Be("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        result["libs/b"].Should().Be("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     }
 
     [Fact]
@@ -210,5 +306,259 @@ public class SubmoduleOperationsTests
 
         result.Should().HaveCount(1);
         result.Should().ContainKey("libs/foo");
+    }
+
+    // ---- CLI argv construction (thin wrappers) ---------------------------
+    //
+    // These catch regressions in the exact git CLI shape each mutation
+    // emits — the whole point of wrapping git in code is to keep this
+    // invariant. Uses a recording runner; no real git process is spawned.
+
+    [Fact]
+    public async Task InitAndUpdateAsync_SinglePath_EmitsInitUpdateWithSeparator()
+    {
+        var runner = new RecordingRunner(_ => Ok());
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        await ops.InitAndUpdateAsync("/repo", ["libs/foo"], recursive: false);
+
+        runner.LastArgs.Should().Equal("submodule", "update", "--init", "--", "libs/foo");
+    }
+
+    [Fact]
+    public async Task InitAndUpdateAsync_NoPaths_NoSeparator()
+    {
+        var runner = new RecordingRunner(_ => Ok());
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        await ops.InitAndUpdateAsync("/repo", [], recursive: false);
+
+        runner.LastArgs.Should().Equal("submodule", "update", "--init");
+    }
+
+    [Fact]
+    public async Task InitAndUpdateAsync_Recursive_AddsFlagBeforeSeparator()
+    {
+        var runner = new RecordingRunner(_ => Ok());
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        await ops.InitAndUpdateAsync("/repo", ["libs/foo", "vendor/bar"], recursive: true);
+
+        runner.LastArgs.Should().Equal(
+            "submodule", "update", "--init", "--recursive", "--", "libs/foo", "vendor/bar");
+    }
+
+    [Fact]
+    public async Task SyncAsync_WithPathsAndRecursive_EmitsExpectedArgv()
+    {
+        var runner = new RecordingRunner(_ => Ok());
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        await ops.SyncAsync("/repo", ["libs/foo"], recursive: true);
+
+        runner.LastArgs.Should().Equal("submodule", "sync", "--recursive", "--", "libs/foo");
+    }
+
+    [Fact]
+    public async Task DeinitAsync_ForceFlag_EmitsForceAndSeparator()
+    {
+        var runner = new RecordingRunner(_ => Ok());
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        await ops.DeinitAsync("/repo", "libs/foo", force: true);
+
+        runner.LastArgs.Should().Equal("submodule", "deinit", "--force", "--", "libs/foo");
+    }
+
+    [Fact]
+    public async Task DeinitAsync_NoForce_OmitsForceFlag()
+    {
+        var runner = new RecordingRunner(_ => Ok());
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        await ops.DeinitAsync("/repo", "libs/foo", force: false);
+
+        runner.LastArgs.Should().Equal("submodule", "deinit", "--", "libs/foo");
+    }
+
+    [Fact]
+    public async Task AddAsync_WithBranch_EmitsBranchFlag()
+    {
+        var runner = new RecordingRunner(_ => Ok());
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        await ops.AddAsync("/repo", "https://example.com/repo.git", "libs/foo", "main");
+
+        runner.LastArgs.Should().Equal(
+            "submodule", "add", "-b", "main", "--", "https://example.com/repo.git", "libs/foo");
+    }
+
+    [Fact]
+    public async Task AddAsync_NoBranch_OmitsBranchFlag()
+    {
+        var runner = new RecordingRunner(_ => Ok());
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        await ops.AddAsync("/repo", "https://example.com/repo.git", "libs/foo", branch: null);
+
+        runner.LastArgs.Should().Equal(
+            "submodule", "add", "--", "https://example.com/repo.git", "libs/foo");
+    }
+
+    [Fact]
+    public async Task AddAsync_EmptyUrl_ThrowsBeforeInvokingRunner()
+    {
+        var runner = new RecordingRunner(_ => throw new InvalidOperationException("should not run"));
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        await ops.Invoking(o => o.AddAsync("/repo", "   ", "libs/foo", null))
+            .Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task UpdateToRemoteAsync_EmitsRemoteFlag()
+    {
+        var runner = new RecordingRunner(_ => Ok());
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        await ops.UpdateToRemoteAsync("/repo", "libs/foo");
+
+        runner.LastArgs.Should().Equal("submodule", "update", "--remote", "--", "libs/foo");
+    }
+
+    [Fact]
+    public async Task RemoveAsync_InitializedSubmodule_InvokesDeinitThenRmInOrder()
+    {
+        // Multi-step remove is the documented risk point — this test
+        // pins the exact sequence: deinit first, then `git rm`. The
+        // cache-dir delete happens between them but doesn't go through
+        // the CommandRunner, so it doesn't appear in the recorded argv.
+        var calls = new List<IReadOnlyList<string>>();
+        var runner = new RecordingRunner(args =>
+        {
+            calls.Add(args.ToList());
+            return Ok();
+        });
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        var submodule = new SubmoduleInfo
+        {
+            Name = "libs/foo",
+            Path = "libs/foo",
+            Url = "https://example.com/foo.git",
+            RecordedSha = "a".PadRight(40, 'a'),
+            Status = SubmoduleStatus.UpToDate,
+        };
+
+        await ops.RemoveAsync("/repo", submodule);
+
+        calls.Should().HaveCount(2);
+        calls[0].Should().Equal("submodule", "deinit", "--force", "--", "libs/foo");
+        calls[1].Should().Equal("rm", "-f", "--", "libs/foo");
+    }
+
+    [Fact]
+    public async Task RemoveAsync_UninitializedSubmodule_SkipsDeinitStep()
+    {
+        var calls = new List<IReadOnlyList<string>>();
+        var runner = new RecordingRunner(args =>
+        {
+            calls.Add(args.ToList());
+            return Ok();
+        });
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        var submodule = new SubmoduleInfo
+        {
+            Name = "libs/foo",
+            Path = "libs/foo",
+            Url = "https://example.com/foo.git",
+            RecordedSha = "a".PadRight(40, 'a'),
+            Status = SubmoduleStatus.Uninitialized,
+        };
+
+        await ops.RemoveAsync("/repo", submodule);
+
+        calls.Should().ContainSingle();
+        calls[0].Should().Equal("rm", "-f", "--", "libs/foo");
+    }
+
+    [Fact]
+    public async Task RemoveAsync_DeinitFails_ThrowsBeforeGitRm()
+    {
+        // Regression guard: the pre-audit version log-and-continue'd
+        // on deinit failure, leaving local config pointing at a cache
+        // dir we were about to delete. Now: fail fast.
+        var calls = new List<IReadOnlyList<string>>();
+        var runner = new RecordingRunner(args =>
+        {
+            calls.Add(args.ToList());
+            if (args.Count > 1 && args[1] == "deinit")
+            {
+                return new GitCommandResult(1, string.Empty, "deinit failed", Success: false);
+            }
+            return Ok();
+        });
+        var ops = new SubmoduleOperations(new StubContext(runner));
+
+        var submodule = new SubmoduleInfo
+        {
+            Name = "libs/foo",
+            Path = "libs/foo",
+            Url = "",
+            RecordedSha = "a".PadRight(40, 'a'),
+            Status = SubmoduleStatus.UpToDate,
+        };
+
+        await ops.Invoking(o => o.RemoveAsync("/repo", submodule))
+            .Should().ThrowAsync<InvalidOperationException>();
+        calls.Should().ContainSingle("git rm must not run after a failed deinit");
+    }
+
+    private static GitCommandResult Ok() => new(0, string.Empty, string.Empty, Success: true);
+
+    // Records the arguments of each invocation so tests can assert on
+    // the exact CLI shape. Shared with ConfigOperationsTests in spirit;
+    // duplicated here to keep the submodule test file self-contained.
+    private sealed class RecordingRunner : IGitCommandRunner
+    {
+        private readonly Func<IReadOnlyList<string>, GitCommandResult> _respond;
+
+        public RecordingRunner(Func<IReadOnlyList<string>, GitCommandResult> respond)
+        {
+            _respond = respond;
+        }
+
+        public IReadOnlyList<string> LastArgs { get; private set; } = [];
+
+        public Task<GitCommandResult> RunAsync(
+            string workingDirectory,
+            IReadOnlyList<string> arguments,
+            string? input = null,
+            string? credentialKey = null,
+            CancellationToken cancellationToken = default)
+        {
+            LastArgs = arguments;
+            return Task.FromResult(_respond(arguments));
+        }
+
+        public Task<GitCommandResult> RunAsync(
+            string workingDirectory,
+            GitCommand command,
+            CancellationToken cancellationToken = default)
+        {
+            return RunAsync(workingDirectory, command.ToArguments(), cancellationToken: cancellationToken);
+        }
+    }
+
+    // Stub context that exposes only the CommandRunner — the operations
+    // under test don't touch the parser or mapper.
+    private sealed class StubContext : IGitOperationContext
+    {
+        public StubContext(IGitCommandRunner runner) { CommandRunner = runner; }
+
+        public IGitCommandRunner CommandRunner { get; }
+        public IGitOutputParser OutputParser => throw new NotImplementedException();
+        public IGitErrorMapper ErrorMapper => throw new NotImplementedException();
     }
 }

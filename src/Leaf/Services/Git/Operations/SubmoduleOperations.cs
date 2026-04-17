@@ -33,13 +33,23 @@ internal class SubmoduleOperations
             return [];
         }
 
-        // `git submodule status` gives prefix+sha+path+describe per line.
-        // `config --file .gitmodules --list` gives us name/url/branch.
-        // Running both in parallel keeps the UI snappy even on repos
-        // with many submodules.
+        // Three parallel queries:
+        //  * `git submodule status` — prefix + *working-tree* SHA +
+        //    path + describe. For a `+` (out-of-sync) entry, the SHA
+        //    is the submodule HEAD, *not* what the parent records.
+        //  * `git submodule status --cached` — prefix + *recorded*
+        //    SHA + path. Joining on path gives us both numbers so the
+        //    sidebar can show accurate recorded-vs-working without a
+        //    per-submodule extra call.
+        //  * `config --file .gitmodules --list` — name/url/branch.
         var statusTask = _context.CommandRunner.RunAsync(
             repoPath,
             ["submodule", "status"],
+            cancellationToken: cancellationToken);
+
+        var cachedStatusTask = _context.CommandRunner.RunAsync(
+            repoPath,
+            ["submodule", "status", "--cached"],
             cancellationToken: cancellationToken);
 
         var configTask = _context.CommandRunner.RunAsync(
@@ -47,9 +57,10 @@ internal class SubmoduleOperations
             ["config", "--file", ".gitmodules", "--list"],
             cancellationToken: cancellationToken);
 
-        await Task.WhenAll(statusTask, configTask);
+        await Task.WhenAll(statusTask, cachedStatusTask, configTask);
 
         var statusResult = await statusTask;
+        var cachedResult = await cachedStatusTask;
         var configResult = await configTask;
 
         if (!statusResult.Success)
@@ -68,17 +79,56 @@ internal class SubmoduleOperations
             ? ParseGitmodulesConfig(configResult.StandardOutput)
             : new Dictionary<string, ModuleConfigEntry>(StringComparer.Ordinal);
 
-        return ParseSubmoduleStatusOutput(statusResult.StandardOutput, moduleConfig);
+        var recordedByPath = cachedResult.Success
+            ? ParseRecordedShaByPath(cachedResult.StandardOutput)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+
+        return ParseSubmoduleStatusOutput(statusResult.StandardOutput, moduleConfig, recordedByPath);
+    }
+
+    /// <summary>
+    /// Extract path → recorded-SHA from <c>git submodule status --cached</c>
+    /// output. The prefix character is irrelevant for the cached form
+    /// (it's always the parent's recorded commit), so we drop it.
+    /// </summary>
+    internal static Dictionary<string, string> ParseRecordedShaByPath(string output)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(output))
+            return map;
+
+        foreach (var rawLine in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = rawLine.TrimEnd('\r');
+            if (line.Length < 2) continue;
+
+            var rest = line[1..];
+            var firstSpace = rest.IndexOf(' ');
+            if (firstSpace <= 0) continue;
+
+            var sha = rest[..firstSpace];
+            var pathAndDescribe = rest[(firstSpace + 1)..];
+            var path = StripDescribe(pathAndDescribe).Replace('\\', '/');
+            map[path] = sha;
+        }
+        return map;
     }
 
     /// <summary>
     /// Parse the line-oriented output of <c>git submodule status</c>.
     /// Each line is: <c>&lt;prefix&gt;&lt;sha&gt; &lt;path&gt; [(describe)]</c>
     /// where <c>prefix</c> is one of <c>' '</c>, <c>'-'</c>, <c>'+'</c>,
-    /// <c>'U'</c>. Uninitialized entries use the recorded parent SHA
-    /// in the sha field (not a working-tree sha, because there is none).
+    /// <c>'U'</c>. The SHA in the line is the *working-tree* commit for
+    /// up-to-date/out-of-sync/conflicted entries and the *recorded*
+    /// parent commit for uninitialized entries. When the caller passes
+    /// a non-empty <paramref name="recordedByPath"/> map (produced by
+    /// a parallel <c>submodule status --cached</c> run), it is used as
+    /// the authoritative source for <see cref="SubmoduleInfo.RecordedSha"/>.
     /// </summary>
-    internal static List<SubmoduleInfo> ParseSubmoduleStatusOutput(string output, IReadOnlyDictionary<string, ModuleConfigEntry> moduleConfig)
+    internal static List<SubmoduleInfo> ParseSubmoduleStatusOutput(
+        string output,
+        IReadOnlyDictionary<string, ModuleConfigEntry> moduleConfig,
+        IReadOnlyDictionary<string, string>? recordedByPath = null)
     {
         var result = new List<SubmoduleInfo>();
         if (string.IsNullOrWhiteSpace(output))
@@ -109,45 +159,39 @@ internal class SubmoduleOperations
 
             var sha = rest[..firstSpace];
             var pathAndDescribe = rest[(firstSpace + 1)..];
-
-            string path;
-            string? describe = null;
-
-            var parenIdx = pathAndDescribe.IndexOf(" (");
-            if (parenIdx > 0 && pathAndDescribe.EndsWith(')'))
-            {
-                path = pathAndDescribe[..parenIdx];
-                describe = pathAndDescribe[(parenIdx + 2)..^1];
-            }
-            else
-            {
-                path = pathAndDescribe;
-            }
+            var (path, describe) = SplitPathAndDescribe(pathAndDescribe);
 
             // Normalize to forward slashes (git's native form); Windows
             // users still see the slashes git itself uses.
             path = path.Replace('\\', '/');
 
-            var status = prefix switch
-            {
-                ' ' => SubmoduleStatus.UpToDate,
-                '-' => SubmoduleStatus.Uninitialized,
-                '+' => SubmoduleStatus.OutOfSync,
-                'U' => SubmoduleStatus.Conflicted,
-                _ => SubmoduleStatus.UpToDate,
-            };
+            var status = MapPrefixToStatus(prefix, rawLine);
 
             byPath.TryGetValue(path, out var cfg);
 
-            // For uninitialized entries, the `sha` is the parent-recorded
-            // commit — not a working-tree sha. For everything else, the
-            // working-tree commit *is* the output, and the recorded
-            // commit comes from the parent's tree; since we don't have
-            // that here cheaply, treat them as the same unless we detect
-            // out-of-sync. Exception: `+` means they differ, but git
-            // doesn't print both in this form. Callers wanting both
-            // should use `git diff-index HEAD` on the parent instead.
             var isUninit = status == SubmoduleStatus.Uninitialized;
+            // Priority for RecordedSha:
+            //  1. The --cached map if available — authoritative.
+            //  2. Uninitialized entries: the non-cached form's SHA *is*
+            //     the recorded SHA (there is no working tree).
+            //  3. UpToDate entries: working == recorded by definition,
+            //     so the line's SHA is both.
+            //  4. OutOfSync / Conflicted without a cached map: the
+            //     line's SHA is the *working* commit, not the recorded
+            //     one — leave empty rather than guess wrong.
+            string recordedSha;
+            if (recordedByPath != null && recordedByPath.TryGetValue(path, out var r))
+            {
+                recordedSha = r;
+            }
+            else if (isUninit || status == SubmoduleStatus.UpToDate)
+            {
+                recordedSha = sha;
+            }
+            else
+            {
+                recordedSha = string.Empty;
+            }
 
             result.Add(new SubmoduleInfo
             {
@@ -155,7 +199,7 @@ internal class SubmoduleOperations
                 Path = path,
                 Url = cfg?.Url ?? string.Empty,
                 Branch = cfg?.Branch,
-                RecordedSha = sha,
+                RecordedSha = recordedSha,
                 WorkingSha = isUninit ? null : sha,
                 Describe = describe,
                 Status = status,
@@ -163,6 +207,54 @@ internal class SubmoduleOperations
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Split <c>"path (describe)"</c> into path + describe. Uses the
+    /// LAST <c>" ("</c> so a path that itself contains <c>" ("</c>
+    /// (legal on Linux) still round-trips correctly.
+    /// </summary>
+    private static (string path, string? describe) SplitPathAndDescribe(string pathAndDescribe)
+    {
+        var parenIdx = pathAndDescribe.LastIndexOf(" (");
+        if (parenIdx > 0 && pathAndDescribe.EndsWith(')'))
+        {
+            return (pathAndDescribe[..parenIdx], pathAndDescribe[(parenIdx + 2)..^1]);
+        }
+        return (pathAndDescribe, null);
+    }
+
+    /// <summary>
+    /// Just the path portion of a <c>"path (describe)"</c> tail — used
+    /// by <see cref="ParseRecordedShaByPath"/> where the describe is
+    /// not needed.
+    /// </summary>
+    private static string StripDescribe(string pathAndDescribe)
+        => SplitPathAndDescribe(pathAndDescribe).path;
+
+    /// <summary>
+    /// Map a <c>git submodule status</c> prefix character to
+    /// <see cref="SubmoduleStatus"/>. Unknown prefixes log a warning
+    /// and fall through to <see cref="SubmoduleStatus.UpToDate"/> so
+    /// a future git version adding a new marker doesn't crash the
+    /// sidebar — but we notice via logs.
+    /// </summary>
+    private static SubmoduleStatus MapPrefixToStatus(char prefix, string rawLine)
+    {
+        return prefix switch
+        {
+            ' ' => SubmoduleStatus.UpToDate,
+            '-' => SubmoduleStatus.Uninitialized,
+            '+' => SubmoduleStatus.OutOfSync,
+            'U' => SubmoduleStatus.Conflicted,
+            _ => UnknownFallback(prefix, rawLine),
+        };
+
+        static SubmoduleStatus UnknownFallback(char prefix, string rawLine)
+        {
+            Log.Warn("Submodule", $"Unknown status prefix '{prefix}' in line: {rawLine}");
+            return SubmoduleStatus.UpToDate;
+        }
     }
 
     /// <summary>
@@ -333,22 +425,20 @@ internal class SubmoduleOperations
     {
         if (submodule == null) throw new ArgumentNullException(nameof(submodule));
 
-        // Step 1 — deinit if initialized. Ignore failures here when
-        // the submodule is already uninitialized (common case for a
-        // user who registered but never updated); we still want to
-        // strip the registration below.
+        // Step 1 — deinit if initialized. A failed deinit means the
+        // local `.git/config` still holds `submodule.<name>.*` entries
+        // pointing at the cache dir we're about to blow away; silently
+        // continuing would leave the repo in a state where a later
+        // re-add with the same name fails non-obviously. So: fail
+        // loud. For already-uninitialized submodules deinit is a
+        // no-op we don't need to run at all.
         if (submodule.IsInitialized)
         {
-            var deinitResult = await _context.CommandRunner.RunAsync(
+            await RunAndThrowOnFailure(
                 repoPath,
                 ["submodule", "deinit", "--force", "--", submodule.Path],
-                cancellationToken: cancellationToken);
-            if (!deinitResult.Success)
-            {
-                Log.Warn("Submodule",
-                    $"Deinit step failed for '{submodule.Path}' (exit {deinitResult.ExitCode}); continuing with removal. " +
-                    (deinitResult.StandardError?.Trim() ?? string.Empty));
-            }
+                $"Deinit step of remove for submodule '{submodule.Path}' failed",
+                cancellationToken);
         }
 
         // Step 2 — clear the cached git data. Git writes submodule
@@ -393,7 +483,7 @@ internal class SubmoduleOperations
         {
             try
             {
-                DeleteTree(dir);
+                DeleteTree(dir, cancellationToken);
                 return;
             }
             catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < MaxAttempts)
@@ -415,12 +505,15 @@ internal class SubmoduleOperations
     /// Bottom-up recursive delete that clears the read-only attribute
     /// before each call. Git's pack files (<c>*.pack</c> / <c>*.idx</c>)
     /// ship with the read-only bit set on Windows; without this, the
-    /// built-in recursive delete aborts mid-tree on them.
+    /// built-in recursive delete aborts mid-tree on them. Checks the
+    /// cancellation token between entries so a repo-switch mid-delete
+    /// bails out promptly instead of churning through a large pack.
     /// </summary>
-    private static void DeleteTree(string dir)
+    private static void DeleteTree(string dir, CancellationToken cancellationToken)
     {
         foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.TopDirectoryOnly))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var attrs = File.GetAttributes(file);
             if ((attrs & FileAttributes.ReadOnly) != 0)
             {
@@ -430,7 +523,8 @@ internal class SubmoduleOperations
         }
         foreach (var child in Directory.EnumerateDirectories(dir))
         {
-            DeleteTree(child);
+            cancellationToken.ThrowIfCancellationRequested();
+            DeleteTree(child, cancellationToken);
         }
         Directory.Delete(dir, recursive: false);
     }

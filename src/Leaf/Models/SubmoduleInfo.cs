@@ -67,13 +67,29 @@ public sealed class SubmoduleInfo
     public bool IsInitialized => Status != SubmoduleStatus.Uninitialized;
 
     /// <summary>
-    /// True when the submodule's working tree points at a commit other
-    /// than the one recorded in the parent, or when it has unstaged
-    /// modifications. Drives the "dirty" indicator in the sidebar.
+    /// True when <see cref="Status"/> is <see cref="SubmoduleStatus.OutOfSync"/>
+    /// or <see cref="SubmoduleStatus.Conflicted"/>. Drives the amber
+    /// "DIRTY" badge in the sidebar.
     /// </summary>
+    /// <remarks>
+    /// Scope: this reflects the parent's view of the submodule —
+    /// "recorded commit differs from checked-out commit" or
+    /// "merge conflict on the submodule pointer". It does <b>not</b>
+    /// cover uncommitted modifications inside the submodule's own
+    /// working tree; detecting those requires an extra per-submodule
+    /// git call (<c>git status</c> inside each one) that Phase 1
+    /// deliberately skips to keep sidebar refresh cheap.
+    /// </remarks>
     public bool IsDirty =>
         Status == SubmoduleStatus.OutOfSync ||
         Status == SubmoduleStatus.Conflicted;
+
+    /// <summary>
+    /// Tooltip text for the sidebar entry: the clone URL when one is
+    /// configured, otherwise the path. Prevents the empty-tooltip
+    /// flicker on submodules with no entry in <c>.gitmodules</c>.
+    /// </summary>
+    public string TooltipText => string.IsNullOrEmpty(Url) ? Path : Url;
 }
 
 /// <summary>
