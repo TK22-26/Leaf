@@ -707,4 +707,15 @@ public interface IGitService
     Task RemoveSubmoduleAsync(string repoPath, SubmoduleInfo submodule, CancellationToken cancellationToken = default);
 
     #endregion
+
+    #region Reflog Operations
+
+    /// <summary>
+    /// Read the combined reflog for every ref in the repository.
+    /// Entries arrive newest-first; use <see cref="ReflogEntry.Timestamp"/>
+    /// for any re-sorting.
+    /// </summary>
+    Task<List<ReflogEntry>> GetReflogAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    #endregion
 }

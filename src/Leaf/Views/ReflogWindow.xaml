@@ -1,0 +1,520 @@
+<Window x:Class="Leaf.Views.ReflogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Leaf.ViewModels"
+        xmlns:models="clr-namespace:Leaf.Models"
+        xmlns:converters="clr-namespace:Leaf.Converters"
+        xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+        Title="Reflog"
+        Width="1060"
+        Height="680"
+        MinWidth="760"
+        MinHeight="440"
+        WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+
+        <!-- Operation-type badge colours -->
+        <SolidColorBrush x:Key="OpBrushCommit"     Color="#28A745" />
+        <SolidColorBrush x:Key="OpBrushAmend"      Color="#F59E0B" />
+        <SolidColorBrush x:Key="OpBrushCheckout"   Color="#3B82F6" />
+        <SolidColorBrush x:Key="OpBrushReset"      Color="#DC2626" />
+        <SolidColorBrush x:Key="OpBrushMerge"      Color="#8250DF" />
+        <SolidColorBrush x:Key="OpBrushRebase"     Color="#F59E0B" />
+        <SolidColorBrush x:Key="OpBrushCherryPick" Color="#C026D3" />
+        <SolidColorBrush x:Key="OpBrushRevert"     Color="#DC2626" />
+        <SolidColorBrush x:Key="OpBrushPull"       Color="#06B6D4" />
+        <SolidColorBrush x:Key="OpBrushPush"       Color="#06B6D4" />
+        <SolidColorBrush x:Key="OpBrushClone"      Color="#06B6D4" />
+        <SolidColorBrush x:Key="OpBrushBranch"     Color="#10B981" />
+        <SolidColorBrush x:Key="OpBrushStash"      Color="#64748B" />
+        <SolidColorBrush x:Key="OpBrushOther"      Color="#64748B" />
+
+        <Style x:Key="SectionCard" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="14,10" />
+        </Style>
+
+        <Style x:Key="FilterLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+        </Style>
+
+        <Style x:Key="ReflogRowStyle" TargetType="DataGridRow">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource LeafAccentSelectedBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ReflogCellStyle" TargetType="DataGridCell">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="18,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <Setter Property="BorderThickness" Value="0" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ReflogColumnHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="18,8" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+        </Style>
+
+        <Style x:Key="ReflogTextBase" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}" />
+        </Style>
+
+        <Style x:Key="ReflogTimestampStyle" TargetType="TextBlock" BasedOn="{StaticResource ReflogTextBase}">
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <!-- Small left nudge so the "2026..." doesn't press against
+                 the cell's left padding edge visually. -->
+            <Setter Property="Margin" Value="4,0,0,0" />
+        </Style>
+
+        <Style x:Key="ReflogRefStyle" TargetType="TextBlock" BasedOn="{StaticResource ReflogTextBase}">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        </Style>
+
+        <Style x:Key="ReflogMessageStyle" TargetType="TextBlock" BasedOn="{StaticResource ReflogTextBase}">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+
+        <Style x:Key="ReflogShaStyle" TargetType="TextBlock" BasedOn="{StaticResource ReflogTextBase}">
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="ToolTip" Value="Click to copy full SHA" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="TextDecorations" Value="Underline" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title card -->
+        <Border Grid.Row="0" Style="{StaticResource SectionCard}" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="Reflog"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           VerticalAlignment="Center"/>
+
+                <TextBlock Grid.Column="2"
+                           Text="{Binding StatusSummary}"
+                           FontSize="12"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!--
+            Single filters card that behaves like an expander. The
+            toolbar row (search + ref + op + clear) is always visible;
+            the chevron on the far right toggles the date-range row
+            below it, still inside the same border. No standalone card
+            below the toolbar.
+
+            We roll this manually instead of using a `Expander` control
+            because the built-in one puts the chevron on the wrong side
+            and its header can't host interactive controls (search box,
+            combo boxes) without forcing the toggle to swallow clicks.
+            The chevron-only ToggleButton here leaves the rest of the
+            header fully live.
+        -->
+        <Border Grid.Row="1" Style="{StaticResource SectionCard}" Padding="0" Margin="0,0,0,10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header row: search, filter combos, clear, chevron -->
+                <Grid Grid.Row="0" Margin="14,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Search" Style="{StaticResource FilterLabelStyle}"/>
+                        <TextBox x:Name="SearchBox"
+                                 Width="260"
+                                 Margin="0,0,14,0"
+                                 VerticalAlignment="Center"
+                                 TextChanged="SearchBox_TextChanged"
+                                 ToolTip="Search SHA, ref, or message (case-insensitive)"/>
+
+                        <TextBlock Text="Ref" Style="{StaticResource FilterLabelStyle}"/>
+                        <ComboBox Width="180"
+                                  Margin="0,0,14,0"
+                                  VerticalAlignment="Center"
+                                  ItemsSource="{Binding RefOptions}"
+                                  SelectedItem="{Binding SelectedRef}"/>
+
+                        <TextBlock Text="Operation" Style="{StaticResource FilterLabelStyle}"/>
+                        <ComboBox Width="180"
+                                  Margin="0,0,14,0"
+                                  VerticalAlignment="Center"
+                                  ItemsSource="{Binding OperationTypeOptions}"
+                                  SelectedItem="{Binding SelectedOperationType}"/>
+
+                        <Button Command="{Binding ClearFiltersCommand}"
+                                Padding="10,4"
+                                VerticalAlignment="Center"
+                                ToolTip="Reset every filter to its default">
+                            Clear
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Chevron toggle: rotates 180° when expanded. Uses
+                         FluentIcons ChevronDown for visual parity with
+                         the standard expander glyph elsewhere in Leaf. -->
+                    <ToggleButton x:Name="DateRangeToggle"
+                                  Grid.Column="1"
+                                  VerticalAlignment="Center"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  Cursor="Hand"
+                                  Padding="8,4"
+                                  ToolTip="Date range filter">
+                        <ic:SymbolIcon x:Name="ChevronGlyph"
+                                       Symbol="ChevronDown"
+                                       FontSize="12"
+                                       IconVariant="Regular"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       RenderTransformOrigin="0.5,0.5">
+                            <ic:SymbolIcon.RenderTransform>
+                                <RotateTransform x:Name="ChevronRotate" Angle="0"/>
+                            </ic:SymbolIcon.RenderTransform>
+                        </ic:SymbolIcon>
+                        <!--
+                            Storyboards on the toggle drive three things at
+                            once when the user toggles: the chevron rotation,
+                            the body's MaxHeight (so the card grows/shrinks
+                            in place), and the body's Opacity (so the
+                            content fades rather than snaps).
+                            60px is a generous upper bound for the single-
+                            row DatePicker content — WPF ignores MaxHeight
+                            once the content has laid out naturally, so
+                            animating to that value effectively unlocks
+                            the row to its natural size.
+                        -->
+                        <ToggleButton.Triggers>
+                            <EventTrigger RoutedEvent="ToggleButton.Checked">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ChevronRotate"
+                                                         Storyboard.TargetProperty="Angle"
+                                                         To="180" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="DateRangeBody"
+                                                         Storyboard.TargetProperty="MaxHeight"
+                                                         To="60" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="DateRangeBody"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.18"
+                                                         BeginTime="0:0:0.05"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="ToggleButton.Unchecked">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ChevronRotate"
+                                                         Storyboard.TargetProperty="Angle"
+                                                         To="0" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="DateRangeBody"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.10"/>
+                                        <DoubleAnimation Storyboard.TargetName="DateRangeBody"
+                                                         Storyboard.TargetProperty="MaxHeight"
+                                                         To="0" Duration="0:0:0.18"
+                                                         BeginTime="0:0:0.05"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </ToggleButton.Triggers>
+                    </ToggleButton>
+                </Grid>
+
+                <!--
+                    Expanded body, still inside the same card. Starts
+                    collapsed (MaxHeight=0, Opacity=0); the toggle's
+                    storyboards animate both properties. ClipToBounds
+                    keeps partially-animated content from spilling above
+                    the divider mid-transition.
+                -->
+                <Border x:Name="DateRangeBody"
+                        Grid.Row="1"
+                        MaxHeight="0"
+                        Opacity="0"
+                        ClipToBounds="True"
+                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="0,1,0,0"
+                        Padding="14,10">
+                    <!--
+                        Symmetric 6px gap on both sides of each label —
+                        matches how "From" sits next to Picker1 so "To"
+                        reads the same way visually.
+                    -->
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="From" Style="{StaticResource FilterLabelStyle}"/>
+                        <DatePicker Width="140"
+                                    Margin="0,0,6,0"
+                                    VerticalAlignment="Center"
+                                    SelectedDate="{Binding StartDate}"/>
+
+                        <TextBlock Text="To" Style="{StaticResource FilterLabelStyle}"/>
+                        <DatePicker Width="140"
+                                    VerticalAlignment="Center"
+                                    SelectedDate="{Binding EndDate}"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Entries card -->
+        <Border Grid.Row="2"
+                Style="{StaticResource SectionCard}"
+                Padding="0"
+                ClipToBounds="True">
+            <DataGrid x:Name="EntriesGrid"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      CanUserReorderColumns="True"
+                      CanUserSortColumns="True"
+                      HeadersVisibility="Column"
+                      IsReadOnly="True"
+                      SelectionMode="Single"
+                      SelectionUnit="FullRow"
+                      ItemsSource="{Binding Entries}"
+                      SelectedItem="{Binding SelectedEntry}"
+                      GridLinesVisibility="None"
+                      RowHeaderWidth="0"
+                      Background="Transparent"
+                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                      BorderThickness="0"
+                      RowStyle="{StaticResource ReflogRowStyle}"
+                      CellStyle="{StaticResource ReflogCellStyle}"
+                      ColumnHeaderStyle="{StaticResource ReflogColumnHeaderStyle}">
+                <DataGrid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Checkout (detached HEAD)"
+                                  Command="{Binding CheckoutCommand}"/>
+                        <MenuItem Header="Reset current branch to here">
+                            <MenuItem Header="Soft (keep index + working tree)"
+                                      Command="{Binding ResetSoftCommand}"/>
+                            <MenuItem Header="Mixed (keep working tree, reset index)"
+                                      Command="{Binding ResetMixedCommand}"/>
+                            <MenuItem Header="Hard (discard index + working tree)"
+                                      Command="{Binding ResetHardCommand}"
+                                      Foreground="#DC2626"/>
+                        </MenuItem>
+                        <Separator/>
+                        <MenuItem Header="Create branch here..."
+                                  Command="{Binding CreateBranchHereCommand}"/>
+                        <MenuItem Header="Copy hash"
+                                  Command="{Binding CopyHashCommand}"/>
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
+                <DataGrid.Columns>
+                    <!--
+                        When: MinWidth sized to the "2026-04-17 12:16"
+                        render plus cell padding, no extra slack. Binds
+                        to LocalTime so the display is in the viewing
+                        user's timezone rather than whatever TZ the op
+                        was recorded in.
+                    -->
+                    <DataGridTemplateColumn Header="When" Width="SizeToCells" MinWidth="140" SortMemberPath="Timestamp">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding LocalTime, StringFormat='yyyy-MM-dd HH:mm'}"
+                                           Style="{StaticResource ReflogTimestampStyle}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!--
+                        Operation: fixed-width pill so every row's badge
+                        lines up regardless of word length. Text centred
+                        inside. The column itself is tight — no extra
+                        slack beyond what the pill needs.
+                    -->
+                    <DataGridTemplateColumn Header="Operation" Width="SizeToCells" MinWidth="96" SortMemberPath="OperationType">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border x:Name="OpBadge"
+                                        Width="90"
+                                        Margin="4,0,4,0"
+                                        Padding="0,2"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        CornerRadius="3"
+                                        Background="{StaticResource OpBrushOther}">
+                                    <TextBlock Text="{Binding OperationType}"
+                                               FontSize="10"
+                                               FontWeight="SemiBold"
+                                               Foreground="White"
+                                               HorizontalAlignment="Center"
+                                               TextAlignment="Center"/>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Commit">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushCommit}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Amend">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushAmend}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Checkout">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushCheckout}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Reset">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushReset}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Merge">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushMerge}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Rebase">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushRebase}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="CherryPick">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushCherryPick}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Revert">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushRevert}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Pull">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushPull}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Push">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushPush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Clone">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushClone}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Branch">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushBranch}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OperationType}" Value="Stash">
+                                        <Setter TargetName="OpBadge" Property="Background" Value="{StaticResource OpBrushStash}"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="SHA" Width="SizeToCells" MinWidth="110" SortMemberPath="Sha">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding ShortSha}"
+                                           Tag="{Binding Sha}"
+                                           Style="{StaticResource ReflogShaStyle}"
+                                           PreviewMouseLeftButtonDown="ShaCell_PreviewMouseLeftButtonDown"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!--
+                        Ref: wrapped in a Border with right-margin so the
+                        trimmed text doesn't butt up against the Message
+                        column's first character. MaxWidth on the
+                        TextBlock keeps overly long refs under control.
+                    -->
+                    <DataGridTemplateColumn Header="Ref" Width="SizeToCells" MinWidth="140" SortMemberPath="Ref">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Ref}"
+                                           MaxWidth="280"
+                                           Margin="0,0,12,0"
+                                           Style="{StaticResource ReflogRefStyle}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="Message" Width="*" MinWidth="200" SortMemberPath="Message">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Message}"
+                                           Style="{StaticResource ReflogMessageStyle}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- Footer -->
+        <Grid Grid.Row="3" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                       Text="Click a SHA to copy it. Right-click an entry for actions."
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                       FontSize="11"/>
+
+            <Button Grid.Column="1"
+                    Padding="16,6"
+                    IsCancel="True"
+                    Click="CloseButton_Click">
+                Close
+            </Button>
+        </Grid>
+    </Grid>
+</Window>

@@ -166,4 +166,7 @@ public class FakeGitService : IGitService
     public Task AddSubmoduleAsync(string repoPath, string url, string path, string? branch, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task UpdateSubmoduleToRemoteAsync(string repoPath, string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task RemoveSubmoduleAsync(string repoPath, SubmoduleInfo submodule, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    // Reflog operations
+    public Task<List<ReflogEntry>> GetReflogAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new List<ReflogEntry>());
 }
