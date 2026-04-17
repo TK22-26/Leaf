@@ -98,43 +98,115 @@ public class ConflictMarkerParserTests
     }
 
     [Fact]
-    public void Parse_NestedOpenMarker_Throws()
+    public void Parse_NestedOpenMarker_InnerBecomesTheRealBlock()
     {
+        // A second "<<<<<<<" before the outer block's base marker means the outer line
+        // was content; the real conflict starts at the inner opener.
         var text =
-            "<<<<<<< ours\n" +
-            "ours\n" +
-            "<<<<<<< nested\n" + // should fail fast
+            "<<<<<<< outer-looks-like-opener\n" +  // content
+            "ours-ish\n" +
+            "<<<<<<< real\n" +                      // real conflict starts here
+            "real-ours\n" +
             "||||||| base\n" +
+            "real-base\n" +
             "=======\n" +
-            "theirs\n" +
+            "real-theirs\n" +
             ">>>>>>> theirs\n";
 
-        var act = () => ConflictMarkerParser.Parse(text);
-        act.Should().Throw<MergeEngineException>().WithMessage("*nested*");
+        var result = ConflictMarkerParser.Parse(text);
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts[0].MarkedRange.StartLine.Should().Be(3);
+        result.Conflicts[0].OursLines.Should().Equal("real-ours");
+        result.Conflicts[0].BaseLines.Should().Equal("real-base");
     }
 
     [Fact]
-    public void Parse_MissingBaseMarker_Throws()
+    public void Parse_MissingBaseMarker_TreatsOpenAsContent()
     {
+        // A line starting with <<<<<<< but not followed by ||||||| is just content.
+        // Any file that documents conflict markers (tutorials, CHANGELOGs) must not
+        // crash the merge engine.
         var text = "<<<<<<< ours\nours\n=======\ntheirs\n>>>>>>> theirs\n";
-        var act = () => ConflictMarkerParser.Parse(text);
-        act.Should().Throw<MergeEngineException>().WithMessage("*|||||||*");
+        var result = ConflictMarkerParser.Parse(text);
+        result.Conflicts.Should().BeEmpty();
     }
 
     [Fact]
-    public void Parse_MissingSeparator_Throws()
+    public void Parse_MissingSeparator_TreatsOpenAsContent()
     {
         var text = "<<<<<<< ours\nours\n||||||| base\nbase\n>>>>>>> theirs\n";
-        var act = () => ConflictMarkerParser.Parse(text);
-        act.Should().Throw<MergeEngineException>();
+        var result = ConflictMarkerParser.Parse(text);
+        result.Conflicts.Should().BeEmpty();
     }
 
     [Fact]
-    public void Parse_StrayCloseMarker_Throws()
+    public void Parse_StrayCloseMarker_TreatedAsContent()
     {
         var text = "context\n>>>>>>> theirs\nmore\n";
-        var act = () => ConflictMarkerParser.Parse(text);
-        act.Should().Throw<MergeEngineException>().WithMessage("*stray marker*");
+        var result = ConflictMarkerParser.Parse(text);
+        result.Conflicts.Should().BeEmpty();
+        result.OutputLines.Should().Equal("context", ">>>>>>> theirs", "more");
+    }
+
+    [Fact]
+    public void Parse_UserContentWithLookalikeOpenMarkerAndNoConflict_TreatedAsContent()
+    {
+        // Documentation about git conflict markers must not be misidentified.
+        var text = "Here is how a conflict looks:\n<<<<<<< HEAD\nfoo\n=======\nbar\n>>>>>>> feature\n";
+        var result = ConflictMarkerParser.Parse(text);
+        result.Conflicts.Should().BeEmpty();
+        result.OutputLines.Should().HaveCount(6);
+    }
+
+    [Fact]
+    public void Parse_UserContentWithLookalikeOpenFollowedByRealConflict_OnlyRealConflictCaptured()
+    {
+        // The first "<<<<<<<" is documentation; the second starts a real conflict.
+        var text =
+            "<<<<<<< documentation line\n" + // line 1: content, no base/separator follows
+            "other content\n" +               // line 2
+            "<<<<<<< ours\n" +                // line 3: real conflict opens
+            "ours-line\n" +
+            "||||||| base\n" +
+            "base-line\n" +
+            "=======\n" +
+            "theirs-line\n" +
+            ">>>>>>> theirs\n";
+
+        var result = ConflictMarkerParser.Parse(text);
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts[0].MarkedRange.StartLine.Should().Be(3);
+        result.Conflicts[0].OursLines.Should().Equal("ours-line");
+    }
+
+    [Fact]
+    public void Parse_CapturesLabelsFromOpenBaseAndCloseMarkers()
+    {
+        var text =
+            "<<<<<<< HEAD\n" +
+            "ours\n" +
+            "||||||| merged common ancestors\n" +
+            "base\n" +
+            "=======\n" +
+            "theirs\n" +
+            ">>>>>>> feature/x\n";
+
+        var result = ConflictMarkerParser.Parse(text);
+        var c = result.Conflicts.Single();
+        c.OursLabel.Should().Be("HEAD");
+        c.BaseLabel.Should().Be("merged common ancestors");
+        c.TheirsLabel.Should().Be("feature/x");
+    }
+
+    [Fact]
+    public void Parse_NoLabels_ReturnsNullLabels()
+    {
+        var text = "<<<<<<<\nours\n|||||||\nbase\n=======\ntheirs\n>>>>>>>\n";
+        var result = ConflictMarkerParser.Parse(text);
+        var c = result.Conflicts.Single();
+        c.OursLabel.Should().BeNull();
+        c.BaseLabel.Should().BeNull();
+        c.TheirsLabel.Should().BeNull();
     }
 
     [Fact]

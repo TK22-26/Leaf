@@ -167,6 +167,104 @@ public class GitMergeFileEngineTests
     }
 
     [Fact]
+    public async Task Merge_RepeatedContentAcrossConflicts_AssignsCorrectInputRanges()
+    {
+        // File with repeated blank lines and boilerplate. The naive "forward-search for
+        // first match" approach could misattribute conflict #2's base slice to a blank
+        // line from conflict #1's context. The lock-step walker gets this right.
+        var engine = CreateEngine();
+        const string baseText =
+            "header\n" +
+            "\n" +
+            "section-a\n" +
+            "\n" +
+            "shared\n" +
+            "\n" +
+            "section-b\n" +
+            "\n" +
+            "footer\n";
+        const string oursText =
+            "header\n" +
+            "\n" +
+            "section-a-ours\n" +
+            "\n" +
+            "shared\n" +
+            "\n" +
+            "section-b-ours\n" +
+            "\n" +
+            "footer\n";
+        const string theirsText =
+            "header\n" +
+            "\n" +
+            "section-a-theirs\n" +
+            "\n" +
+            "shared\n" +
+            "\n" +
+            "section-b-theirs\n" +
+            "\n" +
+            "footer\n";
+
+        var doc = await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+
+        doc.ConflictCount.Should().Be(2);
+        var c1 = doc.Ranges[0];
+        var c2 = doc.Ranges[1];
+
+        // First conflict covers base line 3 ("section-a"), second covers line 7 ("section-b").
+        c1.Base.StartLine.Should().Be(3);
+        c1.BaseLines.Should().Equal("section-a");
+        c2.Base.StartLine.Should().Be(7);
+        c2.BaseLines.Should().Equal("section-b");
+
+        // Same for ours/theirs.
+        c1.OursLines.Should().Equal("section-a-ours");
+        c2.OursLines.Should().Equal("section-b-ours");
+        c1.TheirsLines.Should().Equal("section-a-theirs");
+        c2.TheirsLines.Should().Equal("section-b-theirs");
+    }
+
+    [Fact]
+    public async Task Merge_UserContentWithLookalikeOpenMarker_NotMisidentified()
+    {
+        // A clean auto-merge where the file happens to contain a literal "<<<<<<<" line
+        // must not crash the parser. The result must contain the lookalike line verbatim.
+        var engine = CreateEngine();
+        const string baseText =
+            "line1\n" +
+            "<<<<<<< documentation\n" +
+            "line3\n";
+        const string oursText =
+            "line1\n" +
+            "<<<<<<< documentation\n" +
+            "line3-modified-by-ours\n";
+        const string theirsText = baseText;
+
+        var doc = await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+        doc.HasConflicts.Should().BeFalse();
+        doc.InitialMergedText.Should().Contain("<<<<<<< documentation");
+    }
+
+    [Fact]
+    public async Task Merge_CustomLabels_RoundTripThroughRangeModel()
+    {
+        var engine = CreateEngine();
+        const string baseText = "a\nb\nc\n";
+        const string oursText = "a\nours-b\nc\n";
+        const string theirsText = "a\ntheirs-b\nc\n";
+
+        var doc = await engine.MergeAsync(
+            "f.txt", baseText, oursText, theirsText,
+            oursLabel: "HEAD",
+            theirsLabel: "feature/x",
+            baseLabel: "common");
+
+        var range = doc.Ranges.Single();
+        range.OursLabel.Should().Be("HEAD");
+        range.TheirsLabel.Should().Be("feature/x");
+        range.BaseLabel.Should().Be("common");
+    }
+
+    [Fact]
     public async Task Merge_CleansUpTempDirectory()
     {
         // We can't easily assert the specific temp dir is deleted (it's unique & private),

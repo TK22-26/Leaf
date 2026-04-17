@@ -164,7 +164,7 @@ public class MergeDocumentComposeTests
     }
 
     [Fact]
-    public void Compose_NoTrailingNewline_IsPreserved()
+    public void Compose_NoTrailingNewline_IsPreserved_WithoutAddedNewline()
     {
         var doc = DocumentWithSingleConflict(hasTrailingNewline: false);
         var composed = doc.ComposeResolvedText(new Dictionary<int, ResolutionState>
@@ -172,9 +172,78 @@ public class MergeDocumentComposeTests
             [0] = ResolutionState.AcceptTheirs.Instance,
         });
 
-        // Without trailing newline, the final line has no \n but we still end lines during substitution.
-        // We only suppress the trailing newline on the very last line.
-        composed.Should().EndWith("context_after\n");
+        // Byte-for-byte — no trailing newline added. Matches POSIX + `git merge` behaviour.
+        composed.Should().Be("context_before\ntheirs-1\ncontext_after");
+    }
+
+    [Fact]
+    public void Compose_Manual_CRLFInput_DoesNotDoubleConvertOnCRLFDoc()
+    {
+        // User pastes Windows-clipboard text ("\r\n") into a Manual resolution on a file
+        // that already uses CRLF. The final CRLF-restoration pass must not turn each
+        // "\r\n" into "\r\r\n".
+        var doc = DocumentWithSingleConflict(lineEnding: "\r\n");
+        var composed = doc.ComposeResolvedText(new Dictionary<int, ResolutionState>
+        {
+            [0] = new ResolutionState.Manual("manual line 1\r\nmanual line 2\r\n"),
+        });
+
+        composed.Should().NotContain("\r\r");
+        composed.Should().Be("context_before\r\nmanual line 1\r\nmanual line 2\r\ncontext_after\r\n");
+    }
+
+    [Fact]
+    public void Compose_Unresolved_RoundTripsCustomLabels()
+    {
+        // When the user saves with unresolved conflicts, the zdiff3 markers that go
+        // back to disk must carry the original branch labels, not hardcoded "ours"/"theirs".
+        var mergedLines = new[]
+        {
+            "context",
+            "<<<<<<< HEAD",
+            "ours-line",
+            "||||||| merged common ancestor",
+            "base-line",
+            "=======",
+            "theirs-line",
+            ">>>>>>> feature/x",
+        };
+        var mergedText = string.Join("\n", mergedLines) + "\n";
+        var range = new ModifiedBaseRange(
+            0,
+            new LineRange(2, 3),
+            new LineRange(2, 3),
+            new LineRange(2, 3),
+            new LineRange(2, 9),
+            new[] { "base-line" },
+            new[] { "ours-line" },
+            new[] { "theirs-line" },
+            Array.Empty<DetailedLineRangeMapping>(),
+            Array.Empty<DetailedLineRangeMapping>(),
+            true, true,
+            OursLabel: "HEAD",
+            BaseLabel: "merged common ancestor",
+            TheirsLabel: "feature/x");
+
+        var doc = new MergeDocument(
+            "t.txt", string.Empty, string.Empty, string.Empty,
+            mergedText,
+            Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(),
+            mergedLines,
+            new[] { range },
+            "\n", true);
+
+        // States supplied but for a different index — our range remains Unresolved.
+        var composed = doc.ComposeResolvedText(new Dictionary<int, ResolutionState>
+        {
+            [99] = ResolutionState.AcceptOurs.Instance,
+        });
+
+        composed.Should().Contain("<<<<<<< HEAD");
+        composed.Should().Contain("||||||| merged common ancestor");
+        composed.Should().Contain(">>>>>>> feature/x");
+        composed.Should().NotContain("<<<<<<< ours");
+        composed.Should().NotContain(">>>>>>> theirs");
     }
 
     [Fact]

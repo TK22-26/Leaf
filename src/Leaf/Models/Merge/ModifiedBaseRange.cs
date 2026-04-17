@@ -29,6 +29,13 @@ namespace Leaf.Models.Merge;
 /// (i.e. both sides inserted overlapping content). <c>false</c> when the sides can
 /// be combined commutatively.
 /// </param>
+/// <param name="OursLabel">
+/// Label from the opening conflict marker (e.g. <c>"HEAD"</c>, <c>"ours"</c>, or a branch
+/// name). <c>null</c> if the marker had no label. Round-tripped verbatim when re-emitting
+/// unresolved conflict markers so custom labels aren't silently overwritten.
+/// </param>
+/// <param name="BaseLabel">Label from the <c>|||||||</c> base marker.</param>
+/// <param name="TheirsLabel">Label from the closing <c>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</c> marker.</param>
 public sealed record ModifiedBaseRange(
     int Index,
     LineRange Base,
@@ -41,4 +48,7 @@ public sealed record ModifiedBaseRange(
     IReadOnlyList<DetailedLineRangeMapping> OursDiffs,
     IReadOnlyList<DetailedLineRangeMapping> TheirsDiffs,
     bool IsConflicting,
-    bool IsOrderRelevant);
+    bool IsOrderRelevant,
+    string? OursLabel = null,
+    string? BaseLabel = null,
+    string? TheirsLabel = null);

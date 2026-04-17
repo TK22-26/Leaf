@@ -100,7 +100,6 @@ public sealed class GitMergeFileEngine : IMergeEngine
 
             var args = BuildGitArgs(
                 oursPath, basePath, theirsPath,
-                ignoreWhitespace,
                 oursLabel ?? "ours",
                 baseLabel ?? "base",
                 theirsLabel ?? "theirs");
@@ -123,7 +122,7 @@ public sealed class GitMergeFileEngine : IMergeEngine
             var mergedLf = result.StandardOutput;
             var parseResult = ConflictMarkerParser.Parse(mergedLf);
 
-            var ranges = BuildRanges(parseResult.Conflicts, baseLines, oursLines, theirsLines);
+            var ranges = BuildRanges(parseResult, baseLines, oursLines, theirsLines);
 
             return new MergeDocument(
                 filePath,
@@ -141,16 +140,19 @@ public sealed class GitMergeFileEngine : IMergeEngine
         }
         finally
         {
-            TryDeleteTempDir(tempDir);
+            // Cleanup must never throw. Fire-and-forget to a background task so the
+            // 50-150ms retry ladder doesn't block the caller's async path if the
+            // first delete attempt hits a transient file lock (AV, indexer).
+            // The task itself catches and logs everything.
+            _ = TryDeleteTempDirAsync(tempDir);
         }
     }
 
     private static IReadOnlyList<string> BuildGitArgs(
         string oursPath, string basePath, string theirsPath,
-        bool ignoreWhitespace,
         string oursLabel, string baseLabel, string theirsLabel)
     {
-        var args = new List<string>(16)
+        return new[]
         {
             // Belt-and-braces: ignore any repo-level autocrlf that could silently
             // convert output line endings and break ConflictMarkerParser.
@@ -162,56 +164,74 @@ public sealed class GitMergeFileEngine : IMergeEngine
             "-L", oursLabel,
             "-L", baseLabel,
             "-L", theirsLabel,
+            oursPath, basePath, theirsPath,
         };
-        // Whitespace-sensitivity is handled upfront in MergeAsync; merge-file itself has no such flag.
-        _ = ignoreWhitespace;
-        args.Add(oursPath);
-        args.Add(basePath);
-        args.Add(theirsPath);
-        return args;
     }
 
     /// <summary>
-    /// Walk the merged output in lock-step with the three input cursors, assigning
-    /// real line ranges to each conflict block. The ours/theirs cursors advance as
-    /// we encounter auto-merged lines (which are always verbatim from at least one
-    /// of those sides). The base cursor is located via content match against the
-    /// conflict's base lines, starting from the last known position.
+    /// Walk the merged output lines in lock-step with the three input cursors,
+    /// assigning exact line ranges to each conflict block.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The key invariant: every line in the merged output between conflict blocks is
+    /// a line that appears verbatim in <em>both</em> <c>oursLines</c> and
+    /// <c>theirsLines</c> at their respective current cursors (auto-merged context)
+    /// or in exactly one side (a one-sided change auto-resolved by git). The three
+    /// cursors advance accordingly for each merged-output line.
+    /// </para>
+    /// <para>
+    /// Inside a conflict block, ours/theirs/base content is reported by the parser
+    /// and appears verbatim at the current cursors of each input. We slice directly
+    /// at the cursor position — no search, no ambiguity on repeated content.
+    /// </para>
+    /// <para>
+    /// If the walk diverges from the inputs at any point (invariant broken), we throw
+    /// <see cref="MergeEngineException"/> rather than silently producing wrong ranges.
+    /// Failing loudly is a non-negotiable part of the engineering-software policy.
+    /// </para>
+    /// </remarks>
     private static IReadOnlyList<ModifiedBaseRange> BuildRanges(
-        IReadOnlyList<ConflictMarkerParser.ParsedConflict> conflicts,
+        ConflictMarkerParser.ParseResult parseResult,
         IReadOnlyList<string> baseLines,
         IReadOnlyList<string> oursLines,
         IReadOnlyList<string> theirsLines)
     {
+        var conflicts = parseResult.Conflicts;
         if (conflicts.Count == 0)
         {
             return Array.Empty<ModifiedBaseRange>();
         }
 
+        var mergedLines = parseResult.OutputLines;
         var ranges = new List<ModifiedBaseRange>(conflicts.Count);
-        int oursCursor = 0;   // 0-based index into oursLines
-        int theirsCursor = 0; // 0-based index into theirsLines
-        int baseCursor = 0;   // 0-based index into baseLines
 
-        // We don't walk the output literally (we already parsed it); instead we rely on
-        // the invariant that inside a conflict block, the ours/theirs/base content is
-        // a contiguous verbatim slice of the respective input. Between blocks, auto-merged
-        // lines appear in both ours and theirs in some order — we advance cursors by
-        // matching from the current position.
-        for (int i = 0; i < conflicts.Count; i++)
+        int outputIdx = 0;    // 0-based cursor into mergedLines
+        int oursCursor = 0;   // 0-based cursor into oursLines
+        int theirsCursor = 0; // 0-based cursor into theirsLines
+        int baseCursor = 0;   // 0-based cursor into baseLines
+
+        foreach (var conflict in conflicts)
         {
-            var conflict = conflicts[i];
+            // Walk auto-merged output lines between the previous position and this conflict's start.
+            int conflictStart = conflict.MarkedRange.StartLine - 1;
+            while (outputIdx < conflictStart)
+            {
+                AdvanceCursorsForAutoMergedLine(
+                    mergedLines[outputIdx], oursLines, theirsLines, baseLines,
+                    ref oursCursor, ref theirsCursor, ref baseCursor,
+                    outputIdx + 1);
+                outputIdx++;
+            }
 
-            // Ours range: find conflict.OursLines as a contiguous slice in oursLines starting at oursCursor.
-            var oursRange = LocateSlice(oursLines, oursCursor, conflict.OursLines);
-            // Theirs range: same for theirsLines starting at theirsCursor.
-            var theirsRange = LocateSlice(theirsLines, theirsCursor, conflict.TheirsLines);
-            // Base range: same for baseLines starting at baseCursor.
-            var baseRange = LocateSlice(baseLines, baseCursor, conflict.BaseLines);
+            // Conflict block: the cursors are now positioned at the start of this region
+            // in each input. Validate and carve out ranges directly.
+            var oursRange = CarveSlice(oursLines, oursCursor, conflict.OursLines, "ours", conflict.MarkedRange.StartLine);
+            var theirsRange = CarveSlice(theirsLines, theirsCursor, conflict.TheirsLines, "theirs", conflict.MarkedRange.StartLine);
+            var baseRange = CarveSlice(baseLines, baseCursor, conflict.BaseLines, "base", conflict.MarkedRange.StartLine);
 
             ranges.Add(new ModifiedBaseRange(
-                Index: i,
+                Index: ranges.Count,
                 Base: baseRange,
                 Ours: oursRange,
                 Theirs: theirsRange,
@@ -222,9 +242,13 @@ public sealed class GitMergeFileEngine : IMergeEngine
                 OursDiffs: Array.Empty<DetailedLineRangeMapping>(),
                 TheirsDiffs: Array.Empty<DetailedLineRangeMapping>(),
                 IsConflicting: true,
-                IsOrderRelevant: conflict.OursLines.Count > 0 && conflict.TheirsLines.Count > 0));
+                IsOrderRelevant: conflict.OursLines.Count > 0 && conflict.TheirsLines.Count > 0,
+                OursLabel: conflict.OursLabel,
+                BaseLabel: conflict.BaseLabel,
+                TheirsLabel: conflict.TheirsLabel));
 
-            // Advance cursors past this conflict block so the next search starts after it.
+            // Advance past this block in all four coordinates.
+            outputIdx = conflict.MarkedRange.EndLineExclusive - 1;
             oursCursor = oursRange.EndLineExclusive - 1;
             theirsCursor = theirsRange.EndLineExclusive - 1;
             baseCursor = baseRange.EndLineExclusive - 1;
@@ -234,42 +258,84 @@ public sealed class GitMergeFileEngine : IMergeEngine
     }
 
     /// <summary>
-    /// Locate <paramref name="needle"/> as a contiguous slice of <paramref name="haystack"/>,
-    /// searching forward from <paramref name="startIndex"/>. Returns the 1-based, half-open
-    /// <see cref="LineRange"/> of the first match, or an empty range anchored at
-    /// <paramref name="startIndex"/> when <paramref name="needle"/> is empty (pure add/delete
-    /// on this side). Throws if <paramref name="needle"/> is non-empty but cannot be located —
-    /// that would be a consistency failure between parser and input, never a recoverable state.
+    /// Advance the ours/theirs/base cursors to consume a single auto-merged output line.
+    /// Every auto-merged line must appear at the current cursor position of at least one
+    /// of ours/theirs (and possibly base, if unchanged). Breaking this invariant is a
+    /// fatal engine error.
     /// </summary>
-    private static LineRange LocateSlice(IReadOnlyList<string> haystack, int startIndex, IReadOnlyList<string> needle)
+    private static void AdvanceCursorsForAutoMergedLine(
+        string outputLine,
+        IReadOnlyList<string> oursLines,
+        IReadOnlyList<string> theirsLines,
+        IReadOnlyList<string> baseLines,
+        ref int oursCursor,
+        ref int theirsCursor,
+        ref int baseCursor,
+        int outputLineNumber)
+    {
+        bool matchesOurs = oursCursor < oursLines.Count
+            && string.Equals(oursLines[oursCursor], outputLine, StringComparison.Ordinal);
+        bool matchesTheirs = theirsCursor < theirsLines.Count
+            && string.Equals(theirsLines[theirsCursor], outputLine, StringComparison.Ordinal);
+
+        if (!matchesOurs && !matchesTheirs)
+        {
+            throw new MergeEngineException(
+                $"Merge invariant violated at output line {outputLineNumber}: auto-merged line " +
+                "appears in neither ours nor theirs at the current cursor positions. " +
+                "The engine output does not correspond to its inputs.");
+        }
+
+        if (matchesOurs) oursCursor++;
+        if (matchesTheirs) theirsCursor++;
+
+        // Base advances when the line is unchanged vs. base on at least one side —
+        // i.e. the same line exists at baseCursor. When both sides modified context
+        // identically we still advance base. When only one side modified and the
+        // other carried base verbatim, base advances iff the carried line matches.
+        if (baseCursor < baseLines.Count
+            && string.Equals(baseLines[baseCursor], outputLine, StringComparison.Ordinal))
+        {
+            baseCursor++;
+        }
+    }
+
+    /// <summary>
+    /// Carve a slice of length <c>needle.Count</c> from <paramref name="haystack"/>
+    /// starting at <paramref name="cursor"/>, verifying content match. Throws on mismatch.
+    /// </summary>
+    private static LineRange CarveSlice(
+        IReadOnlyList<string> haystack,
+        int cursor,
+        IReadOnlyList<string> needle,
+        string sideName,
+        int conflictStartOutputLine)
     {
         if (needle.Count == 0)
         {
-            // Empty slice — anchor at the current cursor.
-            return new LineRange(startIndex + 1, startIndex + 1);
+            return new LineRange(cursor + 1, cursor + 1);
         }
 
-        for (int i = startIndex; i <= haystack.Count - needle.Count; i++)
+        if (cursor + needle.Count > haystack.Count)
         {
-            bool match = true;
-            for (int j = 0; j < needle.Count; j++)
+            throw new MergeEngineException(
+                $"Merge invariant violated: conflict block at output line {conflictStartOutputLine} " +
+                $"reports {needle.Count} line(s) of '{sideName}' content, but only " +
+                $"{haystack.Count - cursor} line(s) remain in the '{sideName}' input at cursor {cursor + 1}.");
+        }
+
+        for (int j = 0; j < needle.Count; j++)
+        {
+            if (!string.Equals(haystack[cursor + j], needle[j], StringComparison.Ordinal))
             {
-                if (!string.Equals(haystack[i + j], needle[j], StringComparison.Ordinal))
-                {
-                    match = false;
-                    break;
-                }
-            }
-            if (match)
-            {
-                return new LineRange(i + 1, i + 1 + needle.Count);
+                throw new MergeEngineException(
+                    $"Merge invariant violated: conflict block at output line {conflictStartOutputLine} " +
+                    $"reports '{sideName}' content that does not match the '{sideName}' input at cursor " +
+                    $"{cursor + j + 1}. Engine output does not correspond to its inputs.");
             }
         }
 
-        throw new MergeEngineException(
-            $"Merge-file output refers to a slice of {needle.Count} line(s) that cannot be located in the source " +
-            $"starting from line {startIndex + 1}. This indicates a corruption or encoding mismatch between the " +
-            "merge engine inputs and its output.");
+        return new LineRange(cursor + 1, cursor + 1 + needle.Count);
     }
 
     private static string DetectLineEnding(params string[] candidates)
@@ -295,16 +361,7 @@ public sealed class GitMergeFileEngine : IMergeEngine
     }
 
     private static IReadOnlyList<string> SplitLines(string lfText)
-    {
-        if (string.IsNullOrEmpty(lfText)) return Array.Empty<string>();
-
-        var hasTrailingNewline = lfText[lfText.Length - 1] == '\n';
-        var raw = lfText.Split('\n');
-        var count = hasTrailingNewline && raw.Length > 0 && raw[^1].Length == 0 ? raw.Length - 1 : raw.Length;
-        var lines = new string[count];
-        Array.Copy(raw, lines, count);
-        return lines;
-    }
+        => LineSplitter.Split(lfText, out _);
 
     private string CreateUniqueTempDir()
     {
@@ -323,10 +380,10 @@ public sealed class GitMergeFileEngine : IMergeEngine
 
     /// <summary>
     /// Delete the temp directory. On Windows, antivirus and the indexer can briefly
-    /// hold file handles open after our process releases them, so we retry. Never
-    /// throw — a cleanup failure must not abort the merge.
+    /// hold file handles open after our process releases them, so we retry with async
+    /// backoff. Never throws — a cleanup failure must not abort the merge.
     /// </summary>
-    private static void TryDeleteTempDir(string dir)
+    private static async Task TryDeleteTempDirAsync(string dir)
     {
         const int maxAttempts = 3;
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
@@ -341,11 +398,11 @@ public sealed class GitMergeFileEngine : IMergeEngine
             }
             catch (IOException) when (attempt < maxAttempts)
             {
-                Thread.Sleep(50 * attempt);
+                await Task.Delay(50 * attempt).ConfigureAwait(false);
             }
             catch (UnauthorizedAccessException) when (attempt < maxAttempts)
             {
-                Thread.Sleep(50 * attempt);
+                await Task.Delay(50 * attempt).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

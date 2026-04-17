@@ -91,7 +91,7 @@ public sealed class MergeDocument
 
         var sb = new StringBuilder(InitialMergedText.Length);
         var mergedLines = InitialMergedLines;
-        int cursor = 0; // 1-based line cursor into InitialMergedLines, positioned at "next unwritten" line.
+        int cursor = 0;
 
         // Operate only on conflicting ranges — they are the ones with markers in InitialMergedText.
         var conflictRanges = Ranges.Where(r => r.IsConflicting)
@@ -100,28 +100,27 @@ public sealed class MergeDocument
 
         foreach (var range in conflictRanges)
         {
-            // Emit lines before this range unchanged.
             EmitLines(sb, mergedLines, cursor, range.ResultMarkedRange.StartLine - 1);
 
-            // Substitute this range's content with the resolved form (or the markers if unresolved).
             var state = rangeStates.TryGetValue(range.Index, out var s) ? s : ResolutionState.Unresolved.Instance;
             AppendResolution(sb, range, state);
 
             cursor = range.ResultMarkedRange.EndLineExclusive - 1;
         }
 
-        // Emit trailing lines after the last range.
         EmitLines(sb, mergedLines, cursor, mergedLines.Count);
 
-        // Restore trailing newline if the original output had one.
-        if (HasTrailingNewline && sb.Length > 0 && sb[sb.Length - 1] != '\n')
+        // Preserve the original trailing-newline convention. EmitLines unconditionally
+        // appends '\n' after every emitted line, so we strip the final '\n' when the
+        // original input had none — a POSIX convention that matters for tooling
+        // (diff, wc -l, some compilers) and for byte-for-byte parity with `git merge`.
+        if (!HasTrailingNewline && sb.Length > 0 && sb[sb.Length - 1] == '\n')
         {
-            sb.Append('\n');
+            sb.Length--;
         }
 
         var composed = sb.ToString();
 
-        // Restore the original line ending style. Engine output is always LF.
         if (LineEnding == "\r\n")
         {
             composed = composed.Replace("\n", "\r\n");
@@ -161,10 +160,14 @@ public sealed class MergeDocument
                 return;
 
             case ResolutionState.Manual manual:
-                // Manual text is emitted verbatim. Caller is responsible for any
-                // trailing newline consistency — we still ensure the next region starts on its own line.
-                sb.Append(manual.Text);
-                if (manual.Text.Length > 0 && manual.Text[manual.Text.Length - 1] != '\n')
+                // Manual text is always emitted as LF-terminated. The CRLF restoration
+                // pass at the end of ComposeResolvedText converts the whole buffer back
+                // to \r\n when LineEnding == "\r\n"; if the user's Manual text already
+                // contained "\r\n" (e.g. Windows clipboard paste), that global Replace
+                // would produce "\r\r\n". Normalise here before appending.
+                var normalisedManual = NormaliseToLf(manual.Text);
+                sb.Append(normalisedManual);
+                if (normalisedManual.Length > 0 && normalisedManual[normalisedManual.Length - 1] != '\n')
                 {
                     sb.Append('\n');
                 }
@@ -214,22 +217,32 @@ public sealed class MergeDocument
 
     /// <summary>
     /// The marker slice for an unresolved range, reconstructed from the range's own lines
-    /// rather than by slicing <see cref="InitialMergedLines"/> again. Keeps the composer
-    /// self-contained and robust to future refactors.
+    /// and labels so custom labels (branch names, commit SHAs) round-trip verbatim.
     /// </summary>
     private static IReadOnlyList<string> SliceMarkers(ModifiedBaseRange range)
     {
         var lines = new List<string>(range.OursLines.Count + range.BaseLines.Count + range.TheirsLines.Count + 4);
-        lines.Add("<<<<<<< ours");
+        lines.Add(FormatOpenMarker(range.OursLabel ?? "ours"));
         lines.AddRange(range.OursLines);
-        lines.Add("||||||| base");
+        lines.Add(FormatBaseMarker(range.BaseLabel ?? "base"));
         lines.AddRange(range.BaseLines);
         lines.Add("=======");
         lines.AddRange(range.TheirsLines);
-        lines.Add(">>>>>>> theirs");
+        lines.Add(FormatCloseMarker(range.TheirsLabel ?? "theirs"));
         return lines;
     }
 
+    private static string FormatOpenMarker(string label) => "<<<<<<< " + label;
+    private static string FormatBaseMarker(string label) => "||||||| " + label;
+    private static string FormatCloseMarker(string label) => ">>>>>>> " + label;
+
     private static int MarkerLineCount(ModifiedBaseRange range)
         => 4 + range.OursLines.Count + range.BaseLines.Count + range.TheirsLines.Count;
+
+    private static string NormaliseToLf(string text)
+    {
+        if (string.IsNullOrEmpty(text) || text.IndexOf('\r') < 0) return text;
+        var step1 = text.Replace("\r\n", "\n");
+        return step1.IndexOf('\r') < 0 ? step1 : step1.Replace('\r', '\n');
+    }
 }
