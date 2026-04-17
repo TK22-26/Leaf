@@ -152,9 +152,12 @@ public partial class MainViewModel
 
     /// <summary>
     /// Open the reflog viewer for the currently selected repository.
-    /// No-op if no repo is selected. After any destructive action
-    /// inside the viewer the parent refreshes so the graph and
-    /// working changes stay in sync.
+    /// No-op if no repo is selected. The reflog view raises
+    /// <see cref="ReflogViewModel.RepositoryMutated"/> after each
+    /// destructive action; we route that through the standard
+    /// async-error wrapper instead of a bare <c>async void</c>
+    /// lambda so a mid-refresh exception surfaces instead of
+    /// crashing the app via <see cref="TaskScheduler.UnobservedTaskException"/>.
     /// </summary>
     [RelayCommand]
     public async Task ShowReflogAsync()
@@ -162,17 +165,26 @@ public partial class MainViewModel
         if (SelectedRepository == null) return;
 
         var vm = new ReflogViewModel(_gitService, _clipboardService, _dialogService, SelectedRepository.Path);
-        vm.RepositoryMutated += async (_, _) => await RefreshAsync();
-
-        var window = new Views.ReflogWindow(vm);
-        await _dialogService.ShowDialogAsync(window);
-
-        // Reloading unconditionally on close is cheap and covers the
-        // case where the user performed mutations we didn't hear about
-        // via the event (belt-and-braces — the VM does raise the
-        // event today, but a future refactor shouldn't silently break
-        // main-view refresh).
-        await RefreshAsync();
+        void OnReflogMutated(object? sender, EventArgs e)
+        {
+            // The event fires on the UI thread; FireAndForget's error
+            // handler produces a status toast if RefreshAsync throws.
+            RefreshAsync().FireAndForget(nameof(ShowReflogAsync), isUserAction: true);
+        }
+        vm.RepositoryMutated += OnReflogMutated;
+        try
+        {
+            var window = new Views.ReflogWindow(vm);
+            await _dialogService.ShowDialogAsync(window);
+        }
+        finally
+        {
+            vm.RepositoryMutated -= OnReflogMutated;
+        }
+        // No extra post-close refresh: the event path above already
+        // triggered one for every mutation, and an unconditional
+        // second refresh would race with whatever the first refresh
+        // is still doing on the UI thread.
     }
 
     /// <summary>

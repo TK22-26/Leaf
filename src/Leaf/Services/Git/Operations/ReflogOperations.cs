@@ -29,6 +29,14 @@ internal class ReflogOperations
         @"^(?<ref>.+?)@\{(?<date>.+)\}$",
         RegexOptions.Compiled);
 
+    // A reflog SHA is always the full 40-char lowercase hex form
+    // (we pass `--format=%H`). Validating here before building the
+    // entry stops stray garbage from propagating into downstream
+    // commands like `git checkout <sha>`.
+    private static readonly Regex ShaPattern = new(
+        @"^[0-9a-f]{40}$",
+        RegexOptions.Compiled);
+
     public ReflogOperations(IGitOperationContext context)
     {
         _context = context;
@@ -83,6 +91,12 @@ internal class ReflogOperations
             }
 
             var sha = parts[0];
+            if (!ShaPattern.IsMatch(sha))
+            {
+                Log.Warn("Reflog", $"Skipping entry with malformed SHA '{sha}'");
+                continue;
+            }
+
             var selector = parts[1];
             // The subject can legitimately contain tabs if the user set
             // one in a commit message — rejoin everything after the

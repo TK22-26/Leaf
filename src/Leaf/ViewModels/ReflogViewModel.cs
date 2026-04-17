@@ -153,7 +153,10 @@ public partial class ReflogViewModel : ObservableObject
 
     /// <summary>
     /// Re-populate <see cref="Entries"/> from <see cref="_allEntries"/>
-    /// applying every current filter.
+    /// applying every current filter. Mutates the existing collection
+    /// instead of replacing the reference — a fresh ObservableCollection
+    /// rebinds the DataGrid, nukes row selection, and drops scroll
+    /// position, which makes the live search box feel broken.
     /// </summary>
     private void ApplyFilters()
     {
@@ -189,7 +192,9 @@ public partial class ReflogViewModel : ObservableObject
                 e.Ref.Contains(needle, StringComparison.OrdinalIgnoreCase));
         }
 
-        Entries = new ObservableCollection<ReflogEntry>(query);
+        Entries.Clear();
+        foreach (var entry in query)
+            Entries.Add(entry);
         OnPropertyChanged(nameof(HasEntries));
         OnPropertyChanged(nameof(StatusSummary));
     }
@@ -271,14 +276,12 @@ public partial class ReflogViewModel : ObservableObject
         var name = dialog.BranchName;
         await RunDestructiveAsync(
             $"Creating branch {name} at {entry.ShortSha}",
-            async ct =>
-            {
-                // Check out the commit first, then create a branch
-                // anchored there. We explicitly don't check out the new
-                // branch — the user may want to stay where they are.
-                await _gitService.CheckoutCommitAsync(_repositoryPath, entry.Sha, ct);
-                await _gitService.CreateBranchAsync(_repositoryPath, name, checkout: true, ct);
-            });
+            // Atomic create-at-SHA with checkout. Prior implementation
+            // was "checkout the sha, then CreateBranchAsync(name)",
+            // which left HEAD detached if the create leg failed (e.g.
+            // duplicate branch name). Single-call form keeps HEAD
+            // where it was until the whole thing commits.
+            ct => _gitService.CreateBranchAtCommitAsync(_repositoryPath, name, entry.Sha, checkout: true, ct));
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -297,28 +300,43 @@ public partial class ReflogViewModel : ObservableObject
     /// </summary>
     private async Task RunDestructiveAsync(string progressLabel, Func<CancellationToken, Task> work)
     {
+        IsLoading = true;
+        ErrorMessage = progressLabel + "...";
+
         try
         {
-            IsLoading = true;
-            ErrorMessage = progressLabel + "...";
             await work(CancellationToken.None);
-            // Success — clear the progress text and let LoadAsync
-            // overwrite IsLoading when it finishes.
-            ErrorMessage = null;
-            RaiseRepositoryMutated();
-            await LoadAsync();
         }
-        catch (Exception ex) when (ex is InvalidOperationException
-                                or IOException
-                                or UnauthorizedAccessException
-                                or OperationCanceledException)
+        catch (Exception ex)
         {
+            // Broad catch: mutations go through libgit2sharp
+            // (LibGit2SharpException) and the git CLI (Win32Exception
+            // from Process.Start, ArgumentException from bad names),
+            // so a narrow type filter would leave the UI wedged on
+            // every failure mode the user actually sees. The repo may
+            // still be partially mutated on the failure path, so we
+            // raise the event either way.
             ErrorMessage = $"{progressLabel} failed: {ex.Message}";
             IsLoading = false;
-            // The repo state may still have been partially mutated
-            // (e.g. a checkout that half-finished) — tell the host so
-            // the graph reflects reality rather than a stale cache.
             RaiseRepositoryMutated();
+            return;
+        }
+
+        // Mutation succeeded — clear the in-progress label, notify
+        // the host, and refresh our own view. If the refresh itself
+        // fails we preserve the success message rather than replace
+        // it with a misleading "load failed" over a change that did
+        // land.
+        ErrorMessage = null;
+        RaiseRepositoryMutated();
+        try
+        {
+            await LoadAsync();
+        }
+        catch (Exception reloadEx)
+        {
+            ErrorMessage = $"{progressLabel} succeeded, but refreshing the reflog failed: {reloadEx.Message}";
+            IsLoading = false;
         }
     }
 

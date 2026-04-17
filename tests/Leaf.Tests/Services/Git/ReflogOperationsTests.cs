@@ -27,13 +27,13 @@ public class ReflogOperationsTests
     [Fact]
     public void ParseReflogOutput_SingleCommitLine_ParsesAllFields()
     {
-        const string line = "abc1234def5678abcdef1234567890abcdef12345\tHEAD@{2026-04-17 11:10:44 -0400}\tcommit: Initial commit\n";
+        const string line = "abc1234def5678abcdef1234567890abcdef1234\tHEAD@{2026-04-17 11:10:44 -0400}\tcommit: Initial commit\n";
 
         var result = ReflogOperations.ParseReflogOutput(line);
 
         result.Should().HaveCount(1);
         var entry = result[0];
-        entry.Sha.Should().Be("abc1234def5678abcdef1234567890abcdef12345");
+        entry.Sha.Should().Be("abc1234def5678abcdef1234567890abcdef1234");
         entry.ShortSha.Should().Be("abc1234");
         entry.Ref.Should().Be("HEAD");
         entry.OperationType.Should().Be(ReflogOperationType.Commit);
@@ -133,6 +133,25 @@ public class ReflogOperationsTests
         var result = ReflogOperations.ParseReflogOutput(line);
 
         result[0].ShortSha.Should().Be("abcdef0");
+    }
+
+    [Fact]
+    public void ParseReflogOutput_MalformedSha_Skipped()
+    {
+        // The format flag pins SHAs to full 40-char hex; anything
+        // else is garbage that would otherwise propagate into
+        // CheckoutCommitAsync and produce a confusing git error
+        // downstream.
+        const string output =
+            "not-a-sha\tHEAD@{2026-04-17 10:00:00 +0000}\tcommit: bad\n" +
+            "abc\tHEAD@{2026-04-17 10:00:00 +0000}\tcommit: too short\n" +
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\tHEAD@{2026-04-17 10:00:00 +0000}\tcommit: uppercase\n" +
+            "1111111111111111111111111111111111111111\tHEAD@{2026-04-17 10:00:00 +0000}\tcommit: good\n";
+
+        var result = ReflogOperations.ParseReflogOutput(output);
+
+        result.Should().HaveCount(1);
+        result[0].Sha.Should().Be("1111111111111111111111111111111111111111");
     }
 
     // ---- ClassifyMessage ------------------------------------------------
