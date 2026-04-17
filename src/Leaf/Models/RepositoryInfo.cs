@@ -8,6 +8,25 @@ namespace Leaf.Models;
 
 /// <summary>
 /// Metadata about a tracked Git repository.
+///
+/// <para><b>Threading contract</b> (plan §3.7): every mutation of an
+/// <c>[ObservableProperty]</c> backing field on this type, and every
+/// mutation of the <c>ObservableCollection</c> properties
+/// (<see cref="LocalBranches"/>, <see cref="RemoteBranches"/>,
+/// <see cref="BranchCategories"/>, <see cref="Worktrees"/>,
+/// <see cref="SelectedBranches"/>), must happen on the WPF UI thread.
+/// Services and background tasks that compute new values must marshal
+/// the assignment through <c>IDispatcherService.InvokeAsync</c> before
+/// touching this object, or build a replacement collection off-thread
+/// and publish the reference inside a dispatcher call. An audit of all
+/// current mutation sites confirms this invariant is upheld — the
+/// <c>_dispatcherService.InvokeAsync</c> wraps in <c>MainViewModel</c>'s
+/// <c>BranchLoading</c>, <c>Worktree</c>, <c>FileWatcher</c>,
+/// <c>Repository</c>, and <c>Sync</c> partials are the canonical pattern.</para>
+///
+/// <para>Collection mutations in particular are non-negotiable: WPF's
+/// <c>CollectionView</c> requires UI-thread access and raises
+/// <c>NotSupportedException</c> otherwise.</para>
 /// </summary>
 public partial class RepositoryInfo : ObservableObject
 {
