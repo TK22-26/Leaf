@@ -27,6 +27,7 @@ public class GitService : IGitService
     private readonly ConfigOperations _configOps;
     private readonly WorktreeOperations _worktreeOps;
     private readonly SubmoduleOperations _submoduleOps;
+    private readonly ReflogOperations _reflogOps;
 
     public event EventHandler<GitCommandEventArgs>? GitCommandExecuted;
 
@@ -56,6 +57,7 @@ public class GitService : IGitService
         _configOps = new ConfigOperations(_context);
         _worktreeOps = new WorktreeOperations(_context);
         _submoduleOps = new SubmoduleOperations(_context);
+        _reflogOps = new ReflogOperations(_context);
     }
 
     #region Repository Operations
@@ -464,6 +466,13 @@ public class GitService : IGitService
 
     public Task RemoveSubmoduleAsync(string repoPath, SubmoduleInfo submodule, CancellationToken cancellationToken = default)
         => _submoduleOps.RemoveAsync(repoPath, submodule, cancellationToken);
+
+    #endregion
+
+    #region Reflog Operations
+
+    public Task<List<ReflogEntry>> GetReflogAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _reflogOps.GetReflogAsync(repoPath, cancellationToken);
 
     #endregion
 }
