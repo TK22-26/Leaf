@@ -133,6 +133,10 @@
                             InputGestureText="Ctrl+`"
                             IsCheckable="True"
                             IsChecked="{Binding IsTerminalVisible, Mode=TwoWay}" />
+                        <Separator />
+                        <MenuItem
+                            Command="{Binding ShowReflogCommand}"
+                            Header="_Reflog..." />
                     </MenuItem>
                     <MenuItem Header="_Help">
                         <MenuItem Command="{Binding CheckForUpdatesCommand}" Header="Check for _Updates...">

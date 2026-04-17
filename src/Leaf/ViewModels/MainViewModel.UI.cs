@@ -151,6 +151,31 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Open the reflog viewer for the currently selected repository.
+    /// No-op if no repo is selected. After any destructive action
+    /// inside the viewer the parent refreshes so the graph and
+    /// working changes stay in sync.
+    /// </summary>
+    [RelayCommand]
+    public async Task ShowReflogAsync()
+    {
+        if (SelectedRepository == null) return;
+
+        var vm = new ReflogViewModel(_gitService, _clipboardService, _dialogService, SelectedRepository.Path);
+        vm.RepositoryMutated += async (_, _) => await RefreshAsync();
+
+        var window = new Views.ReflogWindow(vm);
+        await _dialogService.ShowDialogAsync(window);
+
+        // Reloading unconditionally on close is cheap and covers the
+        // case where the user performed mutations we didn't hear about
+        // via the event (belt-and-braces — the VM does raise the
+        // event today, but a future refactor shouldn't silently break
+        // main-view refresh).
+        await RefreshAsync();
+    }
+
+    /// <summary>
     /// Open the releases page on GitHub.
     /// </summary>
     [RelayCommand]
