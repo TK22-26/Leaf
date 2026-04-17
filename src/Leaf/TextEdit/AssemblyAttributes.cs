@@ -15,7 +15,8 @@ using System.Windows.Markup;
 [assembly: XmlnsDefinition("http://icsharpcode.net/sharpdevelop/avalonedit", "Leaf.TextEdit.Editing")]
 [assembly: XmlnsDefinition("http://icsharpcode.net/sharpdevelop/avalonedit", "Leaf.TextEdit.Rendering")]
 [assembly: XmlnsDefinition("http://icsharpcode.net/sharpdevelop/avalonedit", "Leaf.TextEdit.Highlighting")]
-[assembly: XmlnsDefinition("http://icsharpcode.net/sharpdevelop/avalonedit", "Leaf.TextEdit.Search")]
+// (XmlnsDefinition for Leaf.TextEdit.Search was removed in Phase 2b — the
+// Search subsystem was stripped as unused.)
 
 // Note: ThemeInfo is declared once in Leaf's main AssemblyInfo with
 // SourceAssembly location — that covers both Leaf's own themes and the
