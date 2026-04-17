@@ -66,7 +66,7 @@ public class DialogService : IDialogService
     }
 
     /// <inheritdoc />
-    public Task ShowErrorAsync(string message, string title)
+    public Task ShowErrorToastAsync(string message, string title)
     {
         _notificationService.Show(title, message, NotificationType.Error);
         return Task.CompletedTask;
@@ -145,7 +145,7 @@ public class TestDialogService : IDialogService
     }
 
     /// <inheritdoc />
-    public Task ShowErrorAsync(string message, string title)
+    public Task ShowErrorToastAsync(string message, string title)
     {
         ShownMessages.Add((message, title));
         return Task.CompletedTask;

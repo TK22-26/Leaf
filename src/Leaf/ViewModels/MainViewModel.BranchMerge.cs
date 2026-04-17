@@ -75,7 +75,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Merge failed: {ex.Message}";
+            await ReportOperationFailureAsync("Merge", ex);
             Log.Error("Merge", "MergeBranch failed", ex);
         }
         finally
@@ -146,7 +146,7 @@ public partial class MainViewModel
         }
         else
         {
-            StatusMessage = $"Merge failed: {result.ErrorMessage}";
+            await ReportOperationFailureAsync("Merge", result.ErrorMessage ?? "unknown error");
             Log.Error("Merge", $"HandleMergeResult: {result.ErrorMessage}");
         }
     }
@@ -217,7 +217,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Fast-forward failed: {ex.Message}";
+            await ReportOperationFailureAsync("Fast-forward", ex);
         }
         finally
         {

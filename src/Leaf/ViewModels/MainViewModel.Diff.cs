@@ -100,7 +100,7 @@ public partial class MainViewModel
         }
     }
 
-    private void OnPullRequestFileSelected(object? sender, PullRequestFileInfo file)
+    private async void OnPullRequestFileSelected(object? sender, PullRequestFileInfo file)
     {
         if (SelectedRepository == null || DiffViewerViewModel == null)
             return;
@@ -125,7 +125,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Failed to load pull request diff: {ex.Message}";
+            await ReportOperationFailureAsync("Load pull request diff", ex);
             IsDiffViewerVisible = false;
         }
         finally
@@ -286,7 +286,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Failed to load diff: {ex.Message}";
+            await ReportOperationFailureAsync("Load diff", ex);
             IsDiffViewerVisible = false;
         }
         finally

@@ -51,7 +51,7 @@ public partial class MainViewModel
             catch (Exception ex)
             {
                 Log.Error("Merge", "RevertMergeCommit failed", ex);
-                StatusMessage = $"Revert failed: {ex.Message}";
+                await ReportOperationFailureAsync("Revert", ex);
             }
             finally
             {
@@ -74,7 +74,7 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             Log.Error("Merge", "RevertCommit failed", ex);
-            StatusMessage = $"Revert failed: {ex.Message}";
+            await ReportOperationFailureAsync("Revert", ex);
         }
         finally
         {
@@ -126,7 +126,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Reset failed: {ex.Message}";
+            await ReportOperationFailureAsync("Reset", ex);
         }
         finally
         {
@@ -157,7 +157,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Checkout failed: {ex.Message}";
+            await ReportOperationFailureAsync("Checkout", ex);
         }
         finally
         {
@@ -202,13 +202,13 @@ public partial class MainViewModel
             else
             {
                 Log.Error("Merge", $"CherryPickCommit: {result.ErrorMessage}");
-                StatusMessage = $"Cherry-pick failed: {result.ErrorMessage}";
+                await ReportOperationFailureAsync("Cherry-pick", result.ErrorMessage ?? "unknown error");
             }
         }
         catch (Exception ex)
         {
             Log.Error("Merge", "CherryPickCommit failed", ex);
-            StatusMessage = $"Cherry-pick failed: {ex.Message}";
+            await ReportOperationFailureAsync("Cherry-pick", ex);
         }
         finally
         {
@@ -241,7 +241,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Compare failed: {ex.Message}";
+            await ReportOperationFailureAsync("Compare", ex);
             IsDiffViewerVisible = false;
         }
         finally
@@ -269,7 +269,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Create tag failed: {ex.Message}";
+            await ReportOperationFailureAsync("Create tag", ex);
         }
         finally
         {
@@ -302,7 +302,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Undo failed: {ex.Message}";
+            await ReportOperationFailureAsync("Undo", ex);
         }
         finally
         {
@@ -335,7 +335,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Redo failed: {ex.Message}";
+            await ReportOperationFailureAsync("Redo", ex);
         }
         finally
         {

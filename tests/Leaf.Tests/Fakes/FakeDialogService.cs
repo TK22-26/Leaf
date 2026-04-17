@@ -43,7 +43,7 @@ public class FakeDialogService : IDialogService
         return Task.CompletedTask;
     }
 
-    public Task ShowErrorAsync(string message, string title)
+    public Task ShowErrorToastAsync(string message, string title)
     {
         ErrorCalls.Add((message, title));
         return Task.CompletedTask;
