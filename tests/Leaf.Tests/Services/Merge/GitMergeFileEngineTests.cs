@@ -186,31 +186,47 @@ public class GitMergeFileEngineTests
     }
 
     [Fact]
-    public async Task Merge_LookalikeMarkerInsideOursOfRealConflict_DoesNotCrash()
+    public async Task Merge_LookalikeMarkerInsideOursOfRealConflict_AcceptOursRoundTripsCleanly()
     {
-        // Ours contains a literal "<<<<<<<" line and the conflict is elsewhere in the file.
-        // Parser must not misidentify or crash.
+        // Ours content legitimately contains "<<<<<<<"; git emits it inside the conflict's
+        // ours section. After AcceptOurs, the composed result must be byte-for-byte ours
+        // content — no injected "<<<<<<< ours" structural line, no lost "<<<<<<< example".
         var engine = CreateEngine();
         const string baseText = "line1\nline2\nline3\n";
         const string oursText = "line1\n<<<<<<< example\nline3-modified\n";
         const string theirsText = "line1\nline2\nline3-different\n";
 
-        // Should not throw — whatever the parser decides about the lookalike,
-        // it must not throw MergeEngineException.
-        var act = async () => await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
-        await act.Should().NotThrowAsync();
+        var doc = await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+
+        // The parser must surface the lookalike as ours content — not misclassify it
+        // as a pre-conflict structural opener.
+        doc.HasConflicts.Should().BeTrue();
+        var joinedOurs = string.Concat(doc.Ranges.SelectMany(r => r.OursLines.Select(l => l + "\n")));
+        joinedOurs.Should().Contain("<<<<<<< example");
+
+        // AcceptOurs on all conflicts must round-trip to the original ours text.
+        var states = doc.Ranges.ToDictionary(r => r.Index, _ => (Leaf.Models.Merge.ResolutionState)Leaf.Models.Merge.ResolutionState.AcceptOurs.Instance);
+        var composed = doc.ComposeResolvedText(states);
+        composed.Should().Be(oursText);
     }
 
     [Fact]
-    public async Task Merge_LookalikeMarkerInsideTheirsOfRealConflict_DoesNotCrash()
+    public async Task Merge_LookalikeMarkerInsideTheirsOfRealConflict_AcceptTheirsRoundTripsCleanly()
     {
         var engine = CreateEngine();
         const string baseText = "line1\nline2\nline3\n";
         const string oursText = "line1\nline2\nline3-ours\n";
         const string theirsText = "line1\n<<<<<<< example\nline3-theirs\n";
 
-        var act = async () => await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
-        await act.Should().NotThrowAsync();
+        var doc = await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+
+        doc.HasConflicts.Should().BeTrue();
+        var joinedTheirs = string.Concat(doc.Ranges.SelectMany(r => r.TheirsLines.Select(l => l + "\n")));
+        joinedTheirs.Should().Contain("<<<<<<< example");
+
+        var states = doc.Ranges.ToDictionary(r => r.Index, _ => (Leaf.Models.Merge.ResolutionState)Leaf.Models.Merge.ResolutionState.AcceptTheirs.Instance);
+        var composed = doc.ComposeResolvedText(states);
+        composed.Should().Be(theirsText);
     }
 
     [Fact]
@@ -349,9 +365,9 @@ public class GitMergeFileEngineTests
     [Fact]
     public async Task Merge_CleansUpTempDirectory()
     {
-        // We can't easily assert the specific temp dir is deleted (it's unique & private),
-        // but we can assert the temp root doesn't accumulate leftover leaf-merge-* dirs
-        // across repeated invocations when things run to completion.
+        // Deterministic: we explicitly drain the fire-and-forget cleanup tasks
+        // before asserting. In production no one waits, but the test must not
+        // race the cleanup under load.
         var tempRoot = Path.Combine(Path.GetTempPath(), $"leaf-engine-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
         try
@@ -361,6 +377,7 @@ public class GitMergeFileEngineTests
             {
                 await engine.MergeAsync("f.txt", "a\nb\nc\n", "a\nours\nc\n", "a\ntheirs\nc\n");
             }
+            await engine.WaitForPendingCleanupAsync();
 
             Directory.Exists(tempRoot).Should().BeTrue();
             Directory.GetDirectories(tempRoot).Should().BeEmpty("all per-merge temp dirs should be cleaned up");

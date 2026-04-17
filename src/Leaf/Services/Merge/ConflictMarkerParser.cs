@@ -23,25 +23,32 @@ namespace Leaf.Services.Merge;
 /// </code>
 /// </para>
 /// <para>
-/// The parser uses a two-pass strategy: scan for candidate conflict blocks
-/// (each a full <c>&lt;</c>/<c>|</c>/<c>=</c>/<c>&gt;</c> sequence). Lines that
-/// start with seven <c>&lt;</c>s but cannot complete a valid block are treated as
-/// content — the same file may legitimately contain documentation about git
-/// conflict markers.
+/// Disambiguation rules for <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>-lookalikes:
 /// </para>
+/// <list type="bullet">
+/// <item><description>
+/// When the line immediately after the outer opener is also a
+/// <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c> line, the outer IS the real conflict opener —
+/// ours content happens to start with a literal marker-lookalike. Git emits this
+/// shape when the user's ours input begins with <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>.
+/// </description></item>
+/// <item><description>
+/// Otherwise, a nested <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c> seen BEFORE the block's
+/// <c>|||||||</c> base marker means the outer opener was content (probably a doc
+/// line); the outer is treated as content and the inner is retried as the real opener.
+/// </description></item>
+/// <item><description>
+/// After <c>|||||||</c> is found we are inside base/theirs content and all further
+/// marker-like lines (including inner <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>) are treated
+/// as content.
+/// </description></item>
+/// </list>
 /// <para>
-/// A <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c> seen BEFORE the block's <c>|||||||</c>
-/// base marker is found means the outer opener was content (the real conflict
-/// starts at the inner opener); the outer is retried as content. After
-/// <c>|||||||</c> is found we are inside base/theirs content and further marker-like
-/// lines are treated as content — including any inner <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>,
-/// which is valid: git can emit conflicts whose content contains literal marker lines.
-/// </para>
-/// <para>
-/// Fundamental format ambiguity: zdiff3 output cannot always be unambiguously parsed
-/// when user content contains lines that are indistinguishable from structural markers.
-/// The parser prefers the most common interpretation and never crashes; pathological
-/// files may produce slightly wrong block boundaries but never data loss.
+/// Known limitation: when user content legitimately contains a literal
+/// <c>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</c> line inside theirs content, the parser cannot
+/// distinguish it from the close marker and will truncate the conflict. This
+/// unresolved ambiguity of the zdiff3 text format is detectable by the downstream
+/// commit gate (any remaining marker in the resolved text blocks commit).
 /// </para>
 /// </remarks>
 public static class ConflictMarkerParser
@@ -173,6 +180,13 @@ public static class ConflictMarkerParser
         Match? baseMatch = null;
         Match? closeMatch = null;
 
+        // Disambiguation: if the VERY NEXT line after the outer opener is also
+        // `<<<<<<<`, git is emitting a legitimate conflict whose ours content starts
+        // with a marker-lookalike line. In that case, the outer IS the real opener
+        // and all subsequent marker-lookalikes inside the block are content —
+        // including the first one (the one that fooled us into returning false before).
+        bool oursStartsWithLookalike = oursStart < lines.Length && OursOpen.IsMatch(lines[oursStart]);
+
         for (int i = oursStart; i < lines.Length; i++)
         {
             var line = lines[i];
@@ -181,7 +195,14 @@ public static class ConflictMarkerParser
             {
                 if (OursOpen.IsMatch(line))
                 {
-                    // Nested opener before base marker: outer is content.
+                    if (oursStartsWithLookalike)
+                    {
+                        // First line of ours is a marker-lookalike — keep outer as the
+                        // real opener, treat this (and any further <<<<<<<) as content.
+                        continue;
+                    }
+                    // Outer opener followed by non-marker content then a nested <<<<<<<
+                    // before baseMarker → outer is very likely a documentation line.
                     return false;
                 }
                 var m = BaseMiddle.Match(line);

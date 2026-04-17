@@ -109,6 +109,20 @@ public partial class ConflictResolutionViewModel : ObservableObject
     [ObservableProperty]
     private bool _continueLargeFile;
 
+    /// <summary>
+    /// Set when <c>git merge-file</c> or the parser refuses to process a file
+    /// (e.g. malformed zdiff3 output). UI should surface this via an overlay
+    /// so the user is not left staring at a blank panel.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isEngineError;
+
+    /// <summary>
+    /// Human-readable description of the most recent engine error.
+    /// </summary>
+    [ObservableProperty]
+    private string _engineErrorMessage = string.Empty;
+
     [ObservableProperty]
     private string _conflictNavigationLabel = string.Empty;
 
@@ -289,6 +303,10 @@ public partial class ConflictResolutionViewModel : ObservableObject
         var oursContent = SelectedConflict.OursContent;
         var theirsContent = SelectedConflict.TheirsContent;
 
+        // Clear any stale engine-error state from a previous file before we start.
+        IsEngineError = false;
+        EngineErrorMessage = string.Empty;
+
         // Skip if already built
         if (_lastBuiltFilePath == filePath && CurrentMergeResult != null)
         {
@@ -354,14 +372,15 @@ public partial class ConflictResolutionViewModel : ObservableObject
         }
         catch (Leaf.Services.Merge.MergeEngineException ex)
         {
-            // Engine refused this file — fail loudly to the user via a status message
-            // but don't crash the view. The conflict panel falls back to showing the
-            // raw conflict markers from disk so the user can resolve manually or
-            // escalate via the external merge tool (§5.2).
-            Log.Error("Merge", $"BuildMergeResult: engine error for {filePath}: {ex.Message}");
+            // Engine refused this file. Surface the error to the user via a dedicated
+            // UI state — the view binds `IsEngineError`/`EngineErrorMessage` to an overlay
+            // offering the external-merge-tool escape hatch (§5.2).
+            Log.Error("Merge", $"BuildMergeResult: engine error for {filePath}: {ex.Message}", ex);
             CurrentMergeResult = null;
             MergedContent = string.Empty;
             MergedLines.Clear();
+            IsEngineError = true;
+            EngineErrorMessage = ex.Message;
             _lastBuiltFilePath = filePath;
             return;
         }
@@ -1113,19 +1132,40 @@ public partial class ConflictResolutionViewModel : ObservableObject
         Log.Info("Merge", $"BuildLineMappings: aligned={oursMapping.TotalLines} lines, conflicts={oursMapping.AllConflictRanges.Count}");
     }
 
+    /// <summary>
+    /// Commit gate: content contains an unresolved zdiff3 conflict iff it has the full
+    /// structural triad — an opener, a separator, and a close marker in order.
+    /// A lone marker-lookalike (e.g. user documentation that contains <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>
+    /// but no <c>=======</c>/<c>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</c>) is content, not unresolved state.
+    /// </summary>
     private static bool ContainsConflictMarkers(string content)
     {
-        bool hasOurs = false;
-        bool hasTheirs = false;
+        bool sawOpen = false;
+        bool sawSeparator = false;
         foreach (var line in content.Split('\n'))
         {
-            if (line.StartsWith("<<<<<<<", StringComparison.Ordinal))
-                hasOurs = true;
-            else if (line.StartsWith(">>>>>>>", StringComparison.Ordinal))
-                hasTheirs = true;
+            if (!sawOpen)
+            {
+                if (line.StartsWith("<<<<<<<", StringComparison.Ordinal))
+                {
+                    sawOpen = true;
+                }
+                continue;
+            }
 
-            if (hasOurs && hasTheirs)
+            if (!sawSeparator)
+            {
+                if (line == "=======")
+                {
+                    sawSeparator = true;
+                }
+                continue;
+            }
+
+            if (line.StartsWith(">>>>>>>", StringComparison.Ordinal))
+            {
                 return true;
+            }
         }
         return false;
     }

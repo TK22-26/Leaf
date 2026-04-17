@@ -35,6 +35,11 @@ public sealed class GitMergeFileEngine : IMergeEngine
     private readonly IGitCommandRunner _gitRunner;
     private readonly string _tempDirRoot;
 
+    // Fire-and-forget cleanup tasks tracked so tests can deterministically drain them.
+    // In production nothing awaits this — the caller returns immediately after MergeAsync.
+    private readonly List<Task> _pendingCleanupTasks = new();
+    private readonly object _cleanupLock = new();
+
     public GitMergeFileEngine(IGitCommandRunner gitRunner)
         : this(gitRunner, Path.GetTempPath())
     {
@@ -45,6 +50,24 @@ public sealed class GitMergeFileEngine : IMergeEngine
     {
         _gitRunner = gitRunner ?? throw new ArgumentNullException(nameof(gitRunner));
         _tempDirRoot = tempDirRoot ?? throw new ArgumentNullException(nameof(tempDirRoot));
+    }
+
+    /// <summary>
+    /// Test-only: wait for all outstanding fire-and-forget cleanup tasks to complete.
+    /// Allows deterministic assertion that temp directories have been reclaimed.
+    /// Never throws — cleanup tasks are designed to absorb all exceptions.
+    /// </summary>
+    internal async Task WaitForPendingCleanupAsync()
+    {
+        Task[] snapshot;
+        lock (_cleanupLock)
+        {
+            snapshot = _pendingCleanupTasks.ToArray();
+            _pendingCleanupTasks.Clear();
+        }
+        if (snapshot.Length == 0) return;
+        try { await Task.WhenAll(snapshot).ConfigureAwait(false); }
+        catch { /* cleanup tasks never throw, but be defensive */ }
     }
 
     public async Task<MergeDocument> MergeAsync(
@@ -144,7 +167,8 @@ public sealed class GitMergeFileEngine : IMergeEngine
             // 50-150ms retry ladder doesn't block the caller's async path if the
             // first delete attempt hits a transient file lock (AV, indexer).
             // The task itself catches and logs everything.
-            _ = TryDeleteTempDirAsync(tempDir);
+            var cleanup = TryDeleteTempDirAsync(tempDir);
+            lock (_cleanupLock) { _pendingCleanupTasks.Add(cleanup); }
         }
     }
 
