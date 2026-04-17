@@ -31,8 +31,7 @@ public partial class MainViewModel
 
             if (!await _dialogService.ShowDialogAsync(dialog)) return;
 
-            IsBusy = true;
-            StatusMessage = $"Adding remote '{dialog.RemoteName}'...";
+            await BeginBusyAsync($"Adding remote '{dialog.RemoteName}'...");
 
             await _gitService.AddRemoteAsync(
                 SelectedRepository.Path,
@@ -81,8 +80,7 @@ public partial class MainViewModel
 
             if (!await _dialogService.ShowDialogAsync(dialog)) return;
 
-            IsBusy = true;
-            StatusMessage = $"Updating remote '{remote.Name}'...";
+            await BeginBusyAsync($"Updating remote '{remote.Name}'...");
 
             // Check if name changed - rename first
             if (!string.Equals(remote.Name, dialog.RemoteName, StringComparison.OrdinalIgnoreCase))
@@ -131,8 +129,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Removing remote '{remoteName}'...";
+            await BeginBusyAsync($"Removing remote '{remoteName}'...");
 
             await _gitService.RemoveRemoteAsync(SelectedRepository.Path, remoteName, cancellationToken: CurrentRepositoryToken);
 
@@ -210,7 +207,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
+            await BeginBusyAsync("Fetching from all remotes...");
             var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
             var successCount = 0;
@@ -272,7 +269,7 @@ public partial class MainViewModel
 
             if (!await _dialogService.ShowDialogAsync(dialog)) return;
 
-            IsBusy = true;
+            await BeginBusyAsync("Pushing to selected remotes...");
             var selectedRemotes = dialog.SelectedRemoteNames.ToList();
             var pushedRemotes = new List<(RemoteInfo remote, string? credentialKey)>();
             var failedMessages = new List<string>();

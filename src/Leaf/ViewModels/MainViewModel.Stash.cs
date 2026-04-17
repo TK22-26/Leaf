@@ -19,8 +19,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = "Stashing changes...";
+            await BeginBusyAsync("Stashing changes...");
 
             await _gitService.StashAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
@@ -56,8 +55,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = "Popping stash...";
+            await BeginBusyAsync("Popping stash...");
 
             var result = await _gitService.PopStashAsync(SelectedRepository.Path, selectedStash.Index, cancellationToken: CurrentRepositoryToken);
 
@@ -156,8 +154,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = "Deleting stash...";
+            await BeginBusyAsync("Deleting stash...");
 
             await _gitService.DeleteStashAsync(SelectedRepository.Path, selectedStash.Index, cancellationToken: CurrentRepositoryToken);
 

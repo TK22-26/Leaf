@@ -103,8 +103,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Switching to worktree {worktree.DisplayName}...";
+            await BeginBusyAsync($"Switching to worktree {worktree.DisplayName}...");
 
             // Capture category expanded states from the current repo before switching
             Dictionary<string, bool>? previousCategoryStates = null;
@@ -198,10 +197,8 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
             var defaultPath = WorktreeOperations.GenerateDefaultWorktreePath(SelectedRepository.Path, branch.Name);
-
-            StatusMessage = $"Creating worktree for {branch.Name}...";
+            await BeginBusyAsync($"Creating worktree for {branch.Name}...");
 
             try
             {
@@ -291,10 +288,8 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
             var defaultPath = WorktreeOperations.GenerateDefaultWorktreePath(SelectedRepository.Path, newBranchName);
-
-            StatusMessage = $"Creating worktree with new branch {newBranchName}...";
+            await BeginBusyAsync($"Creating worktree with new branch {newBranchName}...");
             await _gitService.CreateWorktreeWithNewBranchAsync(SelectedRepository.Path, defaultPath, newBranchName, startPoint, cancellationToken: CurrentRepositoryToken);
             StatusMessage = $"Created worktree at {defaultPath}";
 
@@ -323,11 +318,9 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
             var shortSha = commit.Sha.Length >= 7 ? commit.Sha[..7] : commit.Sha;
             var defaultPath = WorktreeOperations.GenerateDefaultWorktreePath(SelectedRepository.Path, shortSha);
-
-            StatusMessage = $"Creating detached worktree at {shortSha}...";
+            await BeginBusyAsync($"Creating detached worktree at {shortSha}...");
             await _gitService.CreateWorktreeDetachedAsync(SelectedRepository.Path, defaultPath, commit.Sha, cancellationToken: CurrentRepositoryToken);
             StatusMessage = $"Created detached worktree at {defaultPath}";
 
@@ -366,8 +359,7 @@ public partial class MainViewModel
 
             try
             {
-                IsBusy = true;
-                StatusMessage = $"Force removing worktree {worktree.DisplayName}...";
+                await BeginBusyAsync($"Force removing worktree {worktree.DisplayName}...");
                 await _gitService.RemoveWorktreeAsync(SelectedRepository.Path, worktree.Path, force: true, cancellationToken: CurrentRepositoryToken);
             }
             catch (Exception ex)
@@ -387,8 +379,7 @@ public partial class MainViewModel
 
             try
             {
-                IsBusy = true;
-                StatusMessage = $"Removing worktree {worktree.DisplayName}...";
+                await BeginBusyAsync($"Removing worktree {worktree.DisplayName}...");
 
                 try
                 {
@@ -456,8 +447,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Locking worktree {worktree.DisplayName}...";
+            await BeginBusyAsync($"Locking worktree {worktree.DisplayName}...");
 
             await _gitService.LockWorktreeAsync(SelectedRepository.Path, worktree.Path, cancellationToken: CurrentRepositoryToken);
             worktree.IsLocked = true;
@@ -485,8 +475,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Unlocking worktree {worktree.DisplayName}...";
+            await BeginBusyAsync($"Unlocking worktree {worktree.DisplayName}...");
 
             await _gitService.UnlockWorktreeAsync(SelectedRepository.Path, worktree.Path, cancellationToken: CurrentRepositoryToken);
             worktree.IsLocked = false;
@@ -514,8 +503,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = "Pruning stale worktree references...";
+            await BeginBusyAsync("Pruning stale worktree references...");
 
             await _gitService.PruneWorktreesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 

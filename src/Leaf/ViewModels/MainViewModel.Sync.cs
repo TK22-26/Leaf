@@ -231,7 +231,7 @@ public partial class MainViewModel
     {
         if (SelectedRepository == null) return;
 
-        IsBusy = true;
+        // IsBusy is already true — caller (PushAsync) did BeginBusyAsync.
         var successCount = 0;
         var failedMessages = new List<string>();
         var pushedRemotes = new List<(RemoteInfo remote, string? credentialKey)>();

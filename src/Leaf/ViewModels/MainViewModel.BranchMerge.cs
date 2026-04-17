@@ -47,7 +47,10 @@ public partial class MainViewModel
         // Execute the appropriate merge based on selected type
         try
         {
-            IsBusy = true;
+            // Initial placeholder — each case below sets its own specific
+            // StatusMessage; BeginBusyAsync renders the progress bar before
+            // the git call starts.
+            await BeginBusyAsync($"Merging {branch.Name}...");
 
             MergeResult result;
             switch (dialogViewModel.SelectedMergeType)
@@ -196,8 +199,7 @@ public partial class MainViewModel
             ? $"{label.RemoteName}/{label.Name}"
             : label.Name;
 
-        IsBusy = true;
-        StatusMessage = $"Fast-forwarding to {targetName}...";
+        await BeginBusyAsync($"Fast-forwarding to {targetName}...");
 
         try
         {
