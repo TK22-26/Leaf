@@ -362,6 +362,44 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
+
+            <!-- Engine error overlay (shown when the merge engine refused the file) -->
+            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Grid.RowSpan="2"
+                    Visibility="{Binding IsEngineError, Converter={StaticResource BoolToVisibilityConverter}}"
+                    Background="{DynamicResource ControlFillColorDefaultBrush}"
+                    CornerRadius="6"
+                    Padding="40">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="600">
+                    <ic:SymbolIcon Symbol="ErrorCircle" FontSize="48"
+                                   Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                                   HorizontalAlignment="Center"/>
+                    <TextBlock Text="Merge engine could not process this file"
+                               FontSize="16" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,16,0,8"/>
+                    <TextBlock Text="{Binding EngineErrorMessage}"
+                               FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                               Margin="0,0,0,16"/>
+                    <TextBlock Text="You can still resolve this file using an external merge tool or by choosing a side."
+                               FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                               Margin="0,0,0,20"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button Padding="16,8" Margin="0,0,8,0"
+                                Command="{Binding UseOursCommand}"
+                                Background="{StaticResource OursAccentBrush}"
+                                Foreground="{StaticResource OursForegroundBrush}">
+                            <TextBlock Text="Use Ours"/>
+                        </Button>
+                        <Button Padding="16,8"
+                                Command="{Binding UseTheirsCommand}"
+                                Background="{StaticResource TheirsAccentBrush}"
+                                Foreground="{StaticResource TheirsForegroundBrush}">
+                            <TextBlock Text="Use Theirs"/>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
         </Grid>
 
         <!-- Row 2: Footer — status + action -->

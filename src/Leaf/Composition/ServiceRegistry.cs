@@ -74,6 +74,7 @@ public static class ServiceRegistry
         services.AddSingleton<IAutoFetchService, AutoFetchService>();
         services.AddSingleton<IDiffService, DiffService>();
         services.AddSingleton<IHunkService, HunkService>();
+        services.AddSingleton<Leaf.Services.Merge.IMergeEngine, Leaf.Services.Merge.GitMergeFileEngine>();
         services.AddSingleton<IThreeWayMergeService, ThreeWayMergeService>();
         services.AddSingleton<IGitignoreService, GitignoreService>();
         services.AddSingleton<IExternalToolDetectorService, ExternalToolDetectorService>();

@@ -109,6 +109,20 @@ public partial class ConflictResolutionViewModel : ObservableObject
     [ObservableProperty]
     private bool _continueLargeFile;
 
+    /// <summary>
+    /// Set when <c>git merge-file</c> or the parser refuses to process a file
+    /// (e.g. malformed zdiff3 output). UI should surface this via an overlay
+    /// so the user is not left staring at a blank panel.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isEngineError;
+
+    /// <summary>
+    /// Human-readable description of the most recent engine error.
+    /// </summary>
+    [ObservableProperty]
+    private string _engineErrorMessage = string.Empty;
+
     [ObservableProperty]
     private string _conflictNavigationLabel = string.Empty;
 
@@ -289,6 +303,10 @@ public partial class ConflictResolutionViewModel : ObservableObject
         var oursContent = SelectedConflict.OursContent;
         var theirsContent = SelectedConflict.TheirsContent;
 
+        // Clear any stale engine-error state from a previous file before we start.
+        IsEngineError = false;
+        EngineErrorMessage = string.Empty;
+
         // Skip if already built
         if (_lastBuiltFilePath == filePath && CurrentMergeResult != null)
         {
@@ -337,11 +355,33 @@ public partial class ConflictResolutionViewModel : ObservableObject
         FileMergeResult result;
         try
         {
-            result = await Task.Run(() => _mergeService.PerformMerge(filePath, baseContent ?? string.Empty, oursContent ?? string.Empty, theirsContent ?? string.Empty), ct).ConfigureAwait(true);
+            // The Phase 1 engine is async-I/O bound (it shells out to `git merge-file`),
+            // so no Task.Run wrap is needed — the call doesn't block the UI thread.
+            result = await _mergeService.PerformMergeAsync(
+                filePath,
+                baseContent ?? string.Empty,
+                oursContent ?? string.Empty,
+                theirsContent ?? string.Empty,
+                ignoreWhitespace: false,
+                cancellationToken: ct).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
             Log.Info("Merge", $"BuildMergeResult: cancelled for {filePath}");
+            return;
+        }
+        catch (Leaf.Services.Merge.MergeEngineException ex)
+        {
+            // Engine refused this file. Surface the error to the user via a dedicated
+            // UI state — the view binds `IsEngineError`/`EngineErrorMessage` to an overlay
+            // offering the external-merge-tool escape hatch (§5.2).
+            Log.Error("Merge", $"BuildMergeResult: engine error for {filePath}: {ex.Message}", ex);
+            CurrentMergeResult = null;
+            MergedContent = string.Empty;
+            MergedLines.Clear();
+            IsEngineError = true;
+            EngineErrorMessage = ex.Message;
+            _lastBuiltFilePath = filePath;
             return;
         }
 
@@ -1092,19 +1132,50 @@ public partial class ConflictResolutionViewModel : ObservableObject
         Log.Info("Merge", $"BuildLineMappings: aligned={oursMapping.TotalLines} lines, conflicts={oursMapping.AllConflictRanges.Count}");
     }
 
-    private static bool ContainsConflictMarkers(string content)
+    /// <summary>
+    /// Commit gate: content contains an unresolved zdiff3 conflict iff it has the full
+    /// structural triad — an opener, a separator, and a close marker in order.
+    /// A lone marker-lookalike (e.g. user documentation that contains <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>
+    /// but no <c>=======</c>/<c>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</c>) is content, not unresolved state.
+    /// </summary>
+    /// <remarks>
+    /// Accepts both LF and CRLF line endings. <c>AvalonEdit</c> preserves the document's
+    /// original line-ending style and inserts <c>Environment.NewLine</c> (= <c>\r\n</c> on
+    /// Windows) for user-typed newlines; without CRLF-tolerance here, a CRLF file with
+    /// unresolved markers could sneak past the gate and be committed silently.
+    /// </remarks>
+    internal static bool ContainsConflictMarkers(string content)
     {
-        bool hasOurs = false;
-        bool hasTheirs = false;
-        foreach (var line in content.Split('\n'))
+        bool sawOpen = false;
+        bool sawSeparator = false;
+        foreach (var rawLine in content.Split('\n'))
         {
-            if (line.StartsWith("<<<<<<<", StringComparison.Ordinal))
-                hasOurs = true;
-            else if (line.StartsWith(">>>>>>>", StringComparison.Ordinal))
-                hasTheirs = true;
+            var line = rawLine.Length > 0 && rawLine[rawLine.Length - 1] == '\r'
+                ? rawLine.Substring(0, rawLine.Length - 1)
+                : rawLine;
 
-            if (hasOurs && hasTheirs)
+            if (!sawOpen)
+            {
+                if (line.StartsWith("<<<<<<<", StringComparison.Ordinal))
+                {
+                    sawOpen = true;
+                }
+                continue;
+            }
+
+            if (!sawSeparator)
+            {
+                if (line == "=======")
+                {
+                    sawSeparator = true;
+                }
+                continue;
+            }
+
+            if (line.StartsWith(">>>>>>>", StringComparison.Ordinal))
+            {
                 return true;
+            }
         }
         return false;
     }
