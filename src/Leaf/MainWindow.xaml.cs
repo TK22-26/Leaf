@@ -4,8 +4,8 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using Leaf.Services;
-using Leaf.Services.PullRequests;
 using Leaf.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Leaf;
 
@@ -18,90 +18,40 @@ public partial class MainWindow : Window
     private static readonly TimeSpan DoubleTapThreshold = TimeSpan.FromMilliseconds(300);
     private GridLength _savedRightPanelWidth = new(350);
     private readonly TaskCompletionSource<object?> _firstRenderTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly GitService _gitService;
-    private readonly RepositoryManagementService _repositoryService;
+    private readonly IGitService _gitService;
+    private readonly IRepositoryManagementService _repositoryService;
     private readonly MainViewModel _viewModel;
     private Task? _startupInitializationTask;
 
-    public MainWindow()
+    // Parameterless overload exists solely so WPF's XAML tooling (and the
+    // occasional designer code path) can instantiate the window. Runtime
+    // always goes through the DI-aware overload below.
+    public MainWindow() : this(App.Services) { }
+
+    public MainWindow(IServiceProvider services)
     {
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         InitializeComponent();
 
-        // Phase 0: Architecture Glue (MUST be created first)
-        // NOTE: Dispatcher injected at composition root - NOT accessed inside services
-        var dispatcherService = new DispatcherService(Dispatcher);
-        var windowService = new WindowService();
-        var repositorySessionFactory = new RepositorySessionFactory();
-        var repositoryEventHub = new RepositoryEventHub(dispatcherService);
+        _viewModel = services.GetRequiredService<MainViewModel>();
+        _gitService = services.GetRequiredService<IGitService>();
+        _repositoryService = services.GetRequiredService<IRepositoryManagementService>();
 
-        // Phase 1: Foundation services
-        var notificationService = new NotificationService(dispatcherService);
-        var dialogService = new DialogService(dispatcherService, windowService, notificationService);
-        var gitCommandRunner = new GitCommandRunner();
-        var clipboardService = new ClipboardService();
-        var fileSystemService = new FileSystemService();
+        // CommandPaletteViewModel is still hand-built because it takes
+        // closure-captured delegates referencing MainViewModel commands —
+        // a construction shape DI can't express naturally. MainViewModel
+        // is already resolved, so we wire it up once and hand it over.
+        _viewModel.CommandPaletteViewModel = new CommandPaletteViewModel(
+            _repositoryService,
+            () => _viewModel.SelectedRepository,
+            repo => _viewModel.SelectRepositoryCommand.Execute(repo),
+            branch => _viewModel.CheckoutBranchCommand.Execute(branch));
 
-        // Original services
-        var gitService = new GitService();
-        var credentialService = new CredentialService();
-        var settingsService = new SettingsService();
+        DataContext = _viewModel;
+        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        _viewModel.RequestGitFlowActionMenu += ViewModel_RequestGitFlowActionMenu;
 
-        // Centralised async-error handling — must be wired before any ViewModel
-        // subscribes to events, so fire-and-forget callbacks fault cleanly.
-        AsyncErrorHandler.Init(
-            notificationService,
-            () => settingsService.LoadSettings().ShowBackgroundOperationErrors);
-
-        // Migrate legacy credentials to new multi-org format
-        settingsService.MigrateCredentialsIfNeeded(credentialService);
-
-        var gitFlowService = new GitFlowService(gitService, credentialService);
-        var repositoryService = new RepositoryManagementService(settingsService);
-        var autoFetchService = new AutoFetchService(gitService, credentialService);
-        var folderWatcherService = new FolderWatcherService();
-        var pullRequestService = new PullRequestService(credentialService, gitService);
-        var diffService = new DiffService();
-
-        // ViewModelFactory for transient ViewModel creation
-        var viewModelFactory = new ViewModelFactory(gitService, dialogService, repositoryEventHub, clipboardService, fileSystemService);
-
-        // Create view model with all services. The VM no longer takes a
-        // Window reference — dialogs go through IDialogService.
-        var viewModel = new MainViewModel(
-            gitService,
-            credentialService,
-            settingsService,
-            gitFlowService,
-            repositoryService,
-            autoFetchService,
-            dispatcherService,
-            repositoryEventHub,
-            dialogService,
-            repositorySessionFactory,
-            gitCommandRunner,
-            clipboardService,
-            fileSystemService,
-            folderWatcherService,
-            pullRequestService,
-            diffService,
-            notificationService);
-
-        viewModel.CommandPaletteViewModel = new ViewModels.CommandPaletteViewModel(
-            repositoryService,
-            () => viewModel.SelectedRepository,
-            repo => viewModel.SelectRepositoryCommand.Execute(repo),
-            branch => viewModel.CheckoutBranchCommand.Execute(branch));
-
-        _gitService = gitService;
-        _repositoryService = repositoryService;
-        _viewModel = viewModel;
-
-        DataContext = viewModel;
-        viewModel.PropertyChanged += ViewModel_PropertyChanged;
-        viewModel.RequestGitFlowActionMenu += ViewModel_RequestGitFlowActionMenu;
-
-        NotificationHostControl.NotificationService = notificationService;
+        NotificationHostControl.NotificationService = services.GetRequiredService<INotificationService>();
 
         ContentRendered += OnContentRendered;
         // Without this, MainViewModel.Dispose is never called — every

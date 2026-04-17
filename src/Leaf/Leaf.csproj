@@ -33,6 +33,7 @@
     <PackageReference Include="LibGit2Sharp" Version="0.31.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.6" />
   </ItemGroup>
 
   <ItemGroup>
@@ -50,14 +51,8 @@
     <ItemGroup>
       <_LeafAskPassOutputs Include="$(MSBuildThisFileDirectory)..\Leaf.AskPass\bin\$(Configuration)\$(TargetFramework)\Leaf.AskPass*" />
     </ItemGroup>
-    <Copy SourceFiles="@(_LeafAskPassOutputs)"
-          DestinationFolder="$(OutputPath)"
-          SkipUnchangedFiles="true"
-          Condition="Exists('%(Identity)')" />
-    <Copy SourceFiles="@(_LeafAskPassOutputs)"
-          DestinationFolder="$(PublishDir)"
-          SkipUnchangedFiles="true"
-          Condition="'$(PublishDir)' != '' And Exists('%(Identity)')" />
+    <Copy SourceFiles="@(_LeafAskPassOutputs)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('%(Identity)')" />
+    <Copy SourceFiles="@(_LeafAskPassOutputs)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' And Exists('%(Identity)')" />
   </Target>
 
 </Project>
