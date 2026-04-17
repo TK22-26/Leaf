@@ -1,7 +1,10 @@
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Tests.Composition;
 using Leaf.Tests.Fakes;
 using Leaf.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
 
 namespace Leaf.Tests.ViewModels;
@@ -17,24 +20,18 @@ public class WorkingChangesViewModelDialogTests
 
     public WorkingChangesViewModelDialogTests()
     {
+        // Build the test collection with our production wiring, then
+        // swap in the two fakes we inspect in assertions so the test
+        // can see the calls VM made.
         _gitService = new FakeGitService();
         _dialogService = new FakeDialogService();
 
-        // Create minimal fakes for other required services
-        var clipboardService = new FakeClipboardService();
-        var fileSystemService = new FakeFileSystemService();
-        var aiCommitService = new FakeAiCommitMessageService();
-        var gitignoreService = new FakeGitignoreService();
+        var services = TestServices.CreateCollection();
+        services.Replace(ServiceDescriptor.Singleton<IGitService>(_gitService));
+        services.Replace(ServiceDescriptor.Singleton<IDialogService>(_dialogService));
 
-        var settingsService = new SettingsService();
-        _viewModel = new WorkingChangesViewModel(
-            _gitService,
-            clipboardService,
-            fileSystemService,
-            _dialogService,
-            aiCommitService,
-            gitignoreService,
-            settingsService);
+        var provider = TestServices.BuildProvider(services);
+        _viewModel = provider.GetRequiredService<WorkingChangesViewModel>();
     }
 
     [Fact]
@@ -137,55 +134,3 @@ public class WorkingChangesViewModelDialogTests
     }
 }
 
-/// <summary>
-/// Minimal fake clipboard service for testing.
-/// </summary>
-internal class FakeClipboardService : IClipboardService
-{
-    public string? LastText { get; private set; }
-
-    public void SetText(string text)
-    {
-        LastText = text;
-    }
-
-    public string? GetText()
-    {
-        return LastText;
-    }
-}
-
-/// <summary>
-/// Minimal fake file system service for testing.
-/// </summary>
-internal class FakeFileSystemService : IFileSystemService
-{
-    public void OpenInExplorer(string folderPath) { }
-    public void OpenInExplorerAndSelect(string filePath) { }
-    public void RevealInExplorer(string path) { }
-    public void OpenWithDefaultApp(string filePath) { }
-    public void OpenInTerminal(string folderPath) { }
-}
-
-/// <summary>
-/// Minimal fake AI commit message service for testing.
-/// </summary>
-internal class FakeAiCommitMessageService : IAiCommitMessageService
-{
-    public Task<(string? message, string? description, string? error)> GenerateCommitMessageAsync(
-        string diffText, string? repoPath = null, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<(string?, string?, string?)>(("Test commit", "Test description", null));
-    }
-}
-
-/// <summary>
-/// Minimal fake gitignore service for testing.
-/// </summary>
-internal class FakeGitignoreService : IGitignoreService
-{
-    public Task IgnoreFileAsync(string repoPath, FileStatusInfo file) => Task.CompletedTask;
-    public Task IgnoreExtensionAsync(string repoPath, FileStatusInfo file) => Task.CompletedTask;
-    public Task IgnoreDirectoryAsync(string repoPath, FileStatusInfo file) => Task.CompletedTask;
-    public Task IgnoreDirectoryPathAsync(string repoPath, string directoryPath, IEnumerable<FileStatusInfo> trackedFiles) => Task.CompletedTask;
-}

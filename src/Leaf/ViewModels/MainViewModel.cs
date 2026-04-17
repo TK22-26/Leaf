@@ -5,10 +5,12 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Leaf.Composition;
 using Leaf.Models;
 using Leaf.Services;
 using Leaf.Services.PullRequests;
 using Leaf.Views;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Leaf.ViewModels;
 
@@ -32,9 +34,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IFolderWatcherService _folderWatcherService;
     private readonly IPullRequestService _pullRequestService;
     private readonly IRepositorySessionFactory _sessionFactory;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDiffService _diffService;
     private readonly INotificationService? _notificationService;
-    private IRepositorySession? _currentSession;
+
+    // The per-repo DI scope. Owns the current IRepositorySession (scoped)
+    // and — in future phases — the per-repo ViewModels. Disposed on repo
+    // switch and on shutdown; disposal cascades to the session which
+    // cancels its token and tears down the LibGit2Sharp Repository handle.
+    private IServiceScope? _currentScope;
+    private string? _currentScopeRepoPath;
+
     private bool _disposed;
 
     /// <summary>
@@ -44,7 +54,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// newly selected repo's loading. Pass this to every IGitService call.
     /// </summary>
     public CancellationToken CurrentRepositoryToken =>
-        _currentSession?.CancellationToken ?? CancellationToken.None;
+        _currentScope?.ServiceProvider.GetService<IRepositorySession>()?.CancellationToken
+        ?? CancellationToken.None;
 
     private string? _pendingBranchBaseSha;
 
@@ -336,6 +347,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IRepositoryEventHub eventHub,
         IDialogService dialogService,
         IRepositorySessionFactory sessionFactory,
+        IServiceScopeFactory scopeFactory,
         IGitCommandRunner gitCommandRunner,
         IClipboardService clipboardService,
         IFileSystemService fileSystemService,
@@ -353,6 +365,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _dispatcherService = dispatcherService;
         _dialogService = dialogService;
         _sessionFactory = sessionFactory;
+        _scopeFactory = scopeFactory;
         _diffService = diffService;
         _clipboardService = clipboardService;
         _folderWatcherService = folderWatcherService;
@@ -640,9 +653,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         (commitDetail as IDisposable)?.Dispose();
         (graph as IDisposable)?.Dispose();
 
-        // Dispose current repository session
-        _currentSession?.Dispose();
-        _currentSession = null;
+        // Dispose current repository scope — cascades to IRepositorySession,
+        // which cancels its token and releases the LibGit2Sharp handle.
+        _currentScope?.Dispose();
+        _currentScope = null;
+        _currentScopeRepoPath = null;
 
         // Dispose file watcher
         _fileWatcherService.Dispose();
