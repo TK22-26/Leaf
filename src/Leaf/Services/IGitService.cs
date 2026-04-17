@@ -94,14 +94,21 @@ public interface IGitService
     Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Set a git config value.
+    /// Set a git config value. Scope defaults to Local (<c>.git/config</c>);
+    /// pass <see cref="GitConfigScope.Global"/> to target <c>~/.gitconfig</c>.
     /// </summary>
-    Task SetConfigAsync(string repoPath, string key, string value, CancellationToken cancellationToken = default);
+    Task SetConfigAsync(string repoPath, string key, string value, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Get a git config value.
+    /// Get a git config value. Scope defaults to Local (reads from
+    /// <c>.git/config</c>, falling back to inherited global/system values).
     /// </summary>
-    Task<string?> GetConfigAsync(string repoPath, string key, CancellationToken cancellationToken = default);
+    Task<string?> GetConfigAsync(string repoPath, string key, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Remove a git config key. Scope defaults to Local.
+    /// </summary>
+    Task UnsetConfigAsync(string repoPath, string key, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get repository status information.
@@ -423,9 +430,17 @@ public interface IGitService
     Task<Models.MergeResult> FastForwardAsync(string repoPath, string targetBranchName, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Open a conflict in VS Code for resolution.
+    /// Drive a three-way merge through an external tool. The caller
+    /// provides a launch delegate (basePath, localPath, remotePath,
+    /// mergedPath, ct) that returns the tool's exit code; this method
+    /// handles temp-file prep, writing the merged result back, and
+    /// staging. Returns true when the merge was accepted and staged.
     /// </summary>
-    Task OpenConflictInVsCodeAsync(string repoPath, string filePath, CancellationToken cancellationToken = default);
+    Task<bool> OpenConflictInMergeToolAsync(
+        string repoPath,
+        string filePath,
+        Func<string, string, string, string, CancellationToken, Task<int>> launch,
+        CancellationToken cancellationToken = default);
 
     #region Branch Deletion
 

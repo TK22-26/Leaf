@@ -68,8 +68,9 @@ public class FakeGitService : IGitService
     public Task RemoveRemoteAsync(string repoPath, string remoteName, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task RenameRemoteAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task SetConfigAsync(string repoPath, string key, string value, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task<string?> GetConfigAsync(string repoPath, string key, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+    public virtual Task SetConfigAsync(string repoPath, string key, string value, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public virtual Task<string?> GetConfigAsync(string repoPath, string key, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+    public virtual Task UnsetConfigAsync(string repoPath, string key, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new RepositoryInfo());
     public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new RepositoryInfo());
     public Task<string> CloneAsync(string url, string localPath, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult("");
@@ -129,7 +130,7 @@ public class FakeGitService : IGitService
     public Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
     public Task<MergeResult> FastForwardAsync(string repoPath, string targetBranchName, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
-    public Task OpenConflictInVsCodeAsync(string repoPath, string filePath, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<bool> OpenConflictInMergeToolAsync(string repoPath, string filePath, Func<string, string, string, string, CancellationToken, Task<int>> launch, CancellationToken cancellationToken = default) => Task.FromResult(false);
     public Task DeleteBranchAsync(string repoPath, string branchName, bool force = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task DeleteRemoteBranchAsync(string repoPath, string remoteName, string branchName, string? credentialKey = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<List<TagInfo>> GetTagsAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new List<TagInfo>());

@@ -158,12 +158,12 @@
                                                     ToolTip="Resolve in Leaf">
                                                 <ic:SymbolIcon Symbol="Edit" FontSize="12"/>
                                             </Button>
-                                            <Button AutomationProperties.AutomationId="ResolveInVsCodeButton"
-                                                    AutomationProperties.Name="Resolve in VS Code"
-                                                    Command="{Binding DataContext.OpenConflictInVsCodeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            <Button AutomationProperties.AutomationId="ResolveInExternalToolButton"
+                                                    AutomationProperties.Name="Resolve in External Tool"
+                                                    Command="{Binding DataContext.OpenConflictInMergeToolCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}"
                                                     Padding="6,2"
-                                                    ToolTip="Resolve in VS Code">
+                                                    ToolTip="Resolve in external merge tool (configure in Settings → External Tools)">
                                                 <ic:SymbolIcon Symbol="Code" FontSize="12"/>
                                             </Button>
                                         </StackPanel>

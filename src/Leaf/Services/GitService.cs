@@ -280,8 +280,12 @@ public class GitService : IGitService
     public Task ClearStoredMergeConflictFilesAsync(string repoPath, CancellationToken cancellationToken = default)
         => _conflictOps.ClearStoredMergeConflictFilesAsync(repoPath, cancellationToken);
 
-    public Task OpenConflictInVsCodeAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
-        => _conflictOps.OpenConflictInVsCodeAsync(repoPath, filePath, cancellationToken);
+    public Task<bool> OpenConflictInMergeToolAsync(
+        string repoPath,
+        string filePath,
+        Func<string, string, string, string, CancellationToken, Task<int>> launch,
+        CancellationToken cancellationToken = default)
+        => _conflictOps.OpenConflictInMergeToolAsync(repoPath, filePath, launch, cancellationToken);
 
     #endregion
 
@@ -397,11 +401,14 @@ public class GitService : IGitService
 
     #region Config Operations
 
-    public Task SetConfigAsync(string repoPath, string key, string value, CancellationToken cancellationToken = default)
-        => _configOps.SetConfigAsync(repoPath, key, value, cancellationToken);
+    public Task SetConfigAsync(string repoPath, string key, string value, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default)
+        => _configOps.SetConfigAsync(repoPath, key, value, scope, cancellationToken);
 
-    public Task<string?> GetConfigAsync(string repoPath, string key, CancellationToken cancellationToken = default)
-        => _configOps.GetConfigAsync(repoPath, key, cancellationToken);
+    public Task<string?> GetConfigAsync(string repoPath, string key, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default)
+        => _configOps.GetConfigAsync(repoPath, key, scope, cancellationToken);
+
+    public Task UnsetConfigAsync(string repoPath, string key, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default)
+        => _configOps.UnsetConfigAsync(repoPath, key, scope, cancellationToken);
 
     #endregion
 

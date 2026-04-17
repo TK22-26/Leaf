@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using Leaf.Models;
 using Leaf.Services;
@@ -274,11 +273,22 @@ internal class ConflictOperations : IConflictOperations
     }
 
     /// <summary>
-    /// Open a conflict in VS Code for resolution.
+    /// Drive a three-way merge through an external tool. The caller
+    /// supplies a <paramref name="launch"/> delegate that knows how to
+    /// invoke the tool and returns the tool's exit code — we handle the
+    /// git-side concerns (extracting base/ours/theirs, writing temp files,
+    /// copying the tool's output back, staging) so callers don't have to
+    /// know about index stages or libgit2sharp. Returns true when the
+    /// merge was accepted and staged; false when the tool reported
+    /// failure or the user discarded the merge.
     /// </summary>
-    public async Task OpenConflictInVsCodeAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+    public async Task<bool> OpenConflictInMergeToolAsync(
+        string repoPath,
+        string filePath,
+        Func<string, string, string, string, CancellationToken, Task<int>> launch,
+        CancellationToken cancellationToken = default)
     {
-        var conflicts = await GetConflictsAsync(repoPath);
+        var conflicts = await GetConflictsAsync(repoPath, cancellationToken);
         var conflict = conflicts.FirstOrDefault(c => c.FilePath == filePath);
 
         if (conflict == null)
@@ -289,72 +299,47 @@ internal class ConflictOperations : IConflictOperations
         var tempDir = Path.Combine(Path.GetTempPath(), "LeafMerge", Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDir);
 
-        var fileName = Path.GetFileName(filePath);
-        var extension = Path.GetExtension(filePath);
-
-        var basePath = Path.Combine(tempDir, $"{fileName}.base{extension}");
-        var localPath = Path.Combine(tempDir, $"{fileName}.local{extension}");
-        var remotePath = Path.Combine(tempDir, $"{fileName}.remote{extension}");
-        var mergedPath = Path.Combine(tempDir, $"{fileName}{extension}");
-
-        await File.WriteAllTextAsync(basePath, conflict.BaseContent);
-        await File.WriteAllTextAsync(localPath, conflict.OursContent);
-        await File.WriteAllTextAsync(remotePath, conflict.TheirsContent);
-
-        var repoFilePath = Path.Combine(repoPath, filePath);
-        if (File.Exists(repoFilePath))
-        {
-            File.Copy(repoFilePath, mergedPath, true);
-        }
-        else
-        {
-            await File.WriteAllTextAsync(mergedPath, conflict.OursContent);
-        }
-
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "code",
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            startInfo.ArgumentList.Add("-n");
-            startInfo.ArgumentList.Add("--wait");
-            startInfo.ArgumentList.Add("--merge");
-            startInfo.ArgumentList.Add(basePath);
-            startInfo.ArgumentList.Add(localPath);
-            startInfo.ArgumentList.Add(remotePath);
-            startInfo.ArgumentList.Add(mergedPath);
+            var fileName = Path.GetFileName(filePath);
+            var extension = Path.GetExtension(filePath);
 
-            using var process = Process.Start(startInfo);
-            if (process == null)
+            var basePath = Path.Combine(tempDir, $"{fileName}.base{extension}");
+            var localPath = Path.Combine(tempDir, $"{fileName}.local{extension}");
+            var remotePath = Path.Combine(tempDir, $"{fileName}.remote{extension}");
+            var mergedPath = Path.Combine(tempDir, $"{fileName}{extension}");
+
+            await File.WriteAllTextAsync(basePath, conflict.BaseContent, cancellationToken);
+            await File.WriteAllTextAsync(localPath, conflict.OursContent, cancellationToken);
+            await File.WriteAllTextAsync(remotePath, conflict.TheirsContent, cancellationToken);
+
+            var repoFilePath = Path.Combine(repoPath, filePath);
+            if (File.Exists(repoFilePath))
             {
-                throw new InvalidOperationException("Failed to launch VS Code.");
+                File.Copy(repoFilePath, mergedPath, true);
+            }
+            else
+            {
+                await File.WriteAllTextAsync(mergedPath, conflict.OursContent, cancellationToken);
             }
 
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
-            try
+            var exitCode = await launch(basePath, localPath, remotePath, mergedPath, cancellationToken);
+            if (exitCode != 0 || !File.Exists(mergedPath))
             {
-                await process.WaitForExitAsync(timeoutCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                process.Kill();
-                throw new InvalidOperationException("VS Code merge timed out after 30 minutes.");
+                return false;
             }
 
-            if (process.ExitCode == 0)
-            {
-                if (File.Exists(mergedPath))
-                {
-                    var mergedContent = await File.ReadAllTextAsync(mergedPath);
-                    await File.WriteAllTextAsync(repoFilePath, mergedContent);
+            var mergedContent = await File.ReadAllTextAsync(mergedPath, cancellationToken);
+            await File.WriteAllTextAsync(repoFilePath, mergedContent, cancellationToken);
 
-                    using var repo = new Repository(repoPath);
-                    Commands.Stage(repo, filePath);
-                }
-            }
+            // Stage through libgit2sharp on the thread pool — the API is
+            // synchronous and touches the index.
+            await Task.Run(() =>
+            {
+                using var repo = new Repository(repoPath);
+                Commands.Stage(repo, filePath);
+            }, cancellationToken);
+            return true;
         }
         finally
         {
@@ -362,7 +347,10 @@ internal class ConflictOperations : IConflictOperations
             {
                 Directory.Delete(tempDir, true);
             }
-            catch (Exception ex) { Log.Warn("Merge", $"Failed to clean up temp directory: {ex.Message}"); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Warn("Merge", $"Failed to clean up temp directory: {ex.Message}");
+            }
         }
     }
 

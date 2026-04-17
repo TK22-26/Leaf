@@ -258,7 +258,7 @@ public partial class MainViewModel
     public async Task CloneRepositoryAsync()
     {
         var settings = _settingsService.LoadSettings();
-        var dialog = new CloneDialog(_gitService, _credentialService, _settingsService, settings.DefaultClonePath);
+        var dialog = new CloneDialog(_gitService, _credentialService, _settingsService, _externalToolConfig, _externalToolDetector, settings.DefaultClonePath);
 
         if (await _dialogService.ShowDialogAsync(dialog) && !string.IsNullOrEmpty(dialog.ClonedRepositoryPath))
         {
@@ -358,6 +358,13 @@ public partial class MainViewModel
 
             _repositoryService.MarkAsRecentlyAccessed(repository);
             _fileWatcherService.WatchRepository(repository.Path);
+
+            // Probe the merge-tool config for this repo so the "Resolve
+            // in External Tool" button enables/disables correctly.
+            // Fire-and-forget: the check is quick and the button stays
+            // disabled until the probe lands.
+            RefreshExternalMergeToolAvailabilityAsync()
+                .FireAndForget(nameof(RefreshExternalMergeToolAvailabilityAsync), isUserAction: false);
 
             var settings = _settingsService.LoadSettings();
             settings.LastSelectedRepositoryPath = repository.Path;

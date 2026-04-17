@@ -14,18 +14,30 @@ public partial class SettingsDialog : Window
 {
     private readonly CredentialService _credentialService;
     private readonly SettingsService _settingsService;
+    private readonly IExternalToolConfigService _externalToolConfig;
+    private readonly IExternalToolDetectorService _externalToolDetector;
+    private readonly string? _currentRepoPath;
     private readonly AppSettings _settings;
     private bool _suppressNavSelection;
+    private bool _externalToolsBound;
 
     // Search items for settings
     private readonly List<SettingsSearchItem> _allSearchItems;
 
-    public SettingsDialog(CredentialService credentialService, SettingsService settingsService)
+    public SettingsDialog(
+        CredentialService credentialService,
+        SettingsService settingsService,
+        IExternalToolConfigService externalToolConfig,
+        IExternalToolDetectorService externalToolDetector,
+        string? currentRepoPath)
     {
         InitializeComponent();
 
         _credentialService = credentialService;
         _settingsService = settingsService;
+        _externalToolConfig = externalToolConfig;
+        _externalToolDetector = externalToolDetector;
+        _currentRepoPath = currentRepoPath;
         _settings = settingsService.LoadSettings();
 
         // Initialize search items
@@ -62,6 +74,9 @@ public partial class SettingsDialog : Window
             new("Logging", "Configure diagnostic logging for troubleshooting", "Logging", Symbol.Bug),
             new("Log Level", "Set log verbosity: off, normal, or verbose", "Logging", Symbol.Bug),
             new("Diagnostics", "Enable diagnostic logging to file", "Logging", Symbol.Bug),
+            new("External Tools", "Configure external diff and merge tools", "ExternalTools", Symbol.Wrench),
+            new("Diff Tool", "Choose an external diff tool (VS Code, Beyond Compare, etc.)", "ExternalTools", Symbol.Wrench),
+            new("Merge Tool", "Choose an external merge tool for conflict resolution", "ExternalTools", Symbol.Wrench),
         };
 
         // Configure UserControls
@@ -103,6 +118,7 @@ public partial class SettingsDialog : Window
         GitHubSettings.Visibility = Visibility.Collapsed;
         AiSettings.Visibility = Visibility.Collapsed;
         GitFlowSettings.Visibility = Visibility.Collapsed;
+        ExternalToolsSettings.Visibility = Visibility.Collapsed;
         ContentSearchResults.Visibility = Visibility.Collapsed;
 
         // Show the selected content
@@ -160,6 +176,38 @@ public partial class SettingsDialog : Window
             case "GitFlow":
                 GitFlowSettings.Visibility = Visibility.Visible;
                 break;
+            case "ExternalTools":
+                ExternalToolsSettings.Visibility = Visibility.Visible;
+                BindExternalToolsIfNeededAsync()
+                    .FireAndForget(nameof(BindExternalToolsIfNeededAsync), isUserAction: true);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Lazily bind the External Tools section to its services the first
+    /// time the user navigates to it. Guarded by <c>_externalToolsBound</c>
+    /// so we don't re-read git config on every click. The flag is set
+    /// before awaiting so concurrent clicks don't trigger overlapping
+    /// binds; failures reset it so a retry is possible.
+    /// </summary>
+    private async Task BindExternalToolsIfNeededAsync()
+    {
+        if (_externalToolsBound) return;
+        _externalToolsBound = true;
+
+        // `git config --global` ignores CWD but the CommandRunner still
+        // needs a valid directory. Fall back to UserProfile when Leaf
+        // was opened without any repo active.
+        var repoPath = _currentRepoPath ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        try
+        {
+            await ExternalToolsSettings.BindAsync(_externalToolConfig, _externalToolDetector, repoPath);
+        }
+        catch
+        {
+            _externalToolsBound = false;
+            throw;
         }
     }
 
@@ -202,6 +250,7 @@ public partial class SettingsDialog : Window
         GitHubSettings.Visibility = Visibility.Collapsed;
         AiSettings.Visibility = Visibility.Collapsed;
         GitFlowSettings.Visibility = Visibility.Collapsed;
+        ExternalToolsSettings.Visibility = Visibility.Collapsed;
 
         // Show search results
         ContentSearchResults.Visibility = Visibility.Visible;
@@ -246,6 +295,7 @@ public partial class SettingsDialog : Window
             "Ollama" => NavOllama,
             "Logging" => NavLogging,
             "GitFlow" => NavGitFlow,
+            "ExternalTools" => NavExternalTools,
             _ => null
         };
 

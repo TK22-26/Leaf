@@ -18,6 +18,8 @@ public partial class CloneDialog : Window
     private readonly AzureDevOpsService _azureDevOpsService;
     private readonly GitHubService _gitHubService;
     private readonly SettingsService _settingsService;
+    private readonly IExternalToolConfigService _externalToolConfig;
+    private readonly IExternalToolDetectorService _externalToolDetector;
     private bool _isCloning;
 
     // Azure DevOps repos
@@ -36,13 +38,21 @@ public partial class CloneDialog : Window
     /// </summary>
     public string? ClonedRepositoryPath { get; private set; }
 
-    public CloneDialog(IGitService gitService, CredentialService credentialService, SettingsService settingsService, string defaultClonePath)
+    public CloneDialog(
+        IGitService gitService,
+        CredentialService credentialService,
+        SettingsService settingsService,
+        IExternalToolConfigService externalToolConfig,
+        IExternalToolDetectorService externalToolDetector,
+        string defaultClonePath)
     {
         InitializeComponent();
 
         _gitService = gitService;
         _credentialService = credentialService;
         _settingsService = settingsService;
+        _externalToolConfig = externalToolConfig;
+        _externalToolDetector = externalToolDetector;
         _azureDevOpsService = new AzureDevOpsService(credentialService);
         _gitHubService = new GitHubService(credentialService);
 
@@ -518,7 +528,12 @@ public partial class CloneDialog : Window
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
-        var settingsDialog = new SettingsDialog(_credentialService, _settingsService)
+        var settingsDialog = new SettingsDialog(
+            _credentialService,
+            _settingsService,
+            _externalToolConfig,
+            _externalToolDetector,
+            currentRepoPath: null)
         {
             Owner = this
         };

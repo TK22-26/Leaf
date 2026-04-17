@@ -49,6 +49,8 @@ public partial class WorkingChangesViewModel : ObservableObject
     private readonly IAiCommitMessageService _aiCommitService;
     private readonly IGitignoreService _gitignoreService;
     private readonly SettingsService _settingsService;
+    private readonly IExternalToolConfigService _externalToolConfig;
+    private readonly IExternalToolLauncherService _externalToolLauncher;
     private string? _repositoryPath;
     private CancellationTokenSource? _aiCancellationTokenSource;
 
@@ -63,6 +65,10 @@ public partial class WorkingChangesViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isStagedExpanded = true;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OpenInExternalDiffToolCommand))]
+    private bool _hasExternalDiffTool;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasChanges))]
@@ -204,6 +210,8 @@ public partial class WorkingChangesViewModel : ObservableObject
         IDialogService dialogService,
         IAiCommitMessageService aiCommitService,
         IGitignoreService gitignoreService,
+        IExternalToolConfigService externalToolConfig,
+        IExternalToolLauncherService externalToolLauncher,
         SettingsService settingsService)
     {
         _gitService = gitService;
@@ -212,6 +220,8 @@ public partial class WorkingChangesViewModel : ObservableObject
         _dialogService = dialogService;
         _aiCommitService = aiCommitService;
         _gitignoreService = gitignoreService;
+        _externalToolConfig = externalToolConfig;
+        _externalToolLauncher = externalToolLauncher;
         _settingsService = settingsService;
         _isOptionsExpanded = _settingsService.LoadSettings().IsCommitOptionsExpanded;
         RefreshAiAvailability();
@@ -246,6 +256,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         IsAmendMode = false;
         await RefreshAsync();
         await RefreshAmendStateAsync();
+        await RefreshExternalDiffToolAvailabilityAsync();
     }
 
     /// <summary>
@@ -463,6 +474,7 @@ public partial class WorkingChangesViewModel : ObservableObject
             OpenFileCommand = OpenFileCommand,
             OpenInExplorerCommand = OpenInExplorerCommand,
             CopyFilePathCommand = CopyFilePathCommand,
+            OpenInExternalDiffToolCommand = OpenInExternalDiffToolCommand,
             DeleteFileCommand = DeleteFileCommand,
             AdminDeleteCommand = AdminDeleteReservedFileCommand,
             FileSelectedCommand = SelectUnstagedFileCommand,
@@ -491,6 +503,7 @@ public partial class WorkingChangesViewModel : ObservableObject
             OpenFileCommand = OpenFileCommand,
             OpenInExplorerCommand = OpenInExplorerCommand,
             CopyFilePathCommand = CopyFilePathCommand,
+            OpenInExternalDiffToolCommand = OpenInExternalDiffToolCommand,
             DeleteFileCommand = DeleteFileCommand,
             AdminDeleteCommand = null, // Not applicable for staged files
             FileSelectedCommand = SelectStagedFileCommand,
@@ -875,6 +888,116 @@ public partial class WorkingChangesViewModel : ObservableObject
         var normalizedFilePath = file.Path.Replace('/', '\\');
         var fullPath = Path.GetFullPath(Path.Combine(_repositoryPath, normalizedFilePath));
         _clipboardService.SetText(fullPath);
+    }
+
+    /// <summary>
+    /// Diff a working-changes file in the configured external diff tool.
+    /// For unstaged files the baseline is the index (or HEAD if the file
+    /// isn't in the index) and the right side is the live working copy
+    /// — so edits saved through the tool land back in the working tree.
+    /// For staged files both sides are snapshots (HEAD vs index), so
+    /// the tool sees read-only content. Disabled when no external diff
+    /// tool is configured.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasExternalDiffTool))]
+    public async Task OpenInExternalDiffToolAsync(FileStatusInfo? file)
+    {
+        if (string.IsNullOrEmpty(_repositoryPath) || file == null)
+            return;
+
+        try
+        {
+            var diffTool = await _externalToolConfig.GetCurrentToolAsync(
+                _repositoryPath, ExternalToolKind.Diff, SessionToken);
+            if (diffTool == null)
+            {
+                // Config changed out from under us between the CanExecute
+                // check and here. Refresh and give up.
+                HasExternalDiffTool = false;
+                return;
+            }
+
+            // Pick the baseline that matches what the user sees in Leaf's
+            // internal two-pane diff: unstaged = index-or-HEAD vs working,
+            // staged = HEAD vs index. Using GetFileDiffAsync("HEAD", ...)
+            // would diff parent-of-HEAD vs HEAD, which is wrong on both
+            // counts.
+            var (oldContent, stagedNewContent) = file.IsStaged
+                ? await _gitService.GetStagedFileDiffAsync(_repositoryPath, file.Path, SessionToken)
+                : await _gitService.GetUnstagedFileDiffAsync(_repositoryPath, file.Path, SessionToken);
+
+            var normalizedFilePath = file.Path.Replace('/', '\\');
+            var workingPath = Path.GetFullPath(Path.Combine(_repositoryPath, normalizedFilePath));
+
+            var tempDir = Path.Combine(Path.GetTempPath(), "LeafDiff", Guid.NewGuid().ToString());
+            Directory.CreateDirectory(tempDir);
+            var fileName = Path.GetFileName(file.Path);
+            var extension = Path.GetExtension(file.Path);
+            var leftPath = Path.Combine(tempDir, $"{fileName}.baseline{extension}");
+
+            try
+            {
+                await File.WriteAllTextAsync(leftPath, oldContent, SessionToken);
+
+                if (file.IsStaged)
+                {
+                    // Staged snapshot — write the index content to a temp
+                    // file too. Editing it wouldn't round-trip anywhere.
+                    var rightPath = Path.Combine(tempDir, $"{fileName}.staged{extension}");
+                    await File.WriteAllTextAsync(rightPath, stagedNewContent, SessionToken);
+                    await _externalToolLauncher.LaunchDiffAsync(diffTool, leftPath, rightPath, SessionToken);
+                }
+                else if (File.Exists(workingPath))
+                {
+                    // Unstaged — point the tool at the live working file
+                    // so in-place edits make it back to disk.
+                    await _externalToolLauncher.LaunchDiffAsync(diffTool, leftPath, workingPath, SessionToken);
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(tempDir, true); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Log.Warn("ExternalDiff", $"Failed to clean up temp directory: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or IOException
+                                or UnauthorizedAccessException
+                                or System.ComponentModel.Win32Exception
+                                or OperationCanceledException)
+        {
+            Log.Warn("ExternalDiff", $"Open diff in external tool failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Re-check whether an external diff tool is configured for this
+    /// repository. Called on repo switch and after the Settings dialog
+    /// closes so the menu item's enabled state matches git config.
+    /// </summary>
+    public async Task RefreshExternalDiffToolAvailabilityAsync()
+    {
+        if (string.IsNullOrEmpty(_repositoryPath))
+        {
+            HasExternalDiffTool = false;
+            return;
+        }
+
+        try
+        {
+            var tool = await _externalToolConfig.GetCurrentToolAsync(
+                _repositoryPath, ExternalToolKind.Diff, SessionToken);
+            HasExternalDiffTool = tool != null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or OperationCanceledException)
+        {
+            Log.Info("ExternalDiff", $"Availability probe failed: {ex.Message}");
+            HasExternalDiffTool = false;
+        }
     }
 
     /// <summary>

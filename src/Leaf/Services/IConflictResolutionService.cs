@@ -83,9 +83,16 @@ public interface IConflictResolutionService
     Task ClearStoredConflictFilesAsync(IRepositorySession session);
 
     /// <summary>
-    /// Opens a conflicted file in VS Code's merge editor.
+    /// Opens a conflicted file in the user's configured external merge
+    /// tool. The caller provides a <paramref name="launch"/> delegate
+    /// (basePath, localPath, remotePath, mergedPath, ct) returning the
+    /// tool's exit code. Returns true when the merge was staged.
     /// </summary>
     /// <param name="session">Repository session.</param>
     /// <param name="filePath">Relative path to the conflicted file.</param>
-    Task OpenInVsCodeAsync(IRepositorySession session, string filePath);
+    /// <param name="launch">Delegate that invokes the configured tool.</param>
+    Task<bool> OpenInMergeToolAsync(
+        IRepositorySession session,
+        string filePath,
+        Func<string, string, string, string, CancellationToken, Task<int>> launch);
 }

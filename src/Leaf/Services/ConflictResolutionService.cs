@@ -95,9 +95,13 @@ public class ConflictResolutionService : IConflictResolutionService
     }
 
     /// <inheritdoc />
-    public async Task OpenInVsCodeAsync(IRepositorySession session, string filePath)
+    public async Task<bool> OpenInMergeToolAsync(
+        IRepositorySession session,
+        string filePath,
+        Func<string, string, string, string, CancellationToken, Task<int>> launch)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        await _gitService.OpenConflictInVsCodeAsync(session.RepositoryPath, filePath);
+        return await _gitService.OpenConflictInMergeToolAsync(
+            session.RepositoryPath, filePath, launch, session.CancellationToken);
     }
 }

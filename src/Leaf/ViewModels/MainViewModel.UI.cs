@@ -66,7 +66,12 @@ public partial class MainViewModel
     [RelayCommand]
     public async Task OpenSettingsAsync()
     {
-        var dialog = new SettingsDialog(_credentialService, _settingsService)
+        var dialog = new SettingsDialog(
+            _credentialService,
+            _settingsService,
+            _externalToolConfig,
+            _externalToolDetector,
+            SelectedRepository?.Path)
         {
             Width = 1000,
             Height = 750
@@ -75,6 +80,11 @@ public partial class MainViewModel
         TerminalViewModel?.ReloadSettings();
         WorkingChangesViewModel?.RefreshAiAvailability();
         WorkingChangesViewModel?.RefreshSectionContexts();
+        if (WorkingChangesViewModel != null)
+            await WorkingChangesViewModel.RefreshExternalDiffToolAvailabilityAsync();
+        if (CommitDetailViewModel != null)
+            await CommitDetailViewModel.RefreshExternalDiffToolAvailabilityAsync();
+        await RefreshExternalMergeToolAvailabilityAsync();
         var updatedSettings = _settingsService.LoadSettings();
         if (CommitDetailViewModel != null)
             CommitDetailViewModel.IsCompactFileList = updatedSettings.CompactFileList;

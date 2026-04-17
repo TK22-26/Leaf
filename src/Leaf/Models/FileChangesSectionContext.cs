@@ -90,6 +90,12 @@ public class FileChangesSectionContext
     public required ICommand CopyFilePathCommand { get; init; }
 
     /// <summary>
+    /// Command to open the file's HEAD-vs-working diff in the
+    /// configured external diff tool.
+    /// </summary>
+    public required ICommand OpenInExternalDiffToolCommand { get; init; }
+
+    /// <summary>
     /// Command to delete a file from the filesystem.
     /// </summary>
     public required ICommand DeleteFileCommand { get; init; }
