@@ -4,7 +4,7 @@ using System.IO;
 using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using ICSharpCode.AvalonEdit.Highlighting;
+using Leaf.TextEdit.Highlighting;
 using Leaf.Models;
 using Leaf.Services;
 

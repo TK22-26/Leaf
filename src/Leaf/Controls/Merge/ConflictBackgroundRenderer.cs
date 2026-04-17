@@ -1,6 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
-using ICSharpCode.AvalonEdit.Rendering;
+using Leaf.TextEdit.Rendering;
 
 namespace Leaf.Controls.Merge;
 

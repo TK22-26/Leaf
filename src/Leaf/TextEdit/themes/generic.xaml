@@ -1,0 +1,15 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:editing="clr-namespace:Leaf.TextEdit.Editing">
+	<ResourceDictionary.MergedDictionaries>
+		<ResourceDictionary Source="/Leaf.TextEdit;component/TextEditor.xaml" />
+		<ResourceDictionary Source="/Leaf.TextEdit;component/Search/DropDownButton.xaml" />
+		<ResourceDictionary Source="/Leaf.TextEdit;component/Search/SearchPanel.xaml" />
+		<ResourceDictionary Source="/Leaf.TextEdit;component/CodeCompletion/CompletionList.xaml" />
+		<ResourceDictionary Source="/Leaf.TextEdit;component/CodeCompletion/InsightWindow.xaml" />
+	</ResourceDictionary.MergedDictionaries>
+
+	<Style TargetType="{x:Type editing:LineNumberMargin}">
+		<Setter Property="Control.Cursor" Value="/Leaf.TextEdit;component/themes/RightArrow.cur"/>
+	</Style>
+</ResourceDictionary>

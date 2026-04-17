@@ -6,8 +6,8 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using FluentIcons.Common;
 using FluentIcons.Wpf;
-using ICSharpCode.AvalonEdit;
-using ICSharpCode.AvalonEdit.Rendering;
+using Leaf.TextEdit;
+using Leaf.TextEdit.Rendering;
 using Leaf.Models;
 using Leaf.ViewModels;
 
