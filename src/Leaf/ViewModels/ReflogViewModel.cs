@@ -292,6 +292,19 @@ public partial class ReflogViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Copy a SHA programmatically — used by the SHA-cell
+    /// <c>PreviewMouseLeftButtonDown</c> handler in the view, which
+    /// can't bind a RelayCommand to a TextBlock gesture directly.
+    /// Kept separate from <see cref="CopyHash"/> so the click copies
+    /// the cell's own hash even if the selection hasn't landed yet.
+    /// </summary>
+    public void CopyShaToClipboard(string sha)
+    {
+        if (!string.IsNullOrEmpty(sha))
+            _clipboardService.SetText(sha);
+    }
+
+    /// <summary>
     /// Shared wrapper for the reflog commands that mutate the repo.
     /// Handles the busy-state + error-surface contract the window
     /// expects; callers just provide a progress label and the work.

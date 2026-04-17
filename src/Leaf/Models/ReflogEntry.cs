@@ -79,6 +79,17 @@ public sealed class ReflogEntry
     /// </summary>
     public required string Message { get; init; }
 
-    /// <summary>Timestamp of the operation.</summary>
+    /// <summary>Timestamp of the operation, with the offset git
+    /// emitted it in (usually the user's local TZ at the moment of
+    /// the op, since reflog is a local file).</summary>
     public required DateTimeOffset Timestamp { get; init; }
+
+    /// <summary>
+    /// The same moment as <see cref="Timestamp"/>, rendered in the
+    /// user's *current* local timezone. This is the value the
+    /// sidebar/view bind to — a user who moves timezones still sees
+    /// historical entries in their own clock, rather than the
+    /// timezone recorded when the op happened.
+    /// </summary>
+    public DateTime LocalTime => Timestamp.LocalDateTime;
 }
