@@ -221,6 +221,74 @@ internal class SubmoduleOperations
     }
 
     /// <summary>
+    /// Clone + check out the commit the parent tree records for the
+    /// given submodule paths. When <paramref name="paths"/> is empty,
+    /// initializes and updates every registered submodule. Equivalent
+    /// to <c>git submodule update --init [-- path...]</c>, plus
+    /// <c>--recursive</c> when nested submodules should follow.
+    /// </summary>
+    public async Task InitAndUpdateAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default)
+    {
+        var args = new List<string> { "submodule", "update", "--init" };
+        if (recursive) args.Add("--recursive");
+        if (paths.Count > 0)
+        {
+            args.Add("--");
+            args.AddRange(paths);
+        }
+
+        await RunAndThrowOnFailure(repoPath, args, "Init/update submodule(s) failed", cancellationToken);
+    }
+
+    /// <summary>
+    /// Re-read the URLs from <c>.gitmodules</c> and copy them into the
+    /// per-repo <c>.git/config</c>. Needed when a submodule's URL
+    /// changes upstream — otherwise the old URL stays in local config.
+    /// </summary>
+    public async Task SyncAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default)
+    {
+        var args = new List<string> { "submodule", "sync" };
+        if (recursive) args.Add("--recursive");
+        if (paths.Count > 0)
+        {
+            args.Add("--");
+            args.AddRange(paths);
+        }
+
+        await RunAndThrowOnFailure(repoPath, args, "Sync submodule(s) failed", cancellationToken);
+    }
+
+    /// <summary>
+    /// Remove the working tree of a submodule and clear its entry from
+    /// <c>.git/config</c>. Leaves the registration in <c>.gitmodules</c>
+    /// intact — that is a Phase-3 remove concern.
+    /// </summary>
+    public async Task DeinitAsync(string repoPath, string path, bool force, CancellationToken cancellationToken = default)
+    {
+        var args = new List<string> { "submodule", "deinit" };
+        if (force) args.Add("--force");
+        args.Add("--");
+        args.Add(path);
+
+        await RunAndThrowOnFailure(repoPath, args, $"Deinit submodule '{path}' failed", cancellationToken);
+    }
+
+    private async Task RunAndThrowOnFailure(string repoPath, IReadOnlyList<string> args, string message, CancellationToken cancellationToken)
+    {
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
+        if (!result.Success)
+        {
+            var detail = !string.IsNullOrWhiteSpace(result.StandardError)
+                ? result.StandardError
+                : result.StandardOutput;
+            throw new InvalidOperationException(
+                string.IsNullOrWhiteSpace(detail)
+                    ? $"{message} (exit code {result.ExitCode})"
+                    : $"{message}: {detail.Trim()}");
+        }
+    }
+
+    /// <summary>
     /// Working record while parsing <c>.gitmodules</c> — keeps name/path
     /// together so the status-output parser can join on path.
     /// </summary>

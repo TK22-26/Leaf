@@ -286,6 +286,26 @@
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Symbol="Add" />
                         </Button>
+                        <!--  Update All Submodules button (SUBMODULES category)  -->
+                        <Button
+                            x:Name="UpdateAllSubmodulesButton"
+                            Grid.Column="1"
+                            Margin="0"
+                            Padding="4"
+                            VerticalAlignment="Center"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Command="{Binding DataContext.UpdateAllSubmodulesCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            Cursor="Hand"
+                            ToolTip="Update all submodules (recursive)"
+                            Visibility="Collapsed">
+                            <ic:SymbolIcon
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Symbol="ArrowClockwise" />
+                        </Button>
                         <!--  Add Worktree button (WORKTREES category)  -->
                         <Button
                             x:Name="AddWorktreeButton"
@@ -408,6 +428,7 @@
                             <Setter TargetName="CategoryIcon" Property="Symbol" Value="Box" />
                             <Setter TargetName="CategoryIcon" Property="Foreground" Value="#06B6D4" />
                             <Setter TargetName="CategoryName" Property="Foreground" Value="#06B6D4" />
+                            <Setter TargetName="UpdateAllSubmodulesButton" Property="Visibility" Value="Visible" />
                         </DataTrigger>
                     </HierarchicalDataTemplate.Triggers>
                 </HierarchicalDataTemplate>
@@ -979,6 +1000,35 @@
                         CornerRadius="2"
                         Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                         ToolTip="{Binding Url}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.OpenSubmoduleAsRepositoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Open as Repository"
+                                    IsEnabled="{Binding IsInitialized}" />
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.InitSubmoduleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Initialize" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.UpdateSubmoduleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Update to Recorded Commit" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.SyncSubmoduleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Sync URL" />
+                                <Separator />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.DeinitSubmoduleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Foreground="#DC2626"
+                                    Header="Deinitialize..."
+                                    IsEnabled="{Binding IsInitialized}" />
+                            </ContextMenu>
+                        </Border.ContextMenu>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />

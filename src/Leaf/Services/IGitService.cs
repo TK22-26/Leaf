@@ -665,5 +665,25 @@ public interface IGitService
     /// </summary>
     Task<List<SubmoduleInfo>> GetSubmodulesAsync(string repoPath, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Clone + check out each submodule at the commit the parent tree
+    /// records. Empty <paramref name="paths"/> targets every submodule.
+    /// </summary>
+    Task InitAndUpdateSubmodulesAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Copy URLs from <c>.gitmodules</c> into <c>.git/config</c> for the
+    /// named paths (or all submodules when the list is empty). Needed
+    /// after a submodule URL moves upstream.
+    /// </summary>
+    Task SyncSubmodulesAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Remove a submodule's working tree and drop its entry from
+    /// <c>.git/config</c>. The registration in <c>.gitmodules</c>
+    /// remains — full removal is a separate operation.
+    /// </summary>
+    Task DeinitSubmoduleAsync(string repoPath, string path, bool force, CancellationToken cancellationToken = default);
+
     #endregion
 }
