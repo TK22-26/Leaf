@@ -33,7 +33,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IClipboardService _clipboardService;
     private readonly IFolderWatcherService _folderWatcherService;
     private readonly IPullRequestService _pullRequestService;
-    private readonly IRepositorySessionFactory _sessionFactory;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDiffService _diffService;
     private readonly INotificationService? _notificationService;
@@ -42,7 +41,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // and — in future phases — the per-repo ViewModels. Disposed on repo
     // switch and on shutdown; disposal cascades to the session which
     // cancels its token and tears down the LibGit2Sharp Repository handle.
+    // _currentSession caches the scope's session so CurrentRepositoryToken
+    // is a field read, not a container lookup on every call.
     private IServiceScope? _currentScope;
+    private IRepositorySession? _currentSession;
     private string? _currentScopeRepoPath;
 
     private bool _disposed;
@@ -54,8 +56,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// newly selected repo's loading. Pass this to every IGitService call.
     /// </summary>
     public CancellationToken CurrentRepositoryToken =>
-        _currentScope?.ServiceProvider.GetService<IRepositorySession>()?.CancellationToken
-        ?? CancellationToken.None;
+        _currentSession?.CancellationToken ?? CancellationToken.None;
 
     private string? _pendingBranchBaseSha;
 
@@ -346,7 +347,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IDispatcherService dispatcherService,
         IRepositoryEventHub eventHub,
         IDialogService dialogService,
-        IRepositorySessionFactory sessionFactory,
         IServiceScopeFactory scopeFactory,
         IGitCommandRunner gitCommandRunner,
         IClipboardService clipboardService,
@@ -364,7 +364,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _autoFetchService = autoFetchService;
         _dispatcherService = dispatcherService;
         _dialogService = dialogService;
-        _sessionFactory = sessionFactory;
         _scopeFactory = scopeFactory;
         _diffService = diffService;
         _clipboardService = clipboardService;
@@ -422,6 +421,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _diffViewerViewModel.HunkReverted += OnDiffViewerHunkReverted;
         _terminalViewModel = new TerminalViewModel(gitService, settingsService) { GetSessionToken = tokenGetter };
         _terminalViewModel.CommandExecuted += OnTerminalCommandExecuted;
+
+        // CommandPaletteViewModel closes over this MainViewModel's state
+        // and commands, so its construction lives here rather than in the
+        // window's code-behind. The delegates deliberately resolve at
+        // invocation time — `SelectedRepository` changes as the user
+        // navigates, and the palette must see the current value.
+        CommandPaletteViewModel = new CommandPaletteViewModel(
+            _repositoryService,
+            () => SelectedRepository,
+            repo => SelectRepositoryCommand.Execute(repo),
+            branch => CheckoutBranchCommand.Execute(branch));
 
         // Wire up file watcher events
         _fileWatcherService.WorkingDirectoryChanged += OnFileWatcherWorkingDirectoryChanged;
@@ -657,6 +667,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // which cancels its token and releases the LibGit2Sharp handle.
         _currentScope?.Dispose();
         _currentScope = null;
+        _currentSession = null;
         _currentScopeRepoPath = null;
 
         // Dispose file watcher

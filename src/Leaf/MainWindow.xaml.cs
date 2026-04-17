@@ -23,11 +23,6 @@ public partial class MainWindow : Window
     private readonly MainViewModel _viewModel;
     private Task? _startupInitializationTask;
 
-    // Parameterless overload exists solely so WPF's XAML tooling (and the
-    // occasional designer code path) can instantiate the window. Runtime
-    // always goes through the DI-aware overload below.
-    public MainWindow() : this(App.Services) { }
-
     public MainWindow(IServiceProvider services)
     {
         PreviewKeyDown += MainWindow_PreviewKeyDown;
@@ -36,16 +31,6 @@ public partial class MainWindow : Window
         _viewModel = services.GetRequiredService<MainViewModel>();
         _gitService = services.GetRequiredService<IGitService>();
         _repositoryService = services.GetRequiredService<IRepositoryManagementService>();
-
-        // CommandPaletteViewModel is still hand-built because it takes
-        // closure-captured delegates referencing MainViewModel commands —
-        // a construction shape DI can't express naturally. MainViewModel
-        // is already resolved, so we wire it up once and hand it over.
-        _viewModel.CommandPaletteViewModel = new CommandPaletteViewModel(
-            _repositoryService,
-            () => _viewModel.SelectedRepository,
-            repo => _viewModel.SelectRepositoryCommand.Execute(repo),
-            branch => _viewModel.CheckoutBranchCommand.Execute(branch));
 
         DataContext = _viewModel;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;

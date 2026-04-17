@@ -35,12 +35,14 @@ public static class ServiceRegistry
         return services;
     }
 
-    // App-lifetime singletons. Where a service has both an interface and a
-    // concrete type that consumers inject directly (e.g. AutoCommitService
-    // takes GitService, SettingsService, RepositoryManagementService as
-    // concretes), we register the concrete as the primary binding and
-    // forward the interface to the same instance — so both injection
-    // shapes resolve to one shared object.
+    // App-lifetime singletons. SettingsService and CredentialService are
+    // concrete-only because other subsystems (CredentialHelper, legacy
+    // migration) inject them directly; CredentialService has an interface
+    // that GitFlowService/AutoFetchService/PullRequestService take, so we
+    // forward ICredentialService to the same singleton instance. This is
+    // the only place where a double-registration is needed — services
+    // that have an interface and no external concrete callers are
+    // registered just once as AddSingleton<I, T>.
     private static void AddInfrastructureServices(IServiceCollection services)
     {
         services.AddSingleton<SettingsService>();
@@ -66,13 +68,8 @@ public static class ServiceRegistry
     private static void AddGitServices(IServiceCollection services)
     {
         services.AddSingleton<IGitCommandRunner, GitCommandRunner>();
-
-        services.AddSingleton<GitService>();
-        services.AddSingleton<IGitService>(sp => sp.GetRequiredService<GitService>());
-
-        services.AddSingleton<RepositoryManagementService>();
-        services.AddSingleton<IRepositoryManagementService>(sp => sp.GetRequiredService<RepositoryManagementService>());
-
+        services.AddSingleton<IGitService, GitService>();
+        services.AddSingleton<IRepositoryManagementService, RepositoryManagementService>();
         services.AddSingleton<IGitFlowService, GitFlowService>();
         services.AddSingleton<IAutoFetchService, AutoFetchService>();
         services.AddSingleton<IDiffService, DiffService>();

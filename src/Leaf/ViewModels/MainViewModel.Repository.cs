@@ -316,6 +316,7 @@ public partial class MainViewModel
             {
                 var previousScope = _currentScope;
                 _currentScope = null;
+                _currentSession = null;
                 _currentScopeRepoPath = null;
 
                 var newScope = _scopeFactory.CreateScope();
@@ -324,9 +325,12 @@ public partial class MainViewModel
                     newScope.ServiceProvider.GetRequiredService<RepositoryScopeContext>().Path = repository.Path;
                     // Force-resolve now so a bad path throws here rather
                     // than on the first git operation deeper in the UI.
-                    _ = newScope.ServiceProvider.GetRequiredService<IRepositorySession>();
+                    // Caching the reference keeps CurrentRepositoryToken
+                    // a field read instead of a per-call container lookup.
+                    var session = newScope.ServiceProvider.GetRequiredService<IRepositorySession>();
 
                     _currentScope = newScope;
+                    _currentSession = session;
                     _currentScopeRepoPath = repository.Path;
                 }
                 catch (ArgumentException ex)
