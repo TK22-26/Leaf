@@ -36,7 +36,7 @@ public partial class MainViewModel
     /// Open the first unresolved conflict in the configured external
     /// merge tool. No-op (with a status message) if no tool is selected.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasExternalMergeTool))]
     public async Task OpenInMergeToolAsync()
     {
         if (SelectedRepository == null) return;
@@ -45,6 +45,7 @@ public partial class MainViewModel
             SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
         if (mergeTool == null)
         {
+            HasExternalMergeTool = false;
             StatusMessage = "No external merge tool configured. See Settings → External Tools.";
             return;
         }
@@ -232,7 +233,7 @@ public partial class MainViewModel
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanOpenConflictInMergeTool))]
     public async Task OpenConflictInMergeToolAsync(ConflictInfo? conflict)
     {
         if (SelectedRepository == null || conflict == null) return;
@@ -241,6 +242,9 @@ public partial class MainViewModel
             SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
         if (mergeTool == null)
         {
+            // Config changed out from under us; refresh availability so
+            // the button disables itself on the next UI pass.
+            HasExternalMergeTool = false;
             StatusMessage = "No external merge tool configured. See Settings → External Tools.";
             return;
         }
@@ -264,6 +268,36 @@ public partial class MainViewModel
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    private bool CanOpenConflictInMergeTool(ConflictInfo? conflict) => HasExternalMergeTool;
+
+    /// <summary>
+    /// Re-check whether an external merge tool is configured for the
+    /// currently selected repository. Called on repo switch and after
+    /// the Settings dialog closes so the "Resolve in External Tool"
+    /// button's enabled state stays in sync with git config.
+    /// </summary>
+    public async Task RefreshExternalMergeToolAvailabilityAsync()
+    {
+        if (SelectedRepository == null)
+        {
+            HasExternalMergeTool = false;
+            return;
+        }
+
+        try
+        {
+            var tool = await _externalToolConfig.GetCurrentToolAsync(
+                SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
+            HasExternalMergeTool = tool != null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or OperationCanceledException)
+        {
+            Log.Info("ExternalMerge", $"Availability probe failed: {ex.Message}");
+            HasExternalMergeTool = false;
         }
     }
 

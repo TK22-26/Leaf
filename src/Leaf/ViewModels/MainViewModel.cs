@@ -93,6 +93,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private RepositoryInfo? _selectedRepository;
 
+    /// <summary>
+    /// True when the current repository has an external merge tool
+    /// configured (via Leaf's Settings or `git config`). Drives the
+    /// "Resolve in External Tool" button's enabled state.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OpenConflictInMergeToolCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenInMergeToolCommand))]
+    private bool _hasExternalMergeTool;
+
     [ObservableProperty]
     private GitGraphViewModel? _gitGraphViewModel;
 

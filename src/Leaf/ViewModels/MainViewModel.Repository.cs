@@ -359,6 +359,13 @@ public partial class MainViewModel
             _repositoryService.MarkAsRecentlyAccessed(repository);
             _fileWatcherService.WatchRepository(repository.Path);
 
+            // Probe the merge-tool config for this repo so the "Resolve
+            // in External Tool" button enables/disables correctly.
+            // Fire-and-forget: the check is quick and the button stays
+            // disabled until the probe lands.
+            RefreshExternalMergeToolAvailabilityAsync()
+                .FireAndForget(nameof(RefreshExternalMergeToolAvailabilityAsync), isUserAction: false);
+
             var settings = _settingsService.LoadSettings();
             settings.LastSelectedRepositoryPath = repository.Path;
             _settingsService.SaveSettings(settings);

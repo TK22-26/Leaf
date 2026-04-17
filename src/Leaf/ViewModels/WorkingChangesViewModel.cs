@@ -67,6 +67,10 @@ public partial class WorkingChangesViewModel : ObservableObject
     private bool _isStagedExpanded = true;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OpenInExternalDiffToolCommand))]
+    private bool _hasExternalDiffTool;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasChanges))]
     [NotifyPropertyChangedFor(nameof(FileChangesSummary))]
     private WorkingChangesInfo? _workingChanges;
@@ -252,6 +256,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         IsAmendMode = false;
         await RefreshAsync();
         await RefreshAmendStateAsync();
+        await RefreshExternalDiffToolAvailabilityAsync();
     }
 
     /// <summary>
@@ -889,45 +894,90 @@ public partial class WorkingChangesViewModel : ObservableObject
     /// Diff the HEAD revision of a working-tree file against the
     /// current working copy in the configured external diff tool. The
     /// right side points at the live working file (not a temp copy) so
-    /// the tool can save edits in place. No-op if no tool is configured
-    /// or if the file has no HEAD counterpart (newly added).
+    /// the tool can save edits in place. Disabled when no external
+    /// diff tool is configured.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasExternalDiffTool))]
     public async Task OpenInExternalDiffToolAsync(FileStatusInfo? file)
     {
         if (string.IsNullOrEmpty(_repositoryPath) || file == null)
             return;
 
-        var diffTool = await _externalToolConfig.GetCurrentToolAsync(
-            _repositoryPath, ExternalToolKind.Diff, SessionToken);
-        if (diffTool == null)
+        try
+        {
+            var diffTool = await _externalToolConfig.GetCurrentToolAsync(
+                _repositoryPath, ExternalToolKind.Diff, SessionToken);
+            if (diffTool == null)
+            {
+                // Config changed out from under us between the CanExecute
+                // check and here. Refresh and give up.
+                HasExternalDiffTool = false;
+                return;
+            }
+
+            // Working tree file: right side must point at the real path so
+            // the user can save edits back through the tool.
+            var normalizedFilePath = file.Path.Replace('/', '\\');
+            var workingPath = Path.GetFullPath(Path.Combine(_repositoryPath, normalizedFilePath));
+            if (!File.Exists(workingPath))
+                return;
+
+            var (oldContent, _) = await _gitService.GetFileDiffAsync(
+                _repositoryPath, "HEAD", file.Path, cancellationToken: SessionToken);
+
+            var tempDir = Path.Combine(Path.GetTempPath(), "LeafDiff", Guid.NewGuid().ToString());
+            Directory.CreateDirectory(tempDir);
+            var fileName = Path.GetFileName(file.Path);
+            var extension = Path.GetExtension(file.Path);
+            var headTempPath = Path.Combine(tempDir, $"{fileName}.HEAD{extension}");
+
+            try
+            {
+                await File.WriteAllTextAsync(headTempPath, oldContent, SessionToken);
+                await _externalToolLauncher.LaunchDiffAsync(diffTool, headTempPath, workingPath, SessionToken);
+            }
+            finally
+            {
+                try { Directory.Delete(tempDir, true); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Log.Warn("ExternalDiff", $"Failed to clean up temp directory: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or IOException
+                                or UnauthorizedAccessException
+                                or OperationCanceledException)
+        {
+            Log.Warn("ExternalDiff", $"Open diff in external tool failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Re-check whether an external diff tool is configured for this
+    /// repository. Called on repo switch and after the Settings dialog
+    /// closes so the menu item's enabled state matches git config.
+    /// </summary>
+    public async Task RefreshExternalDiffToolAvailabilityAsync()
+    {
+        if (string.IsNullOrEmpty(_repositoryPath))
+        {
+            HasExternalDiffTool = false;
             return;
-
-        // Working tree file: right side must point at the real path so
-        // the user can save edits back through the tool.
-        var normalizedFilePath = file.Path.Replace('/', '\\');
-        var workingPath = Path.GetFullPath(Path.Combine(_repositoryPath, normalizedFilePath));
-        if (!File.Exists(workingPath))
-            return;
-
-        var (oldContent, _) = await _gitService.GetFileDiffAsync(
-            _repositoryPath, "HEAD", file.Path, cancellationToken: SessionToken);
-
-        var tempDir = Path.Combine(Path.GetTempPath(), "LeafDiff", Guid.NewGuid().ToString());
-        Directory.CreateDirectory(tempDir);
-        var fileName = Path.GetFileName(file.Path);
-        var extension = Path.GetExtension(file.Path);
-        var headTempPath = Path.Combine(tempDir, $"{fileName}.HEAD{extension}");
+        }
 
         try
         {
-            await File.WriteAllTextAsync(headTempPath, oldContent, SessionToken);
-            await _externalToolLauncher.LaunchDiffAsync(diffTool, headTempPath, workingPath, SessionToken);
+            var tool = await _externalToolConfig.GetCurrentToolAsync(
+                _repositoryPath, ExternalToolKind.Diff, SessionToken);
+            HasExternalDiffTool = tool != null;
         }
-        finally
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or OperationCanceledException)
         {
-            try { Directory.Delete(tempDir, true); }
-            catch { /* best-effort cleanup */ }
+            Log.Info("ExternalDiff", $"Availability probe failed: {ex.Message}");
+            HasExternalDiffTool = false;
         }
     }
 

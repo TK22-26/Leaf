@@ -80,6 +80,11 @@ public partial class MainViewModel
         TerminalViewModel?.ReloadSettings();
         WorkingChangesViewModel?.RefreshAiAvailability();
         WorkingChangesViewModel?.RefreshSectionContexts();
+        if (WorkingChangesViewModel != null)
+            await WorkingChangesViewModel.RefreshExternalDiffToolAvailabilityAsync();
+        if (CommitDetailViewModel != null)
+            await CommitDetailViewModel.RefreshExternalDiffToolAvailabilityAsync();
+        await RefreshExternalMergeToolAvailabilityAsync();
         var updatedSettings = _settingsService.LoadSettings();
         if (CommitDetailViewModel != null)
             CommitDetailViewModel.IsCompactFileList = updatedSettings.CompactFileList;

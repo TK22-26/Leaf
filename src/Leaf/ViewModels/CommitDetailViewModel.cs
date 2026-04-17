@@ -67,6 +67,10 @@ public partial class CommitDetailViewModel : ObservableObject
     [ObservableProperty]
     private bool _showAllFiles;
 
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OpenInExternalDiffToolCommand))]
+    private bool _hasExternalDiffTool;
+
     private List<FileChangeInfo>? _changedFiles;
 
     /// <summary>
@@ -204,6 +208,7 @@ public partial class CommitDetailViewModel : ObservableObject
         {
             IsLoading = true;
             RepositoryPath = repoPath;
+            await RefreshExternalDiffToolAvailabilityAsync();
 
             // Clear existing data
             FileChanges.Clear();
@@ -443,42 +448,83 @@ public partial class CommitDetailViewModel : ObservableObject
     /// revision in the user's configured external diff tool. We write
     /// both sides to temp files rather than point the tool at the
     /// working tree, because the commit being viewed may not be HEAD.
-    /// No-op with a status message if no tool is configured.
+    /// Disabled when no external diff tool is configured.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasExternalDiffTool))]
     public async Task OpenInExternalDiffToolAsync(FileChangeInfo? file)
     {
         if (string.IsNullOrEmpty(RepositoryPath) || Commit == null || file == null)
             return;
 
-        var diffTool = await _externalToolConfig.GetCurrentToolAsync(
-            RepositoryPath, ExternalToolKind.Diff, SessionToken);
-        if (diffTool == null)
+        try
         {
+            var diffTool = await _externalToolConfig.GetCurrentToolAsync(
+                RepositoryPath, ExternalToolKind.Diff, SessionToken);
+            if (diffTool == null)
+            {
+                HasExternalDiffTool = false;
+                return;
+            }
+
+            var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
+                RepositoryPath, Commit.Sha, file.Path, cancellationToken: SessionToken);
+
+            var tempDir = Path.Combine(Path.GetTempPath(), "LeafDiff", Guid.NewGuid().ToString());
+            Directory.CreateDirectory(tempDir);
+
+            var fileName = Path.GetFileName(file.Path);
+            var extension = Path.GetExtension(file.Path);
+            var leftPath = Path.Combine(tempDir, $"{fileName}.before{extension}");
+            var rightPath = Path.Combine(tempDir, $"{fileName}.after{extension}");
+
+            try
+            {
+                await File.WriteAllTextAsync(leftPath, oldContent, SessionToken);
+                await File.WriteAllTextAsync(rightPath, newContent, SessionToken);
+                await _externalToolLauncher.LaunchDiffAsync(diffTool, leftPath, rightPath, SessionToken);
+            }
+            finally
+            {
+                try { Directory.Delete(tempDir, true); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Log.Warn("ExternalDiff", $"Failed to clean up temp directory: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or IOException
+                                or UnauthorizedAccessException
+                                or OperationCanceledException)
+        {
+            Log.Warn("ExternalDiff", $"Open diff in external tool failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Re-check whether an external diff tool is configured for this
+    /// repository. Called on repo switch and after the Settings dialog
+    /// closes so the menu item's enabled state matches git config.
+    /// </summary>
+    public async Task RefreshExternalDiffToolAvailabilityAsync()
+    {
+        if (string.IsNullOrEmpty(RepositoryPath))
+        {
+            HasExternalDiffTool = false;
             return;
         }
 
-        var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
-            RepositoryPath, Commit.Sha, file.Path, cancellationToken: SessionToken);
-
-        var tempDir = Path.Combine(Path.GetTempPath(), "LeafDiff", Guid.NewGuid().ToString());
-        Directory.CreateDirectory(tempDir);
-
-        var fileName = Path.GetFileName(file.Path);
-        var extension = Path.GetExtension(file.Path);
-        var leftPath = Path.Combine(tempDir, $"{fileName}.before{extension}");
-        var rightPath = Path.Combine(tempDir, $"{fileName}.after{extension}");
-
         try
         {
-            await File.WriteAllTextAsync(leftPath, oldContent, SessionToken);
-            await File.WriteAllTextAsync(rightPath, newContent, SessionToken);
-            await _externalToolLauncher.LaunchDiffAsync(diffTool, leftPath, rightPath, SessionToken);
+            var tool = await _externalToolConfig.GetCurrentToolAsync(
+                RepositoryPath, ExternalToolKind.Diff, SessionToken);
+            HasExternalDiffTool = tool != null;
         }
-        finally
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or OperationCanceledException)
         {
-            try { Directory.Delete(tempDir, true); }
-            catch { /* best-effort cleanup */ }
+            Log.Info("ExternalDiff", $"Availability probe failed: {ex.Message}");
+            HasExternalDiffTool = false;
         }
     }
 
