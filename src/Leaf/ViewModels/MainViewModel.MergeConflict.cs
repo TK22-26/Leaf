@@ -73,7 +73,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Failed to open VS Code: {ex.Message}";
+            await ReportOperationFailureAsync("Open VS Code", ex);
         }
         finally
         {
@@ -210,7 +210,7 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             Log.Error("Merge", "AbortMerge failed", ex);
-            StatusMessage = $"Abort failed: {ex.Message}";
+            await ReportOperationFailureAsync("Abort", ex);
         }
         finally
         {
@@ -233,7 +233,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Failed to open VS Code: {ex.Message}";
+            await ReportOperationFailureAsync("Open VS Code", ex);
         }
         finally
         {

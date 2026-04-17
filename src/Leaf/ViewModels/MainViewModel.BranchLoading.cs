@@ -264,7 +264,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Failed to load branches: {ex.Message}";
+            await ReportOperationFailureAsync("Load branches", ex);
             Log.Error("LoadBranches", $"Failed to load branches for {repo.Name}", ex);
         }
     }

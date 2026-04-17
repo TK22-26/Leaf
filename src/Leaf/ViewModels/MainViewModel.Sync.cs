@@ -77,7 +77,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Fetch failed: {ex.Message}";
+            await ReportOperationFailureAsync("Fetch", ex);
         }
         finally
         {
@@ -148,7 +148,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Pull failed: {ex.Message}";
+            await ReportOperationFailureAsync("Pull", ex);
         }
         finally
         {
@@ -213,10 +213,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Push failed: {ex.Message}";
-            await _dialogService.ShowErrorToastAsync(
-                $"Failed to push:\n\n{ex.Message}",
-                "Push Failed");
+            await ReportOperationFailureAsync("Push", ex);
         }
         finally
         {

@@ -148,7 +148,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Switch to worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Switch to worktree", ex);
         }
         finally
         {
@@ -248,7 +248,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Create worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Create worktree", ex);
         }
         finally
         {
@@ -299,7 +299,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Create worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Create worktree", ex);
         }
         finally
         {
@@ -330,7 +330,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Create worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Create worktree", ex);
         }
         finally
         {
@@ -364,7 +364,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Remove worktree failed: {ex.Message}";
+                await ReportOperationFailureAsync("Remove worktree", ex);
                 return;
             }
         }
@@ -405,7 +405,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Remove worktree failed: {ex.Message}";
+                await ReportOperationFailureAsync("Remove worktree", ex);
                 return;
             }
         }
@@ -428,7 +428,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Remove worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Remove worktree", ex);
         }
         finally
         {
@@ -456,7 +456,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Lock worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Lock worktree", ex);
         }
         finally
         {
@@ -484,7 +484,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Unlock worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Unlock worktree", ex);
         }
         finally
         {
@@ -515,7 +515,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Prune worktrees failed: {ex.Message}";
+            await ReportOperationFailureAsync("Prune worktrees", ex);
         }
         finally
         {

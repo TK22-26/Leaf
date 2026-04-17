@@ -28,7 +28,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Stash failed: {ex.Message}";
+            await ReportOperationFailureAsync("Stash", ex);
         }
         finally
         {
@@ -127,12 +127,12 @@ public partial class MainViewModel
             }
             else
             {
-                StatusMessage = $"Pop stash failed: {result.ErrorMessage}";
+                await ReportOperationFailureAsync("Pop stash", result.ErrorMessage ?? "unknown error");
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Pop stash failed: {ex.Message}";
+            await ReportOperationFailureAsync("Pop stash", ex);
         }
         finally
         {
@@ -166,7 +166,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Delete stash failed: {ex.Message}";
+            await ReportOperationFailureAsync("Delete stash", ex);
         }
         finally
         {

@@ -47,7 +47,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Add remote failed: {ex.Message}";
+            await ReportOperationFailureAsync("Add remote", ex);
         }
         finally
         {
@@ -105,7 +105,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Edit remote failed: {ex.Message}";
+            await ReportOperationFailureAsync("Edit remote", ex);
         }
         finally
         {
@@ -141,7 +141,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Remove remote failed: {ex.Message}";
+            await ReportOperationFailureAsync("Remove remote", ex);
         }
         finally
         {
@@ -169,7 +169,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Set default remote failed: {ex.Message}";
+            await ReportOperationFailureAsync("Set default remote", ex);
         }
     }
 
@@ -177,7 +177,7 @@ public partial class MainViewModel
     /// Copy a remote's URL to the clipboard.
     /// </summary>
     [RelayCommand]
-    public void CopyRemoteUrl(string url)
+    public async Task CopyRemoteUrlAsync(string url)
     {
         if (string.IsNullOrEmpty(url)) return;
 
@@ -190,9 +190,10 @@ public partial class MainViewModel
         {
             // WPF Clipboard uses OLE which occasionally throws
             // CLIPBRD_E_CANT_OPEN when another process is holding the
-            // clipboard open. Surface the failure to the status bar and
-            // log so users can see what's contesting the clipboard.
-            StatusMessage = "Failed to copy URL";
+            // clipboard open. Surface the failure through the policy
+            // pipeline so users see both a toast and the status-bar line,
+            // and log the underlying HRESULT for diagnostics.
+            await ReportOperationFailureAsync("Copy URL", ex);
             Log.Warn("Remote", $"Clipboard.SetText failed: {ex.Message}");
         }
     }
@@ -236,7 +237,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Fetch all failed: {ex.Message}";
+            await ReportOperationFailureAsync("Fetch all", ex);
         }
         finally
         {
@@ -329,10 +330,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Push failed: {ex.Message}";
-            await _dialogService.ShowErrorToastAsync(
-                $"Failed to push:\n\n{ex.Message}",
-                "Push Failed");
+            await ReportOperationFailureAsync("Push", ex);
         }
         finally
         {

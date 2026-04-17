@@ -146,6 +146,39 @@ public partial class MainViewModel : ObservableObject, IDisposable
         await Application.Current.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
     }
 
+    /// <summary>
+    /// Canonical failure feedback for a user-initiated operation, per plan
+    /// §3.4 policy: update the status bar as the operation's terminal
+    /// status AND fire an error toast. Both channels are used because the
+    /// status bar alone gets overwritten by the next operation and is
+    /// easy to miss. Use this in every <c>catch</c> block that handles a
+    /// recoverable git/IO failure inside a RelayCommand.
+    /// </summary>
+    /// <param name="operation">
+    /// Human-readable operation label, capitalized for a title and used
+    /// as the subject in both the status bar and the toast (e.g. "Push",
+    /// "Delete branch", "Create worktree").
+    /// </param>
+    /// <param name="detail">
+    /// The underlying failure message — usually <c>ex.Message</c>, but
+    /// string overload exists for result-based failures whose detail
+    /// doesn't come from an exception.
+    /// </param>
+    private Task ReportOperationFailureAsync(string operation, string detail)
+    {
+        StatusMessage = $"{operation} failed: {detail}";
+        return _dialogService.ShowErrorToastAsync(
+            $"{operation} failed:\n\n{detail}",
+            $"{operation} failed");
+    }
+
+    /// <summary>
+    /// Convenience overload that pulls the detail string from an exception.
+    /// See <see cref="ReportOperationFailureAsync(string, string)"/>.
+    /// </summary>
+    private Task ReportOperationFailureAsync(string operation, Exception ex)
+        => ReportOperationFailureAsync(operation, ex.Message);
+
     [ObservableProperty]
     private string _commitSearchText = string.Empty;
 

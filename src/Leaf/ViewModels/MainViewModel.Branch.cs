@@ -229,12 +229,12 @@ public partial class MainViewModel
                 }
                 catch (Exception forceEx)
                 {
-                    StatusMessage = $"Delete branch failed: {forceEx.Message}";
+                    await ReportOperationFailureAsync("Delete branch", forceEx);
                 }
             }
             else
             {
-                StatusMessage = $"Delete branch failed: {ex.Message}";
+                await ReportOperationFailureAsync("Delete branch", ex);
             }
         }
         finally
@@ -285,7 +285,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Pull failed: {ex.Message}";
+            await ReportOperationFailureAsync("Pull", ex);
         }
         finally
         {
@@ -316,10 +316,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Push failed: {ex.Message}";
-            await _dialogService.ShowErrorToastAsync(
-                $"Failed to push {branch.Name}:\n\n{ex.Message}",
-                "Push Failed");
+            await ReportOperationFailureAsync($"Push {branch.Name}", ex);
         }
         finally
         {
@@ -349,7 +346,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Set upstream failed: {ex.Message}";
+            await ReportOperationFailureAsync("Set upstream", ex);
         }
         finally
         {
@@ -503,7 +500,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Checkout failed: {ex.Message}";
+            await ReportOperationFailureAsync("Checkout", ex);
         }
         finally
         {
@@ -546,7 +543,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Checkout tag failed: {ex.Message}";
+            await ReportOperationFailureAsync("Checkout tag", ex);
         }
         finally
         {
@@ -595,7 +592,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Delete tag failed: {ex.Message}";
+            await ReportOperationFailureAsync("Delete tag", ex);
         }
         finally
         {
