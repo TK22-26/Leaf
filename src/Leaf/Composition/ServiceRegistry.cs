@@ -78,6 +78,7 @@ public static class ServiceRegistry
         services.AddSingleton<IGitignoreService, GitignoreService>();
         services.AddSingleton<IExternalToolDetectorService, ExternalToolDetectorService>();
         services.AddSingleton<IExternalToolConfigService, ExternalToolConfigService>();
+        services.AddSingleton<IExternalToolLauncherService, ExternalToolLauncherService>();
 
         // CLI --auto-commit path. Same provider, same lifetime rules.
         services.AddSingleton<AutoCommitService>();
