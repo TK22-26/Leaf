@@ -243,6 +243,15 @@ public static class ConflictMarkerParser
         var baseLines = Slice(lines, baseMarker + 1, separator);
         var theirsLines = Slice(lines, separator + 1, closeMarker);
 
+        // Git never emits a fully-empty conflict block — identical or both-deleted
+        // content auto-merges. A parsed block with zero content on all three sides is
+        // always user documentation that happens to contain the full zdiff3 triad
+        // (e.g. markdown describing conflict markers). Treat as content.
+        if (oursLines.Count == 0 && baseLines.Count == 0 && theirsLines.Count == 0)
+        {
+            return false;
+        }
+
         conflict = new ParsedConflict(
             new LineRange(startIdx + 1, closeMarker + 2),
             ExtractLabel(openMatch),

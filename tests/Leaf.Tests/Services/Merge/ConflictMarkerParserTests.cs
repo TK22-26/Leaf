@@ -98,6 +98,23 @@ public class ConflictMarkerParserTests
     }
 
     [Fact]
+    public void Parse_FullyEmptyTriad_TreatedAsContent()
+    {
+        // A zdiff3 triad with nothing between any of the markers is user documentation
+        // (git never emits such blocks). Parser must not report a spurious empty conflict.
+        var text =
+            "# Example conflict markers in a markdown doc:\n" +
+            "<<<<<<< HEAD\n" +
+            "||||||| base\n" +
+            "=======\n" +
+            ">>>>>>> feature\n" +
+            "## Next section\n";
+
+        var result = ConflictMarkerParser.Parse(text);
+        result.Conflicts.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Parse_NestedOpenMarker_InnerBecomesTheRealBlock()
     {
         // A second "<<<<<<<" before the outer block's base marker means the outer line
