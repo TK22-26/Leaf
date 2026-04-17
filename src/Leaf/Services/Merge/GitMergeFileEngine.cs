@@ -278,6 +278,21 @@ public sealed class GitMergeFileEngine : IMergeEngine
             baseCursor = baseRange.EndLineExclusive - 1;
         }
 
+        // Tail walk: validate every output line AFTER the last conflict through the
+        // same structural-line defense. Without this, a parser that prematurely
+        // closed the last conflict (e.g. theirs content contained a literal
+        // >>>>>>> line and the parser latched onto the first match) would leave an
+        // orphan structural marker in post-conflict context that the walker never
+        // saw — silent corruption would reach the commit gate.
+        while (outputIdx < mergedLines.Count)
+        {
+            AdvanceCursorsForAutoMergedLine(
+                mergedLines[outputIdx], oursLines, theirsLines, baseLines,
+                ref oursCursor, ref theirsCursor, ref baseCursor,
+                outputIdx + 1);
+            outputIdx++;
+        }
+
         return ranges;
     }
 

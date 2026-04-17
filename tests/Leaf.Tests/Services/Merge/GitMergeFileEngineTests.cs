@@ -186,6 +186,23 @@ public class GitMergeFileEngineTests
     }
 
     [Fact]
+    public async Task Merge_LookalikeCloseInTheirs_FailsLoudlyNotSilently()
+    {
+        // Theirs contains a literal ">>>>>>>" line. The parser will latch onto it as the
+        // close marker, leaving the real close ">>>>>>> theirs" as an orphan AFTER the
+        // last conflict. The tail-walk defense must catch this and throw, rather than
+        // letting the orphan structural line reach the committed output via AcceptTheirs.
+        var engine = CreateEngine();
+        const string baseText = "line1\nline2\nline3\n";
+        const string oursText = "line1\nOURS_CHANGE\nline3\n";
+        const string theirsText = "line1\n>>>>>>> literal-close-in-theirs\nline3\n";
+
+        var act = async () => await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+        await act.Should().ThrowAsync<MergeEngineException>()
+            .WithMessage("*zdiff3 marker line*");
+    }
+
+    [Fact]
     public async Task Merge_LookalikeInMidOurs_FailsLoudlyNotSilently()
     {
         // Ours has a literal "<<<<<<<" line in the middle (not the first line) AND there's
