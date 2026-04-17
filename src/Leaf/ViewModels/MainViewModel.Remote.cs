@@ -320,7 +320,7 @@ public partial class MainViewModel
             {
                 StatusMessage = $"Pushed to {pushedRemotes.Count} of {selectedRemotes.Count} remotes";
                 var errorDetail = string.Join("\n", failedMessages);
-                await _dialogService.ShowErrorAsync(
+                await _dialogService.ShowErrorToastAsync(
                     $"Push failed for {failedMessages.Count} remote(s):\n\n{errorDetail}",
                     "Push Failed");
             }
@@ -330,7 +330,7 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             StatusMessage = $"Push failed: {ex.Message}";
-            await _dialogService.ShowErrorAsync(
+            await _dialogService.ShowErrorToastAsync(
                 $"Failed to push:\n\n{ex.Message}",
                 "Push Failed");
         }

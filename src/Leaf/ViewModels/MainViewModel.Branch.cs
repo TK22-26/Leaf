@@ -97,7 +97,7 @@ public partial class MainViewModel
             {
                 IsBranchInputVisible = false;
                 NewBranchName = string.Empty;
-                await _dialogService.ShowErrorAsync(
+                await _dialogService.ShowErrorToastAsync(
                     $"A branch named '{branchName}' already exists.",
                     "Branch Already Exists");
                 return;
@@ -317,7 +317,7 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             StatusMessage = $"Push failed: {ex.Message}";
-            await _dialogService.ShowErrorAsync(
+            await _dialogService.ShowErrorToastAsync(
                 $"Failed to push {branch.Name}:\n\n{ex.Message}",
                 "Push Failed");
         }

@@ -206,7 +206,7 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             StatusMessage = $"Publish failed: {ex.Message}";
-            await _dialogService.ShowErrorAsync(
+            await _dialogService.ShowErrorToastAsync(
                 $"Failed to publish branch:\n\n{ex.Message}",
                 "Publish Failed");
         }
