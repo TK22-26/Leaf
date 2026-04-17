@@ -281,7 +281,8 @@ public partial class MainViewModel
         }
 
         await RefreshAsync();
-        IsBusy = false;
+        // IsBusy is dropped by caller (PushAsync) in its finally block —
+        // no need to flip it here.
     }
 
     /// <summary>
