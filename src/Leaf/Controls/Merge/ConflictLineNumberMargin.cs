@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
-using ICSharpCode.AvalonEdit.Editing;
+using Leaf.TextEdit.Editing;
 
 namespace Leaf.Controls.Merge;
 

@@ -1,5 +1,5 @@
 using System.Windows.Media;
-using ICSharpCode.AvalonEdit.Highlighting;
+using Leaf.TextEdit.Highlighting;
 
 namespace Leaf.Helpers;
 

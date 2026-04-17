@@ -2,8 +2,8 @@ using System.Windows;
 using Leaf.Services;
 using System.Windows.Input;
 using System.Windows.Media;
-using ICSharpCode.AvalonEdit.Editing;
-using ICSharpCode.AvalonEdit.Rendering;
+using Leaf.TextEdit.Editing;
+using Leaf.TextEdit.Rendering;
 using Leaf.Models;
 
 namespace Leaf.Controls.Merge;

@@ -3,8 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using ICSharpCode.AvalonEdit;
-using ICSharpCode.AvalonEdit.Highlighting;
+using Leaf.TextEdit;
+using Leaf.TextEdit.Highlighting;
 using Leaf.Helpers;
 using Leaf.Models;
 using Leaf.Services;
@@ -111,7 +111,7 @@ public partial class DiffViewerControl : UserControl
             DiffEditor.SyntaxHighlighting = highlighting;
             DiffEditor.Text = _viewModel.InlineContent;
             _renderer.SetLines(_viewModel.Lines);
-            DiffEditor.TextArea.TextView.InvalidateLayer(ICSharpCode.AvalonEdit.Rendering.KnownLayer.Background);
+            DiffEditor.TextArea.TextView.InvalidateLayer(Leaf.TextEdit.Rendering.KnownLayer.Background);
             DiffEditor.ScrollToHome();
         }
         else
