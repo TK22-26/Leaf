@@ -238,6 +238,16 @@
                             </StackPanel>
                         </TreeViewItem.Header>
                     </TreeViewItem>
+
+                    <!-- External Tools -->
+                    <TreeViewItem x:Name="NavExternalTools" Tag="ExternalTools">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="Wrench" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="External Tools" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
                 </TreeView>
             </Grid>
         </Border>
@@ -662,6 +672,9 @@
 
                     <!-- GitFlow Defaults Content (UserControl) -->
                     <settings:GitFlowSettingsControl x:Name="GitFlowSettings" Visibility="Collapsed" />
+
+                    <!-- External Tools Content -->
+                    <settings:ExternalToolsSettingsControl x:Name="ExternalToolsSettings" Visibility="Collapsed" />
 
                     <!-- Search Results (shown when searching) -->
                     <StackPanel x:Name="ContentSearchResults" Visibility="Collapsed">

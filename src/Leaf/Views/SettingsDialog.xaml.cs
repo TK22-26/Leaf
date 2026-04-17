@@ -14,18 +14,35 @@ public partial class SettingsDialog : Window
 {
     private readonly CredentialService _credentialService;
     private readonly SettingsService _settingsService;
+    private readonly IExternalToolConfigService? _externalToolConfig;
+    private readonly IExternalToolDetectorService? _externalToolDetector;
+    private readonly string? _currentRepoPath;
     private readonly AppSettings _settings;
     private bool _suppressNavSelection;
+    private bool _externalToolsBound;
 
     // Search items for settings
     private readonly List<SettingsSearchItem> _allSearchItems;
 
     public SettingsDialog(CredentialService credentialService, SettingsService settingsService)
+        : this(credentialService, settingsService, null, null, null)
+    {
+    }
+
+    public SettingsDialog(
+        CredentialService credentialService,
+        SettingsService settingsService,
+        IExternalToolConfigService? externalToolConfig,
+        IExternalToolDetectorService? externalToolDetector,
+        string? currentRepoPath)
     {
         InitializeComponent();
 
         _credentialService = credentialService;
         _settingsService = settingsService;
+        _externalToolConfig = externalToolConfig;
+        _externalToolDetector = externalToolDetector;
+        _currentRepoPath = currentRepoPath;
         _settings = settingsService.LoadSettings();
 
         // Initialize search items
@@ -103,6 +120,7 @@ public partial class SettingsDialog : Window
         GitHubSettings.Visibility = Visibility.Collapsed;
         AiSettings.Visibility = Visibility.Collapsed;
         GitFlowSettings.Visibility = Visibility.Collapsed;
+        ExternalToolsSettings.Visibility = Visibility.Collapsed;
         ContentSearchResults.Visibility = Visibility.Collapsed;
 
         // Show the selected content
@@ -160,7 +178,30 @@ public partial class SettingsDialog : Window
             case "GitFlow":
                 GitFlowSettings.Visibility = Visibility.Visible;
                 break;
+            case "ExternalTools":
+                ExternalToolsSettings.Visibility = Visibility.Visible;
+                BindExternalToolsIfNeeded();
+                break;
         }
+    }
+
+    private async void BindExternalToolsIfNeeded()
+    {
+        if (_externalToolsBound) return;
+        if (_externalToolConfig == null || _externalToolDetector == null)
+        {
+            // Legacy callers that built the dialog without the services
+            // still see the section, but with an empty state. Future
+            // callers should use the DI-aware ctor.
+            return;
+        }
+
+        // `git config --global` ignores CWD but the CommandRunner still
+        // needs a valid directory. Fall back to UserProfile when Leaf
+        // was opened without any repo active.
+        var repoPath = _currentRepoPath ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        _externalToolsBound = true;
+        await ExternalToolsSettings.BindAsync(_externalToolConfig, _externalToolDetector, repoPath);
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)

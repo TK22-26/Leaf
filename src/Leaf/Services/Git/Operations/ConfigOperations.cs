@@ -50,10 +50,14 @@ internal class ConfigOperations
     {
         var args = BuildConfigArgs(scope, ["--unset", key]);
         var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
-        // --unset returns error if key doesn't exist, which is OK
-        if (!result.Success && !result.StandardError.Contains("not exist"))
+        // git-config exit 5 = "key does not exist" — a successful no-op for
+        // unset. Earlier code matched stderr for "not exist" but git emits
+        // no message at all on exit 5, so the check always threw.
+        if (!result.Success && result.ExitCode != 5)
         {
-            throw new InvalidOperationException(result.StandardError);
+            throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
+                ? $"Failed to unset config '{key}' (exit code {result.ExitCode})"
+                : result.StandardError);
         }
     }
 

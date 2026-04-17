@@ -35,6 +35,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IPullRequestService _pullRequestService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDiffService _diffService;
+    private readonly IExternalToolConfigService _externalToolConfig;
+    private readonly IExternalToolDetectorService _externalToolDetector;
     private readonly INotificationService? _notificationService;
 
     // The per-repo DI scope. Owns the current IRepositorySession (scoped)
@@ -354,6 +356,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IFolderWatcherService folderWatcherService,
         IPullRequestService pullRequestService,
         IDiffService diffService,
+        IExternalToolConfigService externalToolConfig,
+        IExternalToolDetectorService externalToolDetector,
         INotificationService? notificationService = null)
     {
         _gitService = gitService;
@@ -369,6 +373,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _clipboardService = clipboardService;
         _folderWatcherService = folderWatcherService;
         _pullRequestService = pullRequestService;
+        _externalToolConfig = externalToolConfig;
+        _externalToolDetector = externalToolDetector;
         _notificationService = notificationService;
         _fileWatcherService = new FileWatcherService();
 

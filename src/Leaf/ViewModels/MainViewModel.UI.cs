@@ -66,7 +66,12 @@ public partial class MainViewModel
     [RelayCommand]
     public async Task OpenSettingsAsync()
     {
-        var dialog = new SettingsDialog(_credentialService, _settingsService)
+        var dialog = new SettingsDialog(
+            _credentialService,
+            _settingsService,
+            _externalToolConfig,
+            _externalToolDetector,
+            SelectedRepository?.Path)
         {
             Width = 1000,
             Height = 750
