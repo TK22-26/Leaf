@@ -187,14 +187,24 @@ public sealed class ConflictMinimap : FrameworkElement
     private void RaiseJumpForPointer(Point pos)
     {
         if (LineCount <= 0 || ActualHeight <= 0) return;
-        // Use the same row-height math the renderer uses so a click on a
-        // visible marker lands on the line that marker represents. In the
-        // dense case (ActualHeight < LineCount) this pins rowHeight to 1px,
-        // which is consistent with the per-line row rendering.
-        var rowHeight = Math.Max(1.0, ActualHeight / LineCount);
-        var y = Math.Max(0, pos.Y);
-        var line = (int)Math.Clamp(Math.Floor(y / rowHeight) + 1, 1, LineCount);
+        var line = PointerYToLine(pos.Y, ActualHeight, LineCount);
         JumpRequested?.Invoke(this, new MinimapJumpEventArgs(line));
+    }
+
+    /// <summary>
+    /// Map a pointer Y-coordinate to a 1-based line number. Uses the same
+    /// row-height math the renderer uses so a click on a visible marker
+    /// lands on the line that marker represents. In the dense case
+    /// (<paramref name="actualHeight"/> &lt; <paramref name="lineCount"/>)
+    /// row height pins to 1 px, matching the renderer. Exposed as
+    /// <c>internal</c> for unit testing — pure function, no WPF deps.
+    /// </summary>
+    internal static int PointerYToLine(double y, double actualHeight, int lineCount)
+    {
+        if (lineCount <= 0 || actualHeight <= 0) return 1;
+        var rowHeight = Math.Max(1.0, actualHeight / lineCount);
+        var clamped = Math.Max(0, y);
+        return (int)Math.Clamp(Math.Floor(clamped / rowHeight) + 1, 1, lineCount);
     }
 }
 
