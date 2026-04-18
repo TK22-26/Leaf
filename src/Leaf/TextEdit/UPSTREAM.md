@@ -44,10 +44,19 @@ Preserve these across any future re-import from upstream:
    is set at the Leaf project level (AvalonEdit uses `System.Windows.Forms.Screen`
    and `System.Windows.Forms.Cursor` for multi-monitor positioning).
 
-5. **Phase 2b modifications (upcoming):** Stripped unused modules
-   (`Search/`, `Folding/`, `CodeCompletion/`, `Snippets/`) and exposed
-   virtualization primitives (`TextView.GetVisualTop`, `TextView.DefaultLineHeight`,
-   etc.) as public API. Phase 2b will extend this list.
+5. **Phase 2b modifications (applied):** Stripped unused modules
+   (`Search/`, `Folding/`, `CodeCompletion/`, `Snippets/`). Verified that
+   the vendored `TextView` already exposes the virtualization primitives
+   Phase 2c needs (`GetVisualTopByDocumentLine`, `DefaultLineHeight`,
+   `DocumentHeight`, `GetVisualLineFromVisualTop`, `WideSpaceWidth`,
+   `DefaultBaseline`) — no additional exposure required. Introduced
+   `Leaf.TextEdit.MergePaneGlyphLayout` (NOT from upstream) as the shared
+   font-metrics service that all merge panes consume; it delegates line
+   measurement to the same `TextFormatter.FormatLine` pipeline that
+   `TextView.CalculateDefaultTextMetrics` uses, guaranteeing pixel parity.
+   Rewrote `themes/generic.xaml` to reference only surviving resources
+   (`TextEditor.xaml`, `themes/RightArrow.cur`) and the correct pack URI
+   prefix (`/Leaf;component/…`, not `/Leaf.TextEdit;component/…`).
 
 ## Re-import procedure
 

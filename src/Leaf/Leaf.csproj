@@ -56,13 +56,12 @@
 
   <!-- Vendored AvalonEdit resources (MIT, see LICENSE-AvalonEdit.txt).
        The source tree under TextEdit/ is picked up automatically by the SDK;
-       this group routes non-.cs/.xaml files through the correct build actions. -->
+       this group routes non-.cs/.xaml files through the correct build actions.
+       NOTE: Phase 2b stripped TextEdit\Search (find/replace dialog), so
+       next.png / prev.png are gone. themes\RightArrow.cur survives because
+       the caret / scroll behaviour uses it. -->
   <ItemGroup>
-    <None Remove="TextEdit\Search\next.png" />
-    <None Remove="TextEdit\Search\prev.png" />
     <None Remove="TextEdit\themes\RightArrow.cur" />
-    <Resource Include="TextEdit\Search\next.png" />
-    <Resource Include="TextEdit\Search\prev.png" />
     <Resource Include="TextEdit\themes\RightArrow.cur" />
   </ItemGroup>
   <ItemGroup>
