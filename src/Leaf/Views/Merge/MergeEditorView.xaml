@@ -85,10 +85,11 @@
             </StackPanel>
         </Border>
 
-        <!-- File list -->
+        <!-- File list card. PaneCard style brings the 1 px hairline + subtle
+             shadow; 8 px outer margin gives the corner radius room to breathe. -->
         <Border Grid.Row="1" Grid.Column="0"
-                BorderThickness="0,0,1,0"
-                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+                Style="{StaticResource Merge.PaneCard}"
+                Margin="8,4,4,4">
             <ListBox AutomationProperties.AutomationId="Merge.ConflictFileList"
                      ItemsSource="{Binding Conflicts}"
                      SelectedItem="{Binding SelectedConflict}"
@@ -112,18 +113,22 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Ours pane -->
-            <Grid Grid.Row="0" Grid.Column="0">
+            <!-- Ours pane card -->
+            <Border Grid.Row="0" Grid.Column="0"
+                    Style="{StaticResource Merge.PaneCard}"
+                    Margin="4,4,2,4">
+            <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <Border Grid.Row="0" Padding="12,6"
-                        Background="{DynamicResource LayerFillColorDefaultBrush}"
+                        Background="{DynamicResource Merge.Surface.3}"
                         BorderThickness="0,0,0,1"
-                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
-                    <TextBlock Text="OURS" FontWeight="SemiBold" FontSize="11"
-                               Foreground="{DynamicResource Merge.Ours.BgSubtle}"/>
+                        BorderBrush="{DynamicResource Merge.Border.Subtle}">
+                    <TextBlock Text="OURS" FontWeight="SemiBold"
+                               FontSize="{DynamicResource Merge.Type.CaptionStrong.Size}"
+                               Foreground="{DynamicResource Merge.Ours.Text}"/>
                 </Border>
                 <Grid Grid.Row="1">
                     <Grid.ColumnDefinitions>
@@ -159,20 +164,26 @@
                                            JumpRequested="OnOursMinimapJump"/>
                 </Grid>
             </Grid>
+            </Border>
 
             <!-- Connection-line canvas between the two input panes. Its grid
                  row matches the content rows of the two pane sub-grids (not
                  the header rows), so bezier endpoints use the pane's own Y
-                 origin and the header padding doesn't misalign curves. -->
+                 origin and the header padding doesn't misalign curves.
+                 Not wrapped as a card — it's pure decoration between the Ours
+                 and Theirs cards, so a background + border would visually
+                 steal the space the curves need to breathe. -->
             <Grid Grid.Row="0" Grid.Column="1">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="30"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <Border Grid.Row="0" Padding="0,6"
-                        Background="{DynamicResource LayerFillColorDefaultBrush}"
-                        BorderThickness="0,0,0,1"
-                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"/>
+                <!-- Row 0 is a fixed-height spacer so the canvas content below
+                     starts at the same Y as the Ours / Theirs pane content
+                     (whose cards put a CaptionStrong title bar in their Row 0
+                     at ~30 px). Keeping the spacer explicit prevents the
+                     curves from visually drifting above or below the first
+                     content line when the title bar typography changes. -->
                 <merge:PaneConnectionCanvas Grid.Row="1"
                                             x:Name="ConnectionCanvas"
                                             AutomationProperties.AutomationId="Merge.ConnectionCanvas"
@@ -181,18 +192,22 @@
                                             RangeStates="{Binding RangeStates}"/>
             </Grid>
 
-            <!-- Theirs pane -->
-            <Grid Grid.Row="0" Grid.Column="2">
+            <!-- Theirs pane card -->
+            <Border Grid.Row="0" Grid.Column="2"
+                    Style="{StaticResource Merge.PaneCard}"
+                    Margin="2,4,4,4">
+            <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <Border Grid.Row="0" Padding="12,6"
-                        Background="{DynamicResource LayerFillColorDefaultBrush}"
+                        Background="{DynamicResource Merge.Surface.3}"
                         BorderThickness="0,0,0,1"
-                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
-                    <TextBlock Text="THEIRS" FontWeight="SemiBold" FontSize="11"
-                               Foreground="{DynamicResource Merge.Theirs.BgSubtle}"/>
+                        BorderBrush="{DynamicResource Merge.Border.Subtle}">
+                    <TextBlock Text="THEIRS" FontWeight="SemiBold"
+                               FontSize="{DynamicResource Merge.Type.CaptionStrong.Size}"
+                               Foreground="{DynamicResource Merge.Theirs.Text}"/>
                 </Border>
                 <Grid Grid.Row="1">
                     <Grid.ColumnDefinitions>
@@ -228,21 +243,24 @@
                                            JumpRequested="OnTheirsMinimapJump"/>
                 </Grid>
             </Grid>
+            </Border>
 
-            <!-- Result pane spanning all three columns -->
+            <!-- Result pane card -->
             <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
-                    BorderThickness="0,1,0,0"
-                    BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+                    Style="{StaticResource Merge.PaneCard}"
+                    Margin="4,2,4,4">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <Border Grid.Row="0" Padding="12,6"
-                            Background="{DynamicResource LayerFillColorDefaultBrush}"
+                            Background="{DynamicResource Merge.Surface.3}"
                             BorderThickness="0,0,0,1"
-                            BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
-                        <TextBlock Text="RESULT" FontWeight="SemiBold" FontSize="11"/>
+                            BorderBrush="{DynamicResource Merge.Border.Subtle}">
+                        <TextBlock Text="RESULT" FontWeight="SemiBold"
+                                   FontSize="{DynamicResource Merge.Type.CaptionStrong.Size}"
+                                   Foreground="{DynamicResource Merge.Text.Primary}"/>
                     </Border>
                     <merge:ResultPane Grid.Row="1"
                                       AutomationProperties.AutomationId="Merge.ResultPane"

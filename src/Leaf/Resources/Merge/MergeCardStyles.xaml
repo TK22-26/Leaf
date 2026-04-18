@@ -1,0 +1,36 @@
+<!--
+    Merge editor card styles (V4). A single "Merge.PaneCard" Style packages
+    the Fluent 2 card look — CornerRadius 6, 1 px hairline border, Surface.2
+    background, and a subtle 8 px drop shadow at 15 % opacity. Every major
+    pane (file list, ours, theirs, connection canvas, result, header, footer)
+    opts in by setting Style="{StaticResource Merge.PaneCard}" on its outer
+    Border, so the card look stays consistent even if some future wave
+    reshuffles the layout.
+
+    Shadows are WPF's DropShadowEffect with ShadowDepth 0 so the blur spreads
+    symmetrically around the border. That matches the Fluent "ThemeShadow"
+    spec more closely than a classic offset-downward drop shadow would.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Style x:Key="Merge.PaneCard" TargetType="Border">
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Merge.Border.Subtle}"/>
+        <Setter Property="Background" Value="{DynamicResource Merge.Surface.2}"/>
+        <Setter Property="ClipToBounds" Value="True"/>
+        <Setter Property="Effect">
+            <Setter.Value>
+                <!-- V8 TODO: DropShadowEffect.Color defaults to #FF000000 and
+                     isn't themeable. The 15 % opacity over dark backgrounds
+                     is nearly invisible; over a light-theme background it is
+                     clearly visible. V8 should either add a Merge.Shadow.Color
+                     token consumed here, or bump opacity to ~0.4 on dark. -->
+                <DropShadowEffect BlurRadius="8" Opacity="0.15" ShadowDepth="0"/>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

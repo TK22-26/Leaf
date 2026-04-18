@@ -13,6 +13,7 @@
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="MergePalette.xaml" />
         <ResourceDictionary Source="MergeTypography.xaml" />
+        <ResourceDictionary Source="MergeCardStyles.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
 </ResourceDictionary>
