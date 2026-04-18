@@ -31,6 +31,20 @@
                 <DropShadowEffect BlurRadius="8" Opacity="0.15" ShadowDepth="0"/>
             </Setter.Value>
         </Setter>
+        <!-- V5 pane focus glow. When keyboard focus lives inside the card, swap
+             to the Merge.Border.Focus brush (accent blue). WPF resolves the
+             trigger Setter immediately on focus-in, so the transition is
+             instant rather than the 250 ms ease-out the motion ramp would
+             prefer — animating BorderBrush.Color directly would require the
+             brush to be unfrozen (palette brushes aren't), so this trigger
+             keeps the palette as the single source of truth at the cost of
+             the animated pulse. Full ease-out pulse deferred until V8 theme
+             swap lands the unfrozen-brush refactor. -->
+        <Style.Triggers>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Merge.Border.Focus}"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
 </ResourceDictionary>

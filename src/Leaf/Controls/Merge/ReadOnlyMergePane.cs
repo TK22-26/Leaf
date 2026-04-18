@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Leaf.Models.Merge;
 using Leaf.Services.Merge;
 using Leaf.TextEdit;
@@ -161,10 +162,132 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     private Size _extent;
     private Size _viewport;
 
+    // V5 animation bookkeeping. Two kinds of in-flight animations are tracked
+    // per-range: a 350 ms overlay fade-in on resolve (Merge.Motion.RangeResolve)
+    // and a 150 ms 0.97→1.0 scale bounce on checkbox click
+    // (Merge.Motion.AcceptButton). Each uses its own start-tick dictionary;
+    // one shared DispatcherTimer repaints at ~60 Hz whenever either dictionary
+    // has an active entry and stops when both go empty. Start times are
+    // captured via Stopwatch.GetTimestamp() rather than DateTime.UtcNow so
+    // NTP slews / DST adjustments can't freeze or skip animations.
+    private const double RangeResolveDurationMs = 350.0;
+    private const double CheckboxBounceDurationMs = 150.0;
+    private readonly Dictionary<int, long> _rangeResolveStarts = new();
+    private readonly Dictionary<int, long> _checkboxBounceStarts = new();
+    private DispatcherTimer? _animationTicker;
+    // Reused during OnRender to avoid a per-frame SolidColorBrush allocation
+    // while the resolved overlay is fading in. Never frozen — OnRender mutates
+    // .Color before each DrawRectangle call.
+    private readonly SolidColorBrush _fadedOverlayBrush = new();
+
+    private static long NowTicks() => System.Diagnostics.Stopwatch.GetTimestamp();
+    private static double TicksToMs(long ticks) =>
+        ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
     public ReadOnlyMergePane()
     {
         Focusable = false;
         ClipToBounds = true;
+    }
+
+    /// <summary>
+    /// Mark <paramref name="rangeIndex"/> as just-resolved so the next render
+    /// fades the resolved overlay in over <see cref="RangeResolveDurationMs"/>
+    /// ms. Calling again with the same index before the animation completes
+    /// restarts it — matches the user expectation that clicking the accept
+    /// button always pulses the region regardless of prior state.
+    /// </summary>
+    public void StartRangeResolveAnimation(int rangeIndex)
+    {
+        _rangeResolveStarts[rangeIndex] = NowTicks();
+        EnsureAnimationTicker();
+    }
+
+    /// <summary>
+    /// Kick the accept-button bounce animation for <paramref name="rangeIndex"/>:
+    /// a quick 0.97→1.0 scale on the drawn checkbox over
+    /// <see cref="CheckboxBounceDurationMs"/> ms. Called from the pane's
+    /// mouse-down handler so the press itself drives the feedback.
+    /// </summary>
+    public void StartCheckboxBounceAnimation(int rangeIndex)
+    {
+        _checkboxBounceStarts[rangeIndex] = NowTicks();
+        EnsureAnimationTicker();
+    }
+
+    private void EnsureAnimationTicker()
+    {
+        if (_animationTicker is null)
+        {
+            _animationTicker = new DispatcherTimer(DispatcherPriority.Render)
+            {
+                Interval = TimeSpan.FromMilliseconds(16),
+            };
+            _animationTicker.Tick += OnAnimationTick;
+        }
+        if (!_animationTicker.IsEnabled)
+        {
+            _animationTicker.Start();
+        }
+        InvalidateVisual();
+    }
+
+    private void OnAnimationTick(object? sender, EventArgs e)
+    {
+        var now = NowTicks();
+        PruneCompleted(_rangeResolveStarts, now, RangeResolveDurationMs);
+        PruneCompleted(_checkboxBounceStarts, now, CheckboxBounceDurationMs);
+        if (_rangeResolveStarts.Count == 0 && _checkboxBounceStarts.Count == 0)
+        {
+            _animationTicker?.Stop();
+        }
+        InvalidateVisual();
+    }
+
+    private static void PruneCompleted(Dictionary<int, long> starts, long nowTicks, double durationMs)
+    {
+        List<int>? completed = null;
+        foreach (var kvp in starts)
+        {
+            if (TicksToMs(nowTicks - kvp.Value) >= durationMs)
+            {
+                completed ??= new List<int>();
+                completed.Add(kvp.Key);
+            }
+        }
+        if (completed is not null)
+        {
+            foreach (var key in completed) starts.Remove(key);
+        }
+    }
+
+    /// <summary>
+    /// 0→1 alpha multiplier for the resolved overlay on <paramref name="rangeIndex"/>.
+    /// Returns 1.0 when no animation is in flight (the overlay renders at its
+    /// natural alpha); returns an ease-out-quadratic-interpolated value while
+    /// the 350 ms fade is running.
+    /// </summary>
+    private double ResolvedOverlayAlphaFor(int rangeIndex)
+    {
+        if (!_rangeResolveStarts.TryGetValue(rangeIndex, out var start)) return 1.0;
+        var elapsed = TicksToMs(NowTicks() - start);
+        var t = Math.Clamp(elapsed / RangeResolveDurationMs, 0.0, 1.0);
+        // Quadratic ease-out: 1 - (1 - t)^2 — matches Merge.Motion.Ease.
+        return 1.0 - ((1.0 - t) * (1.0 - t));
+    }
+
+    /// <summary>
+    /// 0.97→1.0 scale multiplier for the accept-checkbox bounce on
+    /// <paramref name="rangeIndex"/>. Returns 1.0 when no animation is
+    /// running.
+    /// </summary>
+    private double CheckboxBounceScaleFor(int rangeIndex)
+    {
+        if (!_checkboxBounceStarts.TryGetValue(rangeIndex, out var start)) return 1.0;
+        var elapsed = TicksToMs(NowTicks() - start);
+        var t = Math.Clamp(elapsed / CheckboxBounceDurationMs, 0.0, 1.0);
+        var eased = 1.0 - ((1.0 - t) * (1.0 - t));
+        return 0.97 + (0.03 * eased);
     }
 
     // ── Measurement / rendering ──────────────────────────────────────────────────
@@ -375,12 +498,28 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
             var h = (lastLine0 - firstLine0 + 1) * LineHeight;
             dc.DrawRectangle(HighlightBrush, pen: null, new Rect(0, y, ActualWidth, h));
 
-            // Resolved state: overlay a translucent green tint.
+            // Resolved state: overlay a translucent green tint, faded in if
+            // V5's range-resolve animation is running for this range.
             if (RangeStates is not null
                 && RangeStates.TryGetValue(range.Index, out var state)
                 && state is not ResolutionState.Unresolved)
             {
-                dc.DrawRectangle(ResolvedOverlayBrush, pen: null, new Rect(0, y, ActualWidth, h));
+                var alpha = ResolvedOverlayAlphaFor(range.Index);
+                if (alpha >= 0.999)
+                {
+                    dc.DrawRectangle(ResolvedOverlayBrush, pen: null, new Rect(0, y, ActualWidth, h));
+                }
+                else
+                {
+                    // Reuse the pane's pre-allocated mutable brush instead of
+                    // allocating a SolidColorBrush per frame per range. Brushes
+                    // used inside a single OnRender pass don't need to be frozen
+                    // so long as nothing retains a cross-thread reference.
+                    var baseColor = ResolvedOverlayBrush.Color;
+                    _fadedOverlayBrush.Color = Color.FromArgb(
+                        (byte)(baseColor.A * alpha), baseColor.R, baseColor.G, baseColor.B);
+                    dc.DrawRectangle(_fadedOverlayBrush, pen: null, new Rect(0, y, ActualWidth, h));
+                }
             }
         }
     }
@@ -474,6 +613,19 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
             var x = GutterWidth + CheckboxMargin;
             var box = new Rect(x, y, CheckboxSize, CheckboxSize);
 
+            // V5: apply the Merge.Motion.AcceptButton scale bounce around the
+            // checkbox's centre while its bounce animation is running. Push /
+            // Pop keeps the transform scoped to this one checkbox — every
+            // other render call inherits the identity transform.
+            var scale = CheckboxBounceScaleFor(range.Index);
+            var transformPushed = scale < 1.0;
+            if (transformPushed)
+            {
+                var cx = x + CheckboxSize / 2;
+                var cy = y + CheckboxSize / 2;
+                dc.PushTransform(new ScaleTransform(scale, scale, cx, cy));
+            }
+
             var isAccepted = IsThisSideAccepted(range.Index);
             dc.DrawRectangle(isAccepted ? CheckboxFillChecked : CheckboxFillUnchecked,
                 CheckboxStrokePen, box);
@@ -486,6 +638,8 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
                 dc.DrawLine(CheckboxStrokePen, p1, p2);
                 dc.DrawLine(CheckboxStrokePen, p2, p3);
             }
+
+            if (transformPushed) dc.Pop();
         }
     }
 
@@ -543,6 +697,10 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
             if (side.StartLine - 1 == lineIdx0)
             {
                 var isAccepted = IsThisSideAccepted(range.Index);
+                // V5: bounce the clicked checkbox for 150 ms so the press has
+                // tactile feedback even before the RangeStates round-trip
+                // through the VM completes.
+                StartCheckboxBounceAnimation(range.Index);
                 AcceptCheckboxToggled?.Invoke(this,
                     new MergePaneCheckboxEventArgs(range.Index, Side, !isAccepted));
                 e.Handled = true;
