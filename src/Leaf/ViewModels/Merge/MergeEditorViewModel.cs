@@ -334,6 +334,9 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         _undoStack.Clear();
         _redoStack.Clear();
         Document = doc;
+        // Point the keyboard-nav cursor at the first conflicting range so F8
+        // navigates from there rather than from a stale index.
+        CurrentConflictIndex = 0;
         // Build word-level diffs off the UI thread: a large conflict block (e.g.
         // a regenerated package-lock.json with 1000+ lines) would otherwise
         // freeze the UI for ~1s per file-select. Check cancellation before
@@ -671,6 +674,83 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     {
         if (Document == null) return;
         _clipboardService.SetText(ComposedText);
+    }
+
+    // ── Keyboard-driven conflict navigation + current-range commands ──────
+
+    /// <summary>
+    /// 0-based index of the conflict range the user is currently "on"
+    /// (for keyboard shortcuts). Advanced by <see cref="NextConflictCommand"/>
+    /// and <see cref="PreviousConflictCommand"/>. Starts at the first
+    /// unresolved range when a document loads.
+    /// </summary>
+    [ObservableProperty]
+    private int _currentConflictIndex;
+
+    [RelayCommand]
+    private void NextConflict()
+    {
+        if (Document is null) return;
+        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        if (conflicting.Count == 0) return;
+        // Prefer jumping to the next UNRESOLVED range so the keyboard flow matches
+        // the user's natural "resolve everything" rhythm. Fall back to a simple
+        // wrap-around if all ranges are already resolved.
+        CurrentConflictIndex = FindNextUnresolvedOrWrap(conflicting, +1);
+    }
+
+    [RelayCommand]
+    private void PreviousConflict()
+    {
+        if (Document is null) return;
+        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        if (conflicting.Count == 0) return;
+        CurrentConflictIndex = FindNextUnresolvedOrWrap(conflicting, -1);
+    }
+
+    private int FindNextUnresolvedOrWrap(List<ModifiedBaseRange> conflicting, int delta)
+    {
+        var n = conflicting.Count;
+        for (int step = 1; step <= n; step++)
+        {
+            var idx = ((CurrentConflictIndex + delta * step) % n + n) % n;
+            if (!IsResolved(conflicting[idx])) return idx;
+        }
+        // All resolved — wrap normally so the user can still re-review.
+        return ((CurrentConflictIndex + delta) % n + n) % n;
+    }
+
+    [RelayCommand]
+    private void AcceptCurrentConflictOurs()
+    {
+        var range = CurrentConflictRange();
+        if (range is null) return;
+        SetState(range.Index, ResolutionState.AcceptOurs.Instance);
+    }
+
+    [RelayCommand]
+    private void AcceptCurrentConflictTheirs()
+    {
+        var range = CurrentConflictRange();
+        if (range is null) return;
+        SetState(range.Index, ResolutionState.AcceptTheirs.Instance);
+    }
+
+    [RelayCommand]
+    private void AcceptCurrentConflictBoth()
+    {
+        var range = CurrentConflictRange();
+        if (range is null) return;
+        SetState(range.Index, new ResolutionState.AcceptBoth(FirstOurs: true, SmartCombine: true));
+    }
+
+    private ModifiedBaseRange? CurrentConflictRange()
+    {
+        if (Document is null) return null;
+        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        if (conflicting.Count == 0) return null;
+        var idx = Math.Clamp(CurrentConflictIndex, 0, conflicting.Count - 1);
+        return conflicting[idx];
     }
 
     [RelayCommand]

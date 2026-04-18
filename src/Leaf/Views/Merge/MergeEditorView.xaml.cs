@@ -110,9 +110,60 @@ public partial class MergeEditorView : Window
         // OnRangeStatesChanged (subscribed from OnDataContextChanged).
     }
 
-    // Phase 4 TODO: wire ConflictMinimap.JumpRequested to ScrollViewer.ScrollToVerticalOffset
-    // using MergePaneGlyphLayout.GetVisualTop(lineNumber). For Phase 3 the event
-    // fires but has no subscriber — minimap is visual-only.
+    // ── Scroll / minimap wire-up (Phase 4) ───────────────────────────────
+
+    private bool _suppressScrollSync;
+
+    private void OnOursScrollChanged(object? sender, System.Windows.Controls.ScrollChangedEventArgs e)
+    {
+        if (Vm is null) return;
+        ConnectionCanvas.OursVerticalOffset = e.VerticalOffset;
+        // Sync the Theirs pane to the same vertical offset. The canvas draws
+        // straight-across bezier curves between matching line indices, which
+        // only remains meaningful when the two panes scroll together. A
+        // flag prevents re-entrant ping-ponging when the mirrored scroll
+        // fires its own ScrollChanged.
+        if (!_suppressScrollSync && TheirsScrollViewer is not null
+            && Math.Abs(TheirsScrollViewer.VerticalOffset - e.VerticalOffset) > 0.5)
+        {
+            _suppressScrollSync = true;
+            try { TheirsScrollViewer.ScrollToVerticalOffset(e.VerticalOffset); }
+            finally { _suppressScrollSync = false; }
+        }
+    }
+
+    private void OnTheirsScrollChanged(object? sender, System.Windows.Controls.ScrollChangedEventArgs e)
+    {
+        if (Vm is null) return;
+        ConnectionCanvas.TheirsVerticalOffset = e.VerticalOffset;
+        if (!_suppressScrollSync && OursScrollViewer is not null
+            && Math.Abs(OursScrollViewer.VerticalOffset - e.VerticalOffset) > 0.5)
+        {
+            _suppressScrollSync = true;
+            try { OursScrollViewer.ScrollToVerticalOffset(e.VerticalOffset); }
+            finally { _suppressScrollSync = false; }
+        }
+    }
+
+    private void OnOursMinimapJump(object? sender, MinimapJumpEventArgs e)
+    {
+        ScrollPaneToLine(OursScrollViewer, e.LineNumber);
+    }
+
+    private void OnTheirsMinimapJump(object? sender, MinimapJumpEventArgs e)
+    {
+        ScrollPaneToLine(TheirsScrollViewer, e.LineNumber);
+    }
+
+    private void ScrollPaneToLine(System.Windows.Controls.ScrollViewer sv, int lineNumber1Based)
+    {
+        var layout = Vm?.Layout;
+        if (layout is null || sv is null) return;
+        var y = layout.GetVisualTop(lineNumber1Based);
+        // Center the target line in the viewport when possible.
+        var target = Math.Max(0, y - sv.ViewportHeight / 2);
+        sv.ScrollToVerticalOffset(target);
+    }
 
     private void OnResultTextChanged(object? sender, string text)
     {
