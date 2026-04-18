@@ -24,7 +24,7 @@ public partial class MainViewModel
 
         if (MergeConflictResolutionViewModel == null) return;
 
-        var conflictWindow = new Views.ConflictResolutionView
+        var conflictWindow = new Views.Merge.MergeEditorView
         {
             DataContext = MergeConflictResolutionViewModel
         };
@@ -254,7 +254,7 @@ public partial class MainViewModel
 
         MergeConflictResolutionViewModel.SelectedConflict = conflict;
 
-        var conflictWindow = new Views.ConflictResolutionView
+        var conflictWindow = new Views.Merge.MergeEditorView
         {
             DataContext = MergeConflictResolutionViewModel
         };
@@ -311,7 +311,8 @@ public partial class MainViewModel
                 MergeConflictResolutionViewModel.MergeCompleted -= OnMergeConflictResolutionCompleted;
             }
 
-            var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, _dispatcherService, SelectedRepository.Path)
+            var conflictViewModel = new ViewModels.Merge.MergeEditorViewModel(
+                _gitService, _clipboardService, _mergeEngine, SelectedRepository.Path)
             {
                 IsCompactFileList = _settingsService.LoadSettings().CompactFileList,
                 GetSessionToken = () => CurrentRepositoryToken

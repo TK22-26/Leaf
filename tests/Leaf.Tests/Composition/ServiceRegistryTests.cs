@@ -55,7 +55,6 @@ public class ServiceRegistryTests
     [InlineData(typeof(IGitCommandRunner))]
     [InlineData(typeof(IDiffService))]
     [InlineData(typeof(IHunkService))]
-    [InlineData(typeof(IThreeWayMergeService))]
     [InlineData(typeof(Leaf.Services.Merge.IMergeEngine))]
     [InlineData(typeof(IGitignoreService))]
     [InlineData(typeof(IAutoFetchService))]

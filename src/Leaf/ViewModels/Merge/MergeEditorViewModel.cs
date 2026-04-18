@@ -96,6 +96,8 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(UnresolvedConflictCount))]
     [NotifyPropertyChangedFor(nameof(IsFullyResolved))]
     [NotifyPropertyChangedFor(nameof(ComposedText))]
+    [NotifyPropertyChangedFor(nameof(OursLines))]
+    [NotifyPropertyChangedFor(nameof(TheirsLines))]
     private MergeDocument? _document;
 
     [ObservableProperty]
@@ -130,6 +132,15 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     public int ResolvedFiles => Conflicts.Count(c => c.IsResolved);
     public int RemainingFiles => TotalFiles - ResolvedFiles;
     public bool CanCompleteMerge => TotalFiles > 0 && ResolvedFiles == TotalFiles;
+
+    // Legacy-compatible aliases used by MainWindow.xaml bindings that predate Phase 2c.
+    public int TotalCount => TotalFiles;
+    public int ResolvedCount => ResolvedFiles;
+    public int RemainingCount => RemainingFiles;
+
+    /// <summary>UI toggle; pass-through from settings. Used by MainWindow binding.</summary>
+    [ObservableProperty]
+    private bool _isCompactFileList;
     public bool CanMarkResolved => SelectedConflict != null && (IsFullyResolved || IsEngineError);
 
     /// <summary>
@@ -138,6 +149,15 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     /// Uses the file's original line-ending style.
     /// </summary>
     public string ComposedText => Document?.ComposeResolvedText(RangeStates) ?? string.Empty;
+
+    /// <summary>Ours-side lines for the current document (pass-through for pane binding).</summary>
+    public IReadOnlyList<string> OursLines => Document?.OursLines ?? Array.Empty<string>();
+
+    /// <summary>Theirs-side lines for the current document (pass-through for pane binding).</summary>
+    public IReadOnlyList<string> TheirsLines => Document?.TheirsLines ?? Array.Empty<string>();
+
+    /// <summary>Shared font/metrics layout for all panes. Owned by the VM so the UI binds once.</summary>
+    public Leaf.TextEdit.MergePaneGlyphLayout Layout { get; } = new Leaf.TextEdit.MergePaneGlyphLayout();
 
     public bool CanUndo => _undoStack.Count > 0;
     public bool CanRedo => _redoStack.Count > 0;
@@ -475,6 +495,25 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         _clipboardService.SetText(ComposedText);
     }
 
+    [RelayCommand]
+    private async Task UnresolveConflictAsync(ConflictInfo? conflict)
+    {
+        if (conflict is null) return;
+        IsResolving = true;
+        try
+        {
+            await _gitService.ReopenConflictAsync(_repoPath, conflict.FilePath,
+                conflict.BaseContent ?? string.Empty,
+                conflict.OursContent ?? string.Empty,
+                conflict.TheirsContent ?? string.Empty,
+                SessionToken).ConfigureAwait(true);
+            conflict.IsResolved = false;
+            conflict.MergedContent = string.Empty;
+            NotifyFileCountsChanged();
+        }
+        finally { IsResolving = false; }
+    }
+
     private void AutoAdvance()
     {
         var next = Conflicts.FirstOrDefault(c => !c.IsResolved);
@@ -494,6 +533,14 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         _buildCts?.Dispose();
         _buildCts = null;
     }
+
+    /// <summary>
+    /// Legacy-compat alias for <see cref="Dispose"/> called from MainViewModel's
+    /// per-repo teardown. Pre-Phase-2c <c>ConflictResolutionViewModel</c> exposed
+    /// <c>Cleanup()</c>; keeping the name means MainViewModel doesn't need a
+    /// parallel change.
+    /// </summary>
+    public void Cleanup() => Dispose();
 
     private readonly record struct ResolutionUndoEntry(Dictionary<int, ResolutionState> Snapshot);
 }
