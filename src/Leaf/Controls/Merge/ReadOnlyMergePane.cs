@@ -242,7 +242,6 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     {
         if (Layout is null || WordDiffs is null) return;
         var textX = GutterWidth + CheckboxSize + CheckboxMargin + 4 - _horizontalOffset;
-        var advance = Layout.AdvanceWidth;
         var accent = Side switch
         {
             MergePaneSide.Ours => OursWordAccent,
@@ -266,12 +265,25 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
                 var line0 = firstLine0 + i;
                 if (line0 < firstVisible || line0 > lastVisible) continue;
                 var y = line0 * LineHeight - _verticalOffset;
+                var lineText = tokenLines[i].Text;
+                if (lineText.Length == 0) continue;
+
+                // Use FormattedText.BuildHighlightGeometry for pixel-accurate rects
+                // that honor tabs, surrogate pairs, and proportional-font glyphs —
+                // the previous (column-index × advance-width) math broke for
+                // tab-indented code and supplementary-plane characters.
+                var ft = Layout.BuildFormattedText(lineText);
                 foreach (var seg in tokenLines[i].Segments)
                 {
                     if (seg.Kind == TokenKind.Unchanged) continue;
-                    var startX = textX + (seg.StartColumn - 1) * advance;
-                    var width = (seg.EndColumnExclusive - seg.StartColumn) * advance;
-                    dc.DrawRectangle(accent, pen: null, new Rect(startX, y, width, LineHeight));
+                    var start0 = seg.StartColumn - 1;
+                    var length = seg.EndColumnExclusive - seg.StartColumn;
+                    if (length <= 0 || start0 < 0 || start0 + length > lineText.Length) continue;
+                    var geom = ft.BuildHighlightGeometry(new Point(textX, y), start0, length);
+                    if (geom is not null)
+                    {
+                        dc.DrawGeometry(accent, pen: null, geom);
+                    }
                 }
             }
         }

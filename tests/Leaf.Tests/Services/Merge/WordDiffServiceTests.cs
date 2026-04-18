@@ -19,14 +19,30 @@ public class WordDiffServiceTests
     }
 
     [Fact]
-    public void DiffLines_EmptyBothSides_ReturnsSingleEmptyUnchangedSegment()
+    public void DiffLines_EmptyBothSides_ReturnsEmptySegmentLists()
     {
+        // Empty-both fast path keeps the invariant "EndColumn > StartColumn" on
+        // every emitted segment by returning empty lists rather than a zero-width
+        // Unchanged segment.
         var (l, r) = _svc.DiffLines(string.Empty, string.Empty);
-        l.Should().HaveCount(1);
-        l[0].Kind.Should().Be(TokenKind.Unchanged);
-        l[0].Text.Should().BeEmpty();
-        r.Should().HaveCount(1);
-        r[0].Text.Should().BeEmpty();
+        l.Should().BeEmpty();
+        r.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void DiffLines_EmptyLeft_FullRightIsAdded()
+    {
+        var (l, r) = _svc.DiffLines(string.Empty, "hello");
+        l.Should().BeEmpty();
+        r.Should().Contain(s => s.Kind == TokenKind.Added && s.Text == "hello");
+    }
+
+    [Fact]
+    public void DiffLines_EmptyRight_FullLeftIsRemoved()
+    {
+        var (l, r) = _svc.DiffLines("hello", string.Empty);
+        l.Should().Contain(s => s.Kind == TokenKind.Removed && s.Text == "hello");
+        r.Should().BeEmpty();
     }
 
     [Fact]

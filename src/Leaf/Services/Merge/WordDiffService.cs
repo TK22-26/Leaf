@@ -34,35 +34,6 @@ public sealed class WordDiffService : IWordDiffService
     private readonly WordChunker _chunker = new();
 
     /// <summary>
-    /// Compute token-level diffs between two sides of a conflict.
-    /// Each returned list has one <see cref="TokenLine"/> per input line on that side.
-    /// </summary>
-    public TokenDiffResult Diff(IReadOnlyList<string> leftLines, IReadOnlyList<string> rightLines)
-    {
-        ArgumentNullException.ThrowIfNull(leftLines);
-        ArgumentNullException.ThrowIfNull(rightLines);
-
-        var left = leftLines.Select(DiffLine).ToArray();
-        var right = rightLines.Select(DiffLine).ToArray();
-        // The line-by-line correspondence is handled by the caller — this
-        // service diffs pairs. For the Phase 3 callsite, pair ours[i] with
-        // theirs[i] up to min(counts); the extras are pure adds on one side.
-        return new TokenDiffResult(left, right);
-
-        TokenLine DiffLine(string line)
-        {
-            // We intentionally don't pre-diff here. The paired Diff below
-            // mutates the result; we keep per-line raw segments identified
-            // as Unchanged until the paired diff overrides.
-            var segments = new List<TokenSegment>
-            {
-                new TokenSegment(1, line.Length + 1, TokenKind.Unchanged, line),
-            };
-            return new TokenLine(line, segments);
-        }
-    }
-
-    /// <summary>
     /// Compute a token-level diff between two single lines. Returns two lists
     /// of <see cref="TokenSegment"/>: one for the left side, one for the right
     /// side, each describing changed-vs-unchanged runs within the line.
@@ -75,6 +46,13 @@ public sealed class WordDiffService : IWordDiffService
 
         if (leftLine == rightLine)
         {
+            // Empty-both fast path: return empty segment lists rather than a
+            // zero-width Unchanged segment, to keep the "EndColumn > StartColumn"
+            // invariant consistent across the slow path.
+            if (leftLine.Length == 0)
+            {
+                return (Array.Empty<TokenSegment>(), Array.Empty<TokenSegment>());
+            }
             return (
                 new[] { new TokenSegment(1, leftLine.Length + 1, TokenKind.Unchanged, leftLine) },
                 new[] { new TokenSegment(1, rightLine.Length + 1, TokenKind.Unchanged, rightLine) });
@@ -180,11 +158,6 @@ public sealed class WordDiffService : IWordDiffService
     }
 }
 
-/// <summary>
-/// Result of a word-level diff across two lists of lines.
-/// </summary>
-public sealed record TokenDiffResult(IReadOnlyList<TokenLine> Left, IReadOnlyList<TokenLine> Right);
-
 /// <summary>A single line's token-diff segmentation.</summary>
 public sealed record TokenLine(string Text, IReadOnlyList<TokenSegment> Segments);
 
@@ -209,7 +182,4 @@ public interface IWordDiffService
 {
     /// <summary>Compute a token-level diff between two single lines.</summary>
     (IReadOnlyList<TokenSegment> Left, IReadOnlyList<TokenSegment> Right) DiffLines(string leftLine, string rightLine);
-
-    /// <summary>Compute token-level segmentation for a pair of line lists.</summary>
-    TokenDiffResult Diff(IReadOnlyList<string> leftLines, IReadOnlyList<string> rightLines);
 }

@@ -187,8 +187,13 @@ public sealed class ConflictMinimap : FrameworkElement
     private void RaiseJumpForPointer(Point pos)
     {
         if (LineCount <= 0 || ActualHeight <= 0) return;
-        var fraction = Math.Clamp(pos.Y / ActualHeight, 0.0, 1.0);
-        var line = (int)Math.Clamp(Math.Round(fraction * LineCount) + 1, 1, LineCount);
+        // Use the same row-height math the renderer uses so a click on a
+        // visible marker lands on the line that marker represents. In the
+        // dense case (ActualHeight < LineCount) this pins rowHeight to 1px,
+        // which is consistent with the per-line row rendering.
+        var rowHeight = Math.Max(1.0, ActualHeight / LineCount);
+        var y = Math.Max(0, pos.Y);
+        var line = (int)Math.Clamp(Math.Floor(y / rowHeight) + 1, 1, LineCount);
         JumpRequested?.Invoke(this, new MinimapJumpEventArgs(line));
     }
 }

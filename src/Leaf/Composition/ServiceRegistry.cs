@@ -75,6 +75,7 @@ public static class ServiceRegistry
         services.AddSingleton<IDiffService, DiffService>();
         services.AddSingleton<IHunkService, HunkService>();
         services.AddSingleton<Leaf.Services.Merge.IMergeEngine, Leaf.Services.Merge.GitMergeFileEngine>();
+        services.AddSingleton<Leaf.Services.Merge.IWordDiffService, Leaf.Services.Merge.WordDiffService>();
         services.AddSingleton<IGitignoreService, GitignoreService>();
         services.AddSingleton<IExternalToolDetectorService, ExternalToolDetectorService>();
         services.AddSingleton<IExternalToolConfigService, ExternalToolConfigService>();
