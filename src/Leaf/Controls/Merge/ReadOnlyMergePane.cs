@@ -7,6 +7,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using Leaf.Models.Merge;
+using Leaf.Services.Merge;
 using Leaf.TextEdit;
 
 namespace Leaf.Controls.Merge;
@@ -70,6 +71,17 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         nameof(Foreground), typeof(Brush), typeof(ReadOnlyMergePane),
         new FrameworkPropertyMetadata(Brushes.Black, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    /// <summary>
+    /// Per-conflict-region word-level diff segments keyed by range index. Populated
+    /// by the VM when it constructs a <see cref="MergeDocument"/>; each value is
+    /// the list of <see cref="TokenSegment"/> for <em>this</em> side's lines inside
+    /// that conflict range. Null entries and missing keys are drawn without
+    /// highlights (falls back to region-level background only).
+    /// </summary>
+    public static readonly DependencyProperty WordDiffsProperty = DependencyProperty.Register(
+        nameof(WordDiffs), typeof(IReadOnlyDictionary<int, IReadOnlyList<TokenLine>>), typeof(ReadOnlyMergePane),
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
     /// <summary>Shared <see cref="MergePaneGlyphLayout"/>; required before the pane can render.</summary>
     public MergePaneGlyphLayout? Layout
     {
@@ -117,6 +129,16 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     {
         get => (Brush)GetValue(ForegroundProperty);
         set => SetValue(ForegroundProperty, value);
+    }
+
+    /// <summary>
+    /// Per-conflict-region word-level diff segments keyed by range index.
+    /// See <see cref="WordDiffsProperty"/> for semantics.
+    /// </summary>
+    public IReadOnlyDictionary<int, IReadOnlyList<TokenLine>>? WordDiffs
+    {
+        get => (IReadOnlyDictionary<int, IReadOnlyList<TokenLine>>?)GetValue(WordDiffsProperty);
+        set => SetValue(WordDiffsProperty, value);
     }
 
     /// <summary>
@@ -203,14 +225,68 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         // 1. Region background highlights.
         DrawRegionBackgrounds(drawingContext, firstVisible, lastVisible);
 
-        // 2. Line numbers gutter.
+        // 2. Word-level highlights inside each conflict region on this side.
+        DrawWordHighlights(drawingContext, firstVisible, lastVisible);
+
+        // 3. Line numbers gutter.
         DrawGutter(drawingContext, firstVisible, lastVisible);
 
-        // 3. Checkboxes (one per conflicting range that intersects the viewport).
+        // 4. Checkboxes (one per conflicting range that intersects the viewport).
         DrawCheckboxes(drawingContext, firstVisible, lastVisible);
 
-        // 4. Text lines.
+        // 5. Text lines.
         DrawText(drawingContext, firstVisible, lastVisible);
+    }
+
+    private void DrawWordHighlights(DrawingContext dc, int firstVisible, int lastVisible)
+    {
+        if (Layout is null || WordDiffs is null) return;
+        var textX = GutterWidth + CheckboxSize + CheckboxMargin + 4 - _horizontalOffset;
+        var accent = Side switch
+        {
+            MergePaneSide.Ours => OursWordAccent,
+            MergePaneSide.Theirs => TheirsWordAccent,
+            _ => (Brush)Brushes.Transparent,
+        };
+
+        foreach (var range in Regions)
+        {
+            if (!range.IsConflicting) continue;
+            if (!WordDiffs.TryGetValue(range.Index, out var tokenLines) || tokenLines is null) continue;
+
+            var sideRange = GetSideRange(range);
+            if (sideRange.IsEmpty) continue;
+            var firstLine0 = sideRange.StartLine - 1;
+            var lastLine0 = sideRange.EndLineExclusive - 1 - 1;
+            if (lastLine0 < firstVisible || firstLine0 > lastVisible) continue;
+
+            for (int i = 0; i < tokenLines.Count; i++)
+            {
+                var line0 = firstLine0 + i;
+                if (line0 < firstVisible || line0 > lastVisible) continue;
+                var y = line0 * LineHeight - _verticalOffset;
+                var lineText = tokenLines[i].Text;
+                if (lineText.Length == 0) continue;
+
+                // Use FormattedText.BuildHighlightGeometry for pixel-accurate rects
+                // that honor tabs, surrogate pairs, and proportional-font glyphs —
+                // the previous (column-index × advance-width) math broke for
+                // tab-indented code and supplementary-plane characters.
+                var ft = Layout.BuildFormattedText(lineText);
+                foreach (var seg in tokenLines[i].Segments)
+                {
+                    if (seg.Kind == TokenKind.Unchanged) continue;
+                    var start0 = seg.StartColumn - 1;
+                    var length = seg.EndColumnExclusive - seg.StartColumn;
+                    if (length <= 0 || start0 < 0 || start0 + length > lineText.Length) continue;
+                    var geom = ft.BuildHighlightGeometry(new Point(textX, y), start0, length);
+                    if (geom is not null)
+                    {
+                        dc.DrawGeometry(accent, pen: null, geom);
+                    }
+                }
+            }
+        }
     }
 
     private void DrawRegionBackgrounds(DrawingContext dc, int firstVisible, int lastVisible)
@@ -249,6 +325,11 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
 
     private static readonly SolidColorBrush ResolvedOverlayBrush = Freeze(new SolidColorBrush(Color.FromArgb(0x44, 0x22, 0xC5, 0x5E)));
     private static readonly SolidColorBrush GutterBrush = Freeze(new SolidColorBrush(Color.FromArgb(0xFF, 0x88, 0x88, 0x88)));
+    // Word-level highlight accents: drawn on top of the region background.
+    // Ours side uses a stronger blue; Theirs uses a stronger green; matched
+    // to the existing HighlightBrush palette per side.
+    private static readonly SolidColorBrush OursWordAccent = Freeze(new SolidColorBrush(Color.FromArgb(0x99, 0x2B, 0x4A, 0x6E)));
+    private static readonly SolidColorBrush TheirsWordAccent = Freeze(new SolidColorBrush(Color.FromArgb(0x99, 0x1A, 0x50, 0x35)));
     private static readonly SolidColorBrush CheckboxFillUnchecked = Freeze(new SolidColorBrush(Color.FromArgb(0x00, 0, 0, 0)));
     private static readonly SolidColorBrush CheckboxStroke = Freeze(new SolidColorBrush(Color.FromArgb(0xFF, 0xA0, 0xA0, 0xA0)));
     private static readonly SolidColorBrush CheckboxFillChecked = Freeze(new SolidColorBrush(Color.FromArgb(0xFF, 0x22, 0xC5, 0x5E)));

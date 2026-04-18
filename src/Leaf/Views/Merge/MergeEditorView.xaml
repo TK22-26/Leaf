@@ -87,22 +87,36 @@
                     <TextBlock Text="OURS" FontWeight="SemiBold" FontSize="11"
                                Foreground="{StaticResource OursHighlightBrush}"/>
                 </Border>
-                <ScrollViewer Grid.Row="1"
-                              Background="{StaticResource PaneBackgroundBrush}"
-                              HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Auto"
-                              CanContentScroll="True">
-                    <merge:ReadOnlyMergePane x:Name="OursPane"
-                                             AutomationProperties.AutomationId="Merge.OursPane"
-                                             Side="Ours"
-                                             Lines="{Binding OursLines}"
-                                             Regions="{Binding Document.Ranges}"
-                                             RangeStates="{Binding RangeStates}"
-                                             Layout="{Binding Layout}"
-                                             Foreground="{StaticResource PaneForegroundBrush}"
-                                             HighlightBrush="{StaticResource OursHighlightBrush}"
-                                             AcceptCheckboxToggled="OnOursCheckboxToggled"/>
-                </ScrollViewer>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="12"/>
+                    </Grid.ColumnDefinitions>
+                    <ScrollViewer Grid.Column="0"
+                                  Background="{StaticResource PaneBackgroundBrush}"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto"
+                                  CanContentScroll="True">
+                        <merge:ReadOnlyMergePane x:Name="OursPane"
+                                                 AutomationProperties.AutomationId="Merge.OursPane"
+                                                 Side="Ours"
+                                                 Lines="{Binding OursLines}"
+                                                 Regions="{Binding Document.Ranges}"
+                                                 RangeStates="{Binding RangeStates}"
+                                                 WordDiffs="{Binding OursWordDiffs}"
+                                                 Layout="{Binding Layout}"
+                                                 Foreground="{StaticResource PaneForegroundBrush}"
+                                                 HighlightBrush="{StaticResource OursHighlightBrush}"
+                                                 AcceptCheckboxToggled="OnOursCheckboxToggled"/>
+                    </ScrollViewer>
+                    <merge:ConflictMinimap Grid.Column="1"
+                                           AutomationProperties.AutomationId="Merge.OursMinimap"
+                                           Side="Ours"
+                                           LineCount="{Binding OursLines.Count, FallbackValue=0}"
+                                           Regions="{Binding Document.Ranges}"
+                                           RangeStates="{Binding RangeStates}"
+                                           Layout="{Binding Layout}"/>
+                </Grid>
             </Grid>
 
             <!-- Theirs pane -->
@@ -118,22 +132,36 @@
                     <TextBlock Text="THEIRS" FontWeight="SemiBold" FontSize="11"
                                Foreground="{StaticResource TheirsHighlightBrush}"/>
                 </Border>
-                <ScrollViewer Grid.Row="1"
-                              Background="{StaticResource PaneBackgroundBrush}"
-                              HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Auto"
-                              CanContentScroll="True">
-                    <merge:ReadOnlyMergePane x:Name="TheirsPane"
-                                             AutomationProperties.AutomationId="Merge.TheirsPane"
-                                             Side="Theirs"
-                                             Lines="{Binding TheirsLines}"
-                                             Regions="{Binding Document.Ranges}"
-                                             RangeStates="{Binding RangeStates}"
-                                             Layout="{Binding Layout}"
-                                             Foreground="{StaticResource PaneForegroundBrush}"
-                                             HighlightBrush="{StaticResource TheirsHighlightBrush}"
-                                             AcceptCheckboxToggled="OnTheirsCheckboxToggled"/>
-                </ScrollViewer>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="12"/>
+                    </Grid.ColumnDefinitions>
+                    <ScrollViewer Grid.Column="0"
+                                  Background="{StaticResource PaneBackgroundBrush}"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto"
+                                  CanContentScroll="True">
+                        <merge:ReadOnlyMergePane x:Name="TheirsPane"
+                                                 AutomationProperties.AutomationId="Merge.TheirsPane"
+                                                 Side="Theirs"
+                                                 Lines="{Binding TheirsLines}"
+                                                 Regions="{Binding Document.Ranges}"
+                                                 RangeStates="{Binding RangeStates}"
+                                                 WordDiffs="{Binding TheirsWordDiffs}"
+                                                 Layout="{Binding Layout}"
+                                                 Foreground="{StaticResource PaneForegroundBrush}"
+                                                 HighlightBrush="{StaticResource TheirsHighlightBrush}"
+                                                 AcceptCheckboxToggled="OnTheirsCheckboxToggled"/>
+                    </ScrollViewer>
+                    <merge:ConflictMinimap Grid.Column="1"
+                                           AutomationProperties.AutomationId="Merge.TheirsMinimap"
+                                           Side="Theirs"
+                                           LineCount="{Binding TheirsLines.Count, FallbackValue=0}"
+                                           Regions="{Binding Document.Ranges}"
+                                           RangeStates="{Binding RangeStates}"
+                                           Layout="{Binding Layout}"/>
+                </Grid>
             </Grid>
 
             <!-- Result pane spanning both columns -->

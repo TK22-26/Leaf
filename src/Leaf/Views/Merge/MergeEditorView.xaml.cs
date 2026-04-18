@@ -110,6 +110,10 @@ public partial class MergeEditorView : Window
         // OnRangeStatesChanged (subscribed from OnDataContextChanged).
     }
 
+    // Phase 4 TODO: wire ConflictMinimap.JumpRequested to ScrollViewer.ScrollToVerticalOffset
+    // using MergePaneGlyphLayout.GetVisualTop(lineNumber). For Phase 3 the event
+    // fires but has no subscriber — minimap is visual-only.
+
     private void OnResultTextChanged(object? sender, string text)
     {
         // Hard-block foot-gun: the Phase 2c ResultPane is IsReadOnly=true so this
