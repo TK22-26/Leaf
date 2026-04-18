@@ -40,10 +40,14 @@
   <ItemGroup>
     <Resource Include="Assets\Leaf.png" />
     <Resource Include="Assets\Leaf.ico" />
+    <Resource Include="Resources\Fonts\JetBrainsMono-Regular.ttf" />
+    <Resource Include="Resources\Fonts\JetBrainsMono-Italic.ttf" />
+    <Resource Include="Resources\Fonts\JetBrainsMono-Bold.ttf" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="THIRD_PARTY_LICENSES.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Resources\Fonts\OFL.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

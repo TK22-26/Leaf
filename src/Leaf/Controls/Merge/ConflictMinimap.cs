@@ -93,11 +93,24 @@ public sealed class ConflictMinimap : FrameworkElement
     /// </summary>
     public event EventHandler<MinimapJumpEventArgs>? JumpRequested;
 
-    private static readonly Brush UnchangedBrush = Freeze(new SolidColorBrush(Color.FromArgb(0x22, 0x80, 0x80, 0x80)));
-    private static readonly Brush OursBrush = Freeze(new SolidColorBrush(Color.FromArgb(0xAA, 0x2B, 0x4A, 0x6E)));
-    private static readonly Brush TheirsBrush = Freeze(new SolidColorBrush(Color.FromArgb(0xAA, 0x1A, 0x50, 0x35)));
-    private static readonly Brush UnresolvedBrush = Freeze(new SolidColorBrush(Color.FromArgb(0xDD, 0xE0, 0x44, 0x44)));
-    private static readonly Brush ResolvedBrush = Freeze(new SolidColorBrush(Color.FromArgb(0xDD, 0x22, 0xC5, 0x5E)));
+    // Palette-derived minimap swatches. The minimap reads the base side and
+    // state colours from the central palette and applies per-swatch alpha so
+    // stacked tints remain legible against the unchanged-grey backdrop.
+    private static readonly Brush UnchangedBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
+        MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color", Color.FromRgb(0x80, 0x80, 0x80)),
+        0x22)));
+    private static readonly Brush OursBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
+        MergePaletteResources.ResolveColor("Merge.Ours.Border.Color", Color.FromRgb(0x2B, 0x4A, 0x6E)),
+        0xAA)));
+    private static readonly Brush TheirsBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
+        MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color", Color.FromRgb(0x1A, 0x50, 0x35)),
+        0xAA)));
+    private static readonly Brush UnresolvedBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
+        MergePaletteResources.ResolveColor("Merge.State.Unresolved.Color", Color.FromRgb(0xE0, 0x44, 0x44)),
+        0xDD)));
+    private static readonly Brush ResolvedBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
+        MergePaletteResources.ResolveColor("Merge.State.Resolved.Color", Color.FromRgb(0x22, 0xC5, 0x5E)),
+        0xDD)));
 
     private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
 

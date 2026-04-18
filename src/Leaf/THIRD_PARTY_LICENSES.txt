@@ -85,6 +85,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
+JetBrains Mono
+================================================================================
+
+License: SIL Open Font License 1.1
+Project URL: https://github.com/JetBrains/JetBrainsMono
+Source: Embedded at src/Leaf/Resources/Fonts/ (Regular, Italic, Bold variants).
+        Full license text: src/Leaf/Resources/Fonts/OFL.txt
+
+Copyright 2020 The JetBrains Mono Project Authors
+(https://github.com/JetBrains/JetBrainsMono)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+================================================================================
 CommunityToolkit.Mvvm
 ================================================================================
 

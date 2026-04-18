@@ -30,13 +30,6 @@
              an MCP server is configured; otherwise the command is a silent no-op. -->
         <KeyBinding Modifiers="Alt" Key="A" Command="{Binding RequestAiResolutionCommand}"/>
     </Window.InputBindings>
-    <Window.Resources>
-        <!-- Ours = blue tint; Theirs = green tint; tuned to be readable but not intense. -->
-        <SolidColorBrush x:Key="OursHighlightBrush" Color="#1A2B4A6E"/>
-        <SolidColorBrush x:Key="TheirsHighlightBrush" Color="#1A1A5035"/>
-        <SolidColorBrush x:Key="PaneForegroundBrush" Color="#E4E4E4"/>
-        <SolidColorBrush x:Key="PaneBackgroundBrush" Color="#1E1E1E"/>
-    </Window.Resources>
     <Grid Background="{DynamicResource ControlFillColorDefaultBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>   <!-- Header: source → target branches -->
@@ -107,7 +100,7 @@
                         BorderThickness="0,0,0,1"
                         BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
                     <TextBlock Text="OURS" FontWeight="SemiBold" FontSize="11"
-                               Foreground="{StaticResource OursHighlightBrush}"/>
+                               Foreground="{DynamicResource Merge.Ours.BgSubtle}"/>
                 </Border>
                 <Grid Grid.Row="1">
                     <Grid.ColumnDefinitions>
@@ -115,7 +108,7 @@
                         <ColumnDefinition Width="12"/>
                     </Grid.ColumnDefinitions>
                     <ScrollViewer Grid.Column="0" x:Name="OursScrollViewer"
-                                  Background="{StaticResource PaneBackgroundBrush}"
+                                  Background="{DynamicResource Merge.Surface.2}"
                                   HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto"
                                   CanContentScroll="True"
@@ -128,8 +121,8 @@
                                                  RangeStates="{Binding RangeStates}"
                                                  WordDiffs="{Binding OursWordDiffs}"
                                                  Layout="{Binding Layout}"
-                                                 Foreground="{StaticResource PaneForegroundBrush}"
-                                                 HighlightBrush="{StaticResource OursHighlightBrush}"
+                                                 Foreground="{DynamicResource Merge.Text.Primary}"
+                                                 HighlightBrush="{DynamicResource Merge.Ours.BgSubtle}"
                                                  AcceptCheckboxToggled="OnOursCheckboxToggled"/>
                     </ScrollViewer>
                     <merge:ConflictMinimap Grid.Column="1"
@@ -176,7 +169,7 @@
                         BorderThickness="0,0,0,1"
                         BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
                     <TextBlock Text="THEIRS" FontWeight="SemiBold" FontSize="11"
-                               Foreground="{StaticResource TheirsHighlightBrush}"/>
+                               Foreground="{DynamicResource Merge.Theirs.BgSubtle}"/>
                 </Border>
                 <Grid Grid.Row="1">
                     <Grid.ColumnDefinitions>
@@ -184,7 +177,7 @@
                         <ColumnDefinition Width="12"/>
                     </Grid.ColumnDefinitions>
                     <ScrollViewer Grid.Column="0" x:Name="TheirsScrollViewer"
-                                  Background="{StaticResource PaneBackgroundBrush}"
+                                  Background="{DynamicResource Merge.Surface.2}"
                                   HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto"
                                   CanContentScroll="True"
@@ -197,8 +190,8 @@
                                                  RangeStates="{Binding RangeStates}"
                                                  WordDiffs="{Binding TheirsWordDiffs}"
                                                  Layout="{Binding Layout}"
-                                                 Foreground="{StaticResource PaneForegroundBrush}"
-                                                 HighlightBrush="{StaticResource TheirsHighlightBrush}"
+                                                 Foreground="{DynamicResource Merge.Text.Primary}"
+                                                 HighlightBrush="{DynamicResource Merge.Theirs.BgSubtle}"
                                                  AcceptCheckboxToggled="OnTheirsCheckboxToggled"/>
                     </ScrollViewer>
                     <merge:ConflictMinimap Grid.Column="1"

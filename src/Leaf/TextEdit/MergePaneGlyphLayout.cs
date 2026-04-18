@@ -10,6 +10,17 @@ using Leaf.TextEdit.Rendering;
 namespace Leaf.TextEdit;
 
 /// <summary>
+/// Resource keys published by <c>Resources/Merge/MergeTypography.xaml</c> that the
+/// merge panes pull through the <c>Application.Current.Resources</c> tree. Kept as
+/// constants so renames surface as compile errors rather than silent mis-lookups.
+/// </summary>
+file static class MergeTypographyKeys
+{
+    public const string CodeFontFamily = "Merge.FontFamily.Code";
+    public const string CodeNormalSize = "Merge.Code.Normal.Size";
+}
+
+/// <summary>
 /// Shared typography and line-metrics contract consumed by every pane of the
 /// three-way merge editor — the two custom read-only input panes, the optional
 /// custom base pane, the vendored <see cref="TextEditor"/> result pane, the
@@ -39,24 +50,55 @@ namespace Leaf.TextEdit;
 public sealed class MergePaneGlyphLayout : INotifyPropertyChanged
 {
     /// <summary>
-    /// Default monospaced font used when no repo-specific override is set.
-    /// Consolas is present on every Windows install since Vista; falls back to
-    /// Courier New on systems that have somehow had it removed.
+    /// Hard-coded fallback font family used when <c>Application.Current</c> is
+    /// null (unit tests) or the typography resource dictionary has not been
+    /// merged yet. The pack URI resolves the embedded JetBrains Mono, with
+    /// Consolas and Courier New covering environments where the embed failed
+    /// to register.
     /// </summary>
-    public static readonly FontFamily DefaultFontFamily =
-        new("Consolas, Courier New");
+    private static readonly FontFamily FallbackFontFamily =
+        new("pack://application:,,,/Resources/Fonts/#JetBrains Mono, Consolas, Courier New");
 
     /// <summary>
-    /// Default font size in device-independent pixels. Matches the hardcoded
-    /// <c>FontSize="12.5"</c> that the pre-Phase-2b <c>MergedResultEditorControl</c>
-    /// and <c>ConflictSideEditorControl</c> XAMLs ship with — WPF interprets
-    /// a raw XAML <c>FontSize</c> as DIPs, NOT points, so the numeric value
-    /// carries through directly.
+    /// Hard-coded fallback font size in device-independent pixels. Matches
+    /// <c>Merge.Code.Normal.Size</c> in <c>Resources/Merge/MergeTypography.xaml</c>
+    /// and the Fluent 2 code-ramp recommendation. WPF interprets a raw XAML
+    /// <c>FontSize</c> as DIPs (not points), so the numeric value carries through.
     /// </summary>
-    public const double DefaultFontSize = 12.5;
+    private const double FallbackFontSize = 13.0;
+
+    /// <summary>
+    /// Default monospaced font used when no repo-specific override is set.
+    /// Resolves <c>Merge.FontFamily.Code</c> from <c>Application.Current.Resources</c>
+    /// so the font tracks the palette dictionary — falls back to
+    /// <see cref="FallbackFontFamily"/> when no application context exists
+    /// (unit tests instantiate the layout without <c>Application.Run</c>).
+    /// </summary>
+    public static FontFamily DefaultFontFamily => ResolveResource(
+        MergeTypographyKeys.CodeFontFamily,
+        FallbackFontFamily);
+
+    /// <summary>
+    /// Default font size in device-independent pixels. Resolves
+    /// <c>Merge.Code.Normal.Size</c> from <c>Application.Current.Resources</c>,
+    /// falling back to <see cref="FallbackFontSize"/> when no application
+    /// context exists.
+    /// </summary>
+    public static double DefaultFontSize => ResolveResource(
+        MergeTypographyKeys.CodeNormalSize,
+        FallbackFontSize);
 
     /// <summary>Default tab width in character columns (each column is one <see cref="AdvanceWidth"/> wide).</summary>
     public const int DefaultTabSize = 4;
+
+    private static T ResolveResource<T>(string key, T fallback)
+    {
+        if (Application.Current is { } app && app.TryFindResource(key) is T match)
+        {
+            return match;
+        }
+        return fallback;
+    }
 
     private FontFamily _fontFamily = DefaultFontFamily;
     private double _fontSize = DefaultFontSize;

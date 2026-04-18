@@ -38,29 +38,31 @@ public sealed class ImageConflictPane : FrameworkElement
     private bool _differenceBuildInFlight;
 
     private const double ModeBarHeight = 36.0;
-    private static readonly Brush BackgroundBrush = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
-    private static readonly Brush GridBrush = new SolidColorBrush(Color.FromArgb(0x22, 0x80, 0x80, 0x80));
-    private static readonly Brush TextBrush = new SolidColorBrush(Color.FromRgb(0xD0, 0xD0, 0xD0));
-    private static readonly Brush ErrorBrush = new SolidColorBrush(Color.FromRgb(0xE5, 0x8A, 0x8A));
-    private static readonly Brush ModeBarBrush = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x25));
-    private static readonly Brush CornerLabelBrush = new SolidColorBrush(Color.FromArgb(0xB0, 0x00, 0x00, 0x00));
-    private static readonly Pen DividerPen = new(
-        new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)), 1.0);
-    private static readonly Pen SwipeDividerPen = new(
-        new SolidColorBrush(Color.FromRgb(0xFF, 0xC4, 0x4D)), 2.0);
-    private static readonly Typeface LabelTypeface = new("Segoe UI");
+    // Image-pane brushes come from the merge palette. Corner label overlay
+    // keeps its pure-black base so labels stay legible over any underlying
+    // image content regardless of theme.
+    private static readonly Brush BackgroundBrush = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.Surface.2.Color", Color.FromRgb(0x1E, 0x1E, 0x1E));
+    private static readonly Brush GridBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
+        MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color", Color.FromRgb(0x80, 0x80, 0x80)),
+        0x22)));
+    private static readonly Brush TextBrush = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.Text.Secondary.Color", Color.FromRgb(0xD0, 0xD0, 0xD0));
+    private static readonly Brush ErrorBrush = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.State.Error.Color", Color.FromRgb(0xE5, 0x8A, 0x8A));
+    private static readonly Brush ModeBarBrush = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.Surface.3.Color", Color.FromRgb(0x25, 0x25, 0x25));
+    private static readonly Brush CornerLabelBrush = Freeze(new SolidColorBrush(Color.FromArgb(0xB0, 0x00, 0x00, 0x00)));
+    private static readonly Pen DividerPen = FreezePen(new Pen(
+        MergePaletteResources.ResolveFrozenBrush("Merge.Border.Strong.Color", Color.FromRgb(0x3A, 0x3A, 0x3A)),
+        1.0));
+    private static readonly Pen SwipeDividerPen = FreezePen(new Pen(
+        MergePaletteResources.ResolveFrozenBrush("Merge.State.Manual.Color", Color.FromRgb(0xFF, 0xC4, 0x4D)),
+        2.0));
+    private static readonly Typeface LabelTypeface = new("Segoe UI Variable, Segoe UI");
 
-    static ImageConflictPane()
-    {
-        BackgroundBrush.Freeze();
-        GridBrush.Freeze();
-        TextBrush.Freeze();
-        ErrorBrush.Freeze();
-        ModeBarBrush.Freeze();
-        CornerLabelBrush.Freeze();
-        DividerPen.Freeze();
-        SwipeDividerPen.Freeze();
-    }
+    private static Brush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
+    private static Pen FreezePen(Pen p) { p.Freeze(); return p; }
 
     public static readonly DependencyProperty PayloadProperty = DependencyProperty.Register(
         nameof(Payload), typeof(ImageConflictPayload), typeof(ImageConflictPane),

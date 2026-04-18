@@ -1,0 +1,18 @@
+<!--
+    Merge editor resource umbrella.
+
+    One entry in App.xaml MergedDictionaries pulls in palette + typography
+    (and later motion in V5, light palette variant in V8). Keeping the
+    umbrella thin lets individual waves add dictionaries without churning
+    App.xaml.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="MergePalette.xaml" />
+        <ResourceDictionary Source="MergeTypography.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+
+</ResourceDictionary>

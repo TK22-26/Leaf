@@ -323,16 +323,33 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         _ => LineRange.Empty,
     };
 
-    private static readonly SolidColorBrush ResolvedOverlayBrush = Freeze(new SolidColorBrush(Color.FromArgb(0x44, 0x22, 0xC5, 0x5E)));
-    private static readonly SolidColorBrush GutterBrush = Freeze(new SolidColorBrush(Color.FromArgb(0xFF, 0x88, 0x88, 0x88)));
+    // Resolved-state overlay — the Merge.State.Resolved colour dropped over a
+    // conflict region at ~27% alpha once the user picks a side. The alpha lives
+    // in code rather than in the palette because the overlay is a decoration
+    // applied on top of an already-tinted background; the palette only ships
+    // the solid state colour.
+    private static readonly SolidColorBrush ResolvedOverlayBrush = Freeze(new SolidColorBrush(
+        MergePaletteResources.WithAlpha(
+            MergePaletteResources.ResolveColor("Merge.State.Resolved.Color", Color.FromRgb(0x22, 0xC5, 0x5E)),
+            0x44)));
+    private static readonly SolidColorBrush GutterBrush = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.Text.Tertiary.Color", Color.FromRgb(0x88, 0x88, 0x88));
     // Word-level highlight accents: drawn on top of the region background.
     // Ours side uses a stronger blue; Theirs uses a stronger green; matched
     // to the existing HighlightBrush palette per side.
-    private static readonly SolidColorBrush OursWordAccent = Freeze(new SolidColorBrush(Color.FromArgb(0x99, 0x2B, 0x4A, 0x6E)));
-    private static readonly SolidColorBrush TheirsWordAccent = Freeze(new SolidColorBrush(Color.FromArgb(0x99, 0x1A, 0x50, 0x35)));
-    private static readonly SolidColorBrush CheckboxFillUnchecked = Freeze(new SolidColorBrush(Color.FromArgb(0x00, 0, 0, 0)));
-    private static readonly SolidColorBrush CheckboxStroke = Freeze(new SolidColorBrush(Color.FromArgb(0xFF, 0xA0, 0xA0, 0xA0)));
-    private static readonly SolidColorBrush CheckboxFillChecked = Freeze(new SolidColorBrush(Color.FromArgb(0xFF, 0x22, 0xC5, 0x5E)));
+    private static readonly SolidColorBrush OursWordAccent = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.Ours.BgStrong.Color", Color.FromArgb(0x99, 0x2B, 0x4A, 0x6E));
+    private static readonly SolidColorBrush TheirsWordAccent = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.Theirs.BgStrong.Color", Color.FromArgb(0x99, 0x1A, 0x50, 0x35));
+    private static readonly SolidColorBrush CheckboxFillUnchecked = Freeze(new SolidColorBrush(Colors.Transparent));
+    // Checkbox stroke uses Base.Accent (neutral mid-grey) — closer to the
+    // pre-V1 #A0A0A0 than Text.Tertiary (#888888, too dark) or Text.Secondary
+    // (#D0D0D0, too light). Base is the right group semantically because the
+    // checkbox is a neutral UI affordance, not an Ours- or Theirs-tagged one.
+    private static readonly SolidColorBrush CheckboxStroke = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.Base.Accent.Color", Color.FromRgb(0xB0, 0xB0, 0xB0));
+    private static readonly SolidColorBrush CheckboxFillChecked = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.State.Resolved.Color", Color.FromRgb(0x22, 0xC5, 0x5E));
     private static readonly Pen CheckboxStrokePen = FreezePen(new Pen(CheckboxStroke, 1.0));
 
     private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
