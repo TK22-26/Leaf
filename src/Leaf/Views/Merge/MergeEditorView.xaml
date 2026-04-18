@@ -25,6 +25,10 @@
         <KeyBinding Modifiers="Control" Key="Z" Command="{Binding UndoCommand}"/>
         <KeyBinding Modifiers="Control" Key="Y" Command="{Binding RedoCommand}"/>
         <KeyBinding Modifiers="Control+Shift" Key="Z" Command="{Binding RedoCommand}"/>
+        <!-- Alt+A — Ask the AI for a resolution for the current conflict. Only
+             does anything if the AI merge feature is enabled in settings and
+             an MCP server is configured; otherwise the command is a silent no-op. -->
+        <KeyBinding Modifiers="Alt" Key="A" Command="{Binding RequestAiResolutionCommand}"/>
     </Window.InputBindings>
     <Window.Resources>
         <!-- Ours = blue tint; Theirs = green tint; tuned to be readable but not intense. -->
@@ -301,6 +305,21 @@
                     </Button>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <!-- Ask AI — requests a proposed resolution for the current
+                         conflict via the configured MCP server. Hidden when the
+                         feature isn't available (no assistant injected) so it
+                         doesn't dangle in UIs that don't use AI. -->
+                    <Button Command="{Binding RequestAiResolutionCommand}"
+                            Visibility="{Binding CanRequestAiResolution, Converter={StaticResource BoolToVisibilityConverter}}"
+                            IsEnabled="{Binding CanRequestAiResolution}"
+                            Margin="0,0,16,0" Padding="12,6"
+                            AutomationProperties.AutomationId="Merge.AskAi"
+                            ToolTip="Ask AI to propose a resolution for the current conflict (Alt+A)">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="Sparkle" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="Ask AI" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button Command="{Binding AcceptAllOursCommand}" Margin="0,0,8,0" Padding="12,6"
                             AutomationProperties.AutomationId="Merge.AcceptAllOurs">
                         <TextBlock Text="Accept All Ours"/>

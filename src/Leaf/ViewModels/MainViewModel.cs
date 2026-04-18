@@ -40,6 +40,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IExternalToolLauncherService _externalToolLauncher;
     private readonly INotificationService? _notificationService;
     private readonly Services.Merge.IMergeEngine _mergeEngine;
+    private readonly Services.Merge.IAiMergeAssistant? _aiMergeAssistant;
+    private readonly Services.Merge.IWordDiffService _wordDiffService;
 
     // The per-repo DI scope. Owns the current IRepositorySession (scoped)
     // and — in future phases — the per-repo ViewModels. Disposed on repo
@@ -371,10 +373,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IExternalToolDetectorService externalToolDetector,
         IExternalToolLauncherService externalToolLauncher,
         Services.Merge.IMergeEngine mergeEngine,
-        INotificationService? notificationService = null)
+        Services.Merge.IWordDiffService wordDiffService,
+        INotificationService? notificationService = null,
+        Services.Merge.IAiMergeAssistant? aiMergeAssistant = null)
     {
         _gitService = gitService;
         _mergeEngine = mergeEngine;
+        _wordDiffService = wordDiffService;
+        _aiMergeAssistant = aiMergeAssistant;
         _gitFlowService = gitFlowService;
         _credentialService = credentialService;
         _settingsService = settingsService;

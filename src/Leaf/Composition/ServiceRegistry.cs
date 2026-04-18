@@ -98,6 +98,23 @@ public static class ServiceRegistry
         services.AddSingleton<OllamaService>();
         services.AddSingleton<ICommitMessageParser, CommitMessageParser>();
         services.AddSingleton<IAiCommitMessageService, AiCommitMessageService>();
+
+        // Phase 5: AI-assisted merge resolution via MCP. The assistant itself
+        // is transport + gating only; the providers read fresh values from
+        // SettingsService on every invocation so a settings change takes
+        // effect without reconstructing the singleton.
+        services.AddSingleton<Leaf.Services.Merge.IAiMergeAssistant>(sp =>
+        {
+            var settings = sp.GetRequiredService<SettingsService>();
+            return new Leaf.Services.Merge.McpMergeAssistant(
+                serverPathProvider: () =>
+                {
+                    var path = settings.LoadSettings().AiMergeMcpServerPath;
+                    return string.IsNullOrWhiteSpace(path) ? null : path;
+                },
+                enabledProvider: () => settings.LoadSettings().AiMergeEnabled,
+                consentGivenProvider: () => settings.LoadSettings().AiMergeConsentGiven);
+        });
     }
 
     // Phase 4: per-repo scope. The factory stays a singleton because its

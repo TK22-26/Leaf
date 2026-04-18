@@ -28,11 +28,8 @@ public partial class MergeEditorView : Window
         // explicitly on Close.
         Closed += (_, _) =>
         {
-            if (_subscribedVm is not null)
-            {
-                _subscribedVm.RangeStatesChanged -= OnRangeStatesChanged;
-                _subscribedVm = null;
-            }
+            DetachFromVm();
+            _subscribedVm = null;
         };
     }
 
@@ -40,15 +37,80 @@ public partial class MergeEditorView : Window
 
     private void OnDataContextChanged(object? sender, DependencyPropertyChangedEventArgs e)
     {
-        if (_subscribedVm is not null)
-        {
-            _subscribedVm.RangeStatesChanged -= OnRangeStatesChanged;
-        }
+        DetachFromVm();
         _subscribedVm = Vm;
         if (_subscribedVm is not null)
         {
             _subscribedVm.RangeStatesChanged += OnRangeStatesChanged;
+            _subscribedVm.AiConsentRequested += OnAiConsentRequested;
+            _subscribedVm.AiResolutionReceived += OnAiResolutionReceived;
+            _subscribedVm.AiError += OnAiError;
         }
+    }
+
+    private void DetachFromVm()
+    {
+        if (_subscribedVm is null) return;
+        _subscribedVm.RangeStatesChanged -= OnRangeStatesChanged;
+        _subscribedVm.AiConsentRequested -= OnAiConsentRequested;
+        _subscribedVm.AiResolutionReceived -= OnAiResolutionReceived;
+        _subscribedVm.AiError -= OnAiError;
+    }
+
+    private void OnAiConsentRequested(object? sender, AiConsentRequest e)
+    {
+        if (Vm is null) return;
+        var dlg = new AiConsentDialog(e.McpServerPath, e.ContextLines)
+        {
+            Owner = this,
+        };
+        var accepted = dlg.ShowDialog() == true;
+        if (accepted)
+        {
+            // Persist consent so this dialog doesn't appear again on next click.
+            // SettingsService is a DI singleton — resolving from the app-wide
+            // provider here is acceptable because the view is the consent
+            // flow's owner; keeping the write in the dialog keeps the VM
+            // decoupled from SettingsService.
+            var settings = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+                .GetRequiredService<Leaf.Services.SettingsService>(Leaf.App.Services);
+            var current = settings.LoadSettings();
+            current.AiMergeConsentGiven = true;
+            // Also flip the master toggle on — the feature is obviously enabled
+            // if the user just consented. Without this, a user who enabled
+            // "show the AI button" via settings but never flipped consent
+            // would still be blocked on the next click.
+            current.AiMergeEnabled = true;
+            settings.SaveSettings(current);
+            Vm.ResumeAiRequestAfterConsent();
+        }
+        else
+        {
+            Vm.CancelPendingAiRequest();
+        }
+    }
+
+    private void OnAiResolutionReceived(object? sender, AiResolutionProposal e)
+    {
+        if (Vm is null) return;
+        var dlg = new AiResolutionDialog(e.ProposedText, e.Rationale, e.Confidence)
+        {
+            Owner = this,
+        };
+        if (dlg.ShowDialog() == true)
+        {
+            Vm.AcceptAiResolution(e.RangeIndex, dlg.AcceptedText);
+        }
+    }
+
+    private void OnAiError(object? sender, string message)
+    {
+        MessageBox.Show(
+            this,
+            message,
+            "AI merge assistant",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
     }
 
     private void OnRangeStatesChanged(object? sender, EventArgs e)

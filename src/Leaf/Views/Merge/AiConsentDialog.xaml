@@ -1,0 +1,76 @@
+<Window x:Class="Leaf.Views.Merge.AiConsentDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AI Merge Assistant — First-Run Consent"
+        Width="560"
+        MinHeight="340"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock FontWeight="SemiBold" FontSize="15"
+                   Text="Ask AI to propose a resolution?"/>
+
+        <TextBlock Grid.Row="1" Margin="0,10,0,0" TextWrapping="Wrap"
+                   Text="Leaf can send this conflict to a local MCP (Model Context Protocol) server, which then talks to an AI model on your behalf. Leaf itself does not call any model API directly."/>
+
+        <Border Grid.Row="2" Margin="0,14,0,0"
+                Background="#11000000"
+                BorderBrush="#22000000" BorderThickness="1"
+                CornerRadius="4" Padding="12">
+            <StackPanel>
+                <TextBlock FontWeight="SemiBold" Text="What will be sent:"/>
+                <TextBlock Margin="0,6,0,0" TextWrapping="Wrap"
+                           Text="• The conflict region (base / ours / theirs line blocks)"/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• A small window of context lines around the conflict"/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• The file path (to infer language)"/>
+                <TextBlock Margin="0,10,0,0" FontWeight="SemiBold" Text="What will NOT be sent:"/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Full file contents outside the configured context window"/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Branch names, commit messages, or any other repository state"/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Any other files"/>
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="3" Margin="0,14,0,0">
+            <TextBlock FontWeight="SemiBold" Text="Target MCP server:"/>
+            <TextBlock x:Name="ServerPathText"
+                       Margin="0,4,0,0"
+                       FontFamily="Consolas"
+                       TextWrapping="Wrap"
+                       Foreground="#666"/>
+            <TextBlock x:Name="ContextLinesText"
+                       Margin="0,6,0,0"
+                       Foreground="#666"/>
+        </StackPanel>
+
+        <TextBlock Grid.Row="4" Margin="0,14,0,0" TextWrapping="Wrap"
+                   FontStyle="Italic" Foreground="#666"
+                   Text="You can revoke this at any time from Settings → AI Merge. This dialog will not appear again unless consent is reset."/>
+
+        <StackPanel Grid.Row="5" Margin="0,18,0,0"
+                    Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="OkButton"
+                    Width="120" Margin="0,0,8,0"
+                    IsDefault="True"
+                    Click="OkButton_Click"
+                    Content="Send to MCP"/>
+            <Button Width="90" IsCancel="True"
+                    Click="CancelButton_Click"
+                    Content="Cancel"/>
+        </StackPanel>
+    </Grid>
+</Window>
