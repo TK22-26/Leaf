@@ -22,7 +22,7 @@ public partial class AiConsentDialog : Window
     {
         InitializeComponent();
         ServerPathText.Text = string.IsNullOrWhiteSpace(mcpServerPath)
-            ? "(no server configured — set one in Settings → AI Merge)"
+            ? "(no server configured — set one in Settings → AI Integrations → Merge Assistant)"
             : mcpServerPath;
         ContextLinesText.Text = $"Context window: {contextLines} lines above + {contextLines} lines below.";
     }

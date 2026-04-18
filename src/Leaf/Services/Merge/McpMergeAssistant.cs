@@ -79,7 +79,7 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
         {
             throw new AiMergeAssistantException(
                 "AI merge assistant is enabled but no MCP server is configured. " +
-                "Set Settings → AI Merge → MCP Server Path.");
+                "Set Settings → AI Integrations → Merge Assistant → MCP Server Path.");
         }
 
         // Privacy log: timing + outcome only, never request content.
@@ -151,6 +151,14 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
             // GitCommandRunner pattern for the same reason.
             var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
             var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            // Observe each task unconditionally, right at creation. Without this,
+            // a task that faults on a path where we abort (cancellation, exception
+            // before `await outputTask` completes) becomes an unobserved
+            // TaskScheduler.UnobservedTaskException at GC time. The continuation
+            // drains the AggregateException; the main flow still awaits and reads
+            // the result as usual.
+            ObserveFaults(outputTask);
+            ObserveFaults(errorTask);
 
             // If the server exits before consuming stdin (early-exit on a fast
             // error path, or a misconfigured shim), WriteAsync/Close can throw
@@ -214,6 +222,20 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
             sw.Stop();
             Log.Info("AiMerge", $"RequestResolution outcome={outcome} duration_ms={sw.ElapsedMilliseconds}");
         }
+    }
+
+    /// <summary>
+    /// Attach a no-op continuation that drains a task's exception so the task
+    /// is considered "observed" for <see cref="TaskScheduler.UnobservedTaskException"/>
+    /// purposes, even if the main flow aborts before awaiting the task.
+    /// </summary>
+    private static void ObserveFaults(Task task)
+    {
+        _ = task.ContinueWith(
+            t => { _ = t.Exception; /* observe so the runtime doesn't raise UOTE */ },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     // ── Wire types (internal — shape is the MCP request/response contract). ───
