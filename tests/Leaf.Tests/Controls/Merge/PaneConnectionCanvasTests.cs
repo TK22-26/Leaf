@@ -15,11 +15,10 @@ namespace Leaf.Tests.Controls.Merge;
 /// </summary>
 public class PaneConnectionCanvasTests
 {
-    [Theory]
-    [InlineData(null)]
-    public void BrushForState_NullOrUnresolved_IsUnresolvedGrey(ResolutionState? state)
+    [Fact]
+    public void BrushForState_Null_IsUnresolvedGrey()
     {
-        var brush = PaneConnectionCanvas.BrushForState(state);
+        var brush = PaneConnectionCanvas.BrushForState(state: null);
         brush.Should().NotBeNull();
         brush.Should().BeAssignableTo<SolidColorBrush>();
     }
