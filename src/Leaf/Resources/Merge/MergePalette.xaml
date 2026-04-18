@@ -1,0 +1,67 @@
+<!--
+    Merge editor semantic brush tokens.
+
+    Every merge control pulls colors via {DynamicResource Merge.*} from this
+    file - no inline hex values anywhere else in the merge UI. Brushes here
+    reference Colors in the merged palette dictionary (dark by default, swapped
+    to light in V8 via ThemeService).
+
+    Naming follows Fluent 2 conventions: side.role, state.kind, surface.layer.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="MergePaletteDark.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+
+    <!--  Ours  -->
+    <SolidColorBrush x:Key="Merge.Ours.BgSubtle" Color="{DynamicResource Merge.Ours.BgSubtle.Color}" />
+    <SolidColorBrush x:Key="Merge.Ours.BgStrong" Color="{DynamicResource Merge.Ours.BgStrong.Color}" />
+    <SolidColorBrush x:Key="Merge.Ours.Accent" Color="{DynamicResource Merge.Ours.Accent.Color}" />
+    <SolidColorBrush x:Key="Merge.Ours.Text" Color="{DynamicResource Merge.Ours.Text.Color}" />
+    <SolidColorBrush x:Key="Merge.Ours.Border" Color="{DynamicResource Merge.Ours.Border.Color}" />
+
+    <!--  Theirs  -->
+    <SolidColorBrush x:Key="Merge.Theirs.BgSubtle" Color="{DynamicResource Merge.Theirs.BgSubtle.Color}" />
+    <SolidColorBrush x:Key="Merge.Theirs.BgStrong" Color="{DynamicResource Merge.Theirs.BgStrong.Color}" />
+    <SolidColorBrush x:Key="Merge.Theirs.Accent" Color="{DynamicResource Merge.Theirs.Accent.Color}" />
+    <SolidColorBrush x:Key="Merge.Theirs.Text" Color="{DynamicResource Merge.Theirs.Text.Color}" />
+    <SolidColorBrush x:Key="Merge.Theirs.Border" Color="{DynamicResource Merge.Theirs.Border.Color}" />
+
+    <!--  Base  -->
+    <SolidColorBrush x:Key="Merge.Base.BgSubtle" Color="{DynamicResource Merge.Base.BgSubtle.Color}" />
+    <SolidColorBrush x:Key="Merge.Base.BgStrong" Color="{DynamicResource Merge.Base.BgStrong.Color}" />
+    <SolidColorBrush x:Key="Merge.Base.Accent" Color="{DynamicResource Merge.Base.Accent.Color}" />
+    <SolidColorBrush x:Key="Merge.Base.Text" Color="{DynamicResource Merge.Base.Text.Color}" />
+    <SolidColorBrush x:Key="Merge.Base.Border" Color="{DynamicResource Merge.Base.Border.Color}" />
+
+    <!--  State  -->
+    <SolidColorBrush x:Key="Merge.State.Unresolved" Color="{DynamicResource Merge.State.Unresolved.Color}" />
+    <SolidColorBrush x:Key="Merge.State.Resolved" Color="{DynamicResource Merge.State.Resolved.Color}" />
+    <SolidColorBrush x:Key="Merge.State.AiPending" Color="{DynamicResource Merge.State.AiPending.Color}" />
+    <SolidColorBrush x:Key="Merge.State.Error" Color="{DynamicResource Merge.State.Error.Color}" />
+    <SolidColorBrush x:Key="Merge.State.Warning" Color="{DynamicResource Merge.State.Warning.Color}" />
+    <SolidColorBrush x:Key="Merge.State.Manual" Color="{DynamicResource Merge.State.Manual.Color}" />
+
+    <!--  Surface  -->
+    <SolidColorBrush x:Key="Merge.Surface.1" Color="{DynamicResource Merge.Surface.1.Color}" />
+    <SolidColorBrush x:Key="Merge.Surface.2" Color="{DynamicResource Merge.Surface.2.Color}" />
+    <SolidColorBrush x:Key="Merge.Surface.3" Color="{DynamicResource Merge.Surface.3.Color}" />
+    <SolidColorBrush x:Key="Merge.Surface.4" Color="{DynamicResource Merge.Surface.4.Color}" />
+    <SolidColorBrush x:Key="Merge.Surface.5" Color="{DynamicResource Merge.Surface.5.Color}" />
+
+    <!--  Borders  -->
+    <SolidColorBrush x:Key="Merge.Border.Subtle" Color="{DynamicResource Merge.Border.Subtle.Color}" />
+    <SolidColorBrush x:Key="Merge.Border.Strong" Color="{DynamicResource Merge.Border.Strong.Color}" />
+    <SolidColorBrush x:Key="Merge.Border.Focus" Color="{DynamicResource Merge.Border.Focus.Color}" />
+
+    <!--  Text  -->
+    <SolidColorBrush x:Key="Merge.Text.Primary" Color="{DynamicResource Merge.Text.Primary.Color}" />
+    <SolidColorBrush x:Key="Merge.Text.Secondary" Color="{DynamicResource Merge.Text.Secondary.Color}" />
+    <SolidColorBrush x:Key="Merge.Text.Tertiary" Color="{DynamicResource Merge.Text.Tertiary.Color}" />
+    <SolidColorBrush x:Key="Merge.Text.Disabled" Color="{DynamicResource Merge.Text.Disabled.Color}" />
+    <SolidColorBrush x:Key="Merge.Text.OnAccent" Color="{DynamicResource Merge.Text.OnAccent.Color}" />
+
+</ResourceDictionary>

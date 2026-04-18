@@ -80,10 +80,22 @@ public sealed class PaneConnectionCanvas : FrameworkElement
         set => SetValue(TheirsVerticalOffsetProperty, value);
     }
 
-    private static readonly Color OursColor = Color.FromArgb(0xB0, 0x2B, 0x4A, 0x6E);
-    private static readonly Color TheirsColor = Color.FromArgb(0xB0, 0x1A, 0x50, 0x35);
-    private static readonly Color UnresolvedColor = Color.FromArgb(0x80, 0x88, 0x88, 0x88);
-    private static readonly Color ManualColor = Color.FromArgb(0xC0, 0xFF, 0xC1, 0x07);
+    // Palette-derived curve colours. Each side's border colour is tinted to
+    // ~69% alpha so the curve reads as an accent behind the pane backgrounds
+    // rather than a dominant graphic element. Fallbacks match the pre-V1
+    // hard-coded values so a resources-less test still renders correctly.
+    private static readonly Color OursColor = MergePaletteResources.WithAlpha(
+        MergePaletteResources.ResolveColor("Merge.Ours.Border.Color", Color.FromRgb(0x2B, 0x4A, 0x6E)),
+        0xB0);
+    private static readonly Color TheirsColor = MergePaletteResources.WithAlpha(
+        MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color", Color.FromRgb(0x1A, 0x50, 0x35)),
+        0xB0);
+    private static readonly Color UnresolvedColor = MergePaletteResources.WithAlpha(
+        MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color", Color.FromRgb(0x88, 0x88, 0x88)),
+        0x80);
+    private static readonly Color ManualColor = MergePaletteResources.WithAlpha(
+        MergePaletteResources.ResolveColor("Merge.State.Warning.Color", Color.FromRgb(0xFF, 0xC1, 0x07)),
+        0xC0);
 
     // Frozen brushes — allocating one per-range per-frame was both wasteful
     // and inconsistent with the pattern used by ConflictMinimap.
