@@ -124,8 +124,39 @@ public partial class MergeEditorView : Window
             MessageBoxImage.Warning);
     }
 
+    // V5 tracks the previous range-state snapshot so OnRangeStatesChanged can
+    // detect newly-resolved ranges and kick their Merge.Motion.RangeResolve
+    // fade-in. Plain Dictionary copy — the RangeStates reference is mutated
+    // in place, so we need a by-value snapshot to diff against.
+    private Dictionary<int, Leaf.Models.Merge.ResolutionState>? _previousRangeStates;
+
     private void OnRangeStatesChanged(object? sender, EventArgs e)
     {
+        // V5: detect any state change (including resolved→resolved switches
+        // like AcceptOurs→AcceptTheirs) and kick the Merge.Motion.RangeResolve
+        // fade-in on both input panes so the two sides animate in lockstep.
+        // Restarting the fade on an already-resolved range is fine — the
+        // animation is idempotent, giving the user a confirmation pulse each
+        // time they flip the resolution.
+        var current = Vm?.RangeStates;
+        if (current is not null && _previousRangeStates is not null)
+        {
+            foreach (var kvp in current)
+            {
+                var previouslyHad = _previousRangeStates.TryGetValue(kvp.Key, out var prev);
+                var stateChanged = !previouslyHad || !Equals(prev, kvp.Value);
+                var nowResolved = kvp.Value is not Leaf.Models.Merge.ResolutionState.Unresolved;
+                if (stateChanged && nowResolved)
+                {
+                    OursPane.StartRangeResolveAnimation(kvp.Key);
+                    TheirsPane.StartRangeResolveAnimation(kvp.Key);
+                }
+            }
+        }
+        _previousRangeStates = current is null
+            ? null
+            : new Dictionary<int, Leaf.Models.Merge.ResolutionState>(current);
+
         // Invalidate both input panes so the accept-checkbox glyphs re-render
         // after any resolution-changing operation (checkbox click, footer
         // AcceptAllOurs/Theirs, Undo, Redo). RangeStates is a plain dictionary
@@ -235,7 +266,10 @@ public partial class MergeEditorView : Window
         var y = layout.GetVisualTop(lineNumber1Based);
         // Center the target line in the viewport when possible.
         var target = Math.Max(0, y - sv.ViewportHeight / 2);
-        sv.ScrollToVerticalOffset(target);
+        // V5: smooth animated scroll via Merge.Motion.MinimapJump (400 ms
+        // ease-out) — replaces the previous instant jump so the user can
+        // track which direction the pane moved.
+        Leaf.Controls.Merge.MergeMotionHelpers.SmoothScrollTo(sv, target);
     }
 
     private void OnResultTextChanged(object? sender, string text)
