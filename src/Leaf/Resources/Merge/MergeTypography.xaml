@@ -16,7 +16,7 @@
 
     <!--  Font families  -->
     <FontFamily x:Key="Merge.FontFamily.Chrome">Segoe UI Variable, Segoe UI</FontFamily>
-    <FontFamily x:Key="Merge.FontFamily.Code">pack://application:,,,/Resources/Fonts/#JetBrains Mono, Consolas, Courier New</FontFamily>
+    <FontFamily x:Key="Merge.FontFamily.Code">pack://application:,,,/Leaf;component/Resources/Fonts/#JetBrains Mono, Consolas, Courier New</FontFamily>
 
     <!--  Type ramp (sizes in device-independent pixels)  -->
     <sys:Double x:Key="Merge.Type.Display.Size">28</sys:Double>

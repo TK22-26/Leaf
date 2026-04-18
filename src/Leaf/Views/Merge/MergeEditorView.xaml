@@ -41,11 +41,13 @@
             <ColumnDefinition Width="*"/>    <!-- Panes -->
         </Grid.ColumnDefinitions>
 
-        <!-- Header row -->
+        <!-- Header card. Same Merge.PaneCard style as the content panes so the
+             whole editor reads as a coherent stack of cards. 8 px outer margin
+             lets the rounded corners clear the window chrome. -->
         <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-                Padding="16,10"
-                BorderThickness="0,0,0,1"
-                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+                Style="{StaticResource Merge.PaneCard}"
+                Margin="8,8,8,4"
+                Padding="16,10">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Merging " FontSize="14" VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding SourceBranch}" FontSize="14" FontWeight="SemiBold"
@@ -166,14 +168,17 @@
             </Grid>
             </Border>
 
-            <!-- Connection-line canvas between the two input panes. Its grid
-                 row matches the content rows of the two pane sub-grids (not
-                 the header rows), so bezier endpoints use the pane's own Y
-                 origin and the header padding doesn't misalign curves.
-                 Not wrapped as a card — it's pure decoration between the Ours
-                 and Theirs cards, so a background + border would visually
-                 steal the space the curves need to breathe. -->
-            <Grid Grid.Row="0" Grid.Column="1">
+            <!-- Connection-canvas card. Wrapped in the same Merge.PaneCard
+                 style as the Ours / Theirs / Result panes so the whole editor
+                 reads as a unified card grid. Bezier endpoints in
+                 PaneConnectionCanvas are inset by CardCornerInset (6 px, the
+                 PaneCard CornerRadius) so curves stay inside the rounded
+                 clip region — no corner-shaving artifacts even for conflicts
+                 at the very top or bottom of the canvas. -->
+            <Border Grid.Row="0" Grid.Column="1"
+                    Style="{StaticResource Merge.PaneCard}"
+                    Margin="2,4,2,4">
+            <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="30"/>
                     <RowDefinition Height="*"/>
@@ -191,6 +196,7 @@
                                             Regions="{Binding Document.Ranges}"
                                             RangeStates="{Binding RangeStates}"/>
             </Grid>
+            </Border>
 
             <!-- Theirs pane card -->
             <Border Grid.Row="0" Grid.Column="2"
@@ -349,7 +355,9 @@
             </Grid>
         </Grid>
 
-        <!-- Footer. V3 groups the buttons into three clusters:
+        <!-- Footer card. Same Merge.PaneCard style as the header so the editor
+             reads as a coherent top-header / content / bottom-footer stack.
+             V3 groups the buttons into three clusters:
                - Left:   history (Undo / Redo) — pinned to the left edge.
                - Middle: batch-accept (All Ours / All Theirs / Ask AI) — sits
                          in the flexible column with a 32 px min gap to both
@@ -359,9 +367,9 @@
              Each button gets a 16 px FluentIcon prefix so the action is
              scannable without reading the label. -->
         <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                Padding="16,10"
-                BorderThickness="0,1,0,0"
-                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+                Style="{StaticResource Merge.PaneCard}"
+                Margin="8,4,8,8"
+                Padding="16,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>

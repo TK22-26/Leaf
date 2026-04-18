@@ -89,6 +89,14 @@
     <SolidColorBrush x:Key="Merge.Border.Strong" Color="#FF3A3A3A"/>
     <SolidColorBrush x:Key="Merge.Border.Focus"  Color="#FF4A88C4"/>
 
+    <!--  Image corner label scrim — 69 % alpha black drawn over image content
+          so the Ours / Theirs labels stay legible regardless of pixel colour
+          behind them. Intentionally pure-black in every theme because the
+          scrim's job is contrast against arbitrary image content, not chrome
+          styling.  -->
+    <Color x:Key="Merge.Image.CornerLabelScrim.Color">#B0000000</Color>
+    <SolidColorBrush x:Key="Merge.Image.CornerLabelScrim" Color="#B0000000"/>
+
     <!--  Text  -->
     <Color x:Key="Merge.Text.Primary.Color">#FFE4E4E4</Color>
     <Color x:Key="Merge.Text.Secondary.Color">#FFD0D0D0</Color>

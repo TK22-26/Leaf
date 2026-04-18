@@ -41,24 +41,26 @@ public sealed class ImageConflictPane : FrameworkElement
     // Image-pane brushes come from the merge palette. Corner label overlay
     // keeps its pure-black base so labels stay legible over any underlying
     // image content regardless of theme.
-    private static readonly Brush BackgroundBrush = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.Surface.2.Color", Color.FromRgb(0x1E, 0x1E, 0x1E));
+    private static readonly Brush BackgroundBrush =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Surface.2.Color");
     private static readonly Brush GridBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color", Color.FromRgb(0x80, 0x80, 0x80)),
-        0x22)));
-    private static readonly Brush TextBrush = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.Text.Secondary.Color", Color.FromRgb(0xD0, 0xD0, 0xD0));
-    private static readonly Brush ErrorBrush = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.State.Error.Color", Color.FromRgb(0xE5, 0x8A, 0x8A));
-    private static readonly Brush ModeBarBrush = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.Surface.3.Color", Color.FromRgb(0x25, 0x25, 0x25));
-    private static readonly Brush CornerLabelBrush = Freeze(new SolidColorBrush(Color.FromArgb(0xB0, 0x00, 0x00, 0x00)));
+        MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color"), 0x22)));
+    private static readonly Brush TextBrush =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Text.Secondary.Color");
+    private static readonly Brush ErrorBrush =
+        MergePaletteResources.ResolveFrozenBrush("Merge.State.Error.Color");
+    private static readonly Brush ModeBarBrush =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Surface.3.Color");
+    // Corner label scrim. Intentionally the same pure-black in every theme —
+    // its job is contrast against arbitrary image content, not chrome styling.
+    // Lives in the palette as Merge.Image.CornerLabelScrim so V1.8's "no hex
+    // in .cs outside the dictionary" rule holds even for image-only colours.
+    private static readonly Brush CornerLabelBrush =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Image.CornerLabelScrim.Color");
     private static readonly Pen DividerPen = FreezePen(new Pen(
-        MergePaletteResources.ResolveFrozenBrush("Merge.Border.Strong.Color", Color.FromRgb(0x3A, 0x3A, 0x3A)),
-        1.0));
+        MergePaletteResources.ResolveFrozenBrush("Merge.Border.Strong.Color"), 1.0));
     private static readonly Pen SwipeDividerPen = FreezePen(new Pen(
-        MergePaletteResources.ResolveFrozenBrush("Merge.State.Manual.Color", Color.FromRgb(0xFF, 0xC4, 0x4D)),
-        2.0));
+        MergePaletteResources.ResolveFrozenBrush("Merge.State.Manual.Color"), 2.0));
     private static readonly Typeface LabelTypeface = new("Segoe UI Variable, Segoe UI");
 
     private static Brush Freeze(SolidColorBrush b) { b.Freeze(); return b; }

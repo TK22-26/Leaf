@@ -80,22 +80,22 @@ public sealed class PaneConnectionCanvas : FrameworkElement
         set => SetValue(TheirsVerticalOffsetProperty, value);
     }
 
+    // Matches the CornerRadius of Merge.PaneCard (MergeCardStyles.xaml).
+    // Keeps bezier endpoints clear of the card's rounded-corner clip region
+    // when this canvas is wrapped in a PaneCard.
+    private const double CardCornerInset = 6.0;
+
     // Palette-derived curve colours. Each side's border colour is tinted to
     // ~69% alpha so the curve reads as an accent behind the pane backgrounds
-    // rather than a dominant graphic element. Fallbacks match the pre-V1
-    // hard-coded values so a resources-less test still renders correctly.
+    // rather than a dominant graphic element.
     private static readonly Color OursColor = MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Ours.Border.Color", Color.FromRgb(0x2B, 0x4A, 0x6E)),
-        0xB0);
+        MergePaletteResources.ResolveColor("Merge.Ours.Border.Color"), 0xB0);
     private static readonly Color TheirsColor = MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color", Color.FromRgb(0x1A, 0x50, 0x35)),
-        0xB0);
+        MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color"), 0xB0);
     private static readonly Color UnresolvedColor = MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color", Color.FromRgb(0x88, 0x88, 0x88)),
-        0x80);
+        MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color"), 0x80);
     private static readonly Color ManualColor = MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.State.Warning.Color", Color.FromRgb(0xFF, 0xC1, 0x07)),
-        0xC0);
+        MergePaletteResources.ResolveColor("Merge.State.Warning.Color"), 0xC0);
 
     // Frozen brushes — allocating one per-range per-frame was both wasteful
     // and inconsistent with the pattern used by ConflictMinimap.
@@ -142,14 +142,22 @@ public sealed class PaneConnectionCanvas : FrameworkElement
             var pen = new Pen(brush, 2.0);
             pen.Freeze();
 
-            // Cubic bezier: p0 on left edge at yOurs, p3 on right edge at yTheirs,
-            // controls horizontally at w/3 and 2w/3 with the same Y as their endpoints
-            // to produce a smooth S-curve matching Meld's look.
-            var figure = new PathFigure { StartPoint = new Point(0, yOurs) };
+            // Cubic bezier: p0 on the left at yOurs, p3 on the right at yTheirs,
+            // controls horizontally at w/3 and 2w/3 with the same Y as their
+            // endpoints for a smooth S-curve matching Meld's look.
+            //
+            // Endpoints are inset by CardCornerInset so curves stay within the
+            // rounded PaneCard border region when this canvas is wrapped
+            // as a card. Without the inset, beziers near y=0 / y=h whose start
+            // or end X lands under the card's rounded corner arc would be
+            // clipped by the corner. The visual cost — a ~6 px horizontal gap
+            // between each curve and the Ours / Theirs pane edge — is small
+            // enough to read as breathing room, not disconnection.
+            var figure = new PathFigure { StartPoint = new Point(CardCornerInset, yOurs) };
             figure.Segments.Add(new BezierSegment(
                 new Point(w / 3, yOurs),
                 new Point(2 * w / 3, yTheirs),
-                new Point(w, yTheirs),
+                new Point(w - CardCornerInset, yTheirs),
                 isStroked: true));
             var geom = new PathGeometry();
             geom.Figures.Add(figure);
