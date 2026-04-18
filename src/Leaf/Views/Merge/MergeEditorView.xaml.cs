@@ -21,6 +21,19 @@ public partial class MergeEditorView : Window
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        // N1: detach the RangeStatesChanged subscription when the window
+        // closes so a re-opened editor doesn't accumulate a fresh handler
+        // each time. The VM outlives the window (owned by MainViewModel
+        // until merge completes), so the subscription must be released
+        // explicitly on Close.
+        Closed += (_, _) =>
+        {
+            if (_subscribedVm is not null)
+            {
+                _subscribedVm.RangeStatesChanged -= OnRangeStatesChanged;
+                _subscribedVm = null;
+            }
+        };
     }
 
     private MergeEditorViewModel? Vm => DataContext as MergeEditorViewModel;
@@ -99,16 +112,14 @@ public partial class MergeEditorView : Window
 
     private void OnResultTextChanged(object? sender, string text)
     {
-        // Manual edit is a whole-buffer operation for now. A future Phase can scope
-        // this to the specific edited range.
-        var vm = Vm;
-        if (vm is null || vm.Document is null) return;
-
-        // Heuristic: treat the entire result as a single manual override on the first range.
-        // This is intentionally coarse for Phase 2c — the audit will refine.
-        if (vm.Document.Ranges.Count > 0)
-        {
-            vm.ApplyManualText(vm.Document.Ranges[0].Index, text);
-        }
+        // Hard-block foot-gun: the Phase 2c ResultPane is IsReadOnly=true so this
+        // handler cannot be reached via user input. If a future developer flips
+        // IsReadOnly without first implementing range-aware manual-edit routing,
+        // the pre-fix whole-buffer-to-Ranges[0] bug would return and silently
+        // corrupt committed output. Fail loudly instead.
+        throw new NotImplementedException(
+            "Manual editing of the Result pane is not supported in Phase 2c " +
+            "(ResultPane.IsReadOnly=true). Phase 3 will reintroduce it with " +
+            "per-range text mapping so only the touched range becomes Manual.");
     }
 }

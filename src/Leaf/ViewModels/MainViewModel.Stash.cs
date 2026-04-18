@@ -120,6 +120,10 @@ public partial class MainViewModel
                         {
                             StatusMessage = "Stash pop aborted";
                         }
+                        // Dispose the local VM — not routed through MainViewModel's
+                        // MergeConflictResolutionViewModel lifecycle, so no other
+                        // code path will release the build-CTS it holds.
+                        conflictViewModel.Dispose();
                         await RefreshAsync();
                     };
 
