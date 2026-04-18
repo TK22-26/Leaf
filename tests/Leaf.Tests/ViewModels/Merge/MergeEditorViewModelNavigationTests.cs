@@ -146,6 +146,63 @@ public class MergeEditorViewModelNavigationTests
         vm.RangeStates.Should().BeEmpty();
     }
 
+    [Fact]
+    public void ComposedText_IsNonEmpty_WhenDocumentHasInitialMergedText()
+    {
+        // V2 regression guard: the Result pane rendered empty on load until the
+        // Document setter fired ComposedText's PropertyChanged. The setter
+        // already has [NotifyPropertyChangedFor(nameof(ComposedText))]; this
+        // test pins that wiring so a future refactor can't silently remove it.
+        const string initial = "alpha\nbeta\ngamma\n";
+        var doc = new MergeDocument(
+            "test.txt",
+            baseText: "alpha\nbeta\ngamma\n",
+            oursText: initial,
+            theirsText: initial,
+            initialMergedText: initial,
+            baseLines: new[] { "alpha", "beta", "gamma" },
+            oursLines: new[] { "alpha", "beta", "gamma" },
+            theirsLines: new[] { "alpha", "beta", "gamma" },
+            initialMergedLines: new[] { "alpha", "beta", "gamma" },
+            ranges: Array.Empty<ModifiedBaseRange>(),
+            lineEnding: "\n",
+            hasTrailingNewline: true);
+
+        var vm = new MergeEditorViewModel(
+            new FakeGitService(), new FakeClipboardService(),
+            new FakeMergeEngine(doc), "C:/test");
+
+        string? notified = null;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.ComposedText)) notified = vm.ComposedText;
+        };
+        typeof(MergeEditorViewModel).GetProperty(nameof(vm.Document))!.SetValue(vm, doc);
+
+        vm.ComposedText.Should().Be(initial);
+        notified.Should().Be(initial, because: "ComposedText must fire PropertyChanged when Document is set so the result pane updates");
+    }
+
+    [Fact]
+    public void AiPendingConflictCount_TracksIsAiRequestInFlight()
+    {
+        // V2 added an AI-pending header pill; the count must flip with the
+        // engine guard so the pill number matches the button's disabled state.
+        var vm = new MergeEditorViewModel(
+            new FakeGitService(), new FakeClipboardService(),
+            new FakeMergeEngine(null), "C:/test");
+
+        vm.AiPendingConflictCount.Should().Be(0);
+
+        typeof(MergeEditorViewModel)
+            .GetProperty(nameof(vm.IsAiRequestInFlight))!.SetValue(vm, true);
+        vm.AiPendingConflictCount.Should().Be(1);
+
+        typeof(MergeEditorViewModel)
+            .GetProperty(nameof(vm.IsAiRequestInFlight))!.SetValue(vm, false);
+        vm.AiPendingConflictCount.Should().Be(0);
+    }
+
     /// <summary>
     /// Minimal IMergeEngine stub — returns a pre-built document regardless of inputs.
     /// Used because Phase 4 navigation tests don't need the real engine's shell-out.

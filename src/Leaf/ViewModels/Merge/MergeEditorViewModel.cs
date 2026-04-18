@@ -199,6 +199,15 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
 
     public int ResolvedConflictCount => ConflictCount - UnresolvedConflictCount;
 
+    /// <summary>
+    /// Number of conflicts with an AI resolution proposal in flight or awaiting
+    /// user action. Today this is a 0-or-1 signal tracking the single
+    /// <see cref="IsAiRequestInFlight"/> guard; the header pill binds to it
+    /// already so when C6 adds persistent per-range AI state the pill count
+    /// picks that up without any view changes.
+    /// </summary>
+    public int AiPendingConflictCount => IsAiRequestInFlight ? 1 : 0;
+
     public bool IsFullyResolved => Document != null && UnresolvedConflictCount == 0;
 
     public int TotalFiles => Conflicts.Count;
