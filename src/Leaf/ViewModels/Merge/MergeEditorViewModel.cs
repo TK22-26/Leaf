@@ -184,6 +184,22 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     /// <summary>Shared font/metrics layout for all panes. Owned by the VM so the UI binds once.</summary>
     public Leaf.TextEdit.MergePaneGlyphLayout Layout { get; } = new Leaf.TextEdit.MergePaneGlyphLayout();
 
+    /// <summary>
+    /// Per-conflict-range word-level diff on the ours side (see
+    /// <see cref="Leaf.Controls.Merge.ReadOnlyMergePane.WordDiffs"/>).
+    /// Populated by <see cref="BuildWordDiffs"/> whenever <see cref="Document"/> changes.
+    /// </summary>
+    [ObservableProperty]
+    private IReadOnlyDictionary<int, IReadOnlyList<TokenLine>> _oursWordDiffs =
+        new Dictionary<int, IReadOnlyList<TokenLine>>();
+
+    /// <summary>Per-conflict-range word-level diff on the theirs side.</summary>
+    [ObservableProperty]
+    private IReadOnlyDictionary<int, IReadOnlyList<TokenLine>> _theirsWordDiffs =
+        new Dictionary<int, IReadOnlyList<TokenLine>>();
+
+    private readonly IWordDiffService _wordDiffService = new WordDiffService();
+
     public bool CanUndo => _undoStack.Count > 0;
     public bool CanRedo => _redoStack.Count > 0;
 
@@ -301,9 +317,51 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         _undoStack.Clear();
         _redoStack.Clear();
         Document = doc;
+        BuildWordDiffs(doc);
         OnPropertyChanged(nameof(CanUndo));
         OnPropertyChanged(nameof(CanRedo));
         NotifyResolutionCountsChanged();
+    }
+
+    /// <summary>
+    /// Compute per-conflict-range word-level diffs. For each conflicting range,
+    /// pair ours-line-i with theirs-line-i and diff at the token level; the
+    /// extra lines on whichever side is longer are emitted as pure adds.
+    /// </summary>
+    private void BuildWordDiffs(MergeDocument doc)
+    {
+        var ours = new Dictionary<int, IReadOnlyList<TokenLine>>();
+        var theirs = new Dictionary<int, IReadOnlyList<TokenLine>>();
+        foreach (var range in doc.Ranges)
+        {
+            if (!range.IsConflicting) continue;
+            var oursLines = new List<TokenLine>(range.OursLines.Count);
+            var theirsLines = new List<TokenLine>(range.TheirsLines.Count);
+            int paired = Math.Min(range.OursLines.Count, range.TheirsLines.Count);
+            for (int i = 0; i < paired; i++)
+            {
+                var (l, r) = _wordDiffService.DiffLines(range.OursLines[i], range.TheirsLines[i]);
+                oursLines.Add(new TokenLine(range.OursLines[i], l));
+                theirsLines.Add(new TokenLine(range.TheirsLines[i], r));
+            }
+            // Remaining ours lines = pure removals on the diff; theirs side has none.
+            for (int i = paired; i < range.OursLines.Count; i++)
+            {
+                var line = range.OursLines[i];
+                oursLines.Add(new TokenLine(line,
+                    new[] { new TokenSegment(1, line.Length + 1, TokenKind.Removed, line) }));
+            }
+            for (int i = paired; i < range.TheirsLines.Count; i++)
+            {
+                var line = range.TheirsLines[i];
+                theirsLines.Add(new TokenLine(line,
+                    new[] { new TokenSegment(1, line.Length + 1, TokenKind.Added, line) }));
+            }
+            ours[range.Index] = oursLines;
+            theirs[range.Index] = theirsLines;
+        }
+        OursWordDiffs = ours;
+        TheirsWordDiffs = theirs;
     }
 
     // ─── Resolution commands ──────────────────────────────────────────────
