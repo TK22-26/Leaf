@@ -1,4 +1,5 @@
 #nullable enable
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -99,8 +100,34 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
                 StandardErrorEncoding = new UTF8Encoding(false),
             };
 
-            using var process = Process.Start(psi) ??
-                throw new AiMergeAssistantException($"Could not start MCP server at '{serverPath}'.");
+            // Wrap the subprocess launch itself: Process.Start can throw
+            // Win32Exception (bad PE, permissions), InvalidOperationException
+            // (already started), PlatformNotSupportedException (platform quirks).
+            // Without this, callers would see a raw framework exception and
+            // AsyncErrorHandler would produce a generic "AI failed" toast —
+            // violating the VM's contract that AI errors surface through AiError.
+            Process process;
+            try
+            {
+                process = Process.Start(psi) ??
+                    throw new AiMergeAssistantException($"Could not start MCP server at '{serverPath}'.");
+            }
+            catch (Win32Exception ex)
+            {
+                throw new AiMergeAssistantException(
+                    $"Could not start MCP server at '{serverPath}' ({ex.Message}).", ex);
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new AiMergeAssistantException(
+                    $"Could not start MCP server at '{serverPath}' ({ex.Message}).", ex);
+            }
+            catch (PlatformNotSupportedException ex)
+            {
+                throw new AiMergeAssistantException(
+                    $"Could not start MCP server at '{serverPath}' ({ex.Message}).", ex);
+            }
+            using var _proc = process;
             using var reg = cancellationToken.Register(() =>
             {
                 try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
@@ -117,6 +144,14 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
                 ContextBefore: request.ContextBefore,
                 ContextAfter: request.ContextAfter), JsonOptions);
 
+            // Start both readers BEFORE writing stdin. A chatty MCP server can
+            // fill the (~4–64 KB on Windows) stdout/stderr pipe buffer before
+            // reading stdin; if we wait to drain until after write, the server
+            // blocks on stdout and we block on stdin, deadlock. Mirrors the
+            // GitCommandRunner pattern for the same reason.
+            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+
             // If the server exits before consuming stdin (early-exit on a fast
             // error path, or a misconfigured shim), WriteAsync/Close can throw
             // IOException / ObjectDisposedException on a broken pipe. Swallow
@@ -131,17 +166,23 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
             catch (IOException) { /* server exited before consuming stdin */ }
             catch (ObjectDisposedException) { /* stream torn down mid-write */ }
 
-            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
 
             if (process.ExitCode != 0)
             {
-                var err = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+                var err = await errorTask.ConfigureAwait(false);
+                // Observe the stdout task too so it doesn't become an unobserved
+                // faulted Task. The result is unused when we're going to throw.
+                try { await outputTask.ConfigureAwait(false); } catch { /* ignored */ }
                 throw new AiMergeAssistantException(
                     $"MCP server exited with code {process.ExitCode}: {err.Trim()}");
             }
 
             var stdout = await outputTask.ConfigureAwait(false);
+            // Observe stderr on the success path too — a server that writes
+            // diagnostics to stderr while returning a valid result would
+            // otherwise leave an unobserved task behind.
+            try { await errorTask.ConfigureAwait(false); } catch { /* ignored */ }
             WireResponse? parsed;
             try { parsed = JsonSerializer.Deserialize<WireResponse>(stdout, JsonOptions); }
             catch (JsonException ex)

@@ -185,6 +185,104 @@ public class MergeEditorViewModelAiTests
         vm.CanRequestAiResolution.Should().BeTrue();
     }
 
+    [Fact]
+    public void ConcurrentRequest_IsGuardedByInFlightFlag()
+    {
+        var fake = new FakeAiAssistant { IsEnabled = true, IsConsentGiven = true, McpServerPath = "C:/mcp.exe" };
+        var vm = CreateVm(DocWithOneConflict(), fake);
+        // Simulate a previous click that's still in flight. A second click
+        // should be dropped so we don't double-spawn.
+        vm.IsAiRequestInFlight = true;
+        vm.RequestAiResolutionCommand.Execute(null);
+        fake.CallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void EngineWithConflictAtFirstLine_ProducesNoContextBefore()
+    {
+        // A conflict at the top of the file can't have any "before" context.
+        // Verify the slice method returns an empty collection rather than
+        // throwing or over-reading into line 0.
+        var range = new ModifiedBaseRange(
+            Index: 0,
+            Base: new LineRange(1, 2),
+            Ours: new LineRange(1, 2),
+            Theirs: new LineRange(1, 2),
+            ResultMarkedRange: new LineRange(1, 8),
+            BaseLines: new[] { "baseline" },
+            OursLines: new[] { "ours" },
+            TheirsLines: new[] { "theirs" },
+            OursDiffs: Array.Empty<DetailedLineRangeMapping>(),
+            TheirsDiffs: Array.Empty<DetailedLineRangeMapping>(),
+            IsConflicting: true,
+            IsOrderRelevant: true);
+        var doc = new MergeDocument(
+            "top.cs", string.Empty, string.Empty, string.Empty, string.Empty,
+            baseLines: new[] { "baseline", "after" },
+            oursLines: new[] { "ours", "after" },
+            theirsLines: new[] { "theirs", "after" },
+            initialMergedLines: new[] { "after" },
+            ranges: new[] { range },
+            lineEnding: "\n",
+            hasTrailingNewline: true);
+
+        var fake = new FakeAiAssistant
+        {
+            IsEnabled = true,
+            IsConsentGiven = true,
+            McpServerPath = "C:/mcp.exe",
+            Result = new AiResolution("ok", "r", AiConfidence.High),
+        };
+        var vm = CreateVm(doc, fake);
+        vm.RequestAiResolutionCommand.Execute(null);
+
+        fake.LastRequest.Should().NotBeNull();
+        fake.LastRequest!.ContextBefore.Should().BeEmpty();
+        fake.LastRequest.ContextAfter.Should().ContainSingle().Which.Should().Be("after");
+    }
+
+    [Fact]
+    public void EngineWithConflictAtEof_ProducesNoContextAfter()
+    {
+        // A conflict that consumes the tail of the file has no "after" context.
+        var range = new ModifiedBaseRange(
+            Index: 0,
+            Base: new LineRange(2, 3),
+            Ours: new LineRange(2, 3),
+            Theirs: new LineRange(2, 3),
+            ResultMarkedRange: new LineRange(2, 9),
+            BaseLines: new[] { "tail" },
+            OursLines: new[] { "ours-tail" },
+            TheirsLines: new[] { "theirs-tail" },
+            OursDiffs: Array.Empty<DetailedLineRangeMapping>(),
+            TheirsDiffs: Array.Empty<DetailedLineRangeMapping>(),
+            IsConflicting: true,
+            IsOrderRelevant: true);
+        var doc = new MergeDocument(
+            "tail.cs", string.Empty, string.Empty, string.Empty, string.Empty,
+            baseLines: new[] { "before", "tail" },
+            oursLines: new[] { "before", "ours-tail" },
+            theirsLines: new[] { "before", "theirs-tail" },
+            initialMergedLines: new[] { "before" },
+            ranges: new[] { range },
+            lineEnding: "\n",
+            hasTrailingNewline: true);
+
+        var fake = new FakeAiAssistant
+        {
+            IsEnabled = true,
+            IsConsentGiven = true,
+            McpServerPath = "C:/mcp.exe",
+            Result = new AiResolution("ok", "r", AiConfidence.High),
+        };
+        var vm = CreateVm(doc, fake);
+        vm.RequestAiResolutionCommand.Execute(null);
+
+        fake.LastRequest.Should().NotBeNull();
+        fake.LastRequest!.ContextBefore.Should().ContainSingle().Which.Should().Be("before");
+        fake.LastRequest.ContextAfter.Should().BeEmpty();
+    }
+
     /// <summary>Hand-rolled fake; keeps tests free of a mocking library.</summary>
     private sealed class FakeAiAssistant : IAiMergeAssistant
     {
@@ -194,11 +292,13 @@ public class MergeEditorViewModelAiTests
         public int CallCount { get; private set; }
         public AiResolution? Result { get; set; }
         public string? ThrowMessage { get; set; }
+        public AiResolutionRequest? LastRequest { get; private set; }
 
         public Task<AiResolution?> RequestResolutionAsync(
             AiResolutionRequest request, CancellationToken cancellationToken = default)
         {
             CallCount++;
+            LastRequest = request;
             if (ThrowMessage is not null)
                 throw new AiMergeAssistantException(ThrowMessage);
             return Task.FromResult(Result);

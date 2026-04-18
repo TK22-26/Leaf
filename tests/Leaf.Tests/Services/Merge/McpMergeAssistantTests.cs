@@ -70,6 +70,55 @@ public class McpMergeAssistantTests
     }
 
     [Fact]
+    public async Task WrapsWin32Exception_FromProcessStart()
+    {
+        // A file that exists but isn't a valid PE/executable triggers Win32Exception
+        // from Process.Start. The assistant must wrap it in AiMergeAssistantException
+        // so the VM's AiError event fires (not the generic AsyncErrorHandler path).
+        var notAnExe = Path.Combine(Path.GetTempPath(), $"not-an-exe-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(notAnExe, "plain text");
+        try
+        {
+            var assistant = new McpMergeAssistant(
+                serverPathProvider: () => notAnExe,
+                enabledProvider: () => true,
+                consentGivenProvider: () => true);
+            var act = () => assistant.RequestResolutionAsync(SampleRequest());
+            var exAssertion = await act.Should().ThrowAsync<AiMergeAssistantException>();
+            // We don't assert the inner-exception type — Windows may return
+            // different framework exceptions depending on file contents — but
+            // we do verify the public exception type is the wrapped one.
+            exAssertion.Which.Message.Should().Contain("Could not start MCP server");
+        }
+        finally { File.Delete(notAnExe); }
+    }
+
+    [Fact]
+    public async Task EarlyExitBrokenPipe_DoesNotPreventReadingStdout()
+    {
+        // This shim exits immediately without consuming stdin; WriteAsync(stdin)
+        // can throw IOException/ObjectDisposedException depending on timing. The
+        // assistant must still succeed in reading stdout + parsing JSON.
+        var shim = CreateBatShim("{\"proposedText\":\"early-exit\",\"rationale\":\"\",\"confidence\":\"medium\"}");
+        try
+        {
+            var assistant = new McpMergeAssistant(
+                serverPathProvider: () => shim,
+                enabledProvider: () => true,
+                consentGivenProvider: () => true);
+            // Run repeatedly to catch the race — any run that hits the broken-pipe
+            // path must still return a parsed result, not surface an IOException.
+            for (int i = 0; i < 5; i++)
+            {
+                var result = await assistant.RequestResolutionAsync(SampleRequest());
+                result.Should().NotBeNull();
+                result!.ProposedText.Should().Be("early-exit");
+            }
+        }
+        finally { File.Delete(shim); }
+    }
+
+    [Fact]
     public async Task SuccessfulInvocation_ParsesResponse()
     {
         // Shim is a batch file that emits a canned JSON response and exits 0.

@@ -157,6 +157,7 @@ public partial class SettingsDialog : Window
             case "Gemini":
             case "Codex":
             case "Ollama":
+            case "AiMerge":
                 AiSettings.Visibility = Visibility.Visible;
                 AiSettings.ShowSection(tag);
                 break;
@@ -293,6 +294,7 @@ public partial class SettingsDialog : Window
             "Gemini" => NavGemini,
             "Codex" => NavCodex,
             "Ollama" => NavOllama,
+            "AiMerge" => NavAiMerge,
             "Logging" => NavLogging,
             "GitFlow" => NavGitFlow,
             "ExternalTools" => NavExternalTools,

@@ -114,10 +114,17 @@ public sealed partial class MergeEditorViewModel
     public void CancelPendingAiRequest() => _pendingAiRangeIndex = null;
 
     /// <summary>
-    /// Number of context lines sent on each side of the conflict. Default 20,
-    /// hard-capped at 200 to match the documented privacy contract.
+    /// Number of context lines sent on each side of the conflict. Fixed at
+    /// 20 — small enough that the privacy contract documented in the consent
+    /// dialog is truthful without a secondary enforcement cap.
     /// </summary>
+    /// <remarks>
+    /// If this ever becomes user-configurable, clamp the slice methods at
+    /// <see cref="AiContextLinesMax"/> to keep the "never more than the
+    /// documented window" guarantee.
+    /// </remarks>
     private const int AiContextLines = 20;
+    private const int AiContextLinesMax = 200;
 
     private async Task InvokeAiAsync(int rangeIndex)
     {
@@ -185,32 +192,48 @@ public sealed partial class MergeEditorViewModel
 
     private IReadOnlyList<string> SliceContextBefore(ModifiedBaseRange range, int count)
     {
-        if (Document is null || count <= 0) return Array.Empty<string>();
-        var baseLines = Document.BaseLines;
-        var startInclusive = range.Base.StartLine - 1; // 1-based → 0-based
-        if (startInclusive <= 0) return Array.Empty<string>();
-        var fromInclusive = Math.Max(0, startInclusive - count);
-        var length = startInclusive - fromInclusive;
-        if (length <= 0) return Array.Empty<string>();
-        var slice = new string[length];
-        for (int i = 0; i < length; i++) slice[i] = baseLines[fromInclusive + i];
-        return slice;
+        if (Document is null) return Array.Empty<string>();
+        // LineRange.StartLine is 1-based; convert to the 0-based index of the
+        // first line inside the range. Slice the `count` lines immediately
+        // before it, clamped to the start of the file.
+        var firstInsideRange0 = range.Base.StartLine - 1;
+        return SliceBaseLines(firstInsideRange0 - CapContext(count), firstInsideRange0);
     }
 
     private IReadOnlyList<string> SliceContextAfter(ModifiedBaseRange range, int count)
     {
-        if (Document is null || count <= 0) return Array.Empty<string>();
-        var baseLines = Document.BaseLines;
+        if (Document is null) return Array.Empty<string>();
         // LineRange.EndLineExclusive is 1-based and points past the last
-        // included line. Convert to 0-based "first line after the range"
-        // by subtracting 1. If the range consumes the rest of the file,
-        // there's no context to include.
-        var afterInclusive0 = range.Base.EndLineExclusive - 1;
-        if (afterInclusive0 >= baseLines.Count) return Array.Empty<string>();
-        var length = Math.Min(count, baseLines.Count - afterInclusive0);
-        if (length <= 0) return Array.Empty<string>();
-        var slice = new string[length];
-        for (int i = 0; i < length; i++) slice[i] = baseLines[afterInclusive0 + i];
+        // included line; subtracting 1 gives the 0-based index of the first
+        // line after the range. Slice the `count` lines starting there,
+        // clamped to the end of the file.
+        var firstAfterRange0 = range.Base.EndLineExclusive - 1;
+        return SliceBaseLines(firstAfterRange0, firstAfterRange0 + CapContext(count));
+    }
+
+    /// <summary>
+    /// Enforce the documented privacy cap. Called on every slice boundary so
+    /// that even if <see cref="AiContextLines"/> becomes configurable, no path
+    /// can send more than <see cref="AiContextLinesMax"/> lines per side.
+    /// </summary>
+    private static int CapContext(int requested) =>
+        requested <= 0 ? 0 : Math.Min(requested, AiContextLinesMax);
+
+    /// <summary>
+    /// Return the half-open slice of <c>BaseLines[from, toExclusive)</c> with
+    /// both bounds clamped to the file. Empty result when the clamped range
+    /// is empty. Pulled into a single helper so the two slice methods above
+    /// don't diverge.
+    /// </summary>
+    private IReadOnlyList<string> SliceBaseLines(int from, int toExclusive)
+    {
+        if (Document is null) return Array.Empty<string>();
+        var baseLines = Document.BaseLines;
+        var start = Math.Max(0, from);
+        var end = Math.Min(baseLines.Count, toExclusive);
+        if (end <= start) return Array.Empty<string>();
+        var slice = new string[end - start];
+        for (int i = 0; i < slice.Length; i++) slice[i] = baseLines[start + i];
         return slice;
     }
 

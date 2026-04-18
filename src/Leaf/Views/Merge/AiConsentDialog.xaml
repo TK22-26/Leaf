@@ -59,7 +59,7 @@
 
         <TextBlock Grid.Row="4" Margin="0,14,0,0" TextWrapping="Wrap"
                    FontStyle="Italic" Foreground="#666"
-                   Text="You can revoke this at any time from Settings → AI Merge. This dialog will not appear again unless consent is reset."/>
+                   Text="You can revoke this at any time from Settings → AI Integrations → Merge Assistant. This dialog will not appear again unless consent is reset."/>
 
         <StackPanel Grid.Row="5" Margin="0,18,0,0"
                     Orientation="Horizontal" HorizontalAlignment="Right">
