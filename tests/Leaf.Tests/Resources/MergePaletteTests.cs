@@ -82,6 +82,43 @@ public class MergePaletteTests
         codeFamily.Source.Should().Contain("Consolas");
     }
 
+    [Fact]
+    public void PaletteBrushes_AreReadableFromASecondStaThread()
+    {
+        // V3 regression guard for a V1 bug: brushes whose Color was bound via
+        // {DynamicResource Merge.*.Color} were attached to the STA thread that
+        // first parsed the dictionary, so any later STA test that tried to
+        // consume the brush blew up with "calling thread cannot access this
+        // object because a different thread owns it". V3 switched to inline
+        // brush+color definitions in MergePaletteDark.xaml — this test pins
+        // that fix by deliberately crossing STA thread boundaries.
+        SolidColorBrush? brush = null;
+        RunOnNewSta(() =>
+        {
+            var dict = LoadMergeDictionary();
+            brush = (SolidColorBrush)dict["Merge.State.Resolved"]!;
+        });
+
+        Exception? caught = null;
+        Color color = default;
+        RunOnNewSta(() =>
+        {
+            try { color = brush!.Color; }
+            catch (Exception e) { caught = e; }
+        });
+
+        caught.Should().BeNull(because: "merge palette brushes must be thread-agnostic");
+        color.Should().Be(Color.FromRgb(0x22, 0xC5, 0x5E));
+    }
+
+    private static void RunOnNewSta(Action a)
+    {
+        var t = new System.Threading.Thread(() => a());
+        t.SetApartmentState(System.Threading.ApartmentState.STA);
+        t.Start();
+        t.Join();
+    }
+
     private static ResourceDictionary LoadMergeDictionary()
     {
         // Brushes in MergePalette.xaml reference Colors via {DynamicResource ...}

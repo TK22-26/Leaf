@@ -60,37 +60,28 @@
                 <TextBlock VerticalAlignment="Center"
                            Text="{Binding TotalFiles, StringFormat='{}{0} files resolved'}" FontSize="13"/>
 
-                <!-- Conflict-state pills. V2 ships them inline; V3 extracts a
-                     StatusPill UserControl and uses it here + in the merge
-                     status sidebar. Dots are 8 px ellipses pulled from the
-                     Merge.State palette so dark/light swap tracks automatically. -->
-                <StackPanel Orientation="Horizontal" Margin="24,0,0,0" VerticalAlignment="Center">
-                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                             Fill="{DynamicResource Merge.State.Unresolved}"/>
-                    <TextBlock VerticalAlignment="Center" Margin="6,0,0,0" FontSize="12"
-                               AutomationProperties.AutomationId="Merge.UnresolvedPill"
-                               Text="{Binding UnresolvedConflictCount, StringFormat='Unresolved: {0}'}"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
-                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                             Fill="{DynamicResource Merge.State.Resolved}"/>
-                    <TextBlock VerticalAlignment="Center" Margin="6,0,0,0" FontSize="12"
-                               AutomationProperties.AutomationId="Merge.ResolvedPill"
-                               Text="{Binding ResolvedConflictCount, StringFormat='Resolved: {0}'}"/>
-                </StackPanel>
-                <!-- AI-pending pill is only meaningful while a request is in
-                     flight. C6 will add persistent per-range AI state; until
-                     then the pill hides at zero rather than showing dead
-                     UI chrome. Visibility binds to the backing guard so the
-                     pill appears as soon as a request kicks off. -->
-                <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center"
-                            Visibility="{Binding IsAiRequestInFlight, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                             Fill="{DynamicResource Merge.State.AiPending}"/>
-                    <TextBlock VerticalAlignment="Center" Margin="6,0,0,0" FontSize="12"
-                               AutomationProperties.AutomationId="Merge.AiPendingPill"
-                               Text="{Binding AiPendingConflictCount, StringFormat='AI-pending: {0}'}"/>
-                </StackPanel>
+                <!-- Conflict-state pills — V3 extracts StatusPill UserControl
+                     so the merge status sidebar can reuse the same visual. Dots
+                     pull their Fill from the Merge.State.* palette so V8 theme
+                     swap repaints automatically. AI-pending pill hides at zero
+                     until C6 plugs persistent per-range AI state into the
+                     count. -->
+                <merge:StatusPill Margin="24,0,0,0"
+                                  Label="Unresolved"
+                                  Count="{Binding UnresolvedConflictCount}"
+                                  DotBrush="{DynamicResource Merge.State.Unresolved}"
+                                  AutomationProperties.AutomationId="Merge.UnresolvedPill"/>
+                <merge:StatusPill Margin="16,0,0,0"
+                                  Label="Resolved"
+                                  Count="{Binding ResolvedConflictCount}"
+                                  DotBrush="{DynamicResource Merge.State.Resolved}"
+                                  AutomationProperties.AutomationId="Merge.ResolvedPill"/>
+                <merge:StatusPill Margin="16,0,0,0"
+                                  Label="AI-pending"
+                                  Count="{Binding AiPendingConflictCount}"
+                                  DotBrush="{DynamicResource Merge.State.AiPending}"
+                                  Visibility="{Binding IsAiRequestInFlight, Converter={StaticResource BoolToVisibilityConverter}}"
+                                  AutomationProperties.AutomationId="Merge.AiPendingPill"/>
             </StackPanel>
         </Border>
 
@@ -340,27 +331,66 @@
             </Grid>
         </Grid>
 
-        <!-- Footer -->
+        <!-- Footer. V3 groups the buttons into three clusters:
+               - Left:   history (Undo / Redo) — pinned to the left edge.
+               - Middle: batch-accept (All Ours / All Theirs / Ask AI) — sits
+                         in the flexible column with a 32 px min gap to both
+                         neighbours; extra width goes between left and middle.
+               - Right:  finalise (Mark Resolved / Complete Merge / Abort) —
+                         pinned to the right edge.
+             Each button gets a 16 px FluentIcon prefix so the action is
+             scannable without reading the label. -->
         <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
                 Padding="16,10"
                 BorderThickness="0,1,0,0"
                 BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
             <Grid>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
+
+                <!-- Left cluster: history -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <Button Command="{Binding UndoCommand}" Margin="0,0,8,0" Padding="12,6"
                             AutomationProperties.AutomationId="Merge.UndoButton">
-                        <TextBlock Text="Undo"/>
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="ArrowUndo" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Undo" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Button>
                     <Button Command="{Binding RedoCommand}" Padding="12,6"
                             AutomationProperties.AutomationId="Merge.RedoButton">
-                        <TextBlock Text="Redo"/>
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="ArrowRedo" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Redo" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Button>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
+
+                <!-- Middle cluster: batch accept + AI. Right-aligned within the
+                     middle column so the gap to the finalise cluster is fixed
+                     at 32 px regardless of window width. -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="32,0,32,0">
+                    <!-- ArrowLeft/ArrowRight on the batch-accept buttons: the
+                         glyphs match the pane layout (Ours on the left, Theirs
+                         on the right) so users scanning the footer can tell
+                         the three "accept" actions apart by icon alone. -->
+                    <Button Command="{Binding AcceptAllOursCommand}" Margin="0,0,8,0" Padding="12,6"
+                            AutomationProperties.AutomationId="Merge.AcceptAllOurs">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="ArrowLeft" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Accept All Ours" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding AcceptAllTheirsCommand}" Margin="0,0,8,0" Padding="12,6"
+                            AutomationProperties.AutomationId="Merge.AcceptAllTheirs">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="ArrowRight" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Accept All Theirs" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <!-- Ask AI — requests a proposed resolution for the current
                          conflict via the configured MCP server. Hidden when the
                          feature isn't available (no assistant injected) so it
@@ -368,35 +398,40 @@
                     <Button Command="{Binding RequestAiResolutionCommand}"
                             Visibility="{Binding CanRequestAiResolution, Converter={StaticResource BoolToVisibilityConverter}}"
                             IsEnabled="{Binding CanRequestAiResolution}"
-                            Margin="0,0,16,0" Padding="12,6"
+                            Padding="12,6"
                             AutomationProperties.AutomationId="Merge.AskAi"
                             ToolTip="Ask AI to propose a resolution for the current conflict (Alt+A)">
                         <StackPanel Orientation="Horizontal">
-                            <ic:SymbolIcon Symbol="Sparkle" FontSize="14" VerticalAlignment="Center"/>
+                            <ic:SymbolIcon Symbol="Sparkle" FontSize="16" VerticalAlignment="Center"/>
                             <TextBlock Text="Ask AI" Margin="6,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
-                    <Button Command="{Binding AcceptAllOursCommand}" Margin="0,0,8,0" Padding="12,6"
-                            AutomationProperties.AutomationId="Merge.AcceptAllOurs">
-                        <TextBlock Text="Accept All Ours"/>
-                    </Button>
-                    <Button Command="{Binding AcceptAllTheirsCommand}" Margin="0,0,16,0" Padding="12,6"
-                            AutomationProperties.AutomationId="Merge.AcceptAllTheirs">
-                        <TextBlock Text="Accept All Theirs"/>
-                    </Button>
+                </StackPanel>
+
+                <!-- Right cluster: finalise -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
                     <Button Command="{Binding MarkResolvedCommand}" Margin="0,0,8,0" Padding="12,6"
                             AutomationProperties.AutomationId="Merge.MarkResolved">
-                        <TextBlock Text="Mark Resolved"/>
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="Checkmark" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Mark Resolved" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Button>
                     <Button Command="{Binding CompleteMergeCommand}" Padding="12,6"
                             Background="{DynamicResource AccentFillColorDefaultBrush}"
                             Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
                             AutomationProperties.AutomationId="Merge.CompleteMerge">
-                        <TextBlock Text="Complete Merge"/>
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="CheckmarkCircle" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Complete Merge" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Button>
                     <Button Command="{Binding AbortMergeCommand}" Margin="8,0,0,0" Padding="12,6"
                             AutomationProperties.AutomationId="Merge.AbortMerge">
-                        <TextBlock Text="Abort"/>
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="Dismiss" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Abort" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Button>
                 </StackPanel>
             </Grid>
