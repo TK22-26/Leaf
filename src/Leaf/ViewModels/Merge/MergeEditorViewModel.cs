@@ -45,6 +45,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     private readonly IClipboardService _clipboardService;
     private readonly IMergeEngine _engine;
     private readonly IAiMergeAssistant? _aiAssistant;
+    private readonly IImageMergeService? _imageService;
     private readonly string _repoPath;
 
     private readonly Stack<ResolutionUndoEntry> _undoStack = new();
@@ -64,7 +65,8 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         IClipboardService clipboardService,
         IMergeEngine engine,
         string repoPath)
-        : this(gitService, clipboardService, engine, new WordDiffService(), aiAssistant: null, repoPath)
+        : this(gitService, clipboardService, engine, new WordDiffService(), aiAssistant: null,
+               imageService: null, repoPath)
     {
     }
 
@@ -77,6 +79,9 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     /// passes the DI-registered <see cref="McpMergeAssistant"/> (which itself
     /// returns <c>null</c> when disabled/consent-missing), but tests that
     /// don't exercise the AI path can pass <c>null</c> to opt out entirely.
+    /// <paramref name="imageService"/> is nullable for the same reason:
+    /// production injects the singleton, unit tests that don't exercise
+    /// binary/image conflicts pass <c>null</c>.
     /// </summary>
     public MergeEditorViewModel(
         IGitService gitService,
@@ -84,6 +89,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         IMergeEngine engine,
         IWordDiffService wordDiffService,
         IAiMergeAssistant? aiAssistant,
+        IImageMergeService? imageService,
         string repoPath)
     {
         _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
@@ -91,6 +97,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _wordDiffService = wordDiffService ?? throw new ArgumentNullException(nameof(wordDiffService));
         _aiAssistant = aiAssistant;
+        _imageService = imageService;
         _repoPath = repoPath ?? throw new ArgumentNullException(nameof(repoPath));
     }
 
@@ -165,6 +172,22 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _isBinaryConflict;
+
+    /// <summary>
+    /// Loaded ours/theirs/base bytes for the currently-selected conflict when it
+    /// is an image (binary with recognised magic bytes). Null otherwise.
+    /// Drives the Phase 6 image conflict pane.
+    /// </summary>
+    [ObservableProperty]
+    private ImageConflictPayload? _imagePayload;
+
+    /// <summary>
+    /// Shared zoom/pan/mode state for the image conflict pane. Kept on the VM
+    /// so the state survives across mode toggles, and so per-conflict panes
+    /// can each have an independent viewport.
+    /// </summary>
+    [ObservableProperty]
+    private Leaf.Controls.Merge.ImageViewportState _imageViewport = new();
 
     public bool HasSelectedConflict => SelectedConflict != null;
     public bool HasDocument => Document != null && !IsEngineError;
@@ -305,9 +328,28 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
             Document = null;
             RangeStates.Clear();
             _lastBuiltFilePath = filePath;
+            // Phase 6: hydrate the ImagePayload and reset the viewport for the
+            // new file. Clear them first so a load failure below doesn't leave
+            // stale state from a prior file on screen. The image-bytes load is
+            // cheap (git show + magic-byte sniff, no decode) so no Task.Run
+            // needed — decoding happens inside the pane's Payload setter.
+            ImagePayload = null;
+            ImageViewport = new Leaf.Controls.Merge.ImageViewportState();
+            if (_imageService is not null)
+            {
+                try
+                {
+                    ImagePayload = _imageService.Load(_repoPath, filePath);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn("Merge", $"Image payload load failed for {filePath}: {ex.Message}");
+                }
+            }
             return;
         }
         IsBinaryConflict = false;
+        ImagePayload = null;
 
         // Skip redundant builds for already-loaded files.
         if (_lastBuiltFilePath == filePath && Document != null) return;

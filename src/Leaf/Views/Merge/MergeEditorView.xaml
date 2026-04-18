@@ -262,26 +262,57 @@
                 </StackPanel>
             </Border>
 
-            <!-- Binary-file overlay -->
-            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"
-                    Visibility="{Binding IsBinaryConflict, Converter={StaticResource BoolToVisibilityConverter}}"
-                    Background="{DynamicResource ControlFillColorDefaultBrush}">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <ic:SymbolIcon Symbol="DocumentError" FontSize="48"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   HorizontalAlignment="Center"/>
-                    <TextBlock Text="Binary file — choose a version" FontSize="16"
-                               FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,16,0,20"/>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <Button Padding="16,8" Margin="0,0,8,0" Command="{Binding UseOursCommand}">
-                            <TextBlock Text="Use Ours"/>
-                        </Button>
-                        <Button Padding="16,8" Command="{Binding UseTheirsCommand}">
-                            <TextBlock Text="Use Theirs"/>
-                        </Button>
+            <!-- Binary-file overlay — Phase 6 replaces the pre-Phase-6 "choose a
+                 version" stack with an ImageConflictPane when the bytes decode
+                 as a recognised image format. The pane handles all five modes
+                 internally (SideBySide / OnionSkin / Swipe / Difference /
+                 Overlay). Use Ours / Use Theirs remain on the footer, usable
+                 from either the image pane or the text-merge flow. -->
+            <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"
+                  Visibility="{Binding IsBinaryConflict, Converter={StaticResource BoolToVisibilityConverter}}"
+                  Background="{DynamicResource ControlFillColorDefaultBrush}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Mode picker + swipe/onion-skin sliders -->
+                <Border Grid.Row="0"
+                        Padding="12,8"
+                        BorderThickness="0,0,0,1"
+                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Mode:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <ComboBox MinWidth="160"
+                                  SelectedValue="{Binding ImageViewport.Mode, Mode=TwoWay}"
+                                  SelectedValuePath="Tag">
+                            <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.SideBySide}" Content="Side by side"/>
+                            <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.OnionSkin}" Content="Onion skin"/>
+                            <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.Swipe}" Content="Swipe"/>
+                            <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.Difference}" Content="Difference"/>
+                            <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.Overlay}" Content="Overlay"/>
+                        </ComboBox>
+                        <TextBlock Text="Swipe:" VerticalAlignment="Center" Margin="24,0,6,0"/>
+                        <Slider Width="120"
+                                Minimum="0" Maximum="1" TickFrequency="0.01"
+                                Value="{Binding ImageViewport.SwipeRatio, Mode=TwoWay}"
+                                VerticalAlignment="Center"/>
+                        <TextBlock Text="Onion:" VerticalAlignment="Center" Margin="24,0,6,0"/>
+                        <Slider Width="120"
+                                Minimum="0" Maximum="1" TickFrequency="0.01"
+                                Value="{Binding ImageViewport.OnionSkinOpacity, Mode=TwoWay}"
+                                VerticalAlignment="Center"/>
+                        <Button Margin="24,0,0,0" Padding="10,4"
+                                Click="OnResetImageView_Click"
+                                ToolTip="Reset zoom and pan"
+                                Content="Reset View"/>
                     </StackPanel>
-                </StackPanel>
-            </Border>
+                </Border>
+
+                <merge:ImageConflictPane Grid.Row="1"
+                                         Payload="{Binding ImagePayload}"
+                                         Viewport="{Binding ImageViewport}"/>
+            </Grid>
         </Grid>
 
         <!-- Footer -->

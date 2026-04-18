@@ -291,6 +291,46 @@ internal static class GitCliHelpers
     }
 
     /// <summary>
+    /// Read raw bytes from a specific conflict stage — needed for image + other
+    /// binary merges where UTF-8 decoding would corrupt the payload. Returns
+    /// <c>null</c> if the stage doesn't exist or the git call fails.
+    /// </summary>
+    /// <remarks>
+    /// Reads <c>git show :{stage}:{filePath}</c>'s stdout as a byte stream directly.
+    /// Must not route through <see cref="RunGitArgs"/> because that decodes stdout
+    /// as text, which strips / replaces non-UTF-8 bytes. The stderr-drain pattern
+    /// still applies to avoid deadlocking the child process.
+    /// </remarks>
+    public static byte[]? ReadConflictStageBytes(string repoPath, string filePath, int stage)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            WorkingDirectory = repoPath,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("show");
+        startInfo.ArgumentList.Add($":{stage}:{filePath}");
+        startInfo.EnvironmentVariables["LC_ALL"] = "C";
+
+        using var process = Process.Start(startInfo);
+        if (process == null) return null;
+
+        // Read stderr on a pool thread so a chatty git error doesn't deadlock us.
+        var stderrTask = Task.Run(() => process.StandardError.ReadToEnd());
+
+        using var ms = new MemoryStream();
+        process.StandardOutput.BaseStream.CopyTo(ms);
+        _ = stderrTask.Result; // observe
+        process.WaitForExit();
+
+        return process.ExitCode == 0 ? ms.ToArray() : null;
+    }
+
+    /// <summary>
     /// Get file content from a specific git ref.
     /// </summary>
     public static string GetRefFileContent(string repoPath, string refName, string filePath)

@@ -54,6 +54,7 @@ public class MergeEditorViewModelAiTests
             new FakeMergeEngine(doc),
             new WordDiffService(),
             ai,
+            imageService: null,
             repoPath: "C:/test");
         typeof(MergeEditorViewModel).GetProperty(nameof(vm.Document))!.SetValue(vm, doc);
         return vm;
