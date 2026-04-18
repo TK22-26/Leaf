@@ -37,14 +37,15 @@
             <RowDefinition Height="Auto"/>   <!-- Footer: commit buttons -->
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="280"/>  <!-- File list -->
-            <ColumnDefinition Width="*"/>    <!-- Panes -->
+            <ColumnDefinition x:Name="FileListColumn" Width="280"/>
+            <ColumnDefinition Width="5"/>
+            <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <!-- Header card. Same Merge.PaneCard style as the content panes so the
              whole editor reads as a coherent stack of cards. 8 px outer margin
              lets the rounded corners clear the window chrome. -->
-        <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+        <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
                 Style="{StaticResource Merge.PaneCard}"
                 Margin="8,8,8,4"
                 Padding="16,10">
@@ -100,20 +101,47 @@
                      Background="Transparent"/>
         </Border>
 
+        <!-- C1 vertical splitter between the file list and the panes area.
+             Width matches the splitter column so the drag gutter fills it. -->
+        <GridSplitter Grid.Row="1" Grid.Column="1"
+                      Width="5"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Background="Transparent"
+                      AutomationProperties.AutomationId="Merge.FileListSplitter"/>
+
         <!-- Main pane area. Top row holds the two input panes separated by
              a dedicated middle column for the connection canvas so the
              bezier curves don't overlap pane content or minimaps. Bottom
              row is the single result pane spanning all three columns. -->
-        <Grid Grid.Row="1" Grid.Column="1">
+        <Grid Grid.Row="1" Grid.Column="2">
             <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition x:Name="PanesRow" Height="*"/>
+                <RowDefinition Height="5"/>
+                <RowDefinition x:Name="ResultRow" Height="*"/>
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition x:Name="OursColumn" Width="*"/>
+                <ColumnDefinition Width="5"/>
                 <ColumnDefinition Width="40"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition x:Name="TheirsColumn" Width="*"/>
             </Grid.ColumnDefinitions>
+
+            <!-- C1 vertical splitter between Ours and the Canvas/Theirs group -->
+            <GridSplitter Grid.Row="0" Grid.Column="1" Grid.RowSpan="3"
+                          Width="5"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Background="Transparent"
+                          AutomationProperties.AutomationId="Merge.OursTheirsSplitter"/>
+
+            <!-- C1 horizontal splitter between the panes row and the Result row -->
+            <GridSplitter Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
+                          Height="5"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Background="Transparent"
+                          AutomationProperties.AutomationId="Merge.ResultRowSplitter"/>
 
             <!-- Ours pane card -->
             <Border Grid.Row="0" Grid.Column="0"
@@ -153,6 +181,7 @@
                                                  Layout="{Binding Layout}"
                                                  Foreground="{DynamicResource Merge.Text.Primary}"
                                                  HighlightBrush="{DynamicResource Merge.Ours.BgSubtle}"
+                                                 FilePath="{Binding SelectedConflict.FilePath}"
                                                  AcceptCheckboxToggled="OnOursCheckboxToggled"/>
                     </ScrollViewer>
                     <merge:ConflictMinimap Grid.Column="1"
@@ -175,7 +204,7 @@
                  PaneCard CornerRadius) so curves stay inside the rounded
                  clip region — no corner-shaving artifacts even for conflicts
                  at the very top or bottom of the canvas. -->
-            <Border Grid.Row="0" Grid.Column="1"
+            <Border Grid.Row="0" Grid.Column="2"
                     Style="{StaticResource Merge.PaneCard}"
                     Margin="2,4,2,4">
             <Grid>
@@ -199,7 +228,7 @@
             </Border>
 
             <!-- Theirs pane card -->
-            <Border Grid.Row="0" Grid.Column="2"
+            <Border Grid.Row="0" Grid.Column="3"
                     Style="{StaticResource Merge.PaneCard}"
                     Margin="2,4,4,4">
             <Grid>
@@ -236,6 +265,7 @@
                                                  Layout="{Binding Layout}"
                                                  Foreground="{DynamicResource Merge.Text.Primary}"
                                                  HighlightBrush="{DynamicResource Merge.Theirs.BgSubtle}"
+                                                 FilePath="{Binding SelectedConflict.FilePath}"
                                                  AcceptCheckboxToggled="OnTheirsCheckboxToggled"/>
                     </ScrollViewer>
                     <merge:ConflictMinimap Grid.Column="1"
@@ -252,7 +282,7 @@
             </Border>
 
             <!-- Result pane card -->
-            <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+            <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="4"
                     Style="{StaticResource Merge.PaneCard}"
                     Margin="4,2,4,4">
                 <Grid>
@@ -268,16 +298,33 @@
                                    FontSize="{DynamicResource Merge.Type.CaptionStrong.Size}"
                                    Foreground="{DynamicResource Merge.Text.Primary}"/>
                     </Border>
-                    <merge:ResultPane Grid.Row="1"
-                                      AutomationProperties.AutomationId="Merge.ResultPane"
-                                      Text="{Binding ComposedText, Mode=OneWay}"
-                                      Layout="{Binding Layout}"
-                                      ResultTextChanged="OnResultTextChanged"/>
+                    <!-- Result pane + CodeLens overlay. The canvas stacks on
+                         top of the text so the bars render above each
+                         conflict's merged-result line. CodeLens VerticalOffset
+                         binds to ResultPane.VerticalOffset so the bars track
+                         the pane's scroll position. Hit-test passes through
+                         between bars so text selection still works. -->
+                    <Grid Grid.Row="1">
+                        <merge:ResultPane x:Name="ResultPaneInstance"
+                                          AutomationProperties.AutomationId="Merge.ResultPane"
+                                          Text="{Binding ComposedText, Mode=OneWay}"
+                                          Layout="{Binding Layout}"
+                                          FilePath="{Binding SelectedConflict.FilePath}"
+                                          ResultTextChanged="OnResultTextChanged"/>
+                        <merge:CodeLensActionBar AutomationProperties.AutomationId="Merge.CodeLens"
+                                                 Ranges="{Binding Document.Ranges}"
+                                                 RangeStates="{Binding RangeStates}"
+                                                 Layout="{Binding Layout}"
+                                                 VerticalOffset="{Binding ElementName=ResultPaneInstance, Path=VerticalOffset}"
+                                                 AcceptOursCommand="{Binding AcceptOursCommand}"
+                                                 AcceptTheirsCommand="{Binding AcceptTheirsCommand}"
+                                                 AcceptBothCommand="{Binding AcceptBothCommand}"/>
+                    </Grid>
                 </Grid>
             </Border>
 
             <!-- Engine-error overlay -->
-            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"
+            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4" Grid.RowSpan="3"
                     Visibility="{Binding IsEngineError, Converter={StaticResource BoolToVisibilityConverter}}"
                     Background="{DynamicResource ControlFillColorDefaultBrush}">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="600">
@@ -308,7 +355,7 @@
                  internally (SideBySide / OnionSkin / Swipe / Difference /
                  Overlay). Use Ours / Use Theirs remain on the footer, usable
                  from either the image pane or the text-merge flow. -->
-            <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"
+            <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4" Grid.RowSpan="3"
                   Visibility="{Binding IsBinaryConflict, Converter={StaticResource BoolToVisibilityConverter}}"
                   Background="{DynamicResource ControlFillColorDefaultBrush}">
                 <Grid.RowDefinitions>
@@ -366,7 +413,7 @@
                          pinned to the right edge.
              Each button gets a 16 px FluentIcon prefix so the action is
              scannable without reading the label. -->
-        <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+        <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
                 Style="{StaticResource Merge.PaneCard}"
                 Margin="8,4,8,8"
                 Padding="16,10">

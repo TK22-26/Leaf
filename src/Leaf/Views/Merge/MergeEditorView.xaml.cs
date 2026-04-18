@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Leaf.Controls.Merge;
 using Leaf.Models.Merge;
+using Leaf.Services;
 using Leaf.ViewModels.Merge;
 
 namespace Leaf.Views.Merge;
@@ -31,6 +32,58 @@ public partial class MergeEditorView : Window
             DetachFromVm();
             _subscribedVm = null;
         };
+        // C1: restore persisted grid-splitter widths/heights on load and
+        // save the final values on close. Settings persist per user.
+        Loaded += OnMergeEditorLoaded;
+        Closing += OnMergeEditorClosing;
+    }
+
+    private static SettingsService ResolveSettingsService() =>
+        Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<SettingsService>(Leaf.App.Services);
+
+    private void OnMergeEditorLoaded(object? sender, RoutedEventArgs e)
+    {
+        var settings = ResolveSettingsService().LoadSettings();
+        if (settings.MergeFileListWidth > 0)
+        {
+            FileListColumn.Width = new GridLength(settings.MergeFileListWidth, GridUnitType.Pixel);
+        }
+        if (settings.MergeOursPaneRatio > 0)
+        {
+            OursColumn.Width = new GridLength(settings.MergeOursPaneRatio, GridUnitType.Star);
+        }
+        if (settings.MergeTheirsPaneRatio > 0)
+        {
+            TheirsColumn.Width = new GridLength(settings.MergeTheirsPaneRatio, GridUnitType.Star);
+        }
+        if (settings.MergeResultRowRatio > 0)
+        {
+            ResultRow.Height = new GridLength(settings.MergeResultRowRatio, GridUnitType.Star);
+        }
+    }
+
+    private void OnMergeEditorClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        var service = ResolveSettingsService();
+        var settings = service.LoadSettings();
+        // Persist both ActualWidth and star-Value so round-tripping works
+        // whether the user left the splitter at a pixel position or a
+        // star-value ratio. Star columns report their star-count via
+        // Width.Value; pixel columns report the pixel width via ActualWidth.
+        settings.MergeFileListWidth = FileListColumn.ActualWidth > 0
+            ? FileListColumn.ActualWidth
+            : settings.MergeFileListWidth;
+        settings.MergeOursPaneRatio = OursColumn.Width.IsStar
+            ? OursColumn.Width.Value
+            : OursColumn.ActualWidth;
+        settings.MergeTheirsPaneRatio = TheirsColumn.Width.IsStar
+            ? TheirsColumn.Width.Value
+            : TheirsColumn.ActualWidth;
+        settings.MergeResultRowRatio = ResultRow.Height.IsStar
+            ? ResultRow.Height.Value
+            : ResultRow.ActualHeight;
+        service.SaveSettings(settings);
     }
 
     private MergeEditorViewModel? Vm => DataContext as MergeEditorViewModel;

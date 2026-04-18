@@ -223,6 +223,14 @@ public class AppSettings
     public bool AiMergeEnabled { get; set; } = false;
     public bool AiMergeConsentGiven { get; set; } = false;
     public string AiMergeMcpServerPath { get; set; } = string.Empty;
+
+    // Merge editor layout (C1 grid splitters). FileListWidth is an absolute
+    // pixel width; the three ratio properties are star-values that map to
+    // ColumnDefinition.Width / RowDefinition.Height for the flexible panes.
+    public double MergeFileListWidth { get; set; } = 280;
+    public double MergeOursPaneRatio { get; set; } = 1.0;
+    public double MergeTheirsPaneRatio { get; set; } = 1.0;
+    public double MergeResultRowRatio { get; set; } = 1.0;
 }
 
 /// <summary>
