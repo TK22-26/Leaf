@@ -312,7 +312,8 @@ public partial class MainViewModel
             }
 
             var conflictViewModel = new ViewModels.Merge.MergeEditorViewModel(
-                _gitService, _clipboardService, _mergeEngine, SelectedRepository.Path)
+                _gitService, _clipboardService, _mergeEngine,
+                _wordDiffService, _aiMergeAssistant, SelectedRepository.Path)
             {
                 IsCompactFileList = _settingsService.LoadSettings().CompactFileList,
                 GetSessionToken = () => CurrentRepositoryToken

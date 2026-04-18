@@ -44,6 +44,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     private readonly IGitService _gitService;
     private readonly IClipboardService _clipboardService;
     private readonly IMergeEngine _engine;
+    private readonly IAiMergeAssistant? _aiAssistant;
     private readonly string _repoPath;
 
     private readonly Stack<ResolutionUndoEntry> _undoStack = new();
@@ -63,7 +64,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         IClipboardService clipboardService,
         IMergeEngine engine,
         string repoPath)
-        : this(gitService, clipboardService, engine, new WordDiffService(), repoPath)
+        : this(gitService, clipboardService, engine, new WordDiffService(), aiAssistant: null, repoPath)
     {
     }
 
@@ -72,18 +73,24 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     /// a default <see cref="WordDiffService"/>; production code goes through
     /// <c>IServiceProvider</c> which resolves the singleton registered in
     /// <c>ServiceRegistry</c>. Tests can inject a fake here.
+    /// <paramref name="aiAssistant"/> is nullable: production code always
+    /// passes the DI-registered <see cref="McpMergeAssistant"/> (which itself
+    /// returns <c>null</c> when disabled/consent-missing), but tests that
+    /// don't exercise the AI path can pass <c>null</c> to opt out entirely.
     /// </summary>
     public MergeEditorViewModel(
         IGitService gitService,
         IClipboardService clipboardService,
         IMergeEngine engine,
         IWordDiffService wordDiffService,
+        IAiMergeAssistant? aiAssistant,
         string repoPath)
     {
         _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
         _clipboardService = clipboardService ?? throw new ArgumentNullException(nameof(clipboardService));
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _wordDiffService = wordDiffService ?? throw new ArgumentNullException(nameof(wordDiffService));
+        _aiAssistant = aiAssistant;
         _repoPath = repoPath ?? throw new ArgumentNullException(nameof(repoPath));
     }
 
@@ -140,6 +147,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(ComposedText))]
     [NotifyPropertyChangedFor(nameof(OursLines))]
     [NotifyPropertyChangedFor(nameof(TheirsLines))]
+    [NotifyPropertyChangedFor(nameof(CanRequestAiResolution))]
     private MergeDocument? _document;
 
     [ObservableProperty]

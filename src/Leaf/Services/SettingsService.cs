@@ -213,6 +213,16 @@ public class AppSettings
     // as toasts in addition to being logged. Default false — most users
     // only want to see errors from actions they explicitly initiated.
     public bool ShowBackgroundOperationErrors { get; set; } = false;
+
+    // AI merge assistant (plan §5 — Phase 5 AI-Assisted Resolution).
+    // Opt-in only: disabled and no MCP server path by default. First click
+    // on "Ask AI" in the merge editor triggers a one-time consent dialog
+    // that, when acknowledged, flips AiMergeConsentGiven to true — after
+    // which clicks go straight through. Resetting either flag to false
+    // from settings re-triggers the consent dialog on next use.
+    public bool AiMergeEnabled { get; set; } = false;
+    public bool AiMergeConsentGiven { get; set; } = false;
+    public string AiMergeMcpServerPath { get; set; } = string.Empty;
 }
 
 /// <summary>

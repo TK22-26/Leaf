@@ -65,6 +65,9 @@ public partial class SettingsDialog : Window
             new("Codex", "Connect to Codex CLI for AI features", "Codex", Symbol.Bot),
             new("Ollama", "Connect to Ollama for local AI features", "Ollama", Symbol.Bot),
             new("Local LLM", "Run AI locally with Ollama", "Ollama", Symbol.Bot),
+            new("Merge Assistant", "AI-assisted three-way merge resolution via MCP", "AiMerge", Symbol.BranchCompare),
+            new("AI Merge", "AI-assisted three-way merge resolution via MCP", "AiMerge", Symbol.BranchCompare),
+            new("MCP Server", "Path to the Model Context Protocol server for merge assistance", "AiMerge", Symbol.BranchCompare),
             new("GitFlow", "Configure GitFlow default settings", "GitFlow", Symbol.Flow),
             new("Remotes", "Configure multi-remote sync behavior", "Remotes", Symbol.Cloud),
             new("Sync All Remotes", "Push and pull to all remotes automatically", "Remotes", Symbol.Cloud),
@@ -157,6 +160,7 @@ public partial class SettingsDialog : Window
             case "Gemini":
             case "Codex":
             case "Ollama":
+            case "AiMerge":
                 AiSettings.Visibility = Visibility.Visible;
                 AiSettings.ShowSection(tag);
                 break;
@@ -293,6 +297,7 @@ public partial class SettingsDialog : Window
             "Gemini" => NavGemini,
             "Codex" => NavCodex,
             "Ollama" => NavOllama,
+            "AiMerge" => NavAiMerge,
             "Logging" => NavLogging,
             "GitFlow" => NavGitFlow,
             "ExternalTools" => NavExternalTools,

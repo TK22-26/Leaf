@@ -45,6 +45,12 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         // Load timeout
         AiTimeoutTextBox.Text = settings.AiCliTimeoutSeconds.ToString();
 
+        // Load AI Merge (Phase 5)
+        AiMergeEnabledCheckBox.IsChecked = settings.AiMergeEnabled;
+        AiMergeMcpServerPathTextBox.Text = settings.AiMergeMcpServerPath ?? string.Empty;
+        // Reset button is only meaningful when consent has been given.
+        AiMergeResetConsentButton.IsEnabled = settings.AiMergeConsentGiven;
+
         // Load connection states
         _isClaudeConnected = settings.IsClaudeConnected;
         _isGeminiConnected = settings.IsGeminiConnected;
@@ -106,6 +112,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         ContentGemini.Visibility = Visibility.Collapsed;
         ContentCodex.Visibility = Visibility.Collapsed;
         ContentOllama.Visibility = Visibility.Collapsed;
+        ContentAiMerge.Visibility = Visibility.Collapsed;
 
         // Show requested section
         switch (section)
@@ -126,8 +133,51 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             case "Ollama":
                 ContentOllama.Visibility = Visibility.Visible;
                 break;
+            case "AiMerge":
+                ContentAiMerge.Visibility = Visibility.Visible;
+                break;
         }
     }
+
+    #region AI Merge (Phase 5)
+
+    private void AiMergeEnabled_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_settings is null || _settingsService is null) return;
+        _settings.AiMergeEnabled = AiMergeEnabledCheckBox.IsChecked == true;
+        _settingsService.SaveSettings(_settings);
+    }
+
+    private void AiMergeMcpServerPath_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (_settings is null || _settingsService is null) return;
+        _settings.AiMergeMcpServerPath = AiMergeMcpServerPathTextBox.Text.Trim();
+        _settingsService.SaveSettings(_settings);
+    }
+
+    private void AiMergeMcpServerPathBrowse_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select MCP server executable",
+            Filter = "Executables (*.exe;*.bat;*.cmd;*.ps1)|*.exe;*.bat;*.cmd;*.ps1|All files (*.*)|*.*",
+        };
+        if (dlg.ShowDialog(Window.GetWindow(this)) == true)
+        {
+            AiMergeMcpServerPathTextBox.Text = dlg.FileName;
+            // TextChanged handler persists the change.
+        }
+    }
+
+    private void AiMergeResetConsent_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings is null || _settingsService is null) return;
+        _settings.AiMergeConsentGiven = false;
+        _settingsService.SaveSettings(_settings);
+        AiMergeResetConsentButton.IsEnabled = false;
+    }
+
+    #endregion
 
     #region Claude
 
