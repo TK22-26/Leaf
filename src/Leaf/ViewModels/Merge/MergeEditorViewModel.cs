@@ -334,6 +334,9 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         _undoStack.Clear();
         _redoStack.Clear();
         Document = doc;
+        // Point the keyboard-nav cursor at the first conflicting range so F8
+        // navigates from there rather than from a stale index.
+        CurrentConflictIndex = 0;
         // Build word-level diffs off the UI thread: a large conflict block (e.g.
         // a regenerated package-lock.json with 1000+ lines) would otherwise
         // freeze the UI for ~1s per file-select. Check cancellation before
@@ -690,7 +693,10 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         if (Document is null) return;
         var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
         if (conflicting.Count == 0) return;
-        CurrentConflictIndex = (CurrentConflictIndex + 1) % conflicting.Count;
+        // Prefer jumping to the next UNRESOLVED range so the keyboard flow matches
+        // the user's natural "resolve everything" rhythm. Fall back to a simple
+        // wrap-around if all ranges are already resolved.
+        CurrentConflictIndex = FindNextUnresolvedOrWrap(conflicting, +1);
     }
 
     [RelayCommand]
@@ -699,7 +705,19 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         if (Document is null) return;
         var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
         if (conflicting.Count == 0) return;
-        CurrentConflictIndex = (CurrentConflictIndex - 1 + conflicting.Count) % conflicting.Count;
+        CurrentConflictIndex = FindNextUnresolvedOrWrap(conflicting, -1);
+    }
+
+    private int FindNextUnresolvedOrWrap(List<ModifiedBaseRange> conflicting, int delta)
+    {
+        var n = conflicting.Count;
+        for (int step = 1; step <= n; step++)
+        {
+            var idx = ((CurrentConflictIndex + delta * step) % n + n) % n;
+            if (!IsResolved(conflicting[idx])) return idx;
+        }
+        // All resolved — wrap normally so the user can still re-review.
+        return ((CurrentConflictIndex + delta) % n + n) % n;
     }
 
     [RelayCommand]

@@ -77,7 +77,10 @@
                      Background="Transparent"/>
         </Border>
 
-        <!-- Main pane area: 2 input panes on top, result pane on bottom -->
+        <!-- Main pane area. Top row holds the two input panes separated by
+             a dedicated middle column for the connection canvas so the
+             bezier curves don't overlap pane content or minimaps. Bottom
+             row is the single result pane spanning all three columns. -->
         <Grid Grid.Row="1" Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
@@ -85,21 +88,9 @@
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="40"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-
-            <!-- Connection-line overlay: zero-width canvas sitting between the
-                 two input panes at row 0. The bezier curves map conflict
-                 regions ours→theirs; pane scroll offsets are pushed in via
-                 OursVerticalOffset / TheirsVerticalOffset bindings below. -->
-            <merge:PaneConnectionCanvas x:Name="ConnectionCanvas"
-                                        Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-                                        AutomationProperties.AutomationId="Merge.ConnectionCanvas"
-                                        IsHitTestVisible="False"
-                                        Panel.ZIndex="100"
-                                        Layout="{Binding Layout}"
-                                        Regions="{Binding Document.Ranges}"
-                                        RangeStates="{Binding RangeStates}"/>
 
             <!-- Ours pane -->
             <Grid Grid.Row="0" Grid.Column="0">
@@ -149,8 +140,29 @@
                 </Grid>
             </Grid>
 
-            <!-- Theirs pane -->
+            <!-- Connection-line canvas between the two input panes. Its grid
+                 row matches the content rows of the two pane sub-grids (not
+                 the header rows), so bezier endpoints use the pane's own Y
+                 origin and the header padding doesn't misalign curves. -->
             <Grid Grid.Row="0" Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Border Grid.Row="0" Padding="0,6"
+                        Background="{DynamicResource LayerFillColorDefaultBrush}"
+                        BorderThickness="0,0,0,1"
+                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"/>
+                <merge:PaneConnectionCanvas Grid.Row="1"
+                                            x:Name="ConnectionCanvas"
+                                            AutomationProperties.AutomationId="Merge.ConnectionCanvas"
+                                            Layout="{Binding Layout}"
+                                            Regions="{Binding Document.Ranges}"
+                                            RangeStates="{Binding RangeStates}"/>
+            </Grid>
+
+            <!-- Theirs pane -->
+            <Grid Grid.Row="0" Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
@@ -197,8 +209,8 @@
                 </Grid>
             </Grid>
 
-            <!-- Result pane spanning both columns -->
-            <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+            <!-- Result pane spanning all three columns -->
+            <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
                     BorderThickness="0,1,0,0"
                     BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
                 <Grid>
@@ -221,7 +233,7 @@
             </Border>
 
             <!-- Engine-error overlay -->
-            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Grid.RowSpan="2"
+            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"
                     Visibility="{Binding IsEngineError, Converter={StaticResource BoolToVisibilityConverter}}"
                     Background="{DynamicResource ControlFillColorDefaultBrush}">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="600">
@@ -247,7 +259,7 @@
             </Border>
 
             <!-- Binary-file overlay -->
-            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Grid.RowSpan="2"
+            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"
                     Visibility="{Binding IsBinaryConflict, Converter={StaticResource BoolToVisibilityConverter}}"
                     Background="{DynamicResource ControlFillColorDefaultBrush}">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">

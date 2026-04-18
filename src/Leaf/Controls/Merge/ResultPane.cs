@@ -59,6 +59,12 @@ public sealed class ResultPane : ContentControl
         // accept-theirs / accept-both resolution. Will flip back to editable
         // once Phase 3 ships the range-aware text-change handler.
         IsReadOnly = true,
+        // Phase 4: keep the pane non-focusable so its vendored TextArea's
+        // CommandBindings (Undo/Redo/Cut/Paste) don't swallow window-level
+        // keyboard shortcuts. With IsReadOnly=true there's nothing the user
+        // could do here that requires focus; Ctrl+C for selection copy works
+        // without focus via the vendored ApplicationCommands routing.
+        Focusable = false,
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
     };

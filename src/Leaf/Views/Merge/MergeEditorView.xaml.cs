@@ -112,19 +112,37 @@ public partial class MergeEditorView : Window
 
     // ── Scroll / minimap wire-up (Phase 4) ───────────────────────────────
 
+    private bool _suppressScrollSync;
+
     private void OnOursScrollChanged(object? sender, System.Windows.Controls.ScrollChangedEventArgs e)
     {
-        // Propagate the ours-pane vertical offset into the connection canvas
-        // so bezier endpoints track the scroll state. Horizontal scroll is
-        // irrelevant to the curves.
         if (Vm is null) return;
         ConnectionCanvas.OursVerticalOffset = e.VerticalOffset;
+        // Sync the Theirs pane to the same vertical offset. The canvas draws
+        // straight-across bezier curves between matching line indices, which
+        // only remains meaningful when the two panes scroll together. A
+        // flag prevents re-entrant ping-ponging when the mirrored scroll
+        // fires its own ScrollChanged.
+        if (!_suppressScrollSync && TheirsScrollViewer is not null
+            && Math.Abs(TheirsScrollViewer.VerticalOffset - e.VerticalOffset) > 0.5)
+        {
+            _suppressScrollSync = true;
+            try { TheirsScrollViewer.ScrollToVerticalOffset(e.VerticalOffset); }
+            finally { _suppressScrollSync = false; }
+        }
     }
 
     private void OnTheirsScrollChanged(object? sender, System.Windows.Controls.ScrollChangedEventArgs e)
     {
         if (Vm is null) return;
         ConnectionCanvas.TheirsVerticalOffset = e.VerticalOffset;
+        if (!_suppressScrollSync && OursScrollViewer is not null
+            && Math.Abs(OursScrollViewer.VerticalOffset - e.VerticalOffset) > 0.5)
+        {
+            _suppressScrollSync = true;
+            try { OursScrollViewer.ScrollToVerticalOffset(e.VerticalOffset); }
+            finally { _suppressScrollSync = false; }
+        }
     }
 
     private void OnOursMinimapJump(object? sender, MinimapJumpEventArgs e)

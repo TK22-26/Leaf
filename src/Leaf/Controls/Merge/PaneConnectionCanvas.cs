@@ -83,6 +83,19 @@ public sealed class PaneConnectionCanvas : FrameworkElement
     private static readonly Color OursColor = Color.FromArgb(0xB0, 0x2B, 0x4A, 0x6E);
     private static readonly Color TheirsColor = Color.FromArgb(0xB0, 0x1A, 0x50, 0x35);
     private static readonly Color UnresolvedColor = Color.FromArgb(0x80, 0x88, 0x88, 0x88);
+    private static readonly Color ManualColor = Color.FromArgb(0xC0, 0xFF, 0xC1, 0x07);
+
+    // Frozen brushes — allocating one per-range per-frame was both wasteful
+    // and inconsistent with the pattern used by ConflictMinimap.
+    private static readonly SolidColorBrush UnresolvedBrush = Freeze(new SolidColorBrush(UnresolvedColor));
+    private static readonly SolidColorBrush OursBrush = Freeze(new SolidColorBrush(OursColor));
+    private static readonly SolidColorBrush TheirsBrush = Freeze(new SolidColorBrush(TheirsColor));
+    private static readonly SolidColorBrush ManualBrush = Freeze(new SolidColorBrush(ManualColor));
+    private static readonly LinearGradientBrush BothBrush = FreezeGradient(
+        new LinearGradientBrush(OursColor, TheirsColor, angle: 0));
+
+    private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
+    private static LinearGradientBrush FreezeGradient(LinearGradientBrush b) { b.Freeze(); return b; }
 
     public PaneConnectionCanvas()
     {
@@ -116,7 +129,7 @@ public sealed class PaneConnectionCanvas : FrameworkElement
                 (yOurs > h + lineHeight && yTheirs > h + lineHeight))
                 continue;
 
-            var brush = BrushForState(range);
+            var brush = BrushForState(range, RangeStates);
             if (brush is null) continue;
             var pen = new Pen(brush, 2.0);
             pen.Freeze();
@@ -137,17 +150,17 @@ public sealed class PaneConnectionCanvas : FrameworkElement
         }
     }
 
-    private Brush? BrushForState(ModifiedBaseRange range)
+    private static Brush? BrushForState(ModifiedBaseRange range, IReadOnlyDictionary<int, ResolutionState>? rangeStates)
     {
         ResolutionState? state = null;
-        RangeStates?.TryGetValue(range.Index, out state);
+        rangeStates?.TryGetValue(range.Index, out state);
         return state switch
         {
-            null or ResolutionState.Unresolved => new SolidColorBrush(UnresolvedColor) { },
-            ResolutionState.AcceptOurs => new SolidColorBrush(OursColor) { },
-            ResolutionState.AcceptTheirs => new SolidColorBrush(TheirsColor) { },
-            ResolutionState.AcceptBoth => new LinearGradientBrush(OursColor, TheirsColor, 0),
-            ResolutionState.Manual => new SolidColorBrush(Color.FromArgb(0xC0, 0xFF, 0xC1, 0x07)), // amber
+            null or ResolutionState.Unresolved => UnresolvedBrush,
+            ResolutionState.AcceptOurs => OursBrush,
+            ResolutionState.AcceptTheirs => TheirsBrush,
+            ResolutionState.AcceptBoth => BothBrush,
+            ResolutionState.Manual => ManualBrush,
             _ => null,
         };
     }
