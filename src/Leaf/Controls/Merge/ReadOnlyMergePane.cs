@@ -384,15 +384,23 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     {
         if (RangeStates is null) return false;
         if (!RangeStates.TryGetValue(rangeIndex, out var state)) return false;
-        return (Side, state) switch
-        {
-            (MergePaneSide.Ours, ResolutionState.AcceptOurs) => true,
-            (MergePaneSide.Ours, ResolutionState.AcceptBoth) => true,
-            (MergePaneSide.Theirs, ResolutionState.AcceptTheirs) => true,
-            (MergePaneSide.Theirs, ResolutionState.AcceptBoth) => true,
-            _ => false,
-        };
+        return IsAcceptedForSide(Side, state);
     }
+
+    /// <summary>
+    /// Truth table for "should this pane render its accept-checkbox as checked
+    /// for the given state?". Exposed as <c>internal static</c> so tests can
+    /// pin the logic without standing up a full pane + visual tree. Base side
+    /// is intentionally never accepted — base has no accept-checkbox in the UI.
+    /// </summary>
+    internal static bool IsAcceptedForSide(MergePaneSide side, ResolutionState state) => (side, state) switch
+    {
+        (MergePaneSide.Ours, ResolutionState.AcceptOurs) => true,
+        (MergePaneSide.Ours, ResolutionState.AcceptBoth) => true,
+        (MergePaneSide.Theirs, ResolutionState.AcceptTheirs) => true,
+        (MergePaneSide.Theirs, ResolutionState.AcceptBoth) => true,
+        _ => false,
+    };
 
     private void DrawText(DrawingContext dc, int firstVisible, int lastVisible)
     {

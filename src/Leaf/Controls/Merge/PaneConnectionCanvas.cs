@@ -119,15 +119,11 @@ public sealed class PaneConnectionCanvas : FrameworkElement
             // Y-coordinates on each side, accounting for pane scroll offsets.
             // The curve goes from the centre of the ours region to the centre of
             // the theirs region on the left/right edges of this canvas.
-            var oursMidLine = (range.Ours.StartLine + range.Ours.EndLineExclusive) / 2.0 - 0.5;
-            var theirsMidLine = (range.Theirs.StartLine + range.Theirs.EndLineExclusive) / 2.0 - 0.5;
-            var yOurs = (oursMidLine - 1) * lineHeight - OursVerticalOffset + lineHeight / 2;
-            var yTheirs = (theirsMidLine - 1) * lineHeight - TheirsVerticalOffset + lineHeight / 2;
+            var yOurs = ComputeEndpointY(range.Ours, lineHeight, OursVerticalOffset);
+            var yTheirs = ComputeEndpointY(range.Theirs, lineHeight, TheirsVerticalOffset);
 
             // Skip entirely off-screen curves (both endpoints outside the canvas).
-            if ((yOurs < -lineHeight && yTheirs < -lineHeight) ||
-                (yOurs > h + lineHeight && yTheirs > h + lineHeight))
-                continue;
+            if (IsEntirelyOffScreen(yOurs, yTheirs, h, lineHeight)) continue;
 
             var brush = BrushForState(range, RangeStates);
             if (brush is null) continue;
@@ -154,14 +150,47 @@ public sealed class PaneConnectionCanvas : FrameworkElement
     {
         ResolutionState? state = null;
         rangeStates?.TryGetValue(range.Index, out state);
-        return state switch
-        {
-            null or ResolutionState.Unresolved => UnresolvedBrush,
-            ResolutionState.AcceptOurs => OursBrush,
-            ResolutionState.AcceptTheirs => TheirsBrush,
-            ResolutionState.AcceptBoth => BothBrush,
-            ResolutionState.Manual => ManualBrush,
-            _ => null,
-        };
+        return BrushForState(state);
+    }
+
+    /// <summary>
+    /// State → brush kind mapping. Exposed as <c>internal</c> so tests can
+    /// verify the colour-coding without standing up a real visual tree.
+    /// Returns one of the static Frozen brushes declared above.
+    /// </summary>
+    internal static Brush? BrushForState(ResolutionState? state) => state switch
+    {
+        null or ResolutionState.Unresolved => UnresolvedBrush,
+        ResolutionState.AcceptOurs => OursBrush,
+        ResolutionState.AcceptTheirs => TheirsBrush,
+        ResolutionState.AcceptBoth => BothBrush,
+        ResolutionState.Manual => ManualBrush,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Compute the Y-coordinate (in canvas space) of a bezier endpoint for
+    /// a given side of a <see cref="ModifiedBaseRange"/>. Exposes the pixel
+    /// math used by <see cref="OnRender"/> so it can be tested independently.
+    /// </summary>
+    internal static double ComputeEndpointY(LineRange side, double lineHeight, double paneVerticalOffset)
+    {
+        // The bezier anchors on the centre of the side's line range, then
+        // shifts to the centre of that midline. 1-based lines: StartLine==1
+        // means "first line", so the geometric centre offset is (StartLine-1)*lineHeight.
+        var midLine = (side.StartLine + side.EndLineExclusive) / 2.0 - 0.5;
+        return (midLine - 1) * lineHeight - paneVerticalOffset + lineHeight / 2;
+    }
+
+    /// <summary>
+    /// Whether a curve with the given endpoint Y-coords is entirely off-screen
+    /// (both endpoints above the canvas top, or both below the canvas bottom,
+    /// with a one-line padding). Used by <see cref="OnRender"/> to skip
+    /// invisible curves and by tests to pin the clipping behaviour.
+    /// </summary>
+    internal static bool IsEntirelyOffScreen(double yOurs, double yTheirs, double canvasHeight, double lineHeight)
+    {
+        return (yOurs < -lineHeight && yTheirs < -lineHeight) ||
+               (yOurs > canvasHeight + lineHeight && yTheirs > canvasHeight + lineHeight);
     }
 }
