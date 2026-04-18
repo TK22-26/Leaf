@@ -1,0 +1,24 @@
+<!--
+    StatusPill — colored-dot + label + count, used in the merge editor header
+    (Unresolved / Resolved / AI-pending) and later by the merge status sidebar.
+    Keeps the pill geometry consistent across every surface that surfaces a
+    live count.
+-->
+<UserControl x:Class="Leaf.Controls.Merge.StatusPill"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Name="PillRoot"
+             Focusable="False">
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                 Fill="{Binding ElementName=PillRoot, Path=DotBrush}"/>
+        <TextBlock VerticalAlignment="Center" Margin="6,0,0,0"
+                   FontSize="{DynamicResource Merge.Type.Caption.Size}"
+                   Foreground="{DynamicResource Merge.Text.Secondary}">
+            <Run Text="{Binding ElementName=PillRoot, Path=Label, Mode=OneWay}"/><Run Text=": "/><Run Text="{Binding ElementName=PillRoot, Path=Count, Mode=OneWay}"/>
+        </TextBlock>
+    </StackPanel>
+</UserControl>
