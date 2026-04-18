@@ -673,6 +673,68 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         _clipboardService.SetText(ComposedText);
     }
 
+    // ── Keyboard-driven conflict navigation + current-range commands ──────
+
+    /// <summary>
+    /// 0-based index of the conflict range the user is currently "on"
+    /// (for keyboard shortcuts). Advanced by <see cref="NextConflictCommand"/>
+    /// and <see cref="PreviousConflictCommand"/>. Starts at the first
+    /// unresolved range when a document loads.
+    /// </summary>
+    [ObservableProperty]
+    private int _currentConflictIndex;
+
+    [RelayCommand]
+    private void NextConflict()
+    {
+        if (Document is null) return;
+        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        if (conflicting.Count == 0) return;
+        CurrentConflictIndex = (CurrentConflictIndex + 1) % conflicting.Count;
+    }
+
+    [RelayCommand]
+    private void PreviousConflict()
+    {
+        if (Document is null) return;
+        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        if (conflicting.Count == 0) return;
+        CurrentConflictIndex = (CurrentConflictIndex - 1 + conflicting.Count) % conflicting.Count;
+    }
+
+    [RelayCommand]
+    private void AcceptCurrentConflictOurs()
+    {
+        var range = CurrentConflictRange();
+        if (range is null) return;
+        SetState(range.Index, ResolutionState.AcceptOurs.Instance);
+    }
+
+    [RelayCommand]
+    private void AcceptCurrentConflictTheirs()
+    {
+        var range = CurrentConflictRange();
+        if (range is null) return;
+        SetState(range.Index, ResolutionState.AcceptTheirs.Instance);
+    }
+
+    [RelayCommand]
+    private void AcceptCurrentConflictBoth()
+    {
+        var range = CurrentConflictRange();
+        if (range is null) return;
+        SetState(range.Index, new ResolutionState.AcceptBoth(FirstOurs: true, SmartCombine: true));
+    }
+
+    private ModifiedBaseRange? CurrentConflictRange()
+    {
+        if (Document is null) return null;
+        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        if (conflicting.Count == 0) return null;
+        var idx = Math.Clamp(CurrentConflictIndex, 0, conflicting.Count - 1);
+        return conflicting[idx];
+    }
+
     [RelayCommand]
     private async Task UnresolveConflictAsync(ConflictInfo? conflict)
     {

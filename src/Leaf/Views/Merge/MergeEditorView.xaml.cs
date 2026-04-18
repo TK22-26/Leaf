@@ -110,9 +110,42 @@ public partial class MergeEditorView : Window
         // OnRangeStatesChanged (subscribed from OnDataContextChanged).
     }
 
-    // Phase 4 TODO: wire ConflictMinimap.JumpRequested to ScrollViewer.ScrollToVerticalOffset
-    // using MergePaneGlyphLayout.GetVisualTop(lineNumber). For Phase 3 the event
-    // fires but has no subscriber — minimap is visual-only.
+    // ── Scroll / minimap wire-up (Phase 4) ───────────────────────────────
+
+    private void OnOursScrollChanged(object? sender, System.Windows.Controls.ScrollChangedEventArgs e)
+    {
+        // Propagate the ours-pane vertical offset into the connection canvas
+        // so bezier endpoints track the scroll state. Horizontal scroll is
+        // irrelevant to the curves.
+        if (Vm is null) return;
+        ConnectionCanvas.OursVerticalOffset = e.VerticalOffset;
+    }
+
+    private void OnTheirsScrollChanged(object? sender, System.Windows.Controls.ScrollChangedEventArgs e)
+    {
+        if (Vm is null) return;
+        ConnectionCanvas.TheirsVerticalOffset = e.VerticalOffset;
+    }
+
+    private void OnOursMinimapJump(object? sender, MinimapJumpEventArgs e)
+    {
+        ScrollPaneToLine(OursScrollViewer, e.LineNumber);
+    }
+
+    private void OnTheirsMinimapJump(object? sender, MinimapJumpEventArgs e)
+    {
+        ScrollPaneToLine(TheirsScrollViewer, e.LineNumber);
+    }
+
+    private void ScrollPaneToLine(System.Windows.Controls.ScrollViewer sv, int lineNumber1Based)
+    {
+        var layout = Vm?.Layout;
+        if (layout is null || sv is null) return;
+        var y = layout.GetVisualTop(lineNumber1Based);
+        // Center the target line in the viewport when possible.
+        var target = Math.Max(0, y - sv.ViewportHeight / 2);
+        sv.ScrollToVerticalOffset(target);
+    }
 
     private void OnResultTextChanged(object? sender, string text)
     {

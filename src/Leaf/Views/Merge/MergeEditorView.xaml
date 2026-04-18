@@ -12,6 +12,20 @@
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource ControlFillColorDefaultBrush}"
         AutomationProperties.AutomationId="MergeEditorView">
+    <Window.InputBindings>
+        <!-- Keyboard shortcuts for the merge editor. The Alt+1 / Alt+2 / Alt+3
+             pattern matches VS Code's merge editor; F8 / Shift+F8 matches the
+             build-error navigation many power users already know. -->
+        <KeyBinding Modifiers="Alt" Key="D1" Command="{Binding AcceptCurrentConflictOursCommand}"/>
+        <KeyBinding Modifiers="Alt" Key="D2" Command="{Binding AcceptCurrentConflictTheirsCommand}"/>
+        <KeyBinding Modifiers="Alt" Key="D3" Command="{Binding AcceptCurrentConflictBothCommand}"/>
+        <KeyBinding Key="F8" Command="{Binding NextConflictCommand}"/>
+        <KeyBinding Modifiers="Shift" Key="F8" Command="{Binding PreviousConflictCommand}"/>
+        <KeyBinding Modifiers="Control" Key="Enter" Command="{Binding MarkResolvedCommand}"/>
+        <KeyBinding Modifiers="Control" Key="Z" Command="{Binding UndoCommand}"/>
+        <KeyBinding Modifiers="Control" Key="Y" Command="{Binding RedoCommand}"/>
+        <KeyBinding Modifiers="Control+Shift" Key="Z" Command="{Binding RedoCommand}"/>
+    </Window.InputBindings>
     <Window.Resources>
         <!-- Ours = blue tint; Theirs = green tint; tuned to be readable but not intense. -->
         <SolidColorBrush x:Key="OursHighlightBrush" Color="#1A2B4A6E"/>
@@ -74,6 +88,19 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
+            <!-- Connection-line overlay: zero-width canvas sitting between the
+                 two input panes at row 0. The bezier curves map conflict
+                 regions ours→theirs; pane scroll offsets are pushed in via
+                 OursVerticalOffset / TheirsVerticalOffset bindings below. -->
+            <merge:PaneConnectionCanvas x:Name="ConnectionCanvas"
+                                        Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                                        AutomationProperties.AutomationId="Merge.ConnectionCanvas"
+                                        IsHitTestVisible="False"
+                                        Panel.ZIndex="100"
+                                        Layout="{Binding Layout}"
+                                        Regions="{Binding Document.Ranges}"
+                                        RangeStates="{Binding RangeStates}"/>
+
             <!-- Ours pane -->
             <Grid Grid.Row="0" Grid.Column="0">
                 <Grid.RowDefinitions>
@@ -92,11 +119,12 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="12"/>
                     </Grid.ColumnDefinitions>
-                    <ScrollViewer Grid.Column="0"
+                    <ScrollViewer Grid.Column="0" x:Name="OursScrollViewer"
                                   Background="{StaticResource PaneBackgroundBrush}"
                                   HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto"
-                                  CanContentScroll="True">
+                                  CanContentScroll="True"
+                                  ScrollChanged="OnOursScrollChanged">
                         <merge:ReadOnlyMergePane x:Name="OursPane"
                                                  AutomationProperties.AutomationId="Merge.OursPane"
                                                  Side="Ours"
@@ -110,12 +138,14 @@
                                                  AcceptCheckboxToggled="OnOursCheckboxToggled"/>
                     </ScrollViewer>
                     <merge:ConflictMinimap Grid.Column="1"
+                                           x:Name="OursMinimap"
                                            AutomationProperties.AutomationId="Merge.OursMinimap"
                                            Side="Ours"
                                            LineCount="{Binding OursLines.Count, FallbackValue=0}"
                                            Regions="{Binding Document.Ranges}"
                                            RangeStates="{Binding RangeStates}"
-                                           Layout="{Binding Layout}"/>
+                                           Layout="{Binding Layout}"
+                                           JumpRequested="OnOursMinimapJump"/>
                 </Grid>
             </Grid>
 
@@ -137,11 +167,12 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="12"/>
                     </Grid.ColumnDefinitions>
-                    <ScrollViewer Grid.Column="0"
+                    <ScrollViewer Grid.Column="0" x:Name="TheirsScrollViewer"
                                   Background="{StaticResource PaneBackgroundBrush}"
                                   HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto"
-                                  CanContentScroll="True">
+                                  CanContentScroll="True"
+                                  ScrollChanged="OnTheirsScrollChanged">
                         <merge:ReadOnlyMergePane x:Name="TheirsPane"
                                                  AutomationProperties.AutomationId="Merge.TheirsPane"
                                                  Side="Theirs"
@@ -155,12 +186,14 @@
                                                  AcceptCheckboxToggled="OnTheirsCheckboxToggled"/>
                     </ScrollViewer>
                     <merge:ConflictMinimap Grid.Column="1"
+                                           x:Name="TheirsMinimap"
                                            AutomationProperties.AutomationId="Merge.TheirsMinimap"
                                            Side="Theirs"
                                            LineCount="{Binding TheirsLines.Count, FallbackValue=0}"
                                            Regions="{Binding Document.Ranges}"
                                            RangeStates="{Binding RangeStates}"
-                                           Layout="{Binding Layout}"/>
+                                           Layout="{Binding Layout}"
+                                           JumpRequested="OnTheirsMinimapJump"/>
                 </Grid>
             </Grid>
 
