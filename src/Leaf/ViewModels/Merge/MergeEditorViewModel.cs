@@ -72,6 +72,15 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
 
     public event EventHandler<bool>? MergeCompleted;
 
+    /// <summary>
+    /// Fires whenever <see cref="RangeStates"/> has been mutated (via an
+    /// accept / unresolve / undo / redo / AcceptAll operation). RangeStates is
+    /// a plain <see cref="Dictionary{TKey,TValue}"/> so WPF doesn't notice
+    /// mutations via the normal <see cref="System.ComponentModel.INotifyPropertyChanged"/>
+    /// pipeline; panes subscribe here and call <c>InvalidateVisual</c>.
+    /// </summary>
+    public event EventHandler? RangeStatesChanged;
+
     /// <summary>Set by the host VM; returns a token cancelled when the repo session ends.</summary>
     public Func<CancellationToken>? GetSessionToken { get; set; }
     private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
@@ -84,6 +93,22 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private ObservableCollection<ConflictInfo> _conflicts = new();
+
+    /// <summary>
+    /// Unresolved files — bucket consumed by the MergeStatusView sidebar's
+    /// "Conflicted Files" list. Kept in sync with <see cref="Conflicts"/> by
+    /// <see cref="RefreshConflictBuckets"/>.
+    /// </summary>
+    [ObservableProperty]
+    private ObservableCollection<ConflictInfo> _conflictedConflicts = new();
+
+    /// <summary>
+    /// Resolved files — bucket consumed by the MergeStatusView sidebar's
+    /// "Resolved Files" list. Kept in sync with <see cref="Conflicts"/> by
+    /// <see cref="RefreshConflictBuckets"/>.
+    /// </summary>
+    [ObservableProperty]
+    private ObservableCollection<ConflictInfo> _resolvedConflicts = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedConflict))]
@@ -190,9 +215,8 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
             }
 
             OnPropertyChanged(nameof(TotalFiles));
-            OnPropertyChanged(nameof(ResolvedFiles));
-            OnPropertyChanged(nameof(RemainingFiles));
-            OnPropertyChanged(nameof(CanCompleteMerge));
+            OnPropertyChanged(nameof(TotalCount));
+            NotifyFileCountsChanged();
 
             SelectedConflict = previousSelection != null
                 ? Conflicts.FirstOrDefault(c => c.FilePath == previousSelection)
@@ -207,7 +231,11 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedConflictChanged(ConflictInfo? value)
     {
-        _ = BuildDocumentForSelectedAsync();
+        // Route through FireAndForget so any unexpected exception surfaces
+        // through Leaf's AsyncErrorHandler (log + notification) instead of
+        // silently faulting the Task and freezing the panes on stale content.
+        BuildDocumentForSelectedAsync().FireAndForget(
+            nameof(BuildDocumentForSelectedAsync), isUserAction: true);
     }
 
     private async Task BuildDocumentForSelectedAsync()
@@ -391,6 +419,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsFullyResolved));
         OnPropertyChanged(nameof(CanMarkResolved));
         OnPropertyChanged(nameof(ComposedText));
+        RangeStatesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // ─── Side-picker escape hatches (available even in engine-error state) ─
@@ -444,6 +473,22 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         {
             var filePath = SelectedConflict.FilePath;
             var composed = ComposedText;
+
+            // Final gate: never write content containing an unresolved zdiff3 triad
+            // to disk. Phase 2c's Result pane is read-only so this should be unreachable
+            // via the current UI — but a future re-enabled manual-edit path would
+            // silently corrupt without this check, so it's defence-in-depth per the
+            // Engineering-Software "fail loudly" policy.
+            if (ContainsConflictMarkers(composed))
+            {
+                Log.Warn("Merge", $"MarkResolved refused: composed text still contains zdiff3 markers for {filePath}");
+                EngineErrorMessage = "Cannot mark resolved — the merged result still contains " +
+                    "unresolved conflict markers. Resolve every conflict region or use " +
+                    "'Use Ours' / 'Use Theirs' to force a side.";
+                IsEngineError = true;
+                return;
+            }
+
             var fullPath = System.IO.Path.Combine(_repoPath, filePath);
             await System.IO.File.WriteAllTextAsync(fullPath, composed, SessionToken)
                 .ConfigureAwait(true);
@@ -458,6 +503,41 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
             AutoAdvance();
         }
         finally { IsResolving = false; }
+    }
+
+    /// <summary>
+    /// Commit-gate helper: <c>true</c> iff <paramref name="content"/> contains the full
+    /// zdiff3 structural triad (opener → separator → closer) in order. Tolerates CRLF
+    /// line endings (AvalonEdit preserves them on Windows). A lone opener without the
+    /// separator and closer is treated as user content (e.g. documentation that mentions
+    /// conflict markers), not unresolved state. Ported from the pre-Phase-2c
+    /// <c>ConflictResolutionViewModel.ContainsConflictMarkers</c>.
+    /// </summary>
+    internal static bool ContainsConflictMarkers(string content)
+    {
+        bool sawOpen = false;
+        bool sawSeparator = false;
+        foreach (var rawLine in content.Split('\n'))
+        {
+            var line = rawLine.Length > 0 && rawLine[rawLine.Length - 1] == '\r'
+                ? rawLine.Substring(0, rawLine.Length - 1)
+                : rawLine;
+
+            if (!sawOpen)
+            {
+                if (line.StartsWith("<<<<<<<", StringComparison.Ordinal)) sawOpen = true;
+                continue;
+            }
+
+            if (!sawSeparator)
+            {
+                if (line == "=======") sawSeparator = true;
+                continue;
+            }
+
+            if (line.StartsWith(">>>>>>>", StringComparison.Ordinal)) return true;
+        }
+        return false;
     }
 
     [RelayCommand(CanExecute = nameof(CanCompleteMerge))]
@@ -525,6 +605,24 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ResolvedFiles));
         OnPropertyChanged(nameof(RemainingFiles));
         OnPropertyChanged(nameof(CanCompleteMerge));
+        OnPropertyChanged(nameof(ResolvedCount));
+        OnPropertyChanged(nameof(RemainingCount));
+        RefreshConflictBuckets();
+    }
+
+    /// <summary>
+    /// Partition <see cref="Conflicts"/> into the two sidebar lists. Called
+    /// whenever the set of conflicts or their resolved state changes.
+    /// </summary>
+    private void RefreshConflictBuckets()
+    {
+        ConflictedConflicts.Clear();
+        ResolvedConflicts.Clear();
+        foreach (var c in Conflicts)
+        {
+            if (c.IsResolved) ResolvedConflicts.Add(c);
+            else ConflictedConflicts.Add(c);
+        }
     }
 
     public void Dispose()

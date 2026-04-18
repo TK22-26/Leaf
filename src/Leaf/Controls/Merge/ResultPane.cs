@@ -51,7 +51,14 @@ public sealed class ResultPane : ContentControl
     private readonly TextEditor _editor = new()
     {
         ShowLineNumbers = true,
-        IsReadOnly = false,
+        // Phase 2c ships the Result pane as read-only: manual editing requires
+        // per-range text mapping (Phase 3) to know which range the user's edit
+        // falls inside. Without that, whole-buffer edits destroyed both the
+        // caret state and the conflict-marker commit gate. The composed text
+        // is still fully driven by the VM's RangeStates → accept-ours /
+        // accept-theirs / accept-both resolution. Will flip back to editable
+        // once Phase 3 ships the range-aware text-change handler.
+        IsReadOnly = true,
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
     };

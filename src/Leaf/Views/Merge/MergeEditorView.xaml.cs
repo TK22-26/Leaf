@@ -15,12 +15,38 @@ namespace Leaf.Views.Merge;
 /// </summary>
 public partial class MergeEditorView : Window
 {
+    private MergeEditorViewModel? _subscribedVm;
+
     public MergeEditorView()
     {
         InitializeComponent();
+        DataContextChanged += OnDataContextChanged;
     }
 
     private MergeEditorViewModel? Vm => DataContext as MergeEditorViewModel;
+
+    private void OnDataContextChanged(object? sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (_subscribedVm is not null)
+        {
+            _subscribedVm.RangeStatesChanged -= OnRangeStatesChanged;
+        }
+        _subscribedVm = Vm;
+        if (_subscribedVm is not null)
+        {
+            _subscribedVm.RangeStatesChanged += OnRangeStatesChanged;
+        }
+    }
+
+    private void OnRangeStatesChanged(object? sender, EventArgs e)
+    {
+        // Invalidate both input panes so the accept-checkbox glyphs re-render
+        // after any resolution-changing operation (checkbox click, footer
+        // AcceptAllOurs/Theirs, Undo, Redo). RangeStates is a plain dictionary
+        // — this is the designated re-render channel.
+        OursPane.InvalidateVisual();
+        TheirsPane.InvalidateVisual();
+    }
 
     private void OnOursCheckboxToggled(object sender, MergePaneCheckboxEventArgs e)
     {
@@ -67,9 +93,8 @@ public partial class MergeEditorView : Window
             vm.UnresolveCommand.Execute(e.RangeIndex);
         }
 
-        // Trigger re-render since RangeStates is a plain Dictionary (not observable).
-        OursPane.InvalidateVisual();
-        TheirsPane.InvalidateVisual();
+        // RangeStatesChanged fires inside each command, re-rendering is handled by
+        // OnRangeStatesChanged (subscribed from OnDataContextChanged).
     }
 
     private void OnResultTextChanged(object? sender, string text)
