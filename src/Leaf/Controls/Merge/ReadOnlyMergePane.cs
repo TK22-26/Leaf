@@ -1,6 +1,7 @@
 #nullable enable
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -10,6 +11,8 @@ using System.Windows.Threading;
 using Leaf.Models.Merge;
 using Leaf.Services.Merge;
 using Leaf.TextEdit;
+using Leaf.TextEdit.Document;
+using Leaf.TextEdit.Highlighting;
 
 namespace Leaf.Controls.Merge;
 
@@ -47,7 +50,8 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     public static readonly DependencyProperty LinesProperty = DependencyProperty.Register(
         nameof(Lines), typeof(IReadOnlyList<string>), typeof(ReadOnlyMergePane),
         new FrameworkPropertyMetadata(Array.Empty<string>(),
-            FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
+            FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender,
+            OnFilePathOrLinesChanged));
 
     public static readonly DependencyProperty RegionsProperty = DependencyProperty.Register(
         nameof(Regions), typeof(IReadOnlyList<ModifiedBaseRange>), typeof(ReadOnlyMergePane),
@@ -82,6 +86,19 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     public static readonly DependencyProperty WordDiffsProperty = DependencyProperty.Register(
         nameof(WordDiffs), typeof(IReadOnlyDictionary<int, IReadOnlyList<TokenLine>>), typeof(ReadOnlyMergePane),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    /// <summary>
+    /// File path of the conflict this pane is displaying. C1 uses this to
+    /// resolve an <see cref="IHighlightingDefinition"/> by extension through
+    /// <see cref="HighlightingManager.Instance"/> so code lines get token
+    /// colours instead of rendering in a single <see cref="Foreground"/>.
+    /// Null or an unknown extension disables highlighting.
+    /// </summary>
+    public static readonly DependencyProperty FilePathProperty = DependencyProperty.Register(
+        nameof(FilePath), typeof(string), typeof(ReadOnlyMergePane),
+        new FrameworkPropertyMetadata(null,
+            FrameworkPropertyMetadataOptions.AffectsRender,
+            OnFilePathOrLinesChanged));
 
     /// <summary>Shared <see cref="MergePaneGlyphLayout"/>; required before the pane can render.</summary>
     public MergePaneGlyphLayout? Layout
@@ -143,6 +160,16 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     }
 
     /// <summary>
+    /// File path of the conflict this pane is displaying. See
+    /// <see cref="FilePathProperty"/>.
+    /// </summary>
+    public string? FilePath
+    {
+        get => (string?)GetValue(FilePathProperty);
+        set => SetValue(FilePathProperty, value);
+    }
+
+    /// <summary>
     /// Raised when the user toggles the accept-this-side checkbox for a conflict.
     /// Handlers mutate <c>RangeStates</c> on the view-model and push the change
     /// through. The pane does not mutate its own <see cref="RangeStates"/> property.
@@ -188,6 +215,56 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     {
         Focusable = false;
         ClipToBounds = true;
+    }
+
+    // C1 syntax-highlighting bookkeeping. Rebuilt when Lines or FilePath
+    // changes; DrawText consumes _documentHighlighter to produce per-line
+    // token brushes through FormattedText.SetForegroundBrush. When the file
+    // has no known highlighting extension, both fields stay null and the
+    // draw path falls back to the plain Foreground colour.
+    private TextDocument? _highlightDocument;
+    private DocumentHighlighter? _documentHighlighter;
+
+    private static void OnFilePathOrLinesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var pane = (ReadOnlyMergePane)d;
+        pane.RebuildHighlighter();
+    }
+
+    private void RebuildHighlighter()
+    {
+        var definition = ResolveHighlightingDefinition(FilePath);
+        if (definition is null || Lines.Count == 0)
+        {
+            _highlightDocument = null;
+            _documentHighlighter = null;
+            return;
+        }
+        // Stream characters instead of allocating a single joined string —
+        // matters for monorepo-scale conflict files (100k+ lines) where a
+        // string.Join would burn a second copy of the merged content on every
+        // Lines / FilePath change. The highlighter still lazily spans sections
+        // per line; the TextDocument's own offset table is the only unavoidable
+        // linear walk.
+        _highlightDocument = new TextDocument(StreamLinesAsChars(Lines));
+        _documentHighlighter = new DocumentHighlighter(_highlightDocument, definition);
+    }
+
+    private static IEnumerable<char> StreamLinesAsChars(IReadOnlyList<string> lines)
+    {
+        for (int i = 0; i < lines.Count; i++)
+        {
+            foreach (var c in lines[i]) yield return c;
+            if (i < lines.Count - 1) yield return '\n';
+        }
+    }
+
+    internal static IHighlightingDefinition? ResolveHighlightingDefinition(string? filePath)
+    {
+        if (string.IsNullOrEmpty(filePath)) return null;
+        var ext = Path.GetExtension(filePath);
+        if (string.IsNullOrEmpty(ext)) return null;
+        return HighlightingManager.Instance.GetDefinitionByExtension(ext);
     }
 
     /// <summary>
@@ -675,7 +752,30 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
             var line = Lines[i];
             if (line.Length == 0) continue;
             var ft = Layout.BuildFormattedText(line, Foreground);
+            ApplySyntaxHighlighting(ft, lineIndex0: i, lineText: line);
             dc.DrawText(ft, new Point(textX, y));
+        }
+    }
+
+    private void ApplySyntaxHighlighting(FormattedText ft, int lineIndex0, string lineText)
+    {
+        if (_documentHighlighter is null || _highlightDocument is null) return;
+        // HighlightLine / DocumentLine are 1-based; our Lines index is 0-based.
+        var lineNumber1 = lineIndex0 + 1;
+        if (lineNumber1 > _highlightDocument.LineCount) return;
+        var docLine = _highlightDocument.GetLineByNumber(lineNumber1);
+        var highlighted = _documentHighlighter.HighlightLine(lineNumber1);
+        foreach (var section in highlighted.Sections)
+        {
+            var brush = section.Color?.Foreground?.GetBrush(null);
+            if (brush is null) continue;
+            // Section.Offset is document-wide; map to a line-local index for
+            // FormattedText.SetForegroundBrush.
+            var localStart = section.Offset - docLine.Offset;
+            if (localStart < 0 || localStart >= lineText.Length) continue;
+            var localLength = Math.Min(section.Length, lineText.Length - localStart);
+            if (localLength <= 0) continue;
+            ft.SetForegroundBrush(brush, localStart, localLength);
         }
     }
 

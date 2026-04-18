@@ -1,9 +1,11 @@
 #nullable enable
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Leaf.TextEdit;
 using Leaf.TextEdit.Document;
+using Leaf.TextEdit.Highlighting;
 
 namespace Leaf.Controls.Merge;
 
@@ -33,6 +35,27 @@ public sealed class ResultPane : ContentControl
         nameof(Layout), typeof(MergePaneGlyphLayout), typeof(ResultPane),
         new FrameworkPropertyMetadata(null, OnLayoutChanged));
 
+    /// <summary>
+    /// File path of the conflict being rendered. C1 uses this to resolve an
+    /// <see cref="IHighlightingDefinition"/> by extension through AvalonEdit's
+    /// <see cref="HighlightingManager.Instance"/> so the result pane gets
+    /// syntax-coloured code. Null or an unknown extension disables
+    /// highlighting (plain foreground colour).
+    /// </summary>
+    public static readonly DependencyProperty FilePathProperty = DependencyProperty.Register(
+        nameof(FilePath), typeof(string), typeof(ResultPane),
+        new FrameworkPropertyMetadata(null, OnFilePathChanged));
+
+    /// <summary>
+    /// Mirrors the inner <see cref="TextEditor"/>'s <c>TextArea.TextView.ScrollOffset.Y</c>.
+    /// The CodeLens overlay (C1) binds this so its per-conflict bars track
+    /// the result pane's scroll position. Read-only in practice — the pane
+    /// publishes the value; consumers don't write back.
+    /// </summary>
+    public static readonly DependencyProperty VerticalOffsetProperty = DependencyProperty.Register(
+        nameof(VerticalOffset), typeof(double), typeof(ResultPane),
+        new PropertyMetadata(0.0));
+
     public string Text
     {
         get => (string)GetValue(TextProperty);
@@ -43,6 +66,18 @@ public sealed class ResultPane : ContentControl
     {
         get => (MergePaneGlyphLayout?)GetValue(LayoutProperty);
         set => SetValue(LayoutProperty, value);
+    }
+
+    public string? FilePath
+    {
+        get => (string?)GetValue(FilePathProperty);
+        set => SetValue(FilePathProperty, value);
+    }
+
+    public double VerticalOffset
+    {
+        get => (double)GetValue(VerticalOffsetProperty);
+        private set => SetValue(VerticalOffsetProperty, value);
     }
 
     /// <summary>Fires when the user edits the result pane. The string is the full buffer.</summary>
@@ -73,6 +108,11 @@ public sealed class ResultPane : ContentControl
     {
         Content = _editor;
         _editor.TextChanged += OnEditorTextChanged;
+        // Forward the TextView's scroll offset to VerticalOffset so the
+        // CodeLens overlay (and any future chrome) can track pane scrolling
+        // declaratively via WPF bindings rather than hooking the event itself.
+        _editor.TextArea.TextView.ScrollOffsetChanged += (_, _) =>
+            VerticalOffset = _editor.TextArea.TextView.ScrollOffset.Y;
     }
 
     private bool _suppressChangeEvent;
@@ -120,5 +160,25 @@ public sealed class ResultPane : ContentControl
         _editor.FontStyle = layout.FontStyle;
         _editor.FontStretch = layout.FontStretch;
         _editor.Options.IndentationSize = layout.TabSize;
+    }
+
+    private static void OnFilePathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var pane = (ResultPane)d;
+        pane._editor.SyntaxHighlighting = ResolveHighlighting((string?)e.NewValue);
+    }
+
+    /// <summary>
+    /// Resolve the AvalonEdit syntax-highlighting definition for a file path
+    /// by extension. Returns null when <paramref name="filePath"/> is empty or
+    /// its extension has no registered definition — callers should treat null
+    /// as "render in a single foreground colour".
+    /// </summary>
+    internal static IHighlightingDefinition? ResolveHighlighting(string? filePath)
+    {
+        if (string.IsNullOrEmpty(filePath)) return null;
+        var ext = Path.GetExtension(filePath);
+        if (string.IsNullOrEmpty(ext)) return null;
+        return HighlightingManager.Instance.GetDefinitionByExtension(ext);
     }
 }

@@ -99,7 +99,11 @@ public class MergeMotionTests
         {
             if (Application.Current is null)
             {
-                _ = new Application();
+                // Another test class may have raced with us across a different
+                // lock; tolerate the "already created" error rather than
+                // double-creating the AppDomain-wide Application singleton.
+                try { _ = new Application(); }
+                catch (InvalidOperationException) { }
             }
             if (_merged) return;
 
