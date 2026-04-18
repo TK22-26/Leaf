@@ -151,6 +151,9 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     private const double GutterWidth = 48;       // line numbers
     private const double CheckboxSize = 14;      // square
     private const double CheckboxMargin = 4;     // space left of line numbers
+    private const double ChangeBarX = 2;         // 2 px inset from the left edge
+    private const double ChangeBarWidth = 2;     // 2 px bar per plan
+    private const double DeletionCaretHalfHeight = 5; // caret spans 10 px total
 
     private ScrollViewer? _scrollOwner;
     private double _verticalOffset;
@@ -228,14 +231,81 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         // 2. Word-level highlights inside each conflict region on this side.
         DrawWordHighlights(drawingContext, firstVisible, lastVisible);
 
-        // 3. Line numbers gutter.
+        // 3. Per-line change-bars (solid for additions on this side, dashed
+        //    marker for deletions). Drawn before the gutter so line numbers
+        //    sit on top of the bar decoration.
+        DrawChangeBars(drawingContext, firstVisible, lastVisible);
+
+        // 4. Line numbers gutter.
         DrawGutter(drawingContext, firstVisible, lastVisible);
 
-        // 4. Checkboxes (one per conflicting range that intersects the viewport).
+        // 5. Checkboxes (one per conflicting range that intersects the viewport).
         DrawCheckboxes(drawingContext, firstVisible, lastVisible);
 
-        // 5. Text lines.
+        // 6. Text lines.
         DrawText(drawingContext, firstVisible, lastVisible);
+    }
+
+    private void DrawChangeBars(DrawingContext dc, int firstVisible, int lastVisible)
+    {
+        if (Regions is null || Regions.Count == 0) return;
+
+        var barBrush = Side switch
+        {
+            MergePaneSide.Ours => ChangeBarOursBrush,
+            MergePaneSide.Theirs => ChangeBarTheirsBrush,
+            MergePaneSide.Base => ChangeBarBaseBrush,
+            _ => (Brush)Brushes.Transparent,
+        };
+        var dashedPen = Side switch
+        {
+            MergePaneSide.Ours => ChangeBarOursDashedPen,
+            MergePaneSide.Theirs => ChangeBarTheirsDashedPen,
+            MergePaneSide.Base => ChangeBarBaseDashedPen,
+            _ => (Pen?)null,
+        };
+
+        foreach (var range in Regions)
+        {
+            var sideRange = GetSideRange(range);
+            if (sideRange.IsEmpty)
+            {
+                // Deletion marker. sideRange.StartLine is the 1-based line
+                // where the deletion occurred on this side — render a short
+                // dashed caret between the line above and below so the user
+                // sees that lines went missing here.
+                var anchorLine0 = sideRange.StartLine - 1;
+                if (anchorLine0 < firstVisible || anchorLine0 > lastVisible) continue;
+                if (dashedPen is null) continue;
+
+                // Skip deletion markers for auto-merged ranges that also have
+                // no content on the other sides — those aren't meaningful
+                // signals, just noise.
+                if (range.Ours.IsEmpty && range.Theirs.IsEmpty && range.Base.IsEmpty) continue;
+
+                var y = anchorLine0 * LineHeight - _verticalOffset;
+                // 10 px dashed caret centred on the line boundary — tall
+                // enough that the 2 px dash pattern reads as a sequence of
+                // ticks rather than a single blip. Top clamped so the caret
+                // never renders above the viewport.
+                var top = Math.Max(0, y - DeletionCaretHalfHeight);
+                var bottom = y + DeletionCaretHalfHeight;
+                dc.DrawLine(dashedPen, new Point(ChangeBarX, top), new Point(ChangeBarX, bottom));
+            }
+            else
+            {
+                var firstLine0 = sideRange.StartLine - 1;
+                var lastLine0 = sideRange.EndLineExclusive - 2; // inclusive
+                if (lastLine0 < firstVisible || firstLine0 > lastVisible) continue;
+
+                var clippedFirst = Math.Max(firstLine0, firstVisible);
+                var clippedLast = Math.Min(lastLine0, lastVisible);
+                var y = clippedFirst * LineHeight - _verticalOffset;
+                var h = (clippedLast - clippedFirst + 1) * LineHeight;
+                dc.DrawRectangle(barBrush, pen: null,
+                    new Rect(ChangeBarX, y, ChangeBarWidth, h));
+            }
+        }
     }
 
     private void DrawWordHighlights(DrawingContext dc, int firstVisible, int lastVisible)
@@ -352,8 +422,30 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         "Merge.State.Resolved.Color", Color.FromRgb(0x22, 0xC5, 0x5E));
     private static readonly Pen CheckboxStrokePen = FreezePen(new Pen(CheckboxStroke, 1.0));
 
+    // Change-bar brushes + pens per side. Solid for additions, 2-on / 2-off
+    // dashed for the small deletion caret. The dashed pens intentionally reuse
+    // the same brush so the visual language stays coherent across both states.
+    private static readonly SolidColorBrush ChangeBarOursBrush = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.Ours.Accent.Color", Color.FromRgb(0x4A, 0x88, 0xC4));
+    private static readonly SolidColorBrush ChangeBarTheirsBrush = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.Theirs.Accent.Color", Color.FromRgb(0x3D, 0xA0, 0x5C));
+    private static readonly SolidColorBrush ChangeBarBaseBrush = MergePaletteResources.ResolveFrozenBrush(
+        "Merge.Base.Accent.Color", Color.FromRgb(0xB0, 0xB0, 0xB0));
+    private static readonly Pen ChangeBarOursDashedPen = MakeDashedPen(ChangeBarOursBrush);
+    private static readonly Pen ChangeBarTheirsDashedPen = MakeDashedPen(ChangeBarTheirsBrush);
+    private static readonly Pen ChangeBarBaseDashedPen = MakeDashedPen(ChangeBarBaseBrush);
+
     private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
     private static Pen FreezePen(Pen p) { p.Freeze(); return p; }
+    // WPF DashStyle values are multiples of the pen's thickness. Pen thickness
+    // is 2 px, so {1.0, 1.0} gives a 2-on / 2-off pattern. Across the 10 px
+    // caret that renders as three visible ticks (2 px each) separated by two
+    // 2 px gaps — a clearly dashed line, as the plan specifies.
+    private static Pen MakeDashedPen(Brush b) => FreezePen(new Pen(b, ChangeBarWidth)
+    {
+        DashStyle = new DashStyle(new double[] { 1.0, 1.0 }, 0),
+        DashCap = PenLineCap.Flat,
+    });
 
     private void DrawGutter(DrawingContext dc, int firstVisible, int lastVisible)
     {

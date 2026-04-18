@@ -47,6 +47,7 @@ public sealed partial class MergeEditorViewModel
     /// <summary>Guard for concurrent AI calls; the UI disables the button while <c>true</c>.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanRequestAiResolution))]
+    [NotifyPropertyChangedFor(nameof(AiPendingConflictCount))]
     private bool _isAiRequestInFlight;
 
     public bool CanRequestAiResolution => _aiAssistant is not null && Document is not null && !IsAiRequestInFlight;

@@ -59,6 +59,38 @@
                            Text="{Binding ResolvedFiles, StringFormat='{}{0} / '}" FontSize="13"/>
                 <TextBlock VerticalAlignment="Center"
                            Text="{Binding TotalFiles, StringFormat='{}{0} files resolved'}" FontSize="13"/>
+
+                <!-- Conflict-state pills. V2 ships them inline; V3 extracts a
+                     StatusPill UserControl and uses it here + in the merge
+                     status sidebar. Dots are 8 px ellipses pulled from the
+                     Merge.State palette so dark/light swap tracks automatically. -->
+                <StackPanel Orientation="Horizontal" Margin="24,0,0,0" VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                             Fill="{DynamicResource Merge.State.Unresolved}"/>
+                    <TextBlock VerticalAlignment="Center" Margin="6,0,0,0" FontSize="12"
+                               AutomationProperties.AutomationId="Merge.UnresolvedPill"
+                               Text="{Binding UnresolvedConflictCount, StringFormat='Unresolved: {0}'}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                             Fill="{DynamicResource Merge.State.Resolved}"/>
+                    <TextBlock VerticalAlignment="Center" Margin="6,0,0,0" FontSize="12"
+                               AutomationProperties.AutomationId="Merge.ResolvedPill"
+                               Text="{Binding ResolvedConflictCount, StringFormat='Resolved: {0}'}"/>
+                </StackPanel>
+                <!-- AI-pending pill is only meaningful while a request is in
+                     flight. C6 will add persistent per-range AI state; until
+                     then the pill hides at zero rather than showing dead
+                     UI chrome. Visibility binds to the backing guard so the
+                     pill appears as soon as a request kicks off. -->
+                <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center"
+                            Visibility="{Binding IsAiRequestInFlight, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                             Fill="{DynamicResource Merge.State.AiPending}"/>
+                    <TextBlock VerticalAlignment="Center" Margin="6,0,0,0" FontSize="12"
+                               AutomationProperties.AutomationId="Merge.AiPendingPill"
+                               Text="{Binding AiPendingConflictCount, StringFormat='AI-pending: {0}'}"/>
+                </StackPanel>
             </StackPanel>
         </Border>
 
