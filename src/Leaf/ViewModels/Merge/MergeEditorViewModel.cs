@@ -395,6 +395,8 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         _ = ComputeWordDiffsAsync(doc, ct);
         OnPropertyChanged(nameof(CanUndo));
         OnPropertyChanged(nameof(CanRedo));
+        UndoCommand.NotifyCanExecuteChanged();
+        RedoCommand.NotifyCanExecuteChanged();
         NotifyResolutionCountsChanged();
     }
 
@@ -523,8 +525,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         var entry = _undoStack.Pop();
         _redoStack.Push(new ResolutionUndoEntry(CaptureState()));
         RestoreState(entry.Snapshot);
-        OnPropertyChanged(nameof(CanUndo));
-        OnPropertyChanged(nameof(CanRedo));
+        RaiseUndoRedoChanged();
         NotifyResolutionCountsChanged();
     }
 
@@ -535,8 +536,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         var entry = _redoStack.Pop();
         _undoStack.Push(new ResolutionUndoEntry(CaptureState()));
         RestoreState(entry.Snapshot);
-        OnPropertyChanged(nameof(CanUndo));
-        OnPropertyChanged(nameof(CanRedo));
+        RaiseUndoRedoChanged();
         NotifyResolutionCountsChanged();
     }
 
@@ -552,8 +552,21 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     {
         _undoStack.Push(new ResolutionUndoEntry(snapshot));
         _redoStack.Clear();
+        RaiseUndoRedoChanged();
+    }
+
+    /// <summary>
+    /// Fire property-changed for CanUndo/CanRedo AND refresh the command
+    /// CanExecute state. [RelayCommand]-generated commands don't auto-wire
+    /// their CanExecute to the property notifications, so buttons bound to
+    /// the commands stay at their initial IsEnabled state without this call.
+    /// </summary>
+    private void RaiseUndoRedoChanged()
+    {
         OnPropertyChanged(nameof(CanUndo));
         OnPropertyChanged(nameof(CanRedo));
+        UndoCommand.NotifyCanExecuteChanged();
+        RedoCommand.NotifyCanExecuteChanged();
     }
 
     private bool IsResolved(ModifiedBaseRange range)
@@ -570,6 +583,11 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsFullyResolved));
         OnPropertyChanged(nameof(CanMarkResolved));
         OnPropertyChanged(nameof(ComposedText));
+        // [RelayCommand] does not auto-re-evaluate CanExecute on property
+        // changes — it needs an explicit NotifyCanExecuteChanged to refresh
+        // the button's IsEnabled binding. Without this, Mark Resolved stays
+        // disabled after the user's clicks flip IsFullyResolved to true.
+        MarkResolvedCommand.NotifyCanExecuteChanged();
         RangeStatesChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -835,6 +853,11 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanCompleteMerge));
         OnPropertyChanged(nameof(ResolvedCount));
         OnPropertyChanged(nameof(RemainingCount));
+        // See the comment in NotifyResolutionCountsChanged — [RelayCommand]
+        // CanExecute needs explicit NotifyCanExecuteChanged to refresh button
+        // enablement after state mutations.
+        CompleteMergeCommand.NotifyCanExecuteChanged();
+        MarkResolvedCommand.NotifyCanExecuteChanged();
         RefreshConflictBuckets();
     }
 
