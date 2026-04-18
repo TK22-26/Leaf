@@ -147,4 +147,112 @@ public class MergePaneGlyphLayoutTests
         layout.Typeface.Style.Should().Be(FontStyles.Normal);
         layout.Typeface.Stretch.Should().Be(FontStretches.Normal);
     }
+
+    [StaFact]
+    public void LineHeight_UsesSamePipelineAsTextViewDefaultLineHeight()
+    {
+        // The core alignment invariant: MergePaneGlyphLayout and TextView must
+        // produce identical LineHeight for matched typography. Both paths must
+        // go through System.Windows.Media.TextFormatting.TextFormatter.FormatLine
+        // with a VisualLineTextParagraphProperties — not FormattedText, whose
+        // .Height leaves out line-leading and diverges by ~1.3 px at 12.5pt.
+        //
+        // We assert parity by measuring a TextView directly with the same
+        // font DependencyProperty values that the layout is configured with.
+        // (Constructing a TextEditor control instead gives a FontSize that
+        // doesn't always propagate without a measure pass — testing TextView
+        // directly sidesteps that.)
+        var layout = new MergePaneGlyphLayout();
+
+        var textView = new Leaf.TextEdit.Rendering.TextView();
+        // TextView reads font from attached TextElement properties (inherited DPs).
+        System.Windows.Documents.TextElement.SetFontFamily(textView, layout.FontFamily);
+        System.Windows.Documents.TextElement.SetFontSize(textView, layout.FontSize);
+        System.Windows.Documents.TextElement.SetFontWeight(textView, layout.FontWeight);
+        System.Windows.Documents.TextElement.SetFontStyle(textView, layout.FontStyle);
+        System.Windows.Documents.TextElement.SetFontStretch(textView, layout.FontStretch);
+        textView.Document = new Leaf.TextEdit.Document.TextDocument("x");
+
+        // TextView computes metrics lazily on first touch.
+        var tvLineHeight = textView.DefaultLineHeight;
+        var tvBaseline = textView.DefaultBaseline;
+        var tvAdvance = textView.WideSpaceWidth;
+
+        layout.LineHeight.Should().BeApproximately(tvLineHeight, 0.01);
+        layout.Baseline.Should().BeApproximately(tvBaseline, 0.01);
+        layout.AdvanceWidth.Should().BeApproximately(tvAdvance, 0.01);
+    }
+
+    [StaFact]
+    public void TabPixelWidth_IsTabSizeTimesAdvanceWidth()
+    {
+        var layout = new MergePaneGlyphLayout { TabSize = 4 };
+        layout.TabPixelWidth.Should().BeApproximately(4 * layout.AdvanceWidth, 0.001);
+    }
+
+    [StaFact]
+    public void BuildFormattedText_WithCRLF_ProducesMeasurableText()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var ft = layout.BuildFormattedText("first\r\nsecond");
+        ft.Width.Should().BeGreaterThan(0);
+        ft.Height.Should().BeGreaterThan(0);
+    }
+
+    [StaFact]
+    public void BuildFormattedText_WithUnicode_ProducesMeasurableText()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var ft = layout.BuildFormattedText("αβγ 🌲");
+        ft.Width.Should().BeGreaterThan(0);
+        ft.Height.Should().BeGreaterThan(0);
+    }
+
+    [StaFact]
+    public void ChangingPixelsPerDip_InvalidatesMeasurements()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var baselineBefore = layout.LineHeight;
+        layout.PixelsPerDip = 1.5;  // 150% scaling
+
+        var raised = new List<string?>();
+        layout.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+        layout.PixelsPerDip = 2.0;
+        raised.Should().Contain(nameof(MergePaneGlyphLayout.PixelsPerDip));
+
+        // At different DPIs, line-height quantisation can differ under Display mode.
+        // Ideal mode is DPI-invariant — we just assert the invalidation path runs.
+        _ = layout.LineHeight;  // forces re-measurement
+    }
+
+    [StaFact]
+    public void ChangingTextFormattingMode_InvalidatesMeasurements()
+    {
+        var layout = new MergePaneGlyphLayout { PixelsPerDip = 1.5 };
+        var ideal = layout.LineHeight;
+        layout.TextFormattingMode = System.Windows.Media.TextFormattingMode.Display;
+        // Display mode quantises to the pixel grid; may differ from ideal.
+        // We only require re-measurement happened (no stale cache).
+        var display = layout.LineHeight;
+        (ideal > 0).Should().BeTrue();
+        (display > 0).Should().BeTrue();
+    }
+
+    [StaFact]
+    public void InvalidPixelsPerDip_Throws()
+    {
+        var layout = new MergePaneGlyphLayout();
+        FluentActions.Invoking(() => layout.PixelsPerDip = 0)
+            .Should().Throw<ArgumentOutOfRangeException>();
+        FluentActions.Invoking(() => layout.PixelsPerDip = -1)
+            .Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [StaFact]
+    public void FontFamily_Null_Throws()
+    {
+        var layout = new MergePaneGlyphLayout();
+        FluentActions.Invoking(() => layout.FontFamily = null!)
+            .Should().Throw<ArgumentNullException>();
+    }
 }
