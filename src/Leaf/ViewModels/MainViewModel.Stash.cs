@@ -92,7 +92,8 @@ public partial class MainViewModel
                     var stashName = !string.IsNullOrEmpty(selectedStash.MessageShort)
                         ? $"Stash: {selectedStash.MessageShort}"
                         : "Stashed changes";
-                    var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, _dispatcherService, SelectedRepository.Path)
+                    var conflictViewModel = new ViewModels.Merge.MergeEditorViewModel(
+                        _gitService, _clipboardService, _mergeEngine, SelectedRepository.Path)
                     {
                         SourceBranch = stashName,
                         TargetBranch = SelectedRepository.CurrentBranch ?? "HEAD",
@@ -101,7 +102,7 @@ public partial class MainViewModel
                     };
                     await conflictViewModel.LoadConflictsAsync();
 
-                    var conflictView = new Views.ConflictResolutionView
+                    var conflictView = new Views.Merge.MergeEditorView
                     {
                         DataContext = conflictViewModel,
                     };
@@ -119,6 +120,10 @@ public partial class MainViewModel
                         {
                             StatusMessage = "Stash pop aborted";
                         }
+                        // Dispose the local VM — not routed through MainViewModel's
+                        // MergeConflictResolutionViewModel lifecycle, so no other
+                        // code path will release the build-CTS it holds.
+                        conflictViewModel.Dispose();
                         await RefreshAsync();
                     };
 
