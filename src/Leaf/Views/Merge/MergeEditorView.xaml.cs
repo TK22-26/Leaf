@@ -103,6 +103,17 @@ public partial class MergeEditorView : Window
         }
     }
 
+    /// <summary>
+    /// Phase 6: reset the image pane's viewport (zoom + pan) so a user who's
+    /// panned the image off-screen can recover without switching files.
+    /// Mode, swipe, onion-skin are preserved — the common "lost the image"
+    /// case is a zoom/pan accident, not a mode choice.
+    /// </summary>
+    private void OnResetImageView_Click(object sender, RoutedEventArgs e)
+    {
+        Vm?.ImageViewport?.ResetView();
+    }
+
     private void OnAiError(object? sender, string message)
     {
         MessageBox.Show(

@@ -1,5 +1,7 @@
 #nullable enable
 using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using FluentAssertions;
 using Leaf.Controls.Merge;
 using Xunit;
@@ -79,5 +81,34 @@ public class ImageViewportStateTests
         var vp = new ImageViewportState();
         vp.Pan = new Point(10, 20);
         vp.Pan.Should().Be(new Point(10, 20));
+    }
+
+    [Fact]
+    public void ClampedNoOp_DoesNotFirePropertyChanged()
+    {
+        var vp = new ImageViewportState { Zoom = 1000 }; // clamps to 32
+        var fires = new List<string?>();
+        vp.PropertyChanged += (_, e) => fires.Add(e.PropertyName);
+        vp.Zoom = 500; // also clamps to 32 — value unchanged, no event
+        fires.Should().NotContain(nameof(ImageViewportState.Zoom));
+    }
+
+    [Fact]
+    public void ResetView_ReturnsZoomAndPanToDefaults_PreservingModeAndSliders()
+    {
+        var vp = new ImageViewportState
+        {
+            Zoom = 4.0,
+            Pan = new Point(120, -50),
+            Mode = ImageMergeMode.Overlay,
+            SwipeRatio = 0.25,
+            OnionSkinOpacity = 0.75,
+        };
+        vp.ResetView();
+        vp.Zoom.Should().Be(1.0);
+        vp.Pan.Should().Be(default(Point));
+        vp.Mode.Should().Be(ImageMergeMode.Overlay);
+        vp.SwipeRatio.Should().Be(0.25);
+        vp.OnionSkinOpacity.Should().Be(0.75);
     }
 }

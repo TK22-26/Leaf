@@ -62,6 +62,17 @@ public sealed class ImageViewportState : INotifyPropertyChanged
         set => SetField(ref _onionSkinOpacity, Math.Max(0.0, Math.Min(1.0, value)));
     }
 
+    /// <summary>
+    /// Restore zoom + pan to defaults so the user can re-centre the image
+    /// after panning it off-screen. Mode, swipe, onion-skin are preserved —
+    /// the common "lost the image" case is a zoom/pan accident, not mode.
+    /// </summary>
+    public void ResetView()
+    {
+        Zoom = 1.0;
+        Pan = default;
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)

@@ -30,14 +30,24 @@ public sealed class ImageConflictPane : FrameworkElement
     private BitmapSource? _baseBitmap;
     private WriteableBitmap? _differenceCache;
     private Size _differenceCacheKey;
+    /// <summary>
+    /// True while <see cref="StartDifferenceBuildAsync"/> is computing a fresh
+    /// diff bitmap on the thread pool. Prevents duplicate kicks and drives the
+    /// "Computing difference..." placeholder text.
+    /// </summary>
+    private bool _differenceBuildInFlight;
 
     private const double ModeBarHeight = 36.0;
     private static readonly Brush BackgroundBrush = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
     private static readonly Brush GridBrush = new SolidColorBrush(Color.FromArgb(0x22, 0x80, 0x80, 0x80));
     private static readonly Brush TextBrush = new SolidColorBrush(Color.FromRgb(0xD0, 0xD0, 0xD0));
     private static readonly Brush ErrorBrush = new SolidColorBrush(Color.FromRgb(0xE5, 0x8A, 0x8A));
+    private static readonly Brush ModeBarBrush = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x25));
+    private static readonly Brush CornerLabelBrush = new SolidColorBrush(Color.FromArgb(0xB0, 0x00, 0x00, 0x00));
     private static readonly Pen DividerPen = new(
         new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)), 1.0);
+    private static readonly Pen SwipeDividerPen = new(
+        new SolidColorBrush(Color.FromRgb(0xFF, 0xC4, 0x4D)), 2.0);
     private static readonly Typeface LabelTypeface = new("Segoe UI");
 
     static ImageConflictPane()
@@ -46,7 +56,10 @@ public sealed class ImageConflictPane : FrameworkElement
         GridBrush.Freeze();
         TextBrush.Freeze();
         ErrorBrush.Freeze();
+        ModeBarBrush.Freeze();
+        CornerLabelBrush.Freeze();
         DividerPen.Freeze();
+        SwipeDividerPen.Freeze();
     }
 
     public static readonly DependencyProperty PayloadProperty = DependencyProperty.Register(
@@ -75,6 +88,13 @@ public sealed class ImageConflictPane : FrameworkElement
     {
         Focusable = true;
         Cursor = Cursors.Hand;
+        // Unsubscribe from the viewport when the pane leaves the visual tree so
+        // a closed merge window doesn't keep the pane alive via the still-alive
+        // VM's ImageViewportState.PropertyChanged delegate.
+        Unloaded += (_, _) =>
+        {
+            if (Viewport is { } vp) vp.PropertyChanged -= OnViewportPropertyChanged;
+        };
     }
 
     private static void OnPayloadChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -95,12 +115,9 @@ public sealed class ImageConflictPane : FrameworkElement
 
     private void OnViewportPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // Invalidate the difference cache whenever mode changes — the cache
-        // isn't mode-specific but we only use it in Difference mode.
-        if (e.PropertyName == nameof(ImageViewportState.Mode))
-        {
-            _differenceCache = null;
-        }
+        // The difference cache is keyed on natural pixel size — mode/zoom/pan
+        // don't invalidate it. Payload changes do; those go through
+        // RebuildBitmaps which nulls the cache directly.
         InvalidateVisual();
     }
 
@@ -139,11 +156,28 @@ public sealed class ImageConflictPane : FrameworkElement
     {
         base.OnMouseWheel(e);
         if (Viewport is null) return;
-        // Zoom centred on the cursor: the anchor before zoom maps to the same
-        // screen position after zoom. delta > 0 = wheel up = zoom in.
+        // Zoom centred on the cursor: the image-space point under the cursor
+        // must stay under the cursor after the zoom changes. Solve for the
+        // new pan that keeps that invariant: cursor = pan + zoom * imagePoint.
+        // Since `cursor` is fixed and imagePoint is fixed, newPan + newZoom *
+        // imagePoint = oldPan + oldZoom * imagePoint, so
+        // newPan = oldPan + (oldZoom - newZoom) * imagePoint. imagePoint is
+        // (cursor - oldPan) / oldZoom, which after substitution reduces to
+        // newPan = cursor - (newZoom/oldZoom) * (cursor - oldPan).
+        var cursor = e.GetPosition(this);
         var factor = e.Delta > 0 ? 1.1 : 1.0 / 1.1;
-        var newZoom = Viewport.Zoom * factor;
-        Viewport.Zoom = newZoom;
+        var oldZoom = Viewport.Zoom;
+        var requestedZoom = oldZoom * factor;
+        // Assign first so the VP clamp applies, then read back the clamped value.
+        Viewport.Zoom = requestedZoom;
+        var newZoom = Viewport.Zoom;
+        if (!Equals(oldZoom, newZoom))
+        {
+            var ratio = newZoom / oldZoom;
+            Viewport.Pan = new Point(
+                cursor.X - ratio * (cursor.X - Viewport.Pan.X),
+                cursor.Y - ratio * (cursor.Y - Viewport.Pan.Y));
+        }
         e.Handled = true;
     }
 
@@ -182,6 +216,16 @@ public sealed class ImageConflictPane : FrameworkElement
             ReleaseMouseCapture();
             e.Handled = true;
         }
+    }
+
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        // Capture can be revoked externally (another element calls CaptureMouse,
+        // focus churn, etc.). Without clearing `_panning` here, the next
+        // MouseMove would pan from the stale origin and snap the image. Reset
+        // so the next click starts a fresh drag.
+        base.OnLostMouseCapture(e);
+        _panning = false;
     }
 
     protected override void OnRender(DrawingContext dc)
@@ -266,7 +310,7 @@ public sealed class ImageConflictPane : FrameworkElement
         // the XAML footer (bound to Viewport.Mode); this label gives at-a-glance
         // feedback from inside the pane.
         var bar = new Rect(0, 0, ActualWidth, ModeBarHeight);
-        dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x25)), null, bar);
+        dc.DrawRectangle(ModeBarBrush, null, bar);
         var label = mode switch
         {
             ImageMergeMode.SideBySide => "Side by side",
@@ -336,23 +380,34 @@ public sealed class ImageConflictPane : FrameworkElement
         dc.PushClip(new RectangleGeometry(rightHalf));
         try { DrawImageFit(dc, _theirsBitmap, area, vp, "Theirs"); }
         finally { dc.Pop(); }
-        dc.DrawLine(
-            new Pen(new SolidColorBrush(Color.FromRgb(0xFF, 0xC4, 0x4D)), 2.0),
-            new Point(split, area.Top), new Point(split, area.Bottom));
+        dc.DrawLine(SwipeDividerPen, new Point(split, area.Top), new Point(split, area.Bottom));
     }
 
     private void DrawDifference(DrawingContext dc, Rect area, ImageViewportState vp)
     {
-        // Per-pixel absolute difference ours − theirs. Cached in a
-        // WriteableBitmap keyed on the natural image size so a zoom/pan
-        // doesn't rebuild the pixels.
         if (_oursBitmap is null || _theirsBitmap is null)
         {
             DrawMessage(dc, "Difference needs both ours and theirs.", TextBrush);
             return;
         }
-        var diff = BuildOrReuseDifference(_oursBitmap, _theirsBitmap);
-        DrawImageFit(dc, diff, area, vp, "Difference (|ours - theirs|)");
+
+        var key = new Size(
+            Math.Max(_oursBitmap.PixelWidth, _theirsBitmap.PixelWidth),
+            Math.Max(_oursBitmap.PixelHeight, _theirsBitmap.PixelHeight));
+        if (_differenceCache is not null && _differenceCacheKey == key)
+        {
+            DrawImageFit(dc, _differenceCache, area, vp, "Difference (|ours - theirs|)");
+            return;
+        }
+
+        // Cache miss — render a placeholder and kick the pixel-math off the UI
+        // thread. A 4K diff is ~170MB and ~30M iterations; doing that inline
+        // freezes the merge editor for hundreds of milliseconds.
+        DrawMessage(dc, "Computing difference…", TextBrush);
+        if (!_differenceBuildInFlight)
+        {
+            StartDifferenceBuild(_oursBitmap, _theirsBitmap, key);
+        }
     }
 
     private void DrawOverlay(DrawingContext dc, Rect area, ImageViewportState vp)
@@ -369,73 +424,125 @@ public sealed class ImageConflictPane : FrameworkElement
         finally { dc.Pop(); }
     }
 
-    private WriteableBitmap BuildOrReuseDifference(BitmapSource ours, BitmapSource theirs)
+    /// <summary>
+    /// Spin up a thread-pool task that computes the difference bitmap for the
+    /// given pair of frozen <see cref="BitmapSource"/>s, then assigns it to
+    /// <see cref="_differenceCache"/> on the UI thread. Caller must have
+    /// checked that the cache is stale — this method doesn't gate on cache.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// BitmapSource is cross-thread-safe after <see cref="Freezable.Freeze"/>,
+    /// which <see cref="DecodeBytes"/> does unconditionally; FormatConvertedBitmap
+    /// produces another Freezable we freeze on the pool thread. That lets the
+    /// heavy pixel loop run off the dispatcher without touching shared state.
+    /// </para>
+    /// <para>
+    /// We capture the local Payload on entry so a rapid file-switch cascade
+    /// that replaces <see cref="Payload"/> mid-compute causes the result to be
+    /// discarded when it finally arrives — no stale bitmap leaking through.
+    /// </para>
+    /// </remarks>
+    private void StartDifferenceBuild(BitmapSource ours, BitmapSource theirs, Size key)
     {
-        // Cache until the natural sizes change.
-        var key = new Size(
-            Math.Max(ours.PixelWidth, theirs.PixelWidth),
-            Math.Max(ours.PixelHeight, theirs.PixelHeight));
-        if (_differenceCache is not null && _differenceCacheKey == key)
-            return _differenceCache;
-
+        _differenceBuildInFlight = true;
+        var startedPayload = Payload;
         int w = (int)key.Width;
         int h = (int)key.Height;
-        var stride = w * 4;
-        var buf = new byte[stride * h];
 
-        // Copy both sides into BGRA32 at a common size, then |ours - theirs|
-        // per channel. Pads the smaller side with transparent pixels.
-        CopyToBgra(ours, w, h, out var oursBuf);
-        CopyToBgra(theirs, w, h, out var theirsBuf);
-
-        for (int i = 0; i < buf.Length; i += 4)
+        System.Threading.Tasks.Task.Run(() =>
         {
-            byte b = (byte)Math.Abs(oursBuf[i] - theirsBuf[i]);
-            byte g = (byte)Math.Abs(oursBuf[i + 1] - theirsBuf[i + 1]);
-            byte r = (byte)Math.Abs(oursBuf[i + 2] - theirsBuf[i + 2]);
-            byte a = (byte)Math.Max(oursBuf[i + 3], theirsBuf[i + 3]);
-            // Amplify so near-identical pixels don't look totally black.
-            buf[i] = (byte)Math.Min(255, b * 4);
-            buf[i + 1] = (byte)Math.Min(255, g * 4);
-            buf[i + 2] = (byte)Math.Min(255, r * 4);
-            buf[i + 3] = a;
-        }
-
-        var wb = new WriteableBitmap(w, h, ours.DpiX, ours.DpiY, PixelFormats.Bgra32, null);
-        wb.WritePixels(new Int32Rect(0, 0, w, h), buf, stride, 0);
-        wb.Freeze();
-        _differenceCache = wb;
-        _differenceCacheKey = key;
-        return wb;
+            WriteableBitmap? result = null;
+            try
+            {
+                var stride = w * 4;
+                var oursBuf = ExtractBgra(ours, w, h);
+                var theirsBuf = ExtractBgra(theirs, w, h);
+                var buf = new byte[stride * h];
+                for (int i = 0; i < buf.Length; i += 4)
+                {
+                    byte b = (byte)Math.Abs(oursBuf[i] - theirsBuf[i]);
+                    byte g = (byte)Math.Abs(oursBuf[i + 1] - theirsBuf[i + 1]);
+                    byte r = (byte)Math.Abs(oursBuf[i + 2] - theirsBuf[i + 2]);
+                    byte a = (byte)Math.Max(oursBuf[i + 3], theirsBuf[i + 3]);
+                    // Amplify 4× so a one-bit change is visible against a dark
+                    // background. Any channel can saturate to 255 without losing
+                    // information — the exact magnitude matters less than the
+                    // visual signal of "something changed here".
+                    buf[i] = (byte)Math.Min(255, b * 4);
+                    buf[i + 1] = (byte)Math.Min(255, g * 4);
+                    buf[i + 2] = (byte)Math.Min(255, r * 4);
+                    buf[i + 3] = a;
+                }
+                // WriteableBitmap construction must happen on the UI thread
+                // because WriteableBitmap itself is a DispatcherObject.
+                // Marshal the raw buffer across and build there.
+                var dpiX = ours.DpiX;
+                var dpiY = ours.DpiY;
+                Dispatcher.InvokeAsync(() =>
+                {
+                    try
+                    {
+                        // If the payload changed while we were computing, drop
+                        // the stale result — the next OnRender will kick a new build.
+                        if (Payload != startedPayload) return;
+                        var wb = new WriteableBitmap(w, h, dpiX, dpiY, PixelFormats.Bgra32, null);
+                        wb.WritePixels(new Int32Rect(0, 0, w, h), buf, stride, 0);
+                        wb.Freeze();
+                        _differenceCache = wb;
+                        _differenceCacheKey = key;
+                        InvalidateVisual();
+                    }
+                    finally { _differenceBuildInFlight = false; }
+                });
+            }
+            catch (Exception ex)
+            {
+                // Pool-thread failure must not take down the app. Clear the
+                // in-flight flag from the UI thread, log, and let the pane
+                // re-show the "Computing…" placeholder which a retry will clear.
+                Dispatcher.InvokeAsync(() =>
+                {
+                    _differenceBuildInFlight = false;
+                    InvalidateVisual();
+                });
+                Leaf.Services.Log.Warn("Merge", $"Difference build failed: {ex.GetType().Name}: {ex.Message}");
+                _ = result; // keep compiler happy about the unused local
+            }
+        });
     }
 
-    private static void CopyToBgra(BitmapSource src, int w, int h, out byte[] buf)
+    /// <summary>
+    /// Convert <paramref name="src"/> to BGRA32 + copy its pixels into a
+    /// buffer of size <paramref name="w"/>×<paramref name="h"/>, centring
+    /// the source when sizes differ. Runs off the UI thread.
+    /// Visible to tests so the size-adjustment math can be exercised without
+    /// standing up a full pane + visual tree.
+    /// </summary>
+    internal static byte[] ExtractBgra(BitmapSource src, int w, int h)
     {
         var stride = w * 4;
-        buf = new byte[stride * h];
+        var buf = new byte[stride * h];
         var converted = new FormatConvertedBitmap(src, PixelFormats.Bgra32, null, 0);
+        if (converted.CanFreeze) converted.Freeze();
         int sw = converted.PixelWidth, sh = converted.PixelHeight;
         var srcBuf = new byte[sw * 4 * sh];
         converted.CopyPixels(srcBuf, sw * 4, 0);
-        // Centre the source in the destination so differently-sized images
-        // align at their centres (common case: an icon grew by a few pixels).
+        // Centre the smaller side so a few-pixel growth (icon resize) stays aligned.
         int ox = (w - sw) / 2, oy = (h - sh) / 2;
         for (int y = 0; y < sh; y++)
         {
             int dy = y + oy;
             if (dy < 0 || dy >= h) continue;
-            for (int x = 0; x < sw; x++)
-            {
-                int dx = x + ox;
-                if (dx < 0 || dx >= w) continue;
-                int si = (y * sw + x) * 4;
-                int di = (dy * w + dx) * 4;
-                buf[di] = srcBuf[si];
-                buf[di + 1] = srcBuf[si + 1];
-                buf[di + 2] = srcBuf[si + 2];
-                buf[di + 3] = srcBuf[si + 3];
-            }
+            int srcRow = y * sw * 4;
+            int dstRow = (dy * w + Math.Max(0, ox)) * 4;
+            int copyX = Math.Max(0, ox);
+            int copyLen = Math.Min(sw, w - copyX) * 4;
+            if (copyLen <= 0) continue;
+            int srcStart = srcRow + Math.Max(0, -ox) * 4;
+            Buffer.BlockCopy(srcBuf, srcStart, buf, dstRow, copyLen);
         }
+        return buf;
     }
 
     private void DrawImageFit(
@@ -475,8 +582,7 @@ public sealed class ImageConflictPane : FrameworkElement
             VisualTreeHelper.GetDpi(this).PixelsPerDip);
         var pad = 4.0;
         var bg = new Rect(area.Left + 6, area.Top + 6, ft.Width + pad * 2, ft.Height + pad);
-        dc.DrawRectangle(
-            new SolidColorBrush(Color.FromArgb(0xB0, 0x00, 0x00, 0x00)), null, bg);
+        dc.DrawRectangle(CornerLabelBrush, null, bg);
         dc.DrawText(ft, new Point(bg.Left + pad, bg.Top + pad / 2));
     }
 

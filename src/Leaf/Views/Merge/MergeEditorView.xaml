@@ -302,6 +302,10 @@
                                 Minimum="0" Maximum="1" TickFrequency="0.01"
                                 Value="{Binding ImageViewport.OnionSkinOpacity, Mode=TwoWay}"
                                 VerticalAlignment="Center"/>
+                        <Button Margin="24,0,0,0" Padding="10,4"
+                                Click="OnResetImageView_Click"
+                                ToolTip="Reset zoom and pan"
+                                Content="Reset View"/>
                     </StackPanel>
                 </Border>
 

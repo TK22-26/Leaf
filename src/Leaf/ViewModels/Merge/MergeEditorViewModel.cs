@@ -328,23 +328,22 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
             Document = null;
             RangeStates.Clear();
             _lastBuiltFilePath = filePath;
-            // Phase 6: hydrate the ImagePayload when an image service is available.
-            // On the UI thread because the decoder tests in Phase 6 run on the
-            // pane's OnRender pass — the bytes load is cheap (string fetch +
-            // magic-byte sniff, no decode) so no Task.Run needed. Also set the
-            // viewport back to defaults for each new file so mode/zoom don't
-            // bleed between images.
+            // Phase 6: hydrate the ImagePayload and reset the viewport for the
+            // new file. Clear them first so a load failure below doesn't leave
+            // stale state from a prior file on screen. The image-bytes load is
+            // cheap (git show + magic-byte sniff, no decode) so no Task.Run
+            // needed — decoding happens inside the pane's Payload setter.
+            ImagePayload = null;
+            ImageViewport = new Leaf.Controls.Merge.ImageViewportState();
             if (_imageService is not null)
             {
                 try
                 {
                     ImagePayload = _imageService.Load(_repoPath, filePath);
-                    ImageViewport = new Leaf.Controls.Merge.ImageViewportState();
                 }
                 catch (Exception ex)
                 {
                     Log.Warn("Merge", $"Image payload load failed for {filePath}: {ex.Message}");
-                    ImagePayload = null;
                 }
             }
             return;
