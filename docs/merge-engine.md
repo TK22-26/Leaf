@@ -247,8 +247,9 @@ Stripped on the way in:
 Added on the way out:
 
 - Virtualisation-aware public coordinate primitives on `TextView`:
-  `GetVisualTop(int lineIndex)`, `DefaultLineHeight`, `TotalContentHeight`,
-  `LineHitTest(double y)` — all return valid values for off-screen lines.
+  `GetVisualTopByDocumentLine(int line)`, `DefaultLineHeight`,
+  `TotalContentHeight`, `LineHitTest(double y)` — all return valid values
+  for off-screen lines.
   These are what the `PaneConnectionCanvas` and `ConflictMinimap` sample.
 - `MergePaneGlyphLayout` — single source of truth for font family, size,
   line height, tab stops, indent guides. Both `ReadOnlyMergePane`
@@ -618,9 +619,11 @@ If you're extending the merge engine, here's where to start:
 |---|---|---|
 | Merge engine | `tests/Leaf.Tests/Services/Merge/GitMergeFileEngineTests.cs` | fixture-based |
 | Zdiff3 parser | `tests/Leaf.Tests/Services/Merge/ConflictMarkerParserTests.cs` | edge cases + CRLF + unicode |
-| Composition | `tests/Leaf.Tests/Models/Merge/MergeDocumentTests.cs` | round-trip, ordering |
+| Composition | `tests/Leaf.Tests/Models/Merge/MergeDocumentComposeTests.cs` | round-trip, ordering |
+| Composition invariants | `…/Models/Merge/MergeDocumentInvariantsTests.cs` | 10 tests (Phase 7) |
+| Compose perf | `…/Models/Merge/MergeDocumentPerfSmokeTests.cs` | 2 smoke tests (Phase 7) |
 | Commit gate | `tests/Leaf.Tests/ViewModels/Merge/MergeEditorViewModelGateTests.cs` | 8 tests |
-| Navigation | `…/MergeEditorViewModelNavigationTests.cs` | 10 tests |
+| Navigation | `…/MergeEditorViewModelNavigationTests.cs` | 9 tests |
 | AI (VM) | `…/MergeEditorViewModelAiTests.cs` | 10 tests incl. context-slice edges |
 | AI (transport) | `…/Services/Merge/McpMergeAssistantTests.cs` | 10 tests incl. Win32 wrap + broken-pipe |
 | Word diff | `…/Services/Merge/WordDiffServiceTests.cs` | token splits + unicode |

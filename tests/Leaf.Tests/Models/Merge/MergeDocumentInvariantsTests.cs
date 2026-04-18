@@ -89,13 +89,27 @@ public class MergeDocumentInvariantsTests
         var ranges = new[] { MakeConflictRange(0, 1, "o", "t") };
         var initial = "<<<<<<< HEAD\no\n|||||||\n=======\nt\n>>>>>>> incoming\n";
         var doc = BuildDoc(ranges, initial);
-        doc.ComposeResolvedText(new Dictionary<int, ResolutionState>())
-            .Should().Contain("<<<<<<<").And.Contain("=======").And.Contain(">>>>>>>")
-            .And.Contain("o").And.Contain("t");
-        doc.ComposeResolvedText(
-                new Dictionary<int, ResolutionState> { { 0, ResolutionState.Unresolved.Instance } })
-            .Should().Contain("<<<<<<<").And.Contain("=======").And.Contain(">>>>>>>")
-            .And.Contain("o").And.Contain("t");
+        AssertHasZdiff3Triad(doc.ComposeResolvedText(new Dictionary<int, ResolutionState>()));
+        AssertHasZdiff3Triad(doc.ComposeResolvedText(
+                new Dictionary<int, ResolutionState> { { 0, ResolutionState.Unresolved.Instance } }));
+    }
+
+    /// <summary>
+    /// Assert the text contains a structural zdiff3 triad: opener followed by
+    /// separator followed by closer. Tightens the assertion from plain Contain
+    /// (which would accept any permutation of the three tokens).
+    /// </summary>
+    private static void AssertHasZdiff3Triad(string text)
+    {
+        var opener = text.IndexOf("<<<<<<<", StringComparison.Ordinal);
+        var separator = text.IndexOf("=======", StringComparison.Ordinal);
+        var closer = text.IndexOf(">>>>>>>", StringComparison.Ordinal);
+        opener.Should().BeGreaterThanOrEqualTo(0);
+        separator.Should().BeGreaterThan(opener,
+            "separator must appear after opener in a valid zdiff3 triad");
+        closer.Should().BeGreaterThan(separator,
+            "closer must appear after separator in a valid zdiff3 triad");
+        text.Should().Contain("o").And.Contain("t");
     }
 
     [Fact]

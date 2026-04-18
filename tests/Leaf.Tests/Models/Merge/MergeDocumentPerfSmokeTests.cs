@@ -11,9 +11,11 @@ namespace Leaf.Tests.Models.Merge;
 /// Smoke tests for the composition hot path. The full engine is shell-out
 /// based so its cost is dominated by <c>git merge-file</c>; what we exercise
 /// here is the in-memory walker — the part that runs on every resolution-state
-/// change. A slow walker means sluggish UI on every click. Budget: 20 ms for
-/// 500 conflicts in a 5 000-line document. Plenty of headroom above that is
-/// fine; we just want to catch pathological O(n²) regressions.
+/// change. A slow walker means sluggish UI on every click. Budget: 50 ms for
+/// 500 conflicts in a ~5 400-line document. The measured average on a dev
+/// machine is ≈0.2 ms — the loose budget is deliberately set to avoid flakiness
+/// on slow CI hardware; the goal is to catch pathological O(n²) regressions,
+/// not to benchmark tightly.
 /// </summary>
 public class MergeDocumentPerfSmokeTests
 {
