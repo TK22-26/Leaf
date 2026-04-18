@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.TextFormatting;
+using Leaf.Controls.Merge;
 using Leaf.TextEdit.Rendering;
 
 namespace Leaf.TextEdit;
@@ -50,55 +51,25 @@ file static class MergeTypographyKeys
 public sealed class MergePaneGlyphLayout : INotifyPropertyChanged
 {
     /// <summary>
-    /// Hard-coded fallback font family used when <c>Application.Current</c> is
-    /// null (unit tests) or the typography resource dictionary has not been
-    /// merged yet. The pack URI resolves the embedded JetBrains Mono, with
-    /// Consolas and Courier New covering environments where the embed failed
-    /// to register.
+    /// Default monospaced font — resolved from the merge palette via
+    /// <see cref="MergePaletteResources.Resolve{T}"/>. The palette XAML is the
+    /// single source of truth for font family; this property re-resolves on
+    /// every access so V8's live theme swap will track without any caching
+    /// invalidation needed here.
     /// </summary>
-    private static readonly FontFamily FallbackFontFamily =
-        new("pack://application:,,,/Resources/Fonts/#JetBrains Mono, Consolas, Courier New");
+    public static FontFamily DefaultFontFamily =>
+        MergePaletteResources.Resolve<FontFamily>(MergeTypographyKeys.CodeFontFamily);
 
     /// <summary>
-    /// Hard-coded fallback font size in device-independent pixels. Matches
-    /// <c>Merge.Code.Normal.Size</c> in <c>Resources/Merge/MergeTypography.xaml</c>
-    /// and the Fluent 2 code-ramp recommendation. WPF interprets a raw XAML
-    /// <c>FontSize</c> as DIPs (not points), so the numeric value carries through.
+    /// Default font size in device-independent pixels. Resolved from the
+    /// palette via <see cref="MergePaletteResources.Resolve{T}"/>. WPF
+    /// interprets a raw XAML <c>FontSize</c> as DIPs (not points).
     /// </summary>
-    private const double FallbackFontSize = 13.0;
-
-    /// <summary>
-    /// Default monospaced font used when no repo-specific override is set.
-    /// Resolves <c>Merge.FontFamily.Code</c> from <c>Application.Current.Resources</c>
-    /// so the font tracks the palette dictionary — falls back to
-    /// <see cref="FallbackFontFamily"/> when no application context exists
-    /// (unit tests instantiate the layout without <c>Application.Run</c>).
-    /// </summary>
-    public static FontFamily DefaultFontFamily => ResolveResource(
-        MergeTypographyKeys.CodeFontFamily,
-        FallbackFontFamily);
-
-    /// <summary>
-    /// Default font size in device-independent pixels. Resolves
-    /// <c>Merge.Code.Normal.Size</c> from <c>Application.Current.Resources</c>,
-    /// falling back to <see cref="FallbackFontSize"/> when no application
-    /// context exists.
-    /// </summary>
-    public static double DefaultFontSize => ResolveResource(
-        MergeTypographyKeys.CodeNormalSize,
-        FallbackFontSize);
+    public static double DefaultFontSize =>
+        MergePaletteResources.Resolve<double>(MergeTypographyKeys.CodeNormalSize);
 
     /// <summary>Default tab width in character columns (each column is one <see cref="AdvanceWidth"/> wide).</summary>
     public const int DefaultTabSize = 4;
-
-    private static T ResolveResource<T>(string key, T fallback)
-    {
-        if (Application.Current is { } app && app.TryFindResource(key) is T match)
-        {
-            return match;
-        }
-        return fallback;
-    }
 
     private FontFamily _fontFamily = DefaultFontFamily;
     private double _fontSize = DefaultFontSize;

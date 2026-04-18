@@ -97,20 +97,15 @@ public sealed class ConflictMinimap : FrameworkElement
     // state colours from the central palette and applies per-swatch alpha so
     // stacked tints remain legible against the unchanged-grey backdrop.
     private static readonly Brush UnchangedBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color", Color.FromRgb(0x80, 0x80, 0x80)),
-        0x22)));
+        MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color"), 0x22)));
     private static readonly Brush OursBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Ours.Border.Color", Color.FromRgb(0x2B, 0x4A, 0x6E)),
-        0xAA)));
+        MergePaletteResources.ResolveColor("Merge.Ours.Border.Color"), 0xAA)));
     private static readonly Brush TheirsBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color", Color.FromRgb(0x1A, 0x50, 0x35)),
-        0xAA)));
+        MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color"), 0xAA)));
     private static readonly Brush UnresolvedBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.State.Unresolved.Color", Color.FromRgb(0xE0, 0x44, 0x44)),
-        0xDD)));
+        MergePaletteResources.ResolveColor("Merge.State.Unresolved.Color"), 0xDD)));
     private static readonly Brush ResolvedBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.State.Resolved.Color", Color.FromRgb(0x22, 0xC5, 0x5E)),
-        0xDD)));
+        MergePaletteResources.ResolveColor("Merge.State.Resolved.Color"), 0xDD)));
 
     private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
 

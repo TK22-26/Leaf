@@ -400,37 +400,37 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     // the solid state colour.
     private static readonly SolidColorBrush ResolvedOverlayBrush = Freeze(new SolidColorBrush(
         MergePaletteResources.WithAlpha(
-            MergePaletteResources.ResolveColor("Merge.State.Resolved.Color", Color.FromRgb(0x22, 0xC5, 0x5E)),
+            MergePaletteResources.ResolveColor("Merge.State.Resolved.Color"),
             0x44)));
-    private static readonly SolidColorBrush GutterBrush = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.Text.Tertiary.Color", Color.FromRgb(0x88, 0x88, 0x88));
+    private static readonly SolidColorBrush GutterBrush =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Text.Tertiary.Color");
     // Word-level highlight accents: drawn on top of the region background.
     // Ours side uses a stronger blue; Theirs uses a stronger green; matched
     // to the existing HighlightBrush palette per side.
-    private static readonly SolidColorBrush OursWordAccent = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.Ours.BgStrong.Color", Color.FromArgb(0x99, 0x2B, 0x4A, 0x6E));
-    private static readonly SolidColorBrush TheirsWordAccent = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.Theirs.BgStrong.Color", Color.FromArgb(0x99, 0x1A, 0x50, 0x35));
+    private static readonly SolidColorBrush OursWordAccent =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Ours.BgStrong.Color");
+    private static readonly SolidColorBrush TheirsWordAccent =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Theirs.BgStrong.Color");
     private static readonly SolidColorBrush CheckboxFillUnchecked = Freeze(new SolidColorBrush(Colors.Transparent));
     // Checkbox stroke uses Base.Accent (neutral mid-grey) — closer to the
     // pre-V1 #A0A0A0 than Text.Tertiary (#888888, too dark) or Text.Secondary
     // (#D0D0D0, too light). Base is the right group semantically because the
     // checkbox is a neutral UI affordance, not an Ours- or Theirs-tagged one.
-    private static readonly SolidColorBrush CheckboxStroke = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.Base.Accent.Color", Color.FromRgb(0xB0, 0xB0, 0xB0));
-    private static readonly SolidColorBrush CheckboxFillChecked = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.State.Resolved.Color", Color.FromRgb(0x22, 0xC5, 0x5E));
+    private static readonly SolidColorBrush CheckboxStroke =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Base.Accent.Color");
+    private static readonly SolidColorBrush CheckboxFillChecked =
+        MergePaletteResources.ResolveFrozenBrush("Merge.State.Resolved.Color");
     private static readonly Pen CheckboxStrokePen = FreezePen(new Pen(CheckboxStroke, 1.0));
 
     // Change-bar brushes + pens per side. Solid for additions, 2-on / 2-off
     // dashed for the small deletion caret. The dashed pens intentionally reuse
     // the same brush so the visual language stays coherent across both states.
-    private static readonly SolidColorBrush ChangeBarOursBrush = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.Ours.Accent.Color", Color.FromRgb(0x4A, 0x88, 0xC4));
-    private static readonly SolidColorBrush ChangeBarTheirsBrush = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.Theirs.Accent.Color", Color.FromRgb(0x3D, 0xA0, 0x5C));
-    private static readonly SolidColorBrush ChangeBarBaseBrush = MergePaletteResources.ResolveFrozenBrush(
-        "Merge.Base.Accent.Color", Color.FromRgb(0xB0, 0xB0, 0xB0));
+    private static readonly SolidColorBrush ChangeBarOursBrush =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Ours.Accent.Color");
+    private static readonly SolidColorBrush ChangeBarTheirsBrush =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Theirs.Accent.Color");
+    private static readonly SolidColorBrush ChangeBarBaseBrush =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Base.Accent.Color");
     private static readonly Pen ChangeBarOursDashedPen = MakeDashedPen(ChangeBarOursBrush);
     private static readonly Pen ChangeBarTheirsDashedPen = MakeDashedPen(ChangeBarTheirsBrush);
     private static readonly Pen ChangeBarBaseDashedPen = MakeDashedPen(ChangeBarBaseBrush);
