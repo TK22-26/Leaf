@@ -13,7 +13,8 @@
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:merge="clr-namespace:Leaf.Controls.Merge">
 
     <Style x:Key="Merge.PaneCard" TargetType="Border">
         <Setter Property="CornerRadius" Value="6"/>
@@ -21,30 +22,12 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Merge.Border.Subtle}"/>
         <Setter Property="Background" Value="{DynamicResource Merge.Surface.2}"/>
         <Setter Property="ClipToBounds" Value="True"/>
-        <Setter Property="Effect">
-            <Setter.Value>
-                <!-- V8 TODO: DropShadowEffect.Color defaults to #FF000000 and
-                     isn't themeable. The 15 % opacity over dark backgrounds
-                     is nearly invisible; over a light-theme background it is
-                     clearly visible. V8 should either add a Merge.Shadow.Color
-                     token consumed here, or bump opacity to ~0.4 on dark. -->
-                <DropShadowEffect BlurRadius="8" Opacity="0.15" ShadowDepth="0"/>
-            </Setter.Value>
-        </Setter>
-        <!-- V5 pane focus glow. When keyboard focus lives inside the card, swap
-             to the Merge.Border.Focus brush (accent blue). WPF resolves the
-             trigger Setter immediately on focus-in, so the transition is
-             instant rather than the 250 ms ease-out the motion ramp would
-             prefer — animating BorderBrush.Color directly would require the
-             brush to be unfrozen (palette brushes aren't), so this trigger
-             keeps the palette as the single source of truth at the cost of
-             the animated pulse. Full ease-out pulse deferred until V8 theme
-             swap lands the unfrozen-brush refactor. -->
-        <Style.Triggers>
-            <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                <Setter Property="BorderBrush" Value="{DynamicResource Merge.Border.Focus}"/>
-            </Trigger>
-        </Style.Triggers>
+        <Setter Property="merge:ThemeShadow.IsEnabled" Value="True"/>
+        <!-- Focus glow is wired in code-behind via MergeMotionHelpers.PulsePaneFocusColour
+             so the BorderBrush animates through Merge.Motion.PaneFocus (250 ms
+             ease-out) instead of snapping. Keeping the animation in code lets
+             us restore the DynamicResource binding on Completed, so V8 theme
+             swap still reaches the focused pane as soon as focus leaves. -->
     </Style>
 
 </ResourceDictionary>

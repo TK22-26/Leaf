@@ -189,23 +189,28 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     private Size _extent;
     private Size _viewport;
 
-    // V5 animation bookkeeping. Two kinds of in-flight animations are tracked
-    // per-range: a 350 ms overlay fade-in on resolve (Merge.Motion.RangeResolve)
-    // and a 150 ms 0.97→1.0 scale bounce on checkbox click
-    // (Merge.Motion.AcceptButton). Each uses its own start-tick dictionary;
-    // one shared DispatcherTimer repaints at ~60 Hz whenever either dictionary
-    // has an active entry and stops when both go empty. Start times are
-    // captured via Stopwatch.GetTimestamp() rather than DateTime.UtcNow so
-    // NTP slews / DST adjustments can't freeze or skip animations.
+    // V5 animation bookkeeping. Three in-flight animations are tracked per-range:
+    //   - 350 ms overlay fade-in on resolve (Merge.Motion.RangeResolve)
+    //   - 150 ms 0.97→1.0 scale bounce on checkbox click (Merge.Motion.AcceptButton)
+    //   - 200 ms fill colour crossfade on state flip (Merge.Motion.CheckboxToggle)
+    // Each uses its own start-tick dictionary; one shared DispatcherTimer
+    // repaints at ~60 Hz whenever any dictionary has an active entry and stops
+    // when they all go empty. Start times are captured via Stopwatch.GetTimestamp()
+    // rather than DateTime.UtcNow so NTP slews / DST adjustments can't freeze
+    // or skip animations.
     private const double RangeResolveDurationMs = 350.0;
     private const double CheckboxBounceDurationMs = 150.0;
+    private const double CheckboxFadeDurationMs = 200.0;
     private readonly Dictionary<int, long> _rangeResolveStarts = new();
     private readonly Dictionary<int, long> _checkboxBounceStarts = new();
+    private readonly Dictionary<int, long> _checkboxFadeStarts = new();
     private DispatcherTimer? _animationTicker;
     // Reused during OnRender to avoid a per-frame SolidColorBrush allocation
-    // while the resolved overlay is fading in. Never frozen — OnRender mutates
-    // .Color before each DrawRectangle call.
+    // while the resolved overlay is fading in or the checkbox fill is
+    // crossfading. Never frozen — OnRender mutates .Color before each
+    // DrawRectangle call.
     private readonly SolidColorBrush _fadedOverlayBrush = new();
+    private readonly SolidColorBrush _animatedCheckboxFill = new();
 
     private static long NowTicks() => System.Diagnostics.Stopwatch.GetTimestamp();
     private static double TicksToMs(long ticks) =>
@@ -292,6 +297,19 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         EnsureAnimationTicker();
     }
 
+    /// <summary>
+    /// Kick the 200 ms <c>Merge.Motion.CheckboxToggle</c> colour crossfade for
+    /// <paramref name="rangeIndex"/>. Called by the host whenever the range's
+    /// accept state flips — the animation interpolates the checkbox fill
+    /// between the unchecked (transparent) and checked (green) colours based
+    /// on the current state, so the visual transition isn't an instant snap.
+    /// </summary>
+    public void StartCheckboxFadeAnimation(int rangeIndex)
+    {
+        _checkboxFadeStarts[rangeIndex] = NowTicks();
+        EnsureAnimationTicker();
+    }
+
     private void EnsureAnimationTicker()
     {
         if (_animationTicker is null)
@@ -314,7 +332,10 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         var now = NowTicks();
         PruneCompleted(_rangeResolveStarts, now, RangeResolveDurationMs);
         PruneCompleted(_checkboxBounceStarts, now, CheckboxBounceDurationMs);
-        if (_rangeResolveStarts.Count == 0 && _checkboxBounceStarts.Count == 0)
+        PruneCompleted(_checkboxFadeStarts, now, CheckboxFadeDurationMs);
+        if (_rangeResolveStarts.Count == 0
+            && _checkboxBounceStarts.Count == 0
+            && _checkboxFadeStarts.Count == 0)
         {
             _animationTicker?.Stop();
         }
@@ -365,6 +386,30 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         var t = Math.Clamp(elapsed / CheckboxBounceDurationMs, 0.0, 1.0);
         var eased = 1.0 - ((1.0 - t) * (1.0 - t));
         return 0.97 + (0.03 * eased);
+    }
+
+    /// <summary>
+    /// Returns the checkbox fill for <paramref name="rangeIndex"/> — either a
+    /// palette brush when no crossfade is in flight, or an alpha-interpolated
+    /// instance brush during the 200 ms <see cref="CheckboxFadeDurationMs"/>
+    /// window. The fade direction is implied by <paramref name="isAccepted"/>:
+    /// flipping TO accepted fades the green alpha 0→1; flipping AWAY from
+    /// accepted fades 1→0.
+    /// </summary>
+    private Brush GetCheckboxFill(int rangeIndex, bool isAccepted)
+    {
+        if (!_checkboxFadeStarts.TryGetValue(rangeIndex, out var start))
+        {
+            return isAccepted ? CheckboxFillChecked : CheckboxFillUnchecked;
+        }
+        var elapsed = TicksToMs(NowTicks() - start);
+        var t = Math.Clamp(elapsed / CheckboxFadeDurationMs, 0.0, 1.0);
+        var eased = 1.0 - ((1.0 - t) * (1.0 - t));
+        var alphaProgress = isAccepted ? eased : (1.0 - eased);
+        var baseColor = CheckboxFillChecked.Color;
+        _animatedCheckboxFill.Color = Color.FromArgb(
+            (byte)(baseColor.A * alphaProgress), baseColor.R, baseColor.G, baseColor.B);
+        return _animatedCheckboxFill;
     }
 
     // ── Measurement / rendering ──────────────────────────────────────────────────
@@ -609,15 +654,11 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         _ => LineRange.Empty,
     };
 
-    // Resolved-state overlay — the Merge.State.Resolved colour dropped over a
-    // conflict region at ~27% alpha once the user picks a side. The alpha lives
-    // in code rather than in the palette because the overlay is a decoration
-    // applied on top of an already-tinted background; the palette only ships
-    // the solid state colour.
-    private static readonly SolidColorBrush ResolvedOverlayBrush = Freeze(new SolidColorBrush(
-        MergePaletteResources.WithAlpha(
-            MergePaletteResources.ResolveColor("Merge.State.Resolved.Color"),
-            0x44)));
+    // Resolved-state overlay — pre-blended 0x44-alpha green lives in the
+    // palette as Merge.State.Resolved.Overlay so both the alpha and the base
+    // colour track theme swaps together. No hex literals in code.
+    private static readonly SolidColorBrush ResolvedOverlayBrush =
+        MergePaletteResources.ResolveFrozenBrush("Merge.State.Resolved.Overlay.Color");
     private static readonly SolidColorBrush GutterBrush =
         MergePaletteResources.ResolveFrozenBrush("Merge.Text.Tertiary.Color");
     // Word-level highlight accents: drawn on top of the region background.
@@ -704,8 +745,7 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
             }
 
             var isAccepted = IsThisSideAccepted(range.Index);
-            dc.DrawRectangle(isAccepted ? CheckboxFillChecked : CheckboxFillUnchecked,
-                CheckboxStrokePen, box);
+            dc.DrawRectangle(GetCheckboxFill(range.Index, isAccepted), CheckboxStrokePen, box);
             if (isAccepted)
             {
                 // Draw a simple check glyph.

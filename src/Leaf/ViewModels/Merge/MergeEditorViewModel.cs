@@ -487,6 +487,22 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void Unresolve(int rangeIndex) => SetState(rangeIndex, ResolutionState.Unresolved.Instance);
 
+    /// <summary>
+    /// Raised when the user clicks the CodeLens "Compare" link on a conflict
+    /// range. The view subscribes and smooth-scrolls both the Ours and Theirs
+    /// panes to the range's respective start line so the user can see both
+    /// versions side-by-side before choosing.
+    /// </summary>
+    public event EventHandler<int>? CompareRequested;
+
+    [RelayCommand]
+    private void CompareConflict(int rangeIndex)
+    {
+        if (Document is null) return;
+        if (Document.Ranges.All(r => r.Index != rangeIndex)) return;
+        CompareRequested?.Invoke(this, rangeIndex);
+    }
+
     [RelayCommand]
     private void AcceptAllOurs()
     {

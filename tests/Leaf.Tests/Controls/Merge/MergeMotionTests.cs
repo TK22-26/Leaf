@@ -18,19 +18,17 @@ namespace Leaf.Tests.Controls.Merge;
 public class MergeMotionTests
 {
     [StaFact]
-    public void AllSixStoryboards_Resolve_WithExpectedDurations()
+    public void ConsumableStoryboards_Resolve_WithExpectedDurations()
     {
         EnsureMergeDictionaryMerged();
         var resources = Application.Current.Resources;
 
-        // Per D3: 150 / 250 / 350 ms ease-out ramp, plus 200 / 400 outliers
-        // noted in the plan.
-        AssertStoryboardDuration(resources, "Merge.Motion.CheckboxToggle", TimeSpan.FromMilliseconds(200));
-        AssertStoryboardDuration(resources, "Merge.Motion.AcceptButton", TimeSpan.FromMilliseconds(150));
-        AssertStoryboardDuration(resources, "Merge.Motion.RangeResolve", TimeSpan.FromMilliseconds(350));
+        // Only storyboards with a live consumer ship in MergeMotion.xaml.
+        // OnRender-drawn animations (checkbox bounce, range-resolve fade)
+        // use dispatcher-timer pure-math tweens inside ReadOnlyMergePane
+        // because Storyboards can't drive DrawingContext output.
         AssertStoryboardDuration(resources, "Merge.Motion.PaneFocus", TimeSpan.FromMilliseconds(250));
         AssertStoryboardDuration(resources, "Merge.Motion.MinimapJump", TimeSpan.FromMilliseconds(400));
-        AssertStoryboardDuration(resources, "Merge.Motion.PopoverShow", TimeSpan.FromMilliseconds(200));
     }
 
     [StaFact]
@@ -41,12 +39,8 @@ public class MergeMotionTests
 
         var keys = new[]
         {
-            "Merge.Motion.CheckboxToggle",
-            "Merge.Motion.AcceptButton",
-            "Merge.Motion.RangeResolve",
             "Merge.Motion.PaneFocus",
             "Merge.Motion.MinimapJump",
-            "Merge.Motion.PopoverShow",
         };
         foreach (var key in keys)
         {

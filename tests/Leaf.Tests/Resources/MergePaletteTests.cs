@@ -27,6 +27,23 @@ public class MergePaletteTests
     }
 
     [StaFact]
+    public void PaletteBrushes_AreFrozen_ForHotRenderPaths()
+    {
+        // V1 plan requirement: palette brushes must be Frozen so controls can
+        // cache them cross-thread without dispatcher-affinity blowups and so
+        // the per-frame cost of passing them to DrawingContext stays zero.
+        var dict = LoadMergeDictionary();
+
+        foreach (var key in ExpectedBrushKeys)
+        {
+            var brush = (SolidColorBrush)dict[key]!;
+            brush.IsFrozen.Should().BeTrue(
+                because: $"palette brush '{key}' must be Frozen — unfrozen brushes on the render path " +
+                         "burn dispatcher time and can't cross thread boundaries");
+        }
+    }
+
+    [StaFact]
     public void PaletteDictionary_ResolvesEveryExpectedColorToken()
     {
         var dict = LoadMergeDictionary();
