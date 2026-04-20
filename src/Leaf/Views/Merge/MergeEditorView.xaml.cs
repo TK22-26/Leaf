@@ -74,10 +74,17 @@ public partial class MergeEditorView : Window
 
     private static void WirePaneFocusPulse(System.Windows.Controls.Border card)
     {
+        // On both focus-in and focus-out, pass restoreResourceKey so the
+        // animation's Completed hook rebinds BorderBrush back to its palette
+        // DynamicResource key. Without the rebind on GotKeyboardFocus, the
+        // focused pane's BorderBrush stays pinned at the snapshot colour the
+        // animation ended on — a V8 theme swap while the pane is focused
+        // would fail to repaint it until focus leaves.
         card.GotKeyboardFocus += (_, _) =>
             Leaf.Controls.Merge.MergeMotionHelpers.PulsePaneFocusColour(
                 card,
-                Leaf.Controls.Merge.MergePaletteResources.ResolveColor("Merge.Border.Focus.Color"));
+                Leaf.Controls.Merge.MergePaletteResources.ResolveColor("Merge.Border.Focus.Color"),
+                restoreResourceKey: "Merge.Border.Focus");
         card.LostKeyboardFocus += (_, _) =>
             Leaf.Controls.Merge.MergeMotionHelpers.PulsePaneFocusColour(
                 card,
