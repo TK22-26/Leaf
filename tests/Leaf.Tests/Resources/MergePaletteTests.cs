@@ -207,7 +207,22 @@ public class MergePaletteTests
             ["Merge.Text.Primary.Color"] = Color.FromArgb(0xFF, 0xE4, 0xE4, 0xE4),
             ["Merge.Text.Secondary.Color"] = Color.FromArgb(0xFF, 0xD0, 0xD0, 0xD0),
             ["Merge.Text.Tertiary.Color"] = Color.FromArgb(0xFF, 0x88, 0x88, 0x88),
+
+            // Derived / closeout tokens — pinned so renames fail loudly.
+            ["Merge.State.Resolved.Overlay.Color"] = Color.FromArgb(0x44, 0x22, 0xC5, 0x5E),
+            ["Merge.Shadow.Color"] = Color.FromArgb(0xFF, 0x00, 0x00, 0x00),
         };
+
+    [StaFact]
+    public void ShadowOpacity_Token_IsPresentAndDarkThemeDefault()
+    {
+        // Merge.Shadow.Opacity is a plain double, not a Color — handled
+        // separately from ExpectedColors. Pins the dark-theme default of
+        // 0.15 so a V8 light-theme edit bumping it doesn't silently land.
+        var dict = LoadMergeDictionary();
+        dict["Merge.Shadow.Opacity"].Should().BeOfType<double>();
+        ((double)dict["Merge.Shadow.Opacity"]!).Should().BeApproximately(0.15, 0.001);
+    }
 
     // Every semantic brush token that merge controls reference — flat list kept
     // independent of the color palette so a missing brush surfaces clearly.
