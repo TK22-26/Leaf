@@ -1,6 +1,7 @@
 #nullable enable
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 
 namespace Leaf.Controls.Merge;
@@ -70,6 +71,44 @@ internal static class MergeMotionHelpers
         anim.To = targetOffset;
         Storyboard.SetTarget(anim, sv);
         Storyboard.SetTargetProperty(anim, new PropertyPath(AnimatedVerticalOffsetProperty));
+        storyboard.Begin();
+    }
+
+    /// <summary>
+    /// Pulse <paramref name="border"/>'s <see cref="Border.BorderBrush"/> colour
+    /// toward <paramref name="targetColor"/> over <c>Merge.Motion.PaneFocus</c>
+    /// (250 ms ease-out). When <paramref name="restoreResourceKey"/> is non-null
+    /// the animation's Completed hook rebinds the BorderBrush to that
+    /// <see cref="DynamicResourceExtension"/> key so the palette stays the
+    /// single source of truth when focus leaves (V8 theme swap keeps working).
+    /// </summary>
+    public static void PulsePaneFocusColour(Border border, Color targetColor, string? restoreResourceKey = null)
+    {
+        ArgumentNullException.ThrowIfNull(border);
+        if (Application.Current is not { } app) return;
+        if (app.TryFindResource("Merge.Motion.PaneFocus") is not Storyboard source) return;
+
+        // Replace the BorderBrush with a per-instance unfrozen SolidColorBrush
+        // so ColorAnimation has something writable to drive. Palette brushes
+        // come through DynamicResource as Frozen, which would refuse the write.
+        var currentColor = (border.BorderBrush as SolidColorBrush)?.Color ?? targetColor;
+        var animated = new SolidColorBrush(currentColor);
+        border.BorderBrush = animated;
+
+        var storyboard = source.Clone();
+        if (storyboard.Children.Count == 0) return;
+        var anim = (ColorAnimation)storyboard.Children[0];
+        anim.From = currentColor;
+        anim.To = targetColor;
+        Storyboard.SetTarget(anim, animated);
+        Storyboard.SetTargetProperty(anim, new PropertyPath("Color"));
+
+        if (restoreResourceKey is not null)
+        {
+            storyboard.Completed += (_, _) =>
+                border.SetResourceReference(Border.BorderBrushProperty, restoreResourceKey);
+        }
+
         storyboard.Begin();
     }
 }

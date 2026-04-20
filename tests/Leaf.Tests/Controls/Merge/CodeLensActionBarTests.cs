@@ -79,7 +79,7 @@ public class CodeLensActionBarTests
     }
 
     [StaFact]
-    public void EachBar_HasThreeLinkChildren()
+    public void EachBar_HasFourLinkChildren()
     {
         var bar = new CodeLensActionBar
         {
@@ -87,8 +87,29 @@ public class CodeLensActionBarTests
             Ranges = new[] { Conflict(0, 10) },
         };
         var panel = (StackPanel)bar.Children[0]!;
-        panel.Children.Count.Should().Be(3,
-            because: "Accept Ours + Accept Theirs + Accept Both");
+        panel.Children.Count.Should().Be(4,
+            because: "Accept Ours + Accept Theirs + Accept Both + Compare");
+    }
+
+    [StaFact]
+    public void Reposition_PlacesBarAtExpectedY()
+    {
+        // Plan D4: bar Y = (ResultMarkedRange.StartLine - 1) * LineHeight - VerticalOffset - BarHeight.
+        // This test pins the formula so changing the position math can't
+        // silently drift the bars off the line they label.
+        var layout = new MergePaneGlyphLayout();
+        var bar = new CodeLensActionBar
+        {
+            Layout = layout,
+            VerticalOffset = 17.5,
+            Ranges = new[] { Conflict(0, resultStartLine: 10) },
+        };
+        // Force a measure/arrange pass — WPF doesn't run these on detached
+        // controls, so Canvas.Top is set by Rebuild/Reposition directly.
+        var child = bar.Children[0]!;
+        var expected = (10 - 1) * layout.LineHeight - 17.5 - CodeLensActionBar.BarHeight;
+        Canvas.GetTop(child).Should().BeApproximately(expected, precision: 0.001,
+            because: "bar Y must follow the plan D4 formula so labels sit on their conflict line");
     }
 
     [StaFact]

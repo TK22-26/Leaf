@@ -61,6 +61,28 @@ public partial class MergeEditorView : Window
         {
             ResultRow.Height = new GridLength(settings.MergeResultRowRatio, GridUnitType.Star);
         }
+
+        // V5: wire the Merge.Motion.PaneFocus animated pulse on Ours / Theirs /
+        // Result PaneCard borders. GotKeyboardFocus / LostKeyboardFocus are
+        // routed events that fire when focus enters or leaves the subtree, so
+        // hooking the card Border catches focus landing on any descendant
+        // (scroll viewer, pane body, embedded text editor).
+        WirePaneFocusPulse(OursCard);
+        WirePaneFocusPulse(TheirsCard);
+        WirePaneFocusPulse(ResultCard);
+    }
+
+    private static void WirePaneFocusPulse(System.Windows.Controls.Border card)
+    {
+        card.GotKeyboardFocus += (_, _) =>
+            Leaf.Controls.Merge.MergeMotionHelpers.PulsePaneFocusColour(
+                card,
+                Leaf.Controls.Merge.MergePaletteResources.ResolveColor("Merge.Border.Focus.Color"));
+        card.LostKeyboardFocus += (_, _) =>
+            Leaf.Controls.Merge.MergeMotionHelpers.PulsePaneFocusColour(
+                card,
+                Leaf.Controls.Merge.MergePaletteResources.ResolveColor("Merge.Border.Subtle.Color"),
+                restoreResourceKey: "Merge.Border.Subtle");
     }
 
     private void OnMergeEditorClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -98,6 +120,7 @@ public partial class MergeEditorView : Window
             _subscribedVm.AiConsentRequested += OnAiConsentRequested;
             _subscribedVm.AiResolutionReceived += OnAiResolutionReceived;
             _subscribedVm.AiError += OnAiError;
+            _subscribedVm.CompareRequested += OnCompareRequested;
         }
     }
 
@@ -108,6 +131,19 @@ public partial class MergeEditorView : Window
         _subscribedVm.AiConsentRequested -= OnAiConsentRequested;
         _subscribedVm.AiResolutionReceived -= OnAiResolutionReceived;
         _subscribedVm.AiError -= OnAiError;
+        _subscribedVm.CompareRequested -= OnCompareRequested;
+    }
+
+    private void OnCompareRequested(object? sender, int rangeIndex)
+    {
+        // CodeLens "Compare" → scroll Ours + Theirs panes so the user can see
+        // both versions of this range side-by-side before picking. The result
+        // pane is left alone because its content is the composed output, not
+        // a raw "Ours" or "Theirs" view.
+        var range = Vm?.Document?.Ranges.FirstOrDefault(r => r.Index == rangeIndex);
+        if (range is null) return;
+        ScrollPaneToLine(OursScrollViewer, range.Ours.StartLine);
+        ScrollPaneToLine(TheirsScrollViewer, range.Theirs.StartLine);
     }
 
     private void OnAiConsentRequested(object? sender, AiConsentRequest e)
@@ -198,12 +234,25 @@ public partial class MergeEditorView : Window
             {
                 var previouslyHad = _previousRangeStates.TryGetValue(kvp.Key, out var prev);
                 var stateChanged = !previouslyHad || !Equals(prev, kvp.Value);
+                if (!stateChanged) continue;
                 var nowResolved = kvp.Value is not Leaf.Models.Merge.ResolutionState.Unresolved;
-                if (stateChanged && nowResolved)
+                if (nowResolved)
                 {
                     OursPane.StartRangeResolveAnimation(kvp.Key);
                     TheirsPane.StartRangeResolveAnimation(kvp.Key);
                 }
+                // V5 CheckboxToggle crossfade: fire on every state change so
+                // the checkbox fill animates in or out to match the new state.
+                OursPane.StartCheckboxFadeAnimation(kvp.Key);
+                TheirsPane.StartCheckboxFadeAnimation(kvp.Key);
+            }
+            // Removed ranges (Undo that flipped a resolved range back to
+            // unresolved by removing its entry) also need a fade-out.
+            foreach (var kvp in _previousRangeStates)
+            {
+                if (current.ContainsKey(kvp.Key)) continue;
+                OursPane.StartCheckboxFadeAnimation(kvp.Key);
+                TheirsPane.StartCheckboxFadeAnimation(kvp.Key);
             }
         }
         _previousRangeStates = current is null

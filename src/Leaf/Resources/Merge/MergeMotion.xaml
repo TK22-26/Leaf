@@ -1,23 +1,26 @@
 <!--
-    Merge editor motion tokens (V5).
+    Merge editor motion tokens.
 
-    Six named storyboards covering the merge editor's full motion surface.
-    All durations sit on the 150/250/350 ms ease-out ramp per D3 — the
-    established Fluent 2 micro-interaction budget. Storyboards leave
-    TargetName / Target unset so callers bind them at BeginStoryboard time,
-    keeping the XAML generic.
+    Two storyboards live here — the two whose targets are addressable WPF
+    elements with animatable dependency properties:
 
-    Guardrails:
-      - Compositor-backed properties only (Opacity, RenderTransform.*),
-        never Width / Height / layout properties.
-      - Hard ceiling of 400 ms per interaction.
-      - Easing functions use QuadraticEase.EaseOut so motion settles quickly
-        without overshoot — subtle, never bouncy beyond D3's 150 ms scale.
+      - Merge.Motion.MinimapJump — 400 ms smooth scroll of a ScrollViewer via
+        an attached animated-offset DP. Consumed by MergeMotionHelpers.SmoothScrollTo.
+      - Merge.Motion.PaneFocus   — 250 ms border-brush colour pulse. Consumed
+        by MergeMotionHelpers.PulsePaneFocus on GotKeyboardFocus / LostKeyboardFocus.
 
-    V8 TODO: when light theme ships, the colour endpoints on
-    Merge.Motion.CheckboxToggle and Merge.Motion.RangeResolve will need to
-    re-resolve through the palette. For V5 we pull the dark values from the
-    palette at storyboard parse time — dark-only, by design.
+    The other V5-era animations (range-resolve overlay fade, checkbox bounce,
+    checkbox color crossfade) target elements that ReadOnlyMergePane draws
+    directly inside OnRender rather than hosts as UIElements — Storyboards
+    can't drive those without a retained visual tree per region. Those
+    animations live in the pane as dispatcher-timer-driven pure-math tweens
+    using the same 150/200/350 ms durations + ease-out-quadratic shape as the
+    tokens here. Keeping the XAML focused on Storyboards that are genuinely
+    consumable prevents dual-path scaffolding.
+
+    PopoverShow will be added here when the first popover consumer lands
+    (C5 blame peek or AI resolution popover); defining it pre-emptively
+    would ship dead XAML.
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -25,68 +28,15 @@
 
     <QuadraticEase x:Key="Merge.Motion.Ease" EasingMode="EaseOut"/>
 
-    <!--  1. CheckboxToggle — 200 ms color crossfade on the checkbox fill.
-          Caller targets a SolidColorBrush.Color with From=unchecked / To=checked. -->
-    <Storyboard x:Key="Merge.Motion.CheckboxToggle">
-        <ColorAnimation Storyboard.TargetProperty="Color"
-                        Duration="0:0:0.2"
-                        EasingFunction="{StaticResource Merge.Motion.Ease}"/>
-    </Storyboard>
-
-    <!--  2. AcceptButton — 150 ms scale 0.97 -> 1.0 bounce on click.
-          Caller targets a ScaleTransform's ScaleX + ScaleY. The storyboard
-          runs both children in parallel.  -->
-    <Storyboard x:Key="Merge.Motion.AcceptButton">
-        <DoubleAnimation Storyboard.TargetProperty="ScaleX"
-                         From="0.97" To="1.0" Duration="0:0:0.15"
-                         EasingFunction="{StaticResource Merge.Motion.Ease}"/>
-        <DoubleAnimation Storyboard.TargetProperty="ScaleY"
-                         From="0.97" To="1.0" Duration="0:0:0.15"
-                         EasingFunction="{StaticResource Merge.Motion.Ease}"/>
-    </Storyboard>
-
-    <!--  3. RangeResolve — 350 ms background crossfade (unresolved amber ->
-          resolved green) on a range's overlay. Caller targets a DoubleAnimation
-          from 0 to 1 on a custom progress DP that OnRender consumes as alpha
-          multiplier — the overlay visual is drawn by the control, not a
-          standalone element, so we animate an integer-like progress value and
-          repaint rather than an element property directly.  -->
-    <Storyboard x:Key="Merge.Motion.RangeResolve">
-        <DoubleAnimation Storyboard.TargetProperty="(UIElement.Opacity)"
-                         From="0.0" To="1.0" Duration="0:0:0.35"
-                         EasingFunction="{StaticResource Merge.Motion.Ease}"/>
-    </Storyboard>
-
-    <!--  4. PaneFocus — 250 ms border glow pulse on GotFocus. Caller targets
-          a Border.BorderBrush.Color so the focused pane gets an accent-coloured
-          border that fades back to the default colour on LostFocus. AutoReverse
-          is left to the caller so it can decide pulse-once vs pulse-and-hold. -->
-    <Storyboard x:Key="Merge.Motion.PaneFocus">
-        <ColorAnimation Storyboard.TargetProperty="Color"
-                        Duration="0:0:0.25"
-                        EasingFunction="{StaticResource Merge.Motion.Ease}"/>
-    </Storyboard>
-
-    <!--  5. MinimapJump — 400 ms smooth scroll. Caller targets a custom
-          AnimatedScrollOffset DP on a ScrollViewer; the DP's setter forwards
-          to ScrollToVerticalOffset so the VerticalOffset DP (which is
-          read-only) stays consistent. -->
     <Storyboard x:Key="Merge.Motion.MinimapJump">
         <DoubleAnimation Duration="0:0:0.4"
                          EasingFunction="{StaticResource Merge.Motion.Ease}"/>
     </Storyboard>
 
-    <!--  6. PopoverShow — 200 ms fade + 2 px translateY slide-in. Used by
-          popovers (C5 blame peek, AI resolution proposal). Storyboard leaves
-          TargetProperty on each animation empty at this level; caller attaches
-          two separate animations via BeginStoryboard with explicit targets.  -->
-    <Storyboard x:Key="Merge.Motion.PopoverShow">
-        <DoubleAnimation Storyboard.TargetProperty="(UIElement.Opacity)"
-                         From="0.0" To="1.0" Duration="0:0:0.2"
-                         EasingFunction="{StaticResource Merge.Motion.Ease}"/>
-        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                         From="2.0" To="0.0" Duration="0:0:0.2"
-                         EasingFunction="{StaticResource Merge.Motion.Ease}"/>
+    <Storyboard x:Key="Merge.Motion.PaneFocus">
+        <ColorAnimation Storyboard.TargetProperty="Color"
+                        Duration="0:0:0.25"
+                        EasingFunction="{StaticResource Merge.Motion.Ease}"/>
     </Storyboard>
 
 </ResourceDictionary>

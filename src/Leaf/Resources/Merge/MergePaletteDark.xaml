@@ -62,12 +62,17 @@
     <Color x:Key="Merge.State.Error.Color">#FFE58A8A</Color>
     <Color x:Key="Merge.State.Warning.Color">#FFFFC107</Color>
     <Color x:Key="Merge.State.Manual.Color">#FFFFC44D</Color>
+    <!--  Pre-blended Resolved overlay — the same green at ~27% alpha used as
+          a tint over the already-highlighted conflict region. Lives in the
+          palette so the alpha and colour can drift together with theme swaps.  -->
+    <Color x:Key="Merge.State.Resolved.Overlay.Color">#4422C55E</Color>
     <SolidColorBrush x:Key="Merge.State.Unresolved" Color="#FFE04444"/>
     <SolidColorBrush x:Key="Merge.State.Resolved"   Color="#FF22C55E"/>
     <SolidColorBrush x:Key="Merge.State.AiPending"  Color="#FF3794F2"/>
     <SolidColorBrush x:Key="Merge.State.Error"      Color="#FFE58A8A"/>
     <SolidColorBrush x:Key="Merge.State.Warning"    Color="#FFFFC107"/>
     <SolidColorBrush x:Key="Merge.State.Manual"     Color="#FFFFC44D"/>
+    <SolidColorBrush x:Key="Merge.State.Resolved.Overlay" Color="#4422C55E"/>
 
     <!--  Surface depth layers (darker -> lighter)  -->
     <Color x:Key="Merge.Surface.1.Color">#FF181818</Color>
@@ -96,6 +101,12 @@
           styling.  -->
     <Color x:Key="Merge.Image.CornerLabelScrim.Color">#B0000000</Color>
     <SolidColorBrush x:Key="Merge.Image.CornerLabelScrim" Color="#B0000000"/>
+
+    <!--  Drop-shadow tokens consumed by the ThemeShadow attached property.
+          Shadow colour and opacity are themeable so V8 light theme can use
+          black-at-higher-opacity while dark stays black-at-low-opacity.  -->
+    <Color x:Key="Merge.Shadow.Color">#FF000000</Color>
+    <sys:Double x:Key="Merge.Shadow.Opacity" xmlns:sys="clr-namespace:System;assembly=System.Runtime">0.15</sys:Double>
 
     <!--  Text  -->
     <Color x:Key="Merge.Text.Primary.Color">#FFE4E4E4</Color>

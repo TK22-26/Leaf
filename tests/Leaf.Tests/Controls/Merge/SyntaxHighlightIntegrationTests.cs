@@ -1,6 +1,9 @@
 #nullable enable
+using System.Windows.Media;
 using FluentAssertions;
 using Leaf.Controls.Merge;
+using Leaf.TextEdit.Document;
+using Leaf.TextEdit.Highlighting;
 using Xunit;
 
 namespace Leaf.Tests.Controls.Merge;
@@ -49,5 +52,32 @@ public class SyntaxHighlightIntegrationTests
         romp.Should().NotBeNull();
         result.Should().NotBeNull();
         romp!.Name.Should().Be(result!.Name);
+    }
+
+    [StaFact]
+    public void CSharpHighlighter_AssignsNonForegroundBrush_ToAtLeastOneToken()
+    {
+        // Plan V1/C1 contract: syntax highlighting must actually colour
+        // something. A C# line with a keyword like `public` must produce at
+        // least one HighlightedSection whose Foreground brush differs from
+        // plain black (the default TextBlock foreground). Without this check
+        // a broken xshd resource or a regression in DocumentHighlighter
+        // plumbing would pass the extension-resolution tests silently.
+        var definition = ReadOnlyMergePane.ResolveHighlightingDefinition("test.cs")!;
+        var doc = new TextDocument("public class Foo {}");
+        var highlighter = new DocumentHighlighter(doc, definition);
+        var highlighted = highlighter.HighlightLine(1);
+
+        var distinctBrushes = new HashSet<Color>();
+        foreach (var section in highlighted.Sections)
+        {
+            var brush = section.Color?.Foreground?.GetBrush(null) as SolidColorBrush;
+            if (brush is not null) distinctBrushes.Add(brush.Color);
+        }
+        distinctBrushes.Should().NotBeEmpty(
+            because: "C# highlighting must emit at least one coloured section on a keyword line");
+        distinctBrushes.Should().NotContain(
+            c => c == Colors.Black && distinctBrushes.Count == 1,
+            because: "at least one token colour must differ from the default black foreground");
     }
 }

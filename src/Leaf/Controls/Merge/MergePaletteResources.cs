@@ -53,16 +53,25 @@ internal static class MergePaletteResources
     // fallback only runs in environments where the palette hasn't been merged.
     private static readonly Lazy<ResourceDictionary> _localPalette = new(LoadPaletteFromEmbeddedBaml);
 
+    // Umbrella dictionaries only declare MergedDictionaries with relative
+    // <ResourceDictionary Source="..."/> references that need pack-URI
+    // resolution to follow. That resolution can't work in this code path
+    // (no Application.ResourceAssembly guarantee), so we skip the umbrellas
+    // explicitly by name and rely on the leaf files' inline content. This
+    // explicit-skip list makes an umbrella rename show up as a missing file
+    // instead of silently falling out through a swallowed exception.
+    private static readonly HashSet<string> UmbrellaResourceKeys = new(StringComparer.Ordinal)
+    {
+        "resources/merge/merge.baml",
+        "resources/merge/mergepalette.baml",
+    };
+
     private static ResourceDictionary LoadPaletteFromEmbeddedBaml()
     {
         // Enumerate every `resources/merge/*.baml` entry in Leaf's compiled
-        // resource container. Leaf (umbrella) files declare MergedDictionaries
-        // with relative Source URIs that need pack-URI resolution to load —
-        // those fail with "cannot locate resource" here, so we swallow load
-        // failures and keep going. A leaf palette file that has inline content
-        // (no Source references) loads fine, and its keys get flattened into
-        // the target dict. This pattern survives adding new palette files
-        // without a hardcoded list.
+        // resource container, skipping known umbrella files. Adding a new
+        // leaf palette file requires no code change; adding a new umbrella
+        // requires adding its name to UmbrellaResourceKeys.
         var flattened = new ResourceDictionary();
         var assembly = typeof(MergePaletteResources).Assembly;
         var resourceSetName = assembly.GetName().Name + ".g.resources";
@@ -77,40 +86,32 @@ internal static class MergePaletteResources
             var resourceKey = (string)entry.Key;
             if (!resourceKey.StartsWith("resources/merge/", StringComparison.Ordinal)) continue;
             if (!resourceKey.EndsWith(".baml", StringComparison.Ordinal)) continue;
+            if (UmbrellaResourceKeys.Contains(resourceKey)) continue;
             if (entry.Value is not Stream bamlStream) continue;
 
-            try
+            using (bamlStream)
             {
-                using (bamlStream)
+                var bamlReader = new Baml2006Reader(bamlStream);
+                var writer = new XamlObjectWriter(bamlReader.SchemaContext);
+                while (bamlReader.Read())
                 {
-                    var bamlReader = new Baml2006Reader(bamlStream);
-                    var writer = new XamlObjectWriter(bamlReader.SchemaContext);
-                    while (bamlReader.Read())
-                    {
-                        writer.WriteNode(bamlReader);
-                    }
-                    if (writer.Result is ResourceDictionary loaded)
-                    {
-                        foreach (var loadedKey in loaded.Keys)
-                        {
-                            flattened[loadedKey] = loaded[loadedKey];
-                        }
-                        loadedAtLeastOne = true;
-                    }
+                    writer.WriteNode(bamlReader);
                 }
-            }
-            catch (System.Xaml.XamlObjectWriterException)
-            {
-                // Umbrella file whose MergedDictionaries Source URIs couldn't
-                // resolve — expected and skippable. Leaf files with inline
-                // content still loaded on earlier iterations.
+                if (writer.Result is ResourceDictionary loaded)
+                {
+                    foreach (var loadedKey in loaded.Keys)
+                    {
+                        flattened[loadedKey] = loaded[loadedKey];
+                    }
+                    loadedAtLeastOne = true;
+                }
             }
         }
 
         if (!loadedAtLeastOne)
         {
             throw new InvalidOperationException(
-                "No `resources/merge/*.baml` files loaded from Leaf.g.resources. " +
+                "No `resources/merge/*.baml` leaf files loaded from Leaf.g.resources. " +
                 "Palette fallback path is broken — check that palette BAML files " +
                 "are shipping inside the Leaf assembly's resource container.");
         }

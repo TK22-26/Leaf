@@ -13,8 +13,8 @@ namespace Leaf.Controls.Merge;
 /// CodeLens-style inline action bar overlaid on top of the result pane. For
 /// each conflicting <see cref="ModifiedBaseRange"/>, renders a row of
 /// underlined link-buttons — <em>Accept Ours</em>, <em>Accept Theirs</em>,
-/// <em>Accept Both</em> — positioned at the start of that range's merged-
-/// result line. Click routes through the corresponding
+/// <em>Accept Both</em>, <em>Compare</em> — positioned at the start of that
+/// range's merged-result line. Click routes through the corresponding
 /// <see cref="System.Windows.Input.ICommand"/> set via dependency property so
 /// the host view can stay view-agnostic.
 /// </summary>
@@ -75,6 +75,10 @@ public sealed class CodeLensActionBar : Canvas
         nameof(AcceptBothCommand), typeof(ICommand), typeof(CodeLensActionBar),
         new PropertyMetadata(null, OnCommandChanged));
 
+    public static readonly DependencyProperty CompareCommandProperty = DependencyProperty.Register(
+        nameof(CompareCommand), typeof(ICommand), typeof(CodeLensActionBar),
+        new PropertyMetadata(null, OnCommandChanged));
+
     private static void OnCommandChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((CodeLensActionBar)d).Rebuild();
 
@@ -123,6 +127,17 @@ public sealed class CodeLensActionBar : Canvas
     {
         get => (ICommand?)GetValue(AcceptBothCommandProperty);
         set => SetValue(AcceptBothCommandProperty, value);
+    }
+
+    /// <summary>
+    /// Compare command — bound to the VM's CompareConflictCommand. The VM
+    /// raises CompareRequested, which the host turns into a smooth-scroll
+    /// of both Ours and Theirs panes to the range's respective start line.
+    /// </summary>
+    public ICommand? CompareCommand
+    {
+        get => (ICommand?)GetValue(CompareCommandProperty);
+        set => SetValue(CompareCommandProperty, value);
     }
 
     /// <summary>Bar height in device-independent pixels — matches one line height.</summary>
@@ -190,6 +205,7 @@ public sealed class CodeLensActionBar : Canvas
         AddLink(panel, "Accept Ours", "Alt+1", range.Index, AcceptOursCommand);
         AddLink(panel, "Accept Theirs", "Alt+2", range.Index, AcceptTheirsCommand);
         AddLink(panel, "Accept Both", "Alt+3", range.Index, AcceptBothCommand);
+        AddLink(panel, "Compare", "Scroll Ours + Theirs to this conflict", range.Index, CompareCommand);
         return panel;
     }
 
