@@ -793,6 +793,52 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         _clipboardService.SetText(ComposedText);
     }
 
+    /// <summary>
+    /// Context-menu "Copy" — copies an arbitrary text payload (the caller
+    /// resolved the active pane's selection). No-op if <paramref name="text"/>
+    /// is <c>null</c> or empty; treating that as an error would fire on every
+    /// no-selection right-click.
+    /// </summary>
+    [RelayCommand]
+    private void CopySelection(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        _clipboardService.SetText(text);
+    }
+
+    /// <summary>
+    /// Context-menu "Copy Ours version" — copies the full Ours (HEAD) text
+    /// of the currently open conflict file. Mirrors the Sublime Merge / VS
+    /// Code affordance for quickly grabbing one side of the merge wholesale.
+    /// </summary>
+    [RelayCommand]
+    private void CopyOursVersion()
+    {
+        if (Document is null) return;
+        _clipboardService.SetText(Document.OursText);
+    }
+
+    /// <summary>Context-menu "Copy Theirs version" — copies the full Theirs text.</summary>
+    [RelayCommand]
+    private void CopyTheirsVersion()
+    {
+        if (Document is null) return;
+        _clipboardService.SetText(Document.TheirsText);
+    }
+
+    // NOTE: The plan's §C4 context menu also lists "Ask AI about selection"
+    // and "Expand / Collapse context". Both are DEFERRED in C4:
+    //   • Ask AI about selection → requires a free-form Q&A method on
+    //     IAiMergeAssistant that the MCP transport doesn't currently expose
+    //     (the existing RequestResolutionAsync is range-scoped). The proper
+    //     architectural fix is to extend the interface + MCP protocol, not
+    //     to shoehorn a selection into the range-resolution path. Defer
+    //     until a dedicated AI-Q&A capability lands.
+    //   • Expand / Collapse context → same deferral as C2's
+    //     ContextExpanderHandle: Leaf renders full files in each pane, so
+    //     there is no collapsed region for the menu to expand. Revisit once
+    //     a fold-unchanged-regions mode exists.
+
     // ── Keyboard-driven conflict navigation + current-range commands ──────
 
     /// <summary>
@@ -1005,7 +1051,19 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
             if (c.IsResolved) ResolvedConflicts.Add(c);
             else ConflictedConflicts.Add(c);
         }
+        // C4: the grouped file tree is derived from the same Conflicts list,
+        // so any bucket refresh also invalidates the tree snapshot.
+        ConflictTree = ConflictTreeBuilder.Build(Conflicts);
     }
+
+    /// <summary>
+    /// Folder-grouped view of <see cref="Conflicts"/> rendered by the
+    /// <see cref="Leaf.Controls.Merge.ConflictFileTree"/> control (C4).
+    /// Rebuilt atomically through <see cref="RefreshConflictBuckets"/>
+    /// whenever the underlying list or a file's resolved state changes.
+    /// </summary>
+    [ObservableProperty]
+    private IReadOnlyList<ConflictTreeNode> _conflictTree = Array.Empty<ConflictTreeNode>();
 
     public void Dispose()
     {

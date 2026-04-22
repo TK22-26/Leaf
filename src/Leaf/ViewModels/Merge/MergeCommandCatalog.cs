@@ -55,6 +55,8 @@ public static class MergeCommandCatalog
 
             // Misc
             Item("Copy composed text to clipboard", null, vm.CopyComposedTextCommand),
+            Item("Copy Ours version of file", null, vm.CopyOursVersionCommand),
+            Item("Copy Theirs version of file", null, vm.CopyTheirsVersionCommand),
             Item("Use Ours (engine-error / binary)", null, vm.UseOursCommand),
             Item("Use Theirs (engine-error / binary)", null, vm.UseTheirsCommand),
         };

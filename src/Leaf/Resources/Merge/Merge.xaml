@@ -15,6 +15,7 @@
         <ResourceDictionary Source="MergeTypography.xaml" />
         <ResourceDictionary Source="MergeCardStyles.xaml" />
         <ResourceDictionary Source="MergeMotion.xaml" />
+        <ResourceDictionary Source="MergePaneContextMenu.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
 </ResourceDictionary>
