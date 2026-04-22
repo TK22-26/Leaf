@@ -6,6 +6,7 @@
         xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
         xmlns:merge="clr-namespace:Leaf.Controls.Merge"
         xmlns:textedit="clr-namespace:Leaf.TextEdit"
+        xmlns:views="clr-namespace:Leaf.Views"
         mc:Ignorable="d"
         Title="Resolve Conflicts — Leaf"
         Height="720" Width="1280"
@@ -28,6 +29,10 @@
         <KeyBinding Modifiers="Alt" Key="Left" Command="{Binding PreviousChangeSpanCommand}"/>
         <KeyBinding Modifiers="Alt" Key="Down" Command="{Binding NextAutoMergedRegionCommand}"/>
         <KeyBinding Modifiers="Alt" Key="Up" Command="{Binding PreviousAutoMergedRegionCommand}"/>
+        <!-- C3: Ctrl+K opens a merge-scoped command palette listing every
+             VM command with its keybinding. Reuses the existing
+             CommandPaletteView from the main window. -->
+        <KeyBinding Modifiers="Control" Key="K" Command="{Binding OpenPaletteCommand}"/>
         <KeyBinding Modifiers="Control" Key="Enter" Command="{Binding MarkResolvedCommand}"/>
         <KeyBinding Modifiers="Control" Key="Z" Command="{Binding UndoCommand}"/>
         <KeyBinding Modifiers="Control" Key="Y" Command="{Binding RedoCommand}"/>
@@ -158,6 +163,7 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <Border Grid.Row="0" Padding="12,6"
@@ -168,7 +174,14 @@
                                FontSize="{DynamicResource Merge.Type.CaptionStrong.Size}"
                                Foreground="{DynamicResource Merge.Ours.Text}"/>
                 </Border>
-                <Grid Grid.Row="1">
+                <merge:StickyConflictHeader Grid.Row="1"
+                                            x:Name="OursSticky"
+                                            AutomationProperties.AutomationId="Merge.OursSticky"
+                                            Side="Ours"
+                                            Ranges="{Binding Document.Ranges}"
+                                            RangeStates="{Binding RangeStates}"
+                                            Layout="{Binding Layout}"/>
+                <Grid Grid.Row="2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="12"/>
@@ -243,6 +256,7 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <Border Grid.Row="0" Padding="12,6"
@@ -253,7 +267,14 @@
                                FontSize="{DynamicResource Merge.Type.CaptionStrong.Size}"
                                Foreground="{DynamicResource Merge.Theirs.Text}"/>
                 </Border>
-                <Grid Grid.Row="1">
+                <merge:StickyConflictHeader Grid.Row="1"
+                                            x:Name="TheirsSticky"
+                                            AutomationProperties.AutomationId="Merge.TheirsSticky"
+                                            Side="Theirs"
+                                            Ranges="{Binding Document.Ranges}"
+                                            RangeStates="{Binding RangeStates}"
+                                            Layout="{Binding Layout}"/>
+                <Grid Grid.Row="2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="12"/>
@@ -298,6 +319,7 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <Border Grid.Row="0" Padding="12,6"
@@ -314,7 +336,15 @@
                          pill per conflict into the result pane's scrollbar
                          gutter. Both overlays bind VerticalOffset to
                          ResultPane.VerticalOffset so they track scrolling. -->
-                    <Grid Grid.Row="1">
+                    <merge:StickyConflictHeader Grid.Row="1"
+                                                x:Name="ResultSticky"
+                                                AutomationProperties.AutomationId="Merge.ResultSticky"
+                                                Side="Result"
+                                                Ranges="{Binding Document.Ranges}"
+                                                RangeStates="{Binding RangeStates}"
+                                                Layout="{Binding Layout}"
+                                                VerticalOffset="{Binding ElementName=ResultPaneInstance, Path=VerticalOffset}"/>
+                    <Grid Grid.Row="2">
                         <merge:ResultPane x:Name="ResultPaneInstance"
                                           AutomationProperties.AutomationId="Merge.ResultPane"
                                           Text="{Binding ComposedText, Mode=OneWay}"
@@ -529,5 +559,18 @@
                 </StackPanel>
             </Grid>
         </Border>
+
+        <!-- C3 command palette overlay. DataContext scoped to Palette so the
+             existing CommandPaletteView binding shape (SearchText, FilteredResults,
+             SelectedResult, IsOpen, etc.) resolves against the merge-specific VM.
+             RowSpan + ZIndex put it above all three outer rows; Visibility
+             collapses it when IsOpen is false so the backdrop doesn't block
+             clicks on the closed state. -->
+        <views:CommandPaletteView
+            Grid.Row="0" Grid.RowSpan="3" Grid.Column="0" Grid.ColumnSpan="3"
+            Panel.ZIndex="100"
+            DataContext="{Binding Palette}"
+            Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibilityConverter}}"
+            AutomationProperties.AutomationId="Merge.CommandPalette"/>
     </Grid>
 </Window>

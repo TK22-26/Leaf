@@ -242,6 +242,30 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     public Leaf.TextEdit.MergePaneGlyphLayout Layout { get; } = new Leaf.TextEdit.MergePaneGlyphLayout();
 
     /// <summary>
+    /// Ctrl+K command palette backing. The view hosts a shared
+    /// <see cref="Leaf.Views.CommandPaletteView"/> with this as DataContext;
+    /// <see cref="OpenPaletteCommand"/> populates it from
+    /// <see cref="MergeCommandCatalog"/>.
+    /// </summary>
+    public MergeCommandPaletteViewModel Palette { get; } = new();
+
+    /// <summary>
+    /// Ctrl+K handler. Toggles the palette — if it's already open, pressing
+    /// Ctrl+K again dismisses it (matches VS Code / Sublime Merge) instead of
+    /// re-rebuilding the catalog and stealing focus again.
+    /// </summary>
+    [RelayCommand]
+    private void OpenPalette()
+    {
+        if (Palette.IsOpen)
+        {
+            Palette.Close();
+            return;
+        }
+        Palette.Open(MergeCommandCatalog.BuildFor(this));
+    }
+
+    /// <summary>
     /// Per-conflict-range word-level diff on the ours side (see
     /// <see cref="Leaf.Controls.Merge.ReadOnlyMergePane.WordDiffs"/>).
     /// Populated by <see cref="BuildWordDiffs"/> whenever <see cref="Document"/> changes.

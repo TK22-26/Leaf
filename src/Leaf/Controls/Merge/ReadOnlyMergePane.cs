@@ -570,6 +570,9 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         MergePaneSide.Ours => range.Ours,
         MergePaneSide.Theirs => range.Theirs,
         MergePaneSide.Base => range.Base,
+        MergePaneSide.Result => throw new InvalidOperationException(
+            "ReadOnlyMergePane does not render with Side == Result; that enum value is " +
+            "for secondary surfaces like StickyConflictHeader. Pane was configured wrong."),
         _ => LineRange.Empty,
     };
 
@@ -735,10 +738,16 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     public Rect MakeVisible(Visual visual, Rect rectangle) => rectangle;
 }
 
-/// <summary>Which side of the merge a <see cref="ReadOnlyMergePane"/> is displaying.</summary>
+/// <summary>
+/// Which side of the merge a pane is displaying.
+/// <see cref="Result"/> is only valid on secondary surfaces that track the
+/// composed output (notably <see cref="StickyConflictHeader"/>) — <see cref="ReadOnlyMergePane"/>
+/// itself never renders with <c>Side == Result</c>.
+/// </summary>
 public enum MergePaneSide
 {
     Ours,
     Theirs,
     Base,
+    Result,
 }

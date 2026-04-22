@@ -22,7 +22,7 @@ public class CommandPaletteItem
     public List<HighlightSegment> NameSegments { get; set; } = [];
 }
 
-public partial class CommandPaletteViewModel : ObservableObject
+public partial class CommandPaletteViewModel : ObservableObject, ICommandPaletteHost
 {
     private readonly IRepositoryManagementService _repositoryService;
     private readonly Func<RepositoryInfo?> _currentRepoGetter;

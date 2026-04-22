@@ -1,0 +1,275 @@
+#nullable enable
+using System.Windows;
+using FluentAssertions;
+using Leaf.Controls.Merge;
+using Leaf.Models.Merge;
+using Leaf.TextEdit;
+using Xunit;
+
+namespace Leaf.Tests.Controls.Merge;
+
+/// <summary>
+/// Unit tests for <see cref="StickyConflictHeader"/>. Exercises the
+/// <see cref="StickyConflictHeader.ComputeLabel"/> derivation through the
+/// public DPs so future refactors can't silently change what the sticky
+/// strip displays as the user scrolls past conflict regions.
+/// </summary>
+public class StickyConflictHeaderTests
+{
+    private static ModifiedBaseRange Range(int index, int startLine, int endLine, bool conflicting)
+    {
+        return new ModifiedBaseRange(
+            Index: index,
+            Base: new LineRange(startLine, endLine),
+            Ours: new LineRange(startLine, endLine),
+            Theirs: new LineRange(startLine, endLine),
+            ResultMarkedRange: new LineRange(startLine, endLine),
+            BaseLines: new[] { "" },
+            OursLines: new[] { "" },
+            TheirsLines: new[] { "" },
+            OursDiffs: Array.Empty<DetailedLineRangeMapping>(),
+            TheirsDiffs: Array.Empty<DetailedLineRangeMapping>(),
+            IsConflicting: conflicting,
+            IsOrderRelevant: true);
+    }
+
+    [StaFact]
+    public void NoConflictingRanges_ReturnsNullLabel_AndHidesHeader()
+    {
+        var header = new StickyConflictHeader
+        {
+            Layout = new MergePaneGlyphLayout(),
+            Ranges = new[] { Range(0, 10, 20, conflicting: false) },
+            Side = MergePaneSide.Ours,
+        };
+
+        header.ComputeLabel().Should().BeNull();
+        header.Visibility.Should().Be(Visibility.Collapsed,
+            because: "no conflict to summarize → strip must stay out of view");
+    }
+
+    [StaFact]
+    public void ViewportAboveFirstConflict_ReturnsNull()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Ours,
+            Ranges = new[] { Range(0, 10, 15, conflicting: true) },
+            // Scrolled to line 5 — conflict at line 10 is BELOW the viewport top.
+            VerticalOffset = 4 * layout.LineHeight,
+        };
+
+        header.ComputeLabel().Should().BeNull(
+            because: "the label only fires once the user has scrolled into or past a conflict");
+    }
+
+    [StaFact]
+    public void ViewportOnFirstConflict_ReportsConflictOneOfN()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Ours,
+            Ranges = new[]
+            {
+                Range(0, 10, 15, conflicting: true),
+                Range(1, 30, 35, conflicting: true),
+            },
+            // Exactly at conflict 0's top.
+            VerticalOffset = (10 - 1) * layout.LineHeight,
+        };
+
+        header.ComputeLabel().Should().Be("Conflict 1 of 2 · Unresolved");
+        header.Visibility.Should().Be(Visibility.Visible);
+    }
+
+    [StaFact]
+    public void ViewportBetweenConflicts_StillReportsTheOneWeScrolledPast()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Ours,
+            Ranges = new[]
+            {
+                Range(0, 10, 15, conflicting: true),
+                Range(1, 30, 35, conflicting: true),
+            },
+            // Scrolled past conflict 0 but not yet at conflict 1.
+            VerticalOffset = 20 * layout.LineHeight,
+        };
+
+        header.ComputeLabel().Should().Be("Conflict 1 of 2 · Unresolved",
+            because: "sticky header keeps labeling the most recently entered conflict until the next one reaches the top");
+    }
+
+    [StaFact]
+    public void ViewportOnSecondConflict_ReportsConflictTwoOfN()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Ours,
+            Ranges = new[]
+            {
+                Range(0, 10, 15, conflicting: true),
+                Range(1, 30, 35, conflicting: true),
+                Range(2, 50, 55, conflicting: true),
+            },
+            VerticalOffset = (30 - 1) * layout.LineHeight,
+        };
+
+        header.ComputeLabel().Should().Be("Conflict 2 of 3 · Unresolved");
+    }
+
+    [StaFact]
+    public void NonConflictingRanges_AreSkippedInCountAndIndex()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Ours,
+            Ranges = new[]
+            {
+                Range(0, 10, 15, conflicting: false), // Auto-merged, invisible to label.
+                Range(1, 30, 35, conflicting: true),  // Conflict 1 of 1.
+            },
+            VerticalOffset = (30 - 1) * layout.LineHeight,
+        };
+
+        header.ComputeLabel().Should().Be("Conflict 1 of 1 · Unresolved",
+            because: "auto-merged ranges should not inflate the N-of-M count");
+    }
+
+    [StaFact]
+    public void ResolvedRange_LabelReflectsAcceptOurs()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Ours,
+            Ranges = new[] { Range(0, 10, 15, conflicting: true) },
+            RangeStates = new Dictionary<int, ResolutionState>
+            {
+                [0] = ResolutionState.AcceptOurs.Instance,
+            },
+            VerticalOffset = (10 - 1) * layout.LineHeight,
+        };
+
+        header.ComputeLabel().Should().Be("Conflict 1 of 1 · Ours accepted");
+    }
+
+    [StaFact]
+    public void ResolvedRange_LabelReflectsAcceptTheirs()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Theirs,
+            Ranges = new[] { Range(0, 10, 15, conflicting: true) },
+            RangeStates = new Dictionary<int, ResolutionState>
+            {
+                [0] = ResolutionState.AcceptTheirs.Instance,
+            },
+            VerticalOffset = (10 - 1) * layout.LineHeight,
+        };
+
+        header.ComputeLabel().Should().Be("Conflict 1 of 1 · Theirs accepted");
+    }
+
+    [StaFact]
+    public void ResolvedRange_LabelReflectsAcceptBoth()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Ours,
+            Ranges = new[] { Range(0, 10, 15, conflicting: true) },
+            RangeStates = new Dictionary<int, ResolutionState>
+            {
+                [0] = new ResolutionState.AcceptBoth(FirstOurs: true, SmartCombine: false),
+            },
+            VerticalOffset = (10 - 1) * layout.LineHeight,
+        };
+
+        header.ComputeLabel().Should().Be("Conflict 1 of 1 · Both accepted");
+    }
+
+    [StaFact]
+    public void ResolvedRange_LabelReflectsManualResolution()
+    {
+        var layout = new MergePaneGlyphLayout();
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Ours,
+            Ranges = new[] { Range(0, 10, 15, conflicting: true) },
+            RangeStates = new Dictionary<int, ResolutionState>
+            {
+                [0] = new ResolutionState.Manual("custom text"),
+            },
+            VerticalOffset = (10 - 1) * layout.LineHeight,
+        };
+
+        header.ComputeLabel().Should().Be("Conflict 1 of 1 · Manually resolved");
+    }
+
+    [StaFact]
+    public void SettingVerticalOffset_FiresDpCallback_FlippingVisibilityAndLabel()
+    {
+        // Guards the FrameworkPropertyMetadata wiring: the DP's AffectsRender +
+        // OnInputChanged hookup is what synchronizes _currentLabel with
+        // incoming property changes. A regression that forgot the callback (or
+        // dropped AffectsRender) would silently leave Visibility stuck at its
+        // constructor default — every "ComputeLabel()" test would still pass.
+        var layout = new MergePaneGlyphLayout();
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Ours,
+            Ranges = new[] { Range(0, 10, 15, conflicting: true) },
+            // Start above the conflict so the header is Collapsed.
+            VerticalOffset = 0,
+        };
+
+        header.Visibility.Should().Be(Visibility.Collapsed,
+            because: "before scrolling into a conflict, the sticky strip is hidden");
+
+        // Scroll the viewport down to the top of the conflict — the DP
+        // callback must fire, recompute the label, and unhide the strip.
+        header.VerticalOffset = (10 - 1) * layout.LineHeight;
+
+        header.Visibility.Should().Be(Visibility.Visible,
+            because: "scrolling into a conflict must flip the strip visible via OnInputChanged");
+        header.ComputeLabel().Should().Be("Conflict 1 of 1 · Unresolved");
+    }
+
+    [StaFact]
+    public void ResultSide_UsesResultMarkedRange_ForYCoordinate()
+    {
+        // Ours and ResultMarkedRange can diverge once conflicts above have been
+        // resolved. The header must track whichever side it was told to — here
+        // we pin Result specifically so a regression that fell back to
+        // Ours/Theirs would fail.
+        var layout = new MergePaneGlyphLayout();
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Result,
+            Ranges = new[] { Range(0, 10, 15, conflicting: true) },
+            // Scrolled to where the ResultMarkedRange top lives.
+            VerticalOffset = (10 - 1) * layout.LineHeight,
+        };
+
+        header.ComputeLabel().Should().Be("Conflict 1 of 1 · Unresolved");
+    }
+}
