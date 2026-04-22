@@ -127,8 +127,10 @@ public partial class SegmentedAcceptPill : UserControl
         }
     }
 
+    // Strict palette lookup — a missing key is a programming error, not a
+    // rendering fallback. Throws with a clear pointer to the palette XAML.
     private Brush ResolveBrush(string key) =>
-        (Brush?)TryFindResource(key) ?? Brushes.Transparent;
+        MergePaletteResources.Resolve<Brush>(key);
 
     private void OnOursClicked(object sender, RoutedEventArgs e)
     {

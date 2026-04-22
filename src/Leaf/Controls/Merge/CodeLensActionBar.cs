@@ -208,11 +208,15 @@ public sealed class CodeLensActionBar : Canvas
 
     private static void AddLink(StackPanel panel, string text, string keybind, int rangeIndex, ICommand? command)
     {
+        // Resolve palette tokens strictly — a missing token is a programming
+        // error, not a rendering fallback. MergePaletteResources.Resolve<T>
+        // throws with a clear pointer to the palette XAML if the key is
+        // missing, so renames surface immediately instead of silently
+        // producing DodgerBlue-link-at-12pt garbage.
         var link = new Hyperlink(new Run(text))
         {
             ToolTip = keybind,
-            Foreground = Application.Current?.TryFindResource("Merge.Ours.Accent") as Brush
-                ?? Brushes.DodgerBlue,
+            Foreground = MergePaletteResources.Resolve<Brush>("Merge.Ours.Accent"),
         };
         if (command is not null)
         {
@@ -222,7 +226,7 @@ public sealed class CodeLensActionBar : Canvas
         var wrapper = new TextBlock(link)
         {
             Margin = panel.Children.Count == 0 ? new Thickness(0) : new Thickness(12, 0, 0, 0),
-            FontSize = Application.Current?.TryFindResource("Merge.Type.Caption.Size") as double? ?? 12,
+            FontSize = MergePaletteResources.Resolve<double>("Merge.Type.Caption.Size"),
             VerticalAlignment = VerticalAlignment.Center,
         };
         panel.Children.Add(wrapper);

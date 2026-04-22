@@ -137,9 +137,17 @@ public sealed class SegmentedAcceptPillOverlay : Canvas
     private void OnLayoutPropChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) =>
         Reposition();
 
+    // Cached pill width — pills are a fixed three-cell layout with palette-
+    // driven fonts, so DesiredSize.Width doesn't change between frames.
+    // Measure once on Rebuild, reuse on every Reposition (triggered on
+    // every scroll tick). Avoids O(N conflicts × scroll events) Measure
+    // cost for large conflict lists.
+    private double _cachedPillWidth;
+
     private void Rebuild()
     {
         Children.Clear();
+        _cachedPillWidth = 0;
         if (Ranges is null) return;
         foreach (var range in Ranges)
         {
@@ -156,6 +164,12 @@ public sealed class SegmentedAcceptPillOverlay : Canvas
                 pill.State = state;
             }
             Children.Add(pill);
+        }
+        if (Children.Count > 0)
+        {
+            var first = (SegmentedAcceptPill)Children[0];
+            first.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            _cachedPillWidth = first.DesiredSize.Width;
         }
         Reposition();
     }
@@ -189,6 +203,7 @@ public sealed class SegmentedAcceptPillOverlay : Canvas
         var lineHeight = Layout.LineHeight;
         var offset = VerticalOffset;
         var rightEdge = Math.Max(0, ActualWidth - ScrollBarInset);
+        var left = Math.Max(0, rightEdge - _cachedPillWidth);
         int childIdx = 0;
         foreach (var range in Ranges)
         {
@@ -197,12 +212,7 @@ public sealed class SegmentedAcceptPillOverlay : Canvas
             var pill = (SegmentedAcceptPill)Children[childIdx++];
             var y = (range.ResultMarkedRange.StartLine - 1) * lineHeight - offset;
             SetTop(pill, y);
-            // Set Canvas.Left after the pill is measured so we can right-align
-            // it; fall back to a reasonable default if width isn't known yet
-            // (pre-first-layout pass).
-            pill.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            var pillWidth = pill.DesiredSize.Width;
-            SetLeft(pill, Math.Max(0, rightEdge - pillWidth));
+            SetLeft(pill, left);
         }
     }
 }
