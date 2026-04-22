@@ -127,6 +127,17 @@ public sealed class StickyConflictHeader : Control
     private void OnLayoutPropChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) =>
         RecomputeLabel();
 
+    /// <summary>
+    /// Explicit resync entry point for hosts that mutate
+    /// <see cref="RangeStates"/> in place (the live dictionary pattern
+    /// <see cref="MergeEditorViewModel"/> uses). Because the DP reference
+    /// stays the same across those mutations, the DP metadata callback
+    /// never fires and the cached <c>"· &lt;state&gt;"</c> caption goes stale.
+    /// Mirrors <see cref="SegmentedAcceptPillOverlay.RefreshPillStates"/> —
+    /// the view calls both from its <c>RangeStatesChanged</c> hook.
+    /// </summary>
+    public void RefreshState() => RecomputeLabel();
+
     private void RecomputeLabel()
     {
         _currentLabel = ComputeLabel();

@@ -208,6 +208,23 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     {
         Focusable = false;
         ClipToBounds = true;
+        // Tear the dispatcher-timer ticker down when the pane leaves the
+        // visual tree. Without this the timer's Tick handler keeps the pane
+        // rooted through the dispatcher's timer queue across repo switches
+        // and merge aborts — parity with the ResultPane / StickyConflictHeader
+        // detach pattern.
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_animationTicker is not null)
+        {
+            _animationTicker.Stop();
+            _animationTicker.Tick -= OnAnimationTick;
+            _animationTicker = null;
+        }
+        _rangeResolveStarts.Clear();
     }
 
     // C1 syntax-highlighting bookkeeping. Rebuilt when Lines or FilePath
