@@ -42,8 +42,21 @@ public partial class MergeEditorView : Window
         Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
             .GetRequiredService<SettingsService>(Leaf.App.Services);
 
+    // Loaded can re-fire whenever the element re-enters the visual tree
+    // (tab recycling, ContentControl swap, re-parenting in a layout change).
+    // Without this gate each reload would: (a) overwrite the user's current
+    // splitter layout with the persisted settings, and (b) stack another
+    // pair of GotKeyboardFocus / LostKeyboardFocus handlers on each card —
+    // every focus change would then kick two pulses racing on the same
+    // BorderBrush. Flip on first load; never unset (the editor lives for
+    // one merge session).
+    private bool _loadedOnce;
+
     private void OnMergeEditorLoaded(object? sender, RoutedEventArgs e)
     {
+        if (_loadedOnce) return;
+        _loadedOnce = true;
+
         var settings = ResolveSettingsService().LoadSettings();
         if (settings.MergeFileListWidth > 0)
         {
@@ -260,12 +273,17 @@ public partial class MergeEditorView : Window
         // Invalidate both input panes so the change-bar / overlay re-render
         // after any resolution-changing operation (pill click, footer
         // AcceptAllOurs/Theirs, Undo, Redo). RangeStates is a plain dictionary
-        // — this is the designated re-render channel. The pill overlay needs
-        // an explicit refresh because dictionary mutation in place doesn't
-        // fire WPF DP change notifications.
+        // — this is the designated re-render channel. Controls whose
+        // rendering depends on RangeStates need an explicit refresh because
+        // dictionary mutation in place doesn't fire WPF DP change
+        // notifications: the pill overlay caches per-range State on its
+        // children, and the three sticky headers cache a "· <state>" label.
         OursPane.InvalidateVisual();
         TheirsPane.InvalidateVisual();
         SegmentedPills?.RefreshPillStates();
+        OursSticky?.RefreshState();
+        TheirsSticky?.RefreshState();
+        ResultSticky?.RefreshState();
     }
 
     // ── Scroll / minimap wire-up (Phase 4) ───────────────────────────────

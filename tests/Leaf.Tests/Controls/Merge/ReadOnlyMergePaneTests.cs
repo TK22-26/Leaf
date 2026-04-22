@@ -27,19 +27,29 @@ public class ReadOnlyMergePaneTests
     }
 
     [StaFact]
-    public void StartRangeResolveAnimation_DoesNotThrow_AndCanBeCalledRepeatedly()
+    public void StartRangeResolveAnimation_RegistersRange_AndRestartsOnReEntry()
     {
-        // Public entry point on the pane's V5 resolve-fade surface. Driven
-        // by MergeEditorView.OnRangeStatesChanged when a range flips to
-        // resolved. Re-entry with the same index must restart the animation
-        // rather than throw, so clicking an accept button twice in quick
-        // succession doesn't corrupt the internal ticker state.
+        // Public entry point on the pane's V5 resolve-fade surface. Reach
+        // into _rangeResolveStarts by reflection — it's the only observable
+        // side effect (fade-in progress is read off GetResolvedFadeAlpha
+        // which is also private). Asserting the dictionary state is a firmer
+        // contract than "does not throw".
         var pane = new ReadOnlyMergePane();
-        FluentActions.Invoking(() =>
-        {
-            pane.StartRangeResolveAnimation(0);
-            pane.StartRangeResolveAnimation(0);
-            pane.StartRangeResolveAnimation(1);
-        }).Should().NotThrow();
+        var startsField = typeof(ReadOnlyMergePane)
+            .GetField("_rangeResolveStarts",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        pane.StartRangeResolveAnimation(0);
+        pane.StartRangeResolveAnimation(1);
+        var starts = (System.Collections.IDictionary)startsField.GetValue(pane)!;
+        starts.Count.Should().Be(2, because: "each distinct range gets its own start timestamp");
+
+        // Re-entry on the same index must overwrite the previous timestamp
+        // (restart the fade) rather than throw.
+        var firstStart = starts[0];
+        System.Threading.Thread.Sleep(2); // ensure Stopwatch.GetTimestamp increments
+        pane.StartRangeResolveAnimation(0);
+        starts[0].Should().NotBe(firstStart,
+            because: "re-entering an in-flight index restarts the animation from 'now'");
     }
 }

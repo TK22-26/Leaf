@@ -254,6 +254,41 @@ public class StickyConflictHeaderTests
     }
 
     [StaFact]
+    public void RefreshState_AfterInPlaceRangeStatesMutation_UpdatesCaption()
+    {
+        // RangeStates is a mutable Dictionary; MergeEditorViewModel rewrites
+        // entries in place and raises RangeStatesChanged. No WPF DP change
+        // notification fires, so the cached "· <state>" label would go
+        // stale and the user would see "Conflict 1 of 1 · Unresolved" long
+        // after they accepted the conflict via the pill. RefreshState is the
+        // explicit resync entry point the view calls.
+        var layout = new MergePaneGlyphLayout();
+        var states = new Dictionary<int, ResolutionState>
+        {
+            [0] = ResolutionState.Unresolved.Instance,
+        };
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Ours,
+            Ranges = new[] { Range(0, 10, 15, conflicting: true) },
+            RangeStates = states,
+            VerticalOffset = (10 - 1) * layout.LineHeight,
+        };
+
+        header.ComputeLabel().Should().Be("Conflict 1 of 1 · Unresolved");
+
+        // Mutate the same dictionary in place — the DP reference doesn't
+        // change, so no automatic invalidation. Without RefreshState, the
+        // cached label would stay "Unresolved" on the next render.
+        states[0] = ResolutionState.AcceptOurs.Instance;
+        header.RefreshState();
+
+        header.ComputeLabel().Should().Be("Conflict 1 of 1 · Ours accepted",
+            because: "RefreshState must re-run DescribeState against the mutated RangeStates");
+    }
+
+    [StaFact]
     public void ResultSide_UsesResultMarkedRange_ForYCoordinate()
     {
         // Ours and ResultMarkedRange can diverge once conflicts above have been
