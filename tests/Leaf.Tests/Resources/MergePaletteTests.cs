@@ -211,6 +211,8 @@ public class MergePaletteTests
             // Derived / closeout tokens — pinned so renames fail loudly.
             ["Merge.State.Resolved.Overlay.Color"] = Color.FromArgb(0x44, 0x22, 0xC5, 0x5E),
             ["Merge.Shadow.Color"] = Color.FromArgb(0xFF, 0x00, 0x00, 0x00),
+            ["Merge.Surface.Scrim.Color"] = Color.FromArgb(0x11, 0x00, 0x00, 0x00),
+            ["Merge.Border.Dialog.Color"] = Color.FromArgb(0x22, 0x00, 0x00, 0x00),
         };
 
     [StaFact]

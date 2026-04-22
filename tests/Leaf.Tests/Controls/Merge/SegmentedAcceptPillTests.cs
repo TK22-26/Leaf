@@ -60,6 +60,7 @@ public class SegmentedAcceptPillTests
     [StaFact]
     public void ThreeCells_AreExposedAsButtons()
     {
+        EnsurePaletteLoaded();
         var pill = new SegmentedAcceptPill();
         // Each cell is a Button inside the template — the three named cells
         // are the control's primary contract.
@@ -74,6 +75,7 @@ public class SegmentedAcceptPillTests
     [StaFact]
     public void ClickingOursCell_InvokesAcceptOursCommandWithRangeIndex()
     {
+        EnsurePaletteLoaded();
         var cmd = new RecordingCommand();
         var pill = new SegmentedAcceptPill
         {
@@ -89,6 +91,7 @@ public class SegmentedAcceptPillTests
     [StaFact]
     public void ClickingTheirsCell_InvokesAcceptTheirsCommandWithRangeIndex()
     {
+        EnsurePaletteLoaded();
         var cmd = new RecordingCommand();
         var pill = new SegmentedAcceptPill
         {
@@ -104,6 +107,7 @@ public class SegmentedAcceptPillTests
     [StaFact]
     public void ClickingBothCell_InvokesAcceptBothCommandWithRangeIndex()
     {
+        EnsurePaletteLoaded();
         var cmd = new RecordingCommand();
         var pill = new SegmentedAcceptPill
         {
@@ -119,6 +123,7 @@ public class SegmentedAcceptPillTests
     [StaFact]
     public void OursClick_DoesNotInvokeOtherCommands()
     {
+        EnsurePaletteLoaded();
         var oursCmd = new RecordingCommand();
         var theirsCmd = new RecordingCommand();
         var bothCmd = new RecordingCommand();
