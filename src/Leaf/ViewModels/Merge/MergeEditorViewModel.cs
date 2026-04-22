@@ -399,8 +399,17 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         {
             return;
         }
-        catch (MergeEngineException ex)
+        catch (Exception ex) when (ex is MergeEngineException or System.IO.IOException or InvalidOperationException or UnauthorizedAccessException)
         {
+            // MergeEngineException is the engine's own failure channel; IOException
+            // / UnauthorizedAccessException surface if git show can't read blobs
+            // or the working tree is locked; InvalidOperationException covers
+            // corrupt documents that escape engine-level validation. A narrower
+            // catch (prior to this fix) let those last three propagate through
+            // FireAndForget, leaving the VM in a half-loaded state — sidebar on
+            // the new file, panes still showing the old one. The unified engine-
+            // error path keeps the visible state coherent: cleared panes plus
+            // the error message surfaced as IsEngineError.
             Log.Error("Merge", $"Engine error for {filePath}: {ex.Message}", ex);
             Document = null;
             RangeStates.Clear();

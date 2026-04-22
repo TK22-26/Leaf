@@ -179,8 +179,12 @@ public sealed class CodeLensActionBar : Canvas
     {
         Children.Clear();
         if (Ranges is null) return;
-        foreach (var range in Ranges)
+        // Indexed loop: Rebuild is on the build-on-state-change path; the
+        // per-pill overlay matches this pattern so the two overlays have
+        // uniform allocation shapes.
+        for (int i = 0; i < Ranges.Count; i++)
         {
+            var range = Ranges[i];
             if (!range.IsConflicting) continue;
             Children.Add(BuildBarForRange(range));
         }
@@ -199,14 +203,23 @@ public sealed class CodeLensActionBar : Canvas
             Opacity = resolved ? 0.4 : 1.0,
             Tag = range.Index,
         };
-        AddLink(panel, "Accept Ours", "Alt+1", range.Index, AcceptOursCommand);
-        AddLink(panel, "Accept Theirs", "Alt+2", range.Index, AcceptTheirsCommand);
-        AddLink(panel, "Accept Both", "Alt+3", range.Index, AcceptBothCommand);
-        AddLink(panel, "Compare", "Scroll Ours + Theirs to this conflict", range.Index, CompareCommand);
+        // Per-range AutomationId on the bar panel so Stagehand / AT clients
+        // can target the CodeLens row for a specific conflict; individual
+        // link children inherit the name through AutomationProperties below.
+        System.Windows.Automation.AutomationProperties.SetAutomationId(
+            panel, $"Merge.CodeLens.Range.{range.Index}");
+        AddLink(panel, "Accept Ours", "Alt+1", range.Index, AcceptOursCommand,
+            automationId: $"Merge.CodeLens.AcceptOurs.{range.Index}");
+        AddLink(panel, "Accept Theirs", "Alt+2", range.Index, AcceptTheirsCommand,
+            automationId: $"Merge.CodeLens.AcceptTheirs.{range.Index}");
+        AddLink(panel, "Accept Both", "Alt+3", range.Index, AcceptBothCommand,
+            automationId: $"Merge.CodeLens.AcceptBoth.{range.Index}");
+        AddLink(panel, "Compare", "Scroll Ours + Theirs to this conflict", range.Index, CompareCommand,
+            automationId: $"Merge.CodeLens.Compare.{range.Index}");
         return panel;
     }
 
-    private static void AddLink(StackPanel panel, string text, string keybind, int rangeIndex, ICommand? command)
+    private static void AddLink(StackPanel panel, string text, string keybind, int rangeIndex, ICommand? command, string automationId)
     {
         // Resolve palette tokens strictly — a missing token is a programming
         // error, not a rendering fallback. MergePaletteResources.Resolve<T>
@@ -223,6 +236,14 @@ public sealed class CodeLensActionBar : Canvas
             link.Command = command;
             link.CommandParameter = rangeIndex;
         }
+        // AutomationId belongs on the Hyperlink — that's the element that
+        // exposes the Invoke pattern. A TextBlock peer has no Invoke, so
+        // placing the ID there would let AT clients find the element but
+        // not click it (falls through to coordinate-based clicks and loses
+        // keyboard-only test coverage). Hyperlink is FrameworkContentElement
+        // and supports AutomationProperties directly.
+        System.Windows.Automation.AutomationProperties.SetAutomationId(link, automationId);
+        System.Windows.Automation.AutomationProperties.SetName(link, text);
         var wrapper = new TextBlock(link)
         {
             Margin = panel.Children.Count == 0 ? new Thickness(0) : new Thickness(12, 0, 0, 0),
@@ -243,8 +264,11 @@ public sealed class CodeLensActionBar : Canvas
         var lineHeight = Layout.LineHeight;
         var offset = VerticalOffset;
         int childIdx = 0;
-        foreach (var range in Ranges)
+        // Indexed loop: Reposition fires on every scroll; dropping the
+        // enumerator allocation keeps the 60 Hz scroll path alloc-free.
+        for (int i = 0; i < Ranges.Count; i++)
         {
+            var range = Ranges[i];
             if (!range.IsConflicting) continue;
             if (childIdx >= Children.Count) break;
             var child = Children[childIdx++];

@@ -52,27 +52,55 @@ public partial class MergeEditorView : Window
     // one merge session).
     private bool _loadedOnce;
 
+    // Defensive bounds so a corrupt or hand-edited settings file (Infinity,
+    // NaN, negative, absurdly large) can't crash the editor's first paint:
+    // new GridLength(double.PositiveInfinity, Star) throws ArgumentException,
+    // and NaN bypasses every `> 0` gate. Width clamp allows 40–4000 px
+    // (narrow sidebar through dual-4K setup); star ratios allow 0.1–10 (any
+    // pane at least 1/10 of its siblings, never more than 10x).
+    internal const double MinFileListWidthPx = 40.0;
+    internal const double MaxFileListWidthPx = 4000.0;
+    internal const double MinPaneRatio = 0.1;
+    internal const double MaxPaneRatio = 10.0;
+
+    /// <summary>
+    /// Reject non-finite / non-positive values and clamp everything else
+    /// into the allowed range before constructing a <see cref="GridLength"/>.
+    /// Exposed as <c>internal</c> so unit tests can pin the coercion table
+    /// without having to stand up a full MergeEditorView.
+    /// </summary>
+    internal static bool TryCoerceWidth(double raw, double min, double max, out double clamped)
+    {
+        if (!double.IsFinite(raw) || raw <= 0)
+        {
+            clamped = 0;
+            return false;
+        }
+        clamped = Math.Clamp(raw, min, max);
+        return true;
+    }
+
     private void OnMergeEditorLoaded(object? sender, RoutedEventArgs e)
     {
         if (_loadedOnce) return;
         _loadedOnce = true;
 
         var settings = ResolveSettingsService().LoadSettings();
-        if (settings.MergeFileListWidth > 0)
+        if (TryCoerceWidth(settings.MergeFileListWidth, MinFileListWidthPx, MaxFileListWidthPx, out var fileListWidth))
         {
-            FileListColumn.Width = new GridLength(settings.MergeFileListWidth, GridUnitType.Pixel);
+            FileListColumn.Width = new GridLength(fileListWidth, GridUnitType.Pixel);
         }
-        if (settings.MergeOursPaneRatio > 0)
+        if (TryCoerceWidth(settings.MergeOursPaneRatio, MinPaneRatio, MaxPaneRatio, out var oursRatio))
         {
-            OursColumn.Width = new GridLength(settings.MergeOursPaneRatio, GridUnitType.Star);
+            OursColumn.Width = new GridLength(oursRatio, GridUnitType.Star);
         }
-        if (settings.MergeTheirsPaneRatio > 0)
+        if (TryCoerceWidth(settings.MergeTheirsPaneRatio, MinPaneRatio, MaxPaneRatio, out var theirsRatio))
         {
-            TheirsColumn.Width = new GridLength(settings.MergeTheirsPaneRatio, GridUnitType.Star);
+            TheirsColumn.Width = new GridLength(theirsRatio, GridUnitType.Star);
         }
-        if (settings.MergeResultRowRatio > 0)
+        if (TryCoerceWidth(settings.MergeResultRowRatio, MinPaneRatio, MaxPaneRatio, out var resultRatio))
         {
-            ResultRow.Height = new GridLength(settings.MergeResultRowRatio, GridUnitType.Star);
+            ResultRow.Height = new GridLength(resultRatio, GridUnitType.Star);
         }
 
         // V5: wire the Merge.Motion.PaneFocus animated pulse on Ours / Theirs /
