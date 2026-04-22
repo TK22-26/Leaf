@@ -29,11 +29,6 @@
              Focusable="False">
 
     <UserControl.Resources>
-        <!-- Local converter so the control works regardless of whether the
-             host has registered a BooleanToVisibilityConverter at App level
-             (tests running outside the Leaf app shell, design-time previewers). -->
-        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
-
         <!-- HierarchicalDataTemplate bound to ConflictTreeNode. Children is
              empty for file leaves, so WPF auto-terminates recursion. -->
         <HierarchicalDataTemplate DataType="{x:Type vm:ConflictTreeNode}"
@@ -45,38 +40,18 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Folder icon — visible only when IsFolder. -->
+                <!-- One icon per row. Symbol is resolved once at node-
+                     construction time (FileTypeIconResolver) so folders get
+                     Symbol.Folder and file leaves get the per-extension glyph
+                     (Code / Braces / Image / Document). Binding directly to
+                     the node's IconSymbol keeps this surface simple — no
+                     twin-SymbolIcon workaround, no visibility triggers. -->
                 <ic:SymbolIcon Grid.Column="0"
-                               Symbol="Folder" FontSize="14"
+                               Symbol="{Binding IconSymbol}"
+                               FontSize="14"
                                Margin="0,0,6,0"
                                VerticalAlignment="Center"
-                               Foreground="{DynamicResource Merge.Text.Secondary}"
-                               Visibility="{Binding IsFolder,
-                                   Converter={StaticResource BooleanToVisibilityConverter}}"/>
-
-                <!-- File icon — visible only when NOT IsFolder. Uses a
-                     DataTrigger-less inverse-binding would need another
-                     converter; simpler to use a sibling element with
-                     opposite visibility via an InvertedBooleanToVisibility
-                     converter provided by the host app. Here we use two
-                     SymbolIcons with the bool-to-visibility converter and
-                     an inverted one to avoid a new converter type. -->
-                <ic:SymbolIcon Grid.Column="0"
-                               Symbol="Document" FontSize="14"
-                               Margin="0,0,6,0"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource Merge.Text.Secondary}">
-                    <ic:SymbolIcon.Style>
-                        <Style TargetType="{x:Type ic:SymbolIcon}">
-                            <Setter Property="Visibility" Value="Visible"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsFolder}" Value="True">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ic:SymbolIcon.Style>
-                </ic:SymbolIcon>
+                               Foreground="{DynamicResource Merge.Text.Secondary}"/>
 
                 <TextBlock Grid.Column="1"
                            Text="{Binding DisplayName}"

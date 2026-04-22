@@ -9,11 +9,13 @@ using Xunit;
 namespace Leaf.Tests.Controls.Merge;
 
 /// <summary>
-/// Pins the V5 motion wiring: the six storyboard resources resolve with the
-/// right durations and easing, and the <see cref="MergeMotionHelpers"/>
-/// surface exposes what the plan contracts for. Rendering fidelity
-/// (actual visible animation) is a Stagehand smoke-test concern; these
-/// tests only prove the plumbing.
+/// Pins the V5 motion wiring: every live-consumer storyboard resolves with
+/// the right duration + easing, and the <see cref="MergeMotionHelpers"/>
+/// surface exposes what the plan contracts for. Rendering fidelity (actual
+/// visible animation) is a Stagehand smoke-test concern; these tests only
+/// prove the plumbing. Plan §D3's CheckboxToggle + PopoverShow are deferred
+/// with rationale in <c>Resources/Merge/MergeMotion.xaml</c>, and RangeResolve
+/// ships as a dispatcher-timer tween inside <c>ReadOnlyMergePane</c>.
 /// </summary>
 public class MergeMotionTests
 {
@@ -23,12 +25,13 @@ public class MergeMotionTests
         EnsureMergeDictionaryMerged();
         var resources = Application.Current.Resources;
 
-        // Only storyboards with a live consumer ship in MergeMotion.xaml.
-        // OnRender-drawn animations (checkbox bounce, range-resolve fade)
-        // use dispatcher-timer pure-math tweens inside ReadOnlyMergePane
-        // because Storyboards can't drive DrawingContext output.
+        // Every storyboard with a live consumer ships in MergeMotion.xaml.
+        // Other V5 §D3 entries (CheckboxToggle, RangeResolve, PopoverShow)
+        // are handled by dispatcher-timer tweens or deferred — rationale
+        // lives in MergeMotion.xaml's header comment.
         AssertStoryboardDuration(resources, "Merge.Motion.PaneFocus", TimeSpan.FromMilliseconds(250));
         AssertStoryboardDuration(resources, "Merge.Motion.MinimapJump", TimeSpan.FromMilliseconds(400));
+        AssertStoryboardDuration(resources, "Merge.Motion.AcceptButton", TimeSpan.FromMilliseconds(150));
     }
 
     [StaFact]
@@ -41,6 +44,7 @@ public class MergeMotionTests
         {
             "Merge.Motion.PaneFocus",
             "Merge.Motion.MinimapJump",
+            "Merge.Motion.AcceptButton",
         };
         foreach (var key in keys)
         {
@@ -63,6 +67,23 @@ public class MergeMotionTests
     }
 
     [StaFact]
+    public void AcceptButton_Storyboard_HasParallelScaleXScaleYAnimations()
+    {
+        EnsureMergeDictionaryMerged();
+        var storyboard = (Storyboard)Application.Current.Resources["Merge.Motion.AcceptButton"]!;
+
+        storyboard.Children.Should().HaveCount(2,
+            because: "AcceptButton drives ScaleX and ScaleY in parallel");
+        foreach (Timeline child in storyboard.Children)
+        {
+            var da = child.Should().BeOfType<DoubleAnimation>().Subject;
+            da.From.Should().Be(0.97, because: "plan §D3 specifies 0.97 → 1.0 bounce");
+            da.To.Should().Be(1.0);
+            da.Duration.TimeSpan.Should().Be(TimeSpan.FromMilliseconds(150));
+        }
+    }
+
+    [StaFact]
     public void SmoothScrollTo_KicksAnimationOnScrollViewer()
     {
         EnsureMergeDictionaryMerged();
@@ -71,6 +92,21 @@ public class MergeMotionTests
         // in flight on the attached scroll-offset DP.
         var act = () => MergeMotionHelpers.SmoothScrollTo(sv, 100.0);
         act.Should().NotThrow();
+    }
+
+    [StaFact]
+    public void PlayAcceptBounce_AttachesScaleTransform_AndStartsAnimation()
+    {
+        EnsureMergeDictionaryMerged();
+        var fe = new System.Windows.Controls.Button();
+        // Must not throw, must end up with a ScaleTransform whose ScaleX/ScaleY
+        // are under animation. The animated values themselves are timing-
+        // dependent; asserting the transform exists is a stable invariant.
+        MergeMotionHelpers.PlayAcceptBounce(fe);
+        fe.RenderTransform.Should().BeOfType<System.Windows.Media.ScaleTransform>(
+            because: "PlayAcceptBounce swaps in a writable ScaleTransform for the animation to drive");
+        fe.RenderTransformOrigin.Should().Be(new System.Windows.Point(0.5, 0.5),
+            because: "scale must be anchored to the cell centre — corner-anchored bounce reads wrong");
     }
 
     private static void AssertStoryboardDuration(ResourceDictionary resources, string key, TimeSpan expected)

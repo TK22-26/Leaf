@@ -328,16 +328,4 @@ public partial class MergeEditorView : Window
         Leaf.Controls.Merge.MergeMotionHelpers.SmoothScrollTo(sv, target);
     }
 
-    private void OnResultTextChanged(object? sender, string text)
-    {
-        // Hard-block foot-gun: the Phase 2c ResultPane is IsReadOnly=true so this
-        // handler cannot be reached via user input. If a future developer flips
-        // IsReadOnly without first implementing range-aware manual-edit routing,
-        // the pre-fix whole-buffer-to-Ranges[0] bug would return and silently
-        // corrupt committed output. Fail loudly instead.
-        throw new NotImplementedException(
-            "Manual editing of the Result pane is not supported in Phase 2c " +
-            "(ResultPane.IsReadOnly=true). Phase 3 will reintroduce it with " +
-            "per-range text mapping so only the touched range becomes Manual.");
-    }
 }

@@ -79,15 +79,23 @@
           the saturated state color itself for high contrast against both the
           tint and any surface depth underneath. Ship both the low-alpha Color
           (for control code that freezes its own SolidColorBrush) and the
-          pre-frozen Brush (for xaml bindings).  -->
+          pre-frozen Brush (for xaml bindings).
+          The three ship as a pair-per-state (Unresolved / Resolved / AiPending)
+          so every state in plan §D1 has a first-class pill vocabulary — future
+          AI-pending badges can bind directly without another palette round-
+          trip.  -->
     <Color x:Key="Merge.State.Unresolved.PillBg.Color">#33E04444</Color>
     <Color x:Key="Merge.State.Unresolved.PillText.Color">#FFFFB2B2</Color>
     <Color x:Key="Merge.State.Resolved.PillBg.Color">#3322C55E</Color>
     <Color x:Key="Merge.State.Resolved.PillText.Color">#FF8BE0A8</Color>
+    <Color x:Key="Merge.State.AiPending.PillBg.Color">#333794F2</Color>
+    <Color x:Key="Merge.State.AiPending.PillText.Color">#FF8CBCE8</Color>
     <SolidColorBrush x:Key="Merge.State.Unresolved.PillBg"   Color="#33E04444"/>
     <SolidColorBrush x:Key="Merge.State.Unresolved.PillText" Color="#FFFFB2B2"/>
     <SolidColorBrush x:Key="Merge.State.Resolved.PillBg"     Color="#3322C55E"/>
     <SolidColorBrush x:Key="Merge.State.Resolved.PillText"   Color="#FF8BE0A8"/>
+    <SolidColorBrush x:Key="Merge.State.AiPending.PillBg"    Color="#333794F2"/>
+    <SolidColorBrush x:Key="Merge.State.AiPending.PillText"  Color="#FF8CBCE8"/>
 
     <!--  Surface depth layers (darker -> lighter)  -->
     <Color x:Key="Merge.Surface.1.Color">#FF181818</Color>

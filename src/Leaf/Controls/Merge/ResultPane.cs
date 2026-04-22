@@ -18,10 +18,15 @@ namespace Leaf.Controls.Merge;
 /// <remarks>
 /// <para>
 /// We expose a <see cref="Text"/> dependency property bound to the VM's composed
-/// text, plus a <see cref="ResultTextChanged"/> event that fires on edits so the VM
-/// can flip affected regions to <c>ResolutionState.Manual</c>. No conflict chrome
+/// text (one-way today — the pane is <c>IsReadOnly=true</c>). No conflict chrome
 /// is drawn here — overlays live in the parent <see cref="MergeEditorView"/> and
 /// share the Result pane's scroll viewport.
+/// </para>
+/// <para>
+/// When Phase 3 re-enables manual editing with range-aware text mapping, the
+/// pane will surface user edits back to the VM so affected regions flip to
+/// <see cref="Leaf.Models.Merge.ResolutionState.Manual"/>. No such surface
+/// exists today — adding it without a consumer would be dead scaffolding.
 /// </para>
 /// </remarks>
 public sealed class ResultPane : ContentControl
@@ -80,9 +85,6 @@ public sealed class ResultPane : ContentControl
         private set => SetValue(VerticalOffsetProperty, value);
     }
 
-    /// <summary>Fires when the user edits the result pane. The string is the full buffer.</summary>
-    public event EventHandler<string>? ResultTextChanged;
-
     private readonly TextEditor _editor = new()
     {
         ShowLineNumbers = true,
@@ -107,7 +109,6 @@ public sealed class ResultPane : ContentControl
     public ResultPane()
     {
         Content = _editor;
-        _editor.TextChanged += OnEditorTextChanged;
         // Forward the TextView's scroll offset to VerticalOffset so the
         // CodeLens overlay (and any future chrome) can track pane scrolling
         // declaratively via WPF bindings rather than hooking the event itself.
@@ -115,31 +116,18 @@ public sealed class ResultPane : ContentControl
             VerticalOffset = _editor.TextArea.TextView.ScrollOffset.Y;
     }
 
-    private bool _suppressChangeEvent;
-
-    private void OnEditorTextChanged(object? sender, EventArgs e)
-    {
-        if (_suppressChangeEvent) return;
-        var txt = _editor.Text;
-        if (!Equals(GetValue(TextProperty), txt))
-        {
-            SetCurrentValue(TextProperty, txt);
-        }
-        ResultTextChanged?.Invoke(this, txt);
-    }
-
     private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
+        // One-way push from the Text DP into the AvalonEdit document. Pane is
+        // IsReadOnly=true so there's no reverse path to guard against — user
+        // typing can't fire TextChanged on _editor. Phase 3 (editable Result)
+        // will re-add a TextChanged subscription when it ships the range-aware
+        // ResolutionState.Manual routing.
         var pane = (ResultPane)d;
         var newText = (string?)e.NewValue ?? string.Empty;
         if (pane._editor.Text == newText) return;
-        pane._suppressChangeEvent = true;
-        try
-        {
-            pane._editor.Document ??= new TextDocument();
-            pane._editor.Document.Text = newText;
-        }
-        finally { pane._suppressChangeEvent = false; }
+        pane._editor.Document ??= new TextDocument();
+        pane._editor.Document.Text = newText;
     }
 
     private static void OnLayoutChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -165,20 +153,6 @@ public sealed class ResultPane : ContentControl
     private static void OnFilePathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var pane = (ResultPane)d;
-        pane._editor.SyntaxHighlighting = ResolveHighlighting((string?)e.NewValue);
-    }
-
-    /// <summary>
-    /// Resolve the AvalonEdit syntax-highlighting definition for a file path
-    /// by extension. Returns null when <paramref name="filePath"/> is empty or
-    /// its extension has no registered definition — callers should treat null
-    /// as "render in a single foreground colour".
-    /// </summary>
-    internal static IHighlightingDefinition? ResolveHighlighting(string? filePath)
-    {
-        if (string.IsNullOrEmpty(filePath)) return null;
-        var ext = Path.GetExtension(filePath);
-        if (string.IsNullOrEmpty(ext)) return null;
-        return HighlightingManager.Instance.GetDefinitionByExtension(ext);
+        pane._editor.SyntaxHighlighting = MergeHighlightingResolver.ByFilePath((string?)e.NewValue);
     }
 }
