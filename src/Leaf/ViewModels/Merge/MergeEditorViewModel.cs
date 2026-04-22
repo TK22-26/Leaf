@@ -801,6 +801,88 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         CurrentConflictIndex = FindNextUnresolvedOrWrap(conflicting, -1);
     }
 
+    /// <summary>
+    /// C2 secondary cursor. 0-based index into the current conflict's
+    /// <see cref="ModifiedBaseRange.OursDiffs"/> + <see cref="ModifiedBaseRange.TheirsDiffs"/>
+    /// (concatenated, Ours first) — identifies which change span inside the
+    /// current range the user is focused on. The Alt+Left / Alt+Right
+    /// commands advance and retreat the cursor; wrapping past an edge
+    /// advances <see cref="CurrentConflictIndex"/> to the next conflict's
+    /// first or last span.
+    /// </summary>
+    [ObservableProperty]
+    private int _currentChangeSpanIndex;
+
+    [RelayCommand]
+    private void NextChangeSpan()
+    {
+        if (Document is null) return;
+        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        if (conflicting.Count == 0) return;
+        var range = conflicting[Math.Clamp(CurrentConflictIndex, 0, conflicting.Count - 1)];
+        var spanCount = range.OursDiffs.Count + range.TheirsDiffs.Count;
+        if (spanCount == 0 || CurrentChangeSpanIndex >= spanCount - 1)
+        {
+            // Past the last span of this conflict — fall into the next conflict's
+            // first span. Use NextConflictCommand's wrap semantics for consistency.
+            CurrentConflictIndex = (CurrentConflictIndex + 1) % conflicting.Count;
+            CurrentChangeSpanIndex = 0;
+        }
+        else
+        {
+            CurrentChangeSpanIndex++;
+        }
+    }
+
+    [RelayCommand]
+    private void PreviousChangeSpan()
+    {
+        if (Document is null) return;
+        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        if (conflicting.Count == 0) return;
+        if (CurrentChangeSpanIndex <= 0)
+        {
+            // At or before the first span — retreat to the previous conflict
+            // and land on its last span.
+            var prevIdx = (CurrentConflictIndex - 1 + conflicting.Count) % conflicting.Count;
+            CurrentConflictIndex = prevIdx;
+            var prev = conflicting[prevIdx];
+            var prevSpanCount = prev.OursDiffs.Count + prev.TheirsDiffs.Count;
+            CurrentChangeSpanIndex = Math.Max(0, prevSpanCount - 1);
+        }
+        else
+        {
+            CurrentChangeSpanIndex--;
+        }
+    }
+
+    /// <summary>
+    /// 0-based cursor into <see cref="ModifiedBaseRange"/>s that are NOT
+    /// conflicting — Git auto-resolved them, but the UI still surfaces them
+    /// for context. Used by <see cref="NextAutoMergedRegionCommand"/> and
+    /// <see cref="PreviousAutoMergedRegionCommand"/>.
+    /// </summary>
+    [ObservableProperty]
+    private int _currentAutoMergedRegionIndex;
+
+    [RelayCommand]
+    private void NextAutoMergedRegion()
+    {
+        if (Document is null) return;
+        var auto = Document.Ranges.Where(r => !r.IsConflicting).ToList();
+        if (auto.Count == 0) return;
+        CurrentAutoMergedRegionIndex = (CurrentAutoMergedRegionIndex + 1) % auto.Count;
+    }
+
+    [RelayCommand]
+    private void PreviousAutoMergedRegion()
+    {
+        if (Document is null) return;
+        var auto = Document.Ranges.Where(r => !r.IsConflicting).ToList();
+        if (auto.Count == 0) return;
+        CurrentAutoMergedRegionIndex = (CurrentAutoMergedRegionIndex - 1 + auto.Count) % auto.Count;
+    }
+
     private int FindNextUnresolvedOrWrap(List<ModifiedBaseRange> conflicting, int delta)
     {
         var n = conflicting.Count;

@@ -21,6 +21,13 @@
         <KeyBinding Modifiers="Alt" Key="D3" Command="{Binding AcceptCurrentConflictBothCommand}"/>
         <KeyBinding Key="F8" Command="{Binding NextConflictCommand}"/>
         <KeyBinding Modifiers="Shift" Key="F8" Command="{Binding PreviousConflictCommand}"/>
+        <!-- C2 WinMerge-style intra-conflict navigation. Alt+Left/Right steps
+             through change spans inside the current conflict; Alt+Up/Down
+             steps through non-conflicting auto-merged regions. -->
+        <KeyBinding Modifiers="Alt" Key="Right" Command="{Binding NextChangeSpanCommand}"/>
+        <KeyBinding Modifiers="Alt" Key="Left" Command="{Binding PreviousChangeSpanCommand}"/>
+        <KeyBinding Modifiers="Alt" Key="Down" Command="{Binding NextAutoMergedRegionCommand}"/>
+        <KeyBinding Modifiers="Alt" Key="Up" Command="{Binding PreviousAutoMergedRegionCommand}"/>
         <KeyBinding Modifiers="Control" Key="Enter" Command="{Binding MarkResolvedCommand}"/>
         <KeyBinding Modifiers="Control" Key="Z" Command="{Binding UndoCommand}"/>
         <KeyBinding Modifiers="Control" Key="Y" Command="{Binding RedoCommand}"/>
@@ -183,7 +190,7 @@
                                                  Foreground="{DynamicResource Merge.Text.Primary}"
                                                  HighlightBrush="{DynamicResource Merge.Ours.BgSubtle}"
                                                  FilePath="{Binding SelectedConflict.FilePath}"
-                                                 AcceptCheckboxToggled="OnOursCheckboxToggled"/>
+                                                 />
                     </ScrollViewer>
                     <merge:ConflictMinimap Grid.Column="1"
                                            x:Name="OursMinimap"
@@ -268,7 +275,7 @@
                                                  Foreground="{DynamicResource Merge.Text.Primary}"
                                                  HighlightBrush="{DynamicResource Merge.Theirs.BgSubtle}"
                                                  FilePath="{Binding SelectedConflict.FilePath}"
-                                                 AcceptCheckboxToggled="OnTheirsCheckboxToggled"/>
+                                                 />
                     </ScrollViewer>
                     <merge:ConflictMinimap Grid.Column="1"
                                            x:Name="TheirsMinimap"
@@ -301,12 +308,12 @@
                                    FontSize="{DynamicResource Merge.Type.CaptionStrong.Size}"
                                    Foreground="{DynamicResource Merge.Text.Primary}"/>
                     </Border>
-                    <!-- Result pane + CodeLens overlay. The canvas stacks on
-                         top of the text so the bars render above each
-                         conflict's merged-result line. CodeLens VerticalOffset
-                         binds to ResultPane.VerticalOffset so the bars track
-                         the pane's scroll position. Hit-test passes through
-                         between bars so text selection still works. -->
+                    <!-- Result pane with two overlays. CodeLens sits above
+                         each conflict's first line with link-button choices;
+                         the SegmentedAcceptPill overlay right-aligns a 3-cell
+                         pill per conflict into the result pane's scrollbar
+                         gutter. Both overlays bind VerticalOffset to
+                         ResultPane.VerticalOffset so they track scrolling. -->
                     <Grid Grid.Row="1">
                         <merge:ResultPane x:Name="ResultPaneInstance"
                                           AutomationProperties.AutomationId="Merge.ResultPane"
@@ -323,6 +330,15 @@
                                                  AcceptTheirsCommand="{Binding AcceptTheirsCommand}"
                                                  AcceptBothCommand="{Binding AcceptBothCommand}"
                                                  CompareCommand="{Binding CompareConflictCommand}"/>
+                        <merge:SegmentedAcceptPillOverlay x:Name="SegmentedPills"
+                            AutomationProperties.AutomationId="Merge.SegmentedPills"
+                            Ranges="{Binding Document.Ranges}"
+                            RangeStates="{Binding RangeStates}"
+                            Layout="{Binding Layout}"
+                            VerticalOffset="{Binding ElementName=ResultPaneInstance, Path=VerticalOffset}"
+                            AcceptOursCommand="{Binding AcceptOursCommand}"
+                            AcceptTheirsCommand="{Binding AcceptTheirsCommand}"
+                            AcceptBothCommand="{Binding AcceptBothCommand}"/>
                     </Grid>
                 </Grid>
             </Border>

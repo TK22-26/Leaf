@@ -9,14 +9,15 @@
       - Merge.Motion.PaneFocus   — 250 ms border-brush colour pulse. Consumed
         by MergeMotionHelpers.PulsePaneFocus on GotKeyboardFocus / LostKeyboardFocus.
 
-    The other V5-era animations (range-resolve overlay fade, checkbox bounce,
-    checkbox color crossfade) target elements that ReadOnlyMergePane draws
-    directly inside OnRender rather than hosts as UIElements — Storyboards
-    can't drive those without a retained visual tree per region. Those
-    animations live in the pane as dispatcher-timer-driven pure-math tweens
-    using the same 150/200/350 ms durations + ease-out-quadratic shape as the
-    tokens here. Keeping the XAML focused on Storyboards that are genuinely
-    consumable prevents dual-path scaffolding.
+    The range-resolve overlay fade targets a surface that ReadOnlyMergePane
+    draws directly inside OnRender rather than hosts as a UIElement — a
+    Storyboard can't drive that without a retained visual tree per region.
+    It lives in the pane as a dispatcher-timer-driven pure-math tween using
+    the same 350 ms ease-out-quadratic shape as the tokens here. Keeping the
+    XAML focused on Storyboards that are genuinely consumable prevents
+    dual-path scaffolding. (The checkbox-bounce / checkbox-crossfade tweens
+    from V5 were deleted in C2 along with the per-side checkbox surface —
+    SegmentedAcceptPill replaced that UI and handles its own state visual.)
 
     PopoverShow will be added here when the first popover consumer lands
     (C5 blame peek or AI resolution popover); defining it pre-emptively

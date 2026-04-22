@@ -20,21 +20,26 @@ namespace Leaf.Controls.Merge;
 /// Read-only text pane used for the Ours / Theirs / Base sides of the merge editor.
 /// Renders text directly via <see cref="FormattedText"/> through the shared
 /// <see cref="MergePaneGlyphLayout"/> so it aligns pixel-perfectly with the vendored
-/// Result pane. Draws its own conflict-region highlights and accept checkbox for
-/// each conflicting range — no AvalonEdit margins / renderers / overlays involved.
+/// Result pane. Draws its own conflict-region highlights and change-bars
+/// — no AvalonEdit margins / renderers / overlays involved.
 /// </summary>
 /// <remarks>
 /// <para>
 /// This control is intentionally not a <see cref="Leaf.TextEdit.TextEditor"/>:
 /// the merge input panes don't need caret, IME, text selection editing, clipboard,
 /// undo, or any editing infrastructure. A purpose-built renderer is simpler, faster,
-/// and removes coordinate-translation friction for Phase 2c+ chrome (checkboxes,
-/// connection lines, minimap).
+/// and removes coordinate-translation friction for the editor's chrome
+/// (connection lines, minimap, gutter change-bars).
 /// </para>
 /// <para>
 /// Scrolling is handled via <see cref="IScrollInfo"/> so the control plugs into a
 /// parent <see cref="System.Windows.Controls.ScrollViewer"/>; the ScrollSynchronizer
-/// in Phase 2c uses the standard <c>VerticalOffset</c> to keep panes aligned.
+/// uses the standard <c>VerticalOffset</c> to keep panes aligned.
+/// </para>
+/// <para>
+/// C2 removed the per-side accept checkbox that this pane used to draw in its
+/// left gutter. The three-cell <see cref="SegmentedAcceptPill"/> now lives on
+/// the result pane and replaces the ambiguous two-checkbox toggle UX.
 /// </para>
 /// </remarks>
 public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
@@ -114,7 +119,7 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         set => SetValue(LinesProperty, value);
     }
 
-    /// <summary>Conflict ranges that apply to this side; used to draw backgrounds + checkboxes.</summary>
+    /// <summary>Conflict ranges that apply to this side; used to draw region backgrounds + change-bars.</summary>
     public IReadOnlyList<ModifiedBaseRange> Regions
     {
         get => (IReadOnlyList<ModifiedBaseRange>)GetValue(RegionsProperty);
@@ -169,16 +174,7 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         set => SetValue(FilePathProperty, value);
     }
 
-    /// <summary>
-    /// Raised when the user toggles the accept-this-side checkbox for a conflict.
-    /// Handlers mutate <c>RangeStates</c> on the view-model and push the change
-    /// through. The pane does not mutate its own <see cref="RangeStates"/> property.
-    /// </summary>
-    public event EventHandler<MergePaneCheckboxEventArgs>? AcceptCheckboxToggled;
-
     private const double GutterWidth = 48;       // line numbers
-    private const double CheckboxSize = 14;      // square
-    private const double CheckboxMargin = 4;     // space left of line numbers
     private const double ChangeBarX = 2;         // 2 px inset from the left edge
     private const double ChangeBarWidth = 2;     // 2 px bar per plan
     private const double DeletionCaretHalfHeight = 5; // caret spans 10 px total
@@ -189,28 +185,20 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     private Size _extent;
     private Size _viewport;
 
-    // V5 animation bookkeeping. Three in-flight animations are tracked per-range:
-    //   - 350 ms overlay fade-in on resolve (Merge.Motion.RangeResolve)
-    //   - 150 ms 0.97→1.0 scale bounce on checkbox click (Merge.Motion.AcceptButton)
-    //   - 200 ms fill colour crossfade on state flip (Merge.Motion.CheckboxToggle)
-    // Each uses its own start-tick dictionary; one shared DispatcherTimer
-    // repaints at ~60 Hz whenever any dictionary has an active entry and stops
-    // when they all go empty. Start times are captured via Stopwatch.GetTimestamp()
-    // rather than DateTime.UtcNow so NTP slews / DST adjustments can't freeze
-    // or skip animations.
+    // V5 animation bookkeeping. Tracks 350 ms resolved-overlay fade-in per
+    // range (Merge.Motion.RangeResolve); the pre-C2 checkbox bounce + fill
+    // crossfade are gone because the checkbox itself is gone (replaced by
+    // SegmentedAcceptPill on the result pane). A single DispatcherTimer
+    // repaints at ~60 Hz whenever the dictionary has an active entry and
+    // stops when empty. Start times use Stopwatch.GetTimestamp() so NTP
+    // slews / DST adjustments can't freeze or skip animations.
     private const double RangeResolveDurationMs = 350.0;
-    private const double CheckboxBounceDurationMs = 150.0;
-    private const double CheckboxFadeDurationMs = 200.0;
     private readonly Dictionary<int, long> _rangeResolveStarts = new();
-    private readonly Dictionary<int, long> _checkboxBounceStarts = new();
-    private readonly Dictionary<int, long> _checkboxFadeStarts = new();
     private DispatcherTimer? _animationTicker;
     // Reused during OnRender to avoid a per-frame SolidColorBrush allocation
-    // while the resolved overlay is fading in or the checkbox fill is
-    // crossfading. Never frozen — OnRender mutates .Color before each
-    // DrawRectangle call.
+    // while the resolved overlay is fading in. Never frozen — OnRender mutates
+    // .Color before each DrawRectangle call.
     private readonly SolidColorBrush _fadedOverlayBrush = new();
-    private readonly SolidColorBrush _animatedCheckboxFill = new();
 
     private static long NowTicks() => System.Diagnostics.Stopwatch.GetTimestamp();
     private static double TicksToMs(long ticks) =>
@@ -285,31 +273,6 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         EnsureAnimationTicker();
     }
 
-    /// <summary>
-    /// Kick the accept-button bounce animation for <paramref name="rangeIndex"/>:
-    /// a quick 0.97→1.0 scale on the drawn checkbox over
-    /// <see cref="CheckboxBounceDurationMs"/> ms. Called from the pane's
-    /// mouse-down handler so the press itself drives the feedback.
-    /// </summary>
-    public void StartCheckboxBounceAnimation(int rangeIndex)
-    {
-        _checkboxBounceStarts[rangeIndex] = NowTicks();
-        EnsureAnimationTicker();
-    }
-
-    /// <summary>
-    /// Kick the 200 ms <c>Merge.Motion.CheckboxToggle</c> colour crossfade for
-    /// <paramref name="rangeIndex"/>. Called by the host whenever the range's
-    /// accept state flips — the animation interpolates the checkbox fill
-    /// between the unchecked (transparent) and checked (green) colours based
-    /// on the current state, so the visual transition isn't an instant snap.
-    /// </summary>
-    public void StartCheckboxFadeAnimation(int rangeIndex)
-    {
-        _checkboxFadeStarts[rangeIndex] = NowTicks();
-        EnsureAnimationTicker();
-    }
-
     private void EnsureAnimationTicker()
     {
         if (_animationTicker is null)
@@ -331,11 +294,7 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     {
         var now = NowTicks();
         PruneCompleted(_rangeResolveStarts, now, RangeResolveDurationMs);
-        PruneCompleted(_checkboxBounceStarts, now, CheckboxBounceDurationMs);
-        PruneCompleted(_checkboxFadeStarts, now, CheckboxFadeDurationMs);
-        if (_rangeResolveStarts.Count == 0
-            && _checkboxBounceStarts.Count == 0
-            && _checkboxFadeStarts.Count == 0)
+        if (_rangeResolveStarts.Count == 0)
         {
             _animationTicker?.Stop();
         }
@@ -374,43 +333,6 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         return 1.0 - ((1.0 - t) * (1.0 - t));
     }
 
-    /// <summary>
-    /// 0.97→1.0 scale multiplier for the accept-checkbox bounce on
-    /// <paramref name="rangeIndex"/>. Returns 1.0 when no animation is
-    /// running.
-    /// </summary>
-    private double CheckboxBounceScaleFor(int rangeIndex)
-    {
-        if (!_checkboxBounceStarts.TryGetValue(rangeIndex, out var start)) return 1.0;
-        var elapsed = TicksToMs(NowTicks() - start);
-        var t = Math.Clamp(elapsed / CheckboxBounceDurationMs, 0.0, 1.0);
-        var eased = 1.0 - ((1.0 - t) * (1.0 - t));
-        return 0.97 + (0.03 * eased);
-    }
-
-    /// <summary>
-    /// Returns the checkbox fill for <paramref name="rangeIndex"/> — either a
-    /// palette brush when no crossfade is in flight, or an alpha-interpolated
-    /// instance brush during the 200 ms <see cref="CheckboxFadeDurationMs"/>
-    /// window. The fade direction is implied by <paramref name="isAccepted"/>:
-    /// flipping TO accepted fades the green alpha 0→1; flipping AWAY from
-    /// accepted fades 1→0.
-    /// </summary>
-    private Brush GetCheckboxFill(int rangeIndex, bool isAccepted)
-    {
-        if (!_checkboxFadeStarts.TryGetValue(rangeIndex, out var start))
-        {
-            return isAccepted ? CheckboxFillChecked : CheckboxFillUnchecked;
-        }
-        var elapsed = TicksToMs(NowTicks() - start);
-        var t = Math.Clamp(elapsed / CheckboxFadeDurationMs, 0.0, 1.0);
-        var eased = 1.0 - ((1.0 - t) * (1.0 - t));
-        var alphaProgress = isAccepted ? eased : (1.0 - eased);
-        var baseColor = CheckboxFillChecked.Color;
-        _animatedCheckboxFill.Color = Color.FromArgb(
-            (byte)(baseColor.A * alphaProgress), baseColor.R, baseColor.G, baseColor.B);
-        return _animatedCheckboxFill;
-    }
 
     // ── Measurement / rendering ──────────────────────────────────────────────────
 
@@ -425,7 +347,7 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
             if (Layout is null) return 0;
             var maxGlyphs = 0;
             foreach (var line in Lines) maxGlyphs = Math.Max(maxGlyphs, line.Length);
-            return GutterWidth + CheckboxSize + CheckboxMargin + maxGlyphs * Layout.AdvanceWidth + 16;
+            return GutterWidth + maxGlyphs * Layout.AdvanceWidth + 16;
         }
     }
 
@@ -484,10 +406,7 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         // 4. Line numbers gutter.
         DrawGutter(drawingContext, firstVisible, lastVisible);
 
-        // 5. Checkboxes (one per conflicting range that intersects the viewport).
-        DrawCheckboxes(drawingContext, firstVisible, lastVisible);
-
-        // 6. Text lines.
+        // 5. Text lines.
         DrawText(drawingContext, firstVisible, lastVisible);
     }
 
@@ -556,7 +475,7 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     private void DrawWordHighlights(DrawingContext dc, int firstVisible, int lastVisible)
     {
         if (Layout is null || WordDiffs is null) return;
-        var textX = GutterWidth + CheckboxSize + CheckboxMargin + 4 - _horizontalOffset;
+        var textX = GutterWidth + 4 - _horizontalOffset;
         var accent = Side switch
         {
             MergePaneSide.Ours => OursWordAccent,
@@ -668,16 +587,6 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         MergePaletteResources.ResolveFrozenBrush("Merge.Ours.BgStrong.Color");
     private static readonly SolidColorBrush TheirsWordAccent =
         MergePaletteResources.ResolveFrozenBrush("Merge.Theirs.BgStrong.Color");
-    private static readonly SolidColorBrush CheckboxFillUnchecked = Freeze(new SolidColorBrush(Colors.Transparent));
-    // Checkbox stroke uses Base.Accent (neutral mid-grey) — closer to the
-    // pre-V1 #A0A0A0 than Text.Tertiary (#888888, too dark) or Text.Secondary
-    // (#D0D0D0, too light). Base is the right group semantically because the
-    // checkbox is a neutral UI affordance, not an Ours- or Theirs-tagged one.
-    private static readonly SolidColorBrush CheckboxStroke =
-        MergePaletteResources.ResolveFrozenBrush("Merge.Base.Accent.Color");
-    private static readonly SolidColorBrush CheckboxFillChecked =
-        MergePaletteResources.ResolveFrozenBrush("Merge.State.Resolved.Color");
-    private static readonly Pen CheckboxStrokePen = FreezePen(new Pen(CheckboxStroke, 1.0));
 
     // Change-bar brushes + pens per side. Solid for additions, 2-on / 2-off
     // dashed for the small deletion caret. The dashed pens intentionally reuse
@@ -716,76 +625,10 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         }
     }
 
-    private void DrawCheckboxes(DrawingContext dc, int firstVisible, int lastVisible)
-    {
-        if (RangeStates is null) return;
-        foreach (var range in Regions)
-        {
-            if (!range.IsConflicting) continue;
-            var side = GetSideRange(range);
-            if (side.IsEmpty) continue;
-            var firstLine0 = side.StartLine - 1;
-            if (firstLine0 < firstVisible || firstLine0 > lastVisible) continue;
-
-            var y = firstLine0 * LineHeight - _verticalOffset + (LineHeight - CheckboxSize) / 2;
-            var x = GutterWidth + CheckboxMargin;
-            var box = new Rect(x, y, CheckboxSize, CheckboxSize);
-
-            // V5: apply the Merge.Motion.AcceptButton scale bounce around the
-            // checkbox's centre while its bounce animation is running. Push /
-            // Pop keeps the transform scoped to this one checkbox — every
-            // other render call inherits the identity transform.
-            var scale = CheckboxBounceScaleFor(range.Index);
-            var transformPushed = scale < 1.0;
-            if (transformPushed)
-            {
-                var cx = x + CheckboxSize / 2;
-                var cy = y + CheckboxSize / 2;
-                dc.PushTransform(new ScaleTransform(scale, scale, cx, cy));
-            }
-
-            var isAccepted = IsThisSideAccepted(range.Index);
-            dc.DrawRectangle(GetCheckboxFill(range.Index, isAccepted), CheckboxStrokePen, box);
-            if (isAccepted)
-            {
-                // Draw a simple check glyph.
-                var p1 = new Point(x + 3, y + CheckboxSize / 2);
-                var p2 = new Point(x + CheckboxSize / 2, y + CheckboxSize - 3);
-                var p3 = new Point(x + CheckboxSize - 2, y + 3);
-                dc.DrawLine(CheckboxStrokePen, p1, p2);
-                dc.DrawLine(CheckboxStrokePen, p2, p3);
-            }
-
-            if (transformPushed) dc.Pop();
-        }
-    }
-
-    private bool IsThisSideAccepted(int rangeIndex)
-    {
-        if (RangeStates is null) return false;
-        if (!RangeStates.TryGetValue(rangeIndex, out var state)) return false;
-        return IsAcceptedForSide(Side, state);
-    }
-
-    /// <summary>
-    /// Truth table for "should this pane render its accept-checkbox as checked
-    /// for the given state?". Exposed as <c>internal static</c> so tests can
-    /// pin the logic without standing up a full pane + visual tree. Base side
-    /// is intentionally never accepted — base has no accept-checkbox in the UI.
-    /// </summary>
-    internal static bool IsAcceptedForSide(MergePaneSide side, ResolutionState state) => (side, state) switch
-    {
-        (MergePaneSide.Ours, ResolutionState.AcceptOurs) => true,
-        (MergePaneSide.Ours, ResolutionState.AcceptBoth) => true,
-        (MergePaneSide.Theirs, ResolutionState.AcceptTheirs) => true,
-        (MergePaneSide.Theirs, ResolutionState.AcceptBoth) => true,
-        _ => false,
-    };
-
     private void DrawText(DrawingContext dc, int firstVisible, int lastVisible)
     {
         if (Layout is null) return;
-        var textX = GutterWidth + CheckboxSize + CheckboxMargin + 4 - _horizontalOffset;
+        var textX = GutterWidth + 4 - _horizontalOffset;
         for (int i = firstVisible; i <= lastVisible; i++)
         {
             var y = i * LineHeight - _verticalOffset;
@@ -816,36 +659,6 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
             var localLength = Math.Min(section.Length, lineText.Length - localStart);
             if (localLength <= 0) continue;
             ft.SetForegroundBrush(brush, localStart, localLength);
-        }
-    }
-
-    // ── Click routing for the checkbox ────────────────────────────────────────────
-
-    protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
-    {
-        base.OnMouseLeftButtonDown(e);
-        if (Layout is null) return;
-        var pos = e.GetPosition(this);
-        if (pos.X < GutterWidth || pos.X > GutterWidth + CheckboxSize + CheckboxMargin * 2) return;
-        var lineIdx0 = (int)Math.Floor((pos.Y + _verticalOffset) / LineHeight);
-
-        foreach (var range in Regions)
-        {
-            if (!range.IsConflicting) continue;
-            var side = GetSideRange(range);
-            if (side.IsEmpty) continue;
-            if (side.StartLine - 1 == lineIdx0)
-            {
-                var isAccepted = IsThisSideAccepted(range.Index);
-                // V5: bounce the clicked checkbox for 150 ms so the press has
-                // tactile feedback even before the RangeStates round-trip
-                // through the VM completes.
-                StartCheckboxBounceAnimation(range.Index);
-                AcceptCheckboxToggled?.Invoke(this,
-                    new MergePaneCheckboxEventArgs(range.Index, Side, !isAccepted));
-                e.Handled = true;
-                return;
-            }
         }
     }
 
@@ -928,18 +741,4 @@ public enum MergePaneSide
     Ours,
     Theirs,
     Base,
-}
-
-/// <summary>Event args for <see cref="ReadOnlyMergePane.AcceptCheckboxToggled"/>.</summary>
-public sealed class MergePaneCheckboxEventArgs : EventArgs
-{
-    public MergePaneCheckboxEventArgs(int rangeIndex, MergePaneSide side, bool isAccepted)
-    {
-        RangeIndex = rangeIndex;
-        Side = side;
-        IsAccepted = isAccepted;
-    }
-    public int RangeIndex { get; }
-    public MergePaneSide Side { get; }
-    public bool IsAccepted { get; }
 }
