@@ -276,6 +276,7 @@ public partial class MergeEditorView : Window
     {
         if (Vm is null) return;
         ConnectionCanvas.OursVerticalOffset = e.VerticalOffset;
+        if (OursSticky is not null) OursSticky.VerticalOffset = e.VerticalOffset;
         // Sync the Theirs pane to the same vertical offset. The canvas draws
         // straight-across bezier curves between matching line indices, which
         // only remains meaningful when the two panes scroll together. A
@@ -294,6 +295,7 @@ public partial class MergeEditorView : Window
     {
         if (Vm is null) return;
         ConnectionCanvas.TheirsVerticalOffset = e.VerticalOffset;
+        if (TheirsSticky is not null) TheirsSticky.VerticalOffset = e.VerticalOffset;
         if (!_suppressScrollSync && OursScrollViewer is not null
             && Math.Abs(OursScrollViewer.VerticalOffset - e.VerticalOffset) > 0.5)
         {

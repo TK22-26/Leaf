@@ -13,7 +13,10 @@ public partial class CommandPaletteView : UserControl
         IsVisibleChanged += OnIsVisibleChanged;
     }
 
-    private CommandPaletteViewModel? ViewModel => DataContext as CommandPaletteViewModel;
+    // Any VM that implements ICommandPaletteHost can drive this view —
+    // both the main-window palette and the merge-editor palette qualify,
+    // so the same control renders both without duplication.
+    private ICommandPaletteHost? ViewModel => DataContext as ICommandPaletteHost;
 
     private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
