@@ -25,4 +25,21 @@ public class ReadOnlyMergePaneTests
         var definition = MergeHighlightingResolver.ByFilePath("foo.cs");
         definition.Should().NotBeNull();
     }
+
+    [StaFact]
+    public void StartRangeResolveAnimation_DoesNotThrow_AndCanBeCalledRepeatedly()
+    {
+        // Public entry point on the pane's V5 resolve-fade surface. Driven
+        // by MergeEditorView.OnRangeStatesChanged when a range flips to
+        // resolved. Re-entry with the same index must restart the animation
+        // rather than throw, so clicking an accept button twice in quick
+        // succession doesn't corrupt the internal ticker state.
+        var pane = new ReadOnlyMergePane();
+        FluentActions.Invoking(() =>
+        {
+            pane.StartRangeResolveAnimation(0);
+            pane.StartRangeResolveAnimation(0);
+            pane.StartRangeResolveAnimation(1);
+        }).Should().NotThrow();
+    }
 }

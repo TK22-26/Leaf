@@ -850,6 +850,21 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private int _currentConflictIndex;
 
+    /// <summary>
+    /// Reset the secondary cursor whenever the active conflict changes.
+    /// Without this, F8 / Shift+F8 (NextConflict / PreviousConflict) would
+    /// carry <see cref="CurrentChangeSpanIndex"/> across conflicts and the
+    /// Alt+Left / Alt+Right navigation would index past a shorter conflict's
+    /// <c>OursDiffs.Count + TheirsDiffs.Count</c>, silently skipping spans.
+    /// Running this through the partial hook (rather than inline in Next /
+    /// PreviousConflict) also catches programmatic index writes from the
+    /// command palette, file list, and Stagehand smoke tests.
+    /// </summary>
+    partial void OnCurrentConflictIndexChanged(int value)
+    {
+        CurrentChangeSpanIndex = 0;
+    }
+
     [RelayCommand]
     private void NextConflict()
     {
@@ -894,9 +909,9 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         if (spanCount == 0 || CurrentChangeSpanIndex >= spanCount - 1)
         {
             // Past the last span of this conflict — fall into the next conflict's
-            // first span. Use NextConflictCommand's wrap semantics for consistency.
+            // first span. Use NextConflictCommand's wrap semantics for consistency;
+            // OnCurrentConflictIndexChanged zeros CurrentChangeSpanIndex for us.
             CurrentConflictIndex = (CurrentConflictIndex + 1) % conflicting.Count;
-            CurrentChangeSpanIndex = 0;
         }
         else
         {
