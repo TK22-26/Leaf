@@ -33,14 +33,11 @@ namespace Leaf.Controls.Merge;
 /// tooltips surface the corresponding keybinding.
 /// </para>
 /// <para>
-/// Intentional difference from <see cref="ReadOnlyMergePane"/>'s checkbox:
-/// the checkbox routes through <c>MergeEditorView.ApplyCheckbox</c>, which
-/// infers <c>AcceptBoth</c> when the user clicks one side's checkbox while
-/// the other side is already accepted (toggle-style UX). CodeLens does NOT
-/// route through that path — each button is a dedicated explicit state set.
-/// "Accept Ours" means "set AcceptOurs" even if Theirs was previously
-/// accepted, because the label reads literally. Users who want both
-/// click the dedicated "Accept Both" button.
+/// The three Accept buttons map 1:1 to the VM's explicit-state commands —
+/// clicking "Accept Ours" sets <c>AcceptOurs</c> directly, regardless of
+/// whether the other side was previously accepted. Parallel to
+/// <see cref="SegmentedAcceptPill"/>, which replaced the earlier
+/// checkbox-toggle UX on the input panes.
 /// </para>
 /// </remarks>
 public sealed class CodeLensActionBar : Canvas

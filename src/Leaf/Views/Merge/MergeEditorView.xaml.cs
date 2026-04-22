@@ -248,79 +248,24 @@ public partial class MergeEditorView : Window
                     OursPane.StartRangeResolveAnimation(kvp.Key);
                     TheirsPane.StartRangeResolveAnimation(kvp.Key);
                 }
-                // V5 CheckboxToggle crossfade: fire on every state change so
-                // the checkbox fill animates in or out to match the new state.
-                OursPane.StartCheckboxFadeAnimation(kvp.Key);
-                TheirsPane.StartCheckboxFadeAnimation(kvp.Key);
-            }
-            // Removed ranges (Undo that flipped a resolved range back to
-            // unresolved by removing its entry) also need a fade-out.
-            foreach (var kvp in _previousRangeStates)
-            {
-                if (current.ContainsKey(kvp.Key)) continue;
-                OursPane.StartCheckboxFadeAnimation(kvp.Key);
-                TheirsPane.StartCheckboxFadeAnimation(kvp.Key);
+                // C2: SegmentedAcceptPill handles its own state-change visual
+                // via UpdateCellHighlighting when its State DP changes; no
+                // per-pane animation needed anymore.
             }
         }
         _previousRangeStates = current is null
             ? null
             : new Dictionary<int, Leaf.Models.Merge.ResolutionState>(current);
 
-        // Invalidate both input panes so the accept-checkbox glyphs re-render
-        // after any resolution-changing operation (checkbox click, footer
+        // Invalidate both input panes so the change-bar / overlay re-render
+        // after any resolution-changing operation (pill click, footer
         // AcceptAllOurs/Theirs, Undo, Redo). RangeStates is a plain dictionary
-        // — this is the designated re-render channel.
+        // — this is the designated re-render channel. The pill overlay needs
+        // an explicit refresh because dictionary mutation in place doesn't
+        // fire WPF DP change notifications.
         OursPane.InvalidateVisual();
         TheirsPane.InvalidateVisual();
-    }
-
-    private void OnOursCheckboxToggled(object sender, MergePaneCheckboxEventArgs e)
-    {
-        ApplyCheckbox(e);
-    }
-
-    private void OnTheirsCheckboxToggled(object sender, MergePaneCheckboxEventArgs e)
-    {
-        ApplyCheckbox(e);
-    }
-
-    private void ApplyCheckbox(MergePaneCheckboxEventArgs e)
-    {
-        var vm = Vm;
-        if (vm is null) return;
-
-        // Determine whether the OTHER side is currently accepted. If yes, the
-        // new state is AcceptBoth (composable); otherwise it's a single-side accept.
-        var otherSide = e.Side == MergePaneSide.Ours ? MergePaneSide.Theirs : MergePaneSide.Ours;
-        var otherAccepted = vm.RangeStates.TryGetValue(e.RangeIndex, out var st) && st switch
-        {
-            ResolutionState.AcceptBoth => true,
-            ResolutionState.AcceptOurs => otherSide == MergePaneSide.Ours,
-            ResolutionState.AcceptTheirs => otherSide == MergePaneSide.Theirs,
-            _ => false,
-        };
-
-        // Compute new state.
-        if (e.IsAccepted && otherAccepted)
-        {
-            // Both now accepted; preserve whichever was clicked first as "FirstOurs" hint.
-            var firstOurs = e.Side == MergePaneSide.Ours;
-            vm.AcceptBothCommand.Execute(e.RangeIndex);
-            // AcceptBoth via command defaults to firstOurs=true; re-apply if theirs was clicked.
-            if (!firstOurs) vm.AcceptBothTheirsFirstCommand.Execute(e.RangeIndex);
-        }
-        else if (e.IsAccepted)
-        {
-            if (e.Side == MergePaneSide.Ours) vm.AcceptOursCommand.Execute(e.RangeIndex);
-            else vm.AcceptTheirsCommand.Execute(e.RangeIndex);
-        }
-        else
-        {
-            vm.UnresolveCommand.Execute(e.RangeIndex);
-        }
-
-        // RangeStatesChanged fires inside each command, re-rendering is handled by
-        // OnRangeStatesChanged (subscribed from OnDataContextChanged).
+        SegmentedPills?.RefreshPillStates();
     }
 
     // ── Scroll / minimap wire-up (Phase 4) ───────────────────────────────

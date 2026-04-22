@@ -7,18 +7,17 @@ using System.Windows.Media.Animation;
 namespace Leaf.Controls.Merge;
 
 /// <summary>
-/// Merge editor motion wiring. Today the only helper live in production is
-/// <see cref="SmoothScrollTo"/> — it's the only one of V5's six storyboard
-/// cases whose target (a <see cref="ScrollViewer"/>) is a real WPF element
-/// with a DP that's sensible to animate via the Storyboard path. The other
-/// five storyboards (CheckboxToggle / AcceptButton / RangeResolve /
-/// PaneFocus / PopoverShow) target surfaces that either (a) are drawn
-/// directly by <see cref="ReadOnlyMergePane.OnRender"/> and so animate
-/// through dispatcher-timer-driven pure-math tweens instead of Storyboards,
-/// or (b) don't have consumers yet (popovers land in C5 / AI proposal UI).
-/// When those consumers arrive, they add their own helpers here rather than
-/// inheriting dormant scaffolding that would be indistinguishable from
-/// already-wired code.
+/// Merge editor motion wiring. Two helpers ship today —
+/// <see cref="SmoothScrollTo"/> drives <c>Merge.Motion.MinimapJump</c> on a
+/// <see cref="ScrollViewer"/>, and <see cref="PulsePaneFocusColour"/> drives
+/// <c>Merge.Motion.PaneFocus</c> on a <see cref="Border"/>'s
+/// <see cref="Border.BorderBrush"/>. The other range-resolve animation ships
+/// as a dispatcher-timer-driven pure-math tween inside
+/// <see cref="ReadOnlyMergePane"/> because Storyboards can't drive surfaces
+/// rendered directly via <c>DrawingContext</c>. The PopoverShow storyboard
+/// from V5's original spec was deleted — it had no consumers; a future
+/// popover (C5 blame peek / AI resolution proposal) will add its helper
+/// here rather than inheriting dormant scaffolding.
 /// </summary>
 internal static class MergeMotionHelpers
 {
