@@ -195,7 +195,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     public int ConflictCount => Document?.ConflictCount ?? 0;
 
     public int UnresolvedConflictCount =>
-        Document?.Ranges.Count(r => r.IsConflicting && !IsResolved(r)) ?? 0;
+        Document?.ConflictingRanges.Count(r => !IsResolved(r)) ?? 0;
 
     public int ResolvedConflictCount => ConflictCount - UnresolvedConflictCount;
 
@@ -532,7 +532,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     {
         if (Document is null) return;
         var before = CaptureState();
-        foreach (var range in Document.Ranges.Where(r => r.IsConflicting))
+        foreach (var range in Document.ConflictingRanges)
             RangeStates[range.Index] = ResolutionState.AcceptOurs.Instance;
         PushUndo(before);
         NotifyResolutionCountsChanged();
@@ -543,7 +543,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     {
         if (Document is null) return;
         var before = CaptureState();
-        foreach (var range in Document.Ranges.Where(r => r.IsConflicting))
+        foreach (var range in Document.ConflictingRanges)
             RangeStates[range.Index] = ResolutionState.AcceptTheirs.Instance;
         PushUndo(before);
         NotifyResolutionCountsChanged();
@@ -854,7 +854,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     private void NextConflict()
     {
         if (Document is null) return;
-        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        var conflicting = Document.ConflictingRanges.ToList();
         if (conflicting.Count == 0) return;
         // Prefer jumping to the next UNRESOLVED range so the keyboard flow matches
         // the user's natural "resolve everything" rhythm. Fall back to a simple
@@ -866,7 +866,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     private void PreviousConflict()
     {
         if (Document is null) return;
-        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        var conflicting = Document.ConflictingRanges.ToList();
         if (conflicting.Count == 0) return;
         CurrentConflictIndex = FindNextUnresolvedOrWrap(conflicting, -1);
     }
@@ -887,7 +887,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     private void NextChangeSpan()
     {
         if (Document is null) return;
-        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        var conflicting = Document.ConflictingRanges.ToList();
         if (conflicting.Count == 0) return;
         var range = conflicting[Math.Clamp(CurrentConflictIndex, 0, conflicting.Count - 1)];
         var spanCount = range.OursDiffs.Count + range.TheirsDiffs.Count;
@@ -908,7 +908,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     private void PreviousChangeSpan()
     {
         if (Document is null) return;
-        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        var conflicting = Document.ConflictingRanges.ToList();
         if (conflicting.Count == 0) return;
         if (CurrentChangeSpanIndex <= 0)
         {
@@ -992,7 +992,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     private ModifiedBaseRange? CurrentConflictRange()
     {
         if (Document is null) return null;
-        var conflicting = Document.Ranges.Where(r => r.IsConflicting).ToList();
+        var conflicting = Document.ConflictingRanges.ToList();
         if (conflicting.Count == 0) return null;
         var idx = Math.Clamp(CurrentConflictIndex, 0, conflicting.Count - 1);
         return conflicting[idx];

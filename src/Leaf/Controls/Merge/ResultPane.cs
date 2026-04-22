@@ -132,12 +132,24 @@ public sealed class ResultPane : ContentControl
 
     private static void OnLayoutChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
+        // Mirror ReadOnlyMergePane.OnLayoutChanged: detach from the old Layout
+        // before attaching to the new one. Without the detach, a Layout DP
+        // re-assignment (e.g. DataContext swap or light-theme propagation)
+        // would accumulate subscribers on the previous Layout instance,
+        // double-invoking ApplyLayout and eventually leaking.
         var pane = (ResultPane)d;
-        if (e.NewValue is MergePaneGlyphLayout layout)
+        if (e.OldValue is MergePaneGlyphLayout oldLayout)
+            oldLayout.PropertyChanged -= pane.OnLayoutPropertyChanged;
+        if (e.NewValue is MergePaneGlyphLayout newLayout)
         {
-            pane.ApplyLayout(layout);
-            layout.PropertyChanged += (_, _) => pane.ApplyLayout(layout);
+            pane.ApplyLayout(newLayout);
+            newLayout.PropertyChanged += pane.OnLayoutPropertyChanged;
         }
+    }
+
+    private void OnLayoutPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (Layout is { } layout) ApplyLayout(layout);
     }
 
     private void ApplyLayout(MergePaneGlyphLayout layout)
