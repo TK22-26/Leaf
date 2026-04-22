@@ -38,7 +38,7 @@
                    FontStyle="Italic"/>
 
         <Border Grid.Row="2"
-                BorderBrush="#22000000"
+                BorderBrush="{DynamicResource Merge.Border.Dialog}"
                 BorderThickness="1"
                 CornerRadius="4">
             <TextBox x:Name="ProposedTextBox"

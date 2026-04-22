@@ -108,6 +108,16 @@
     <Color x:Key="Merge.Shadow.Color">#FF000000</Color>
     <sys:Double x:Key="Merge.Shadow.Opacity" xmlns:sys="clr-namespace:System;assembly=System.Runtime">0.15</sys:Double>
 
+    <!--  Dialog chrome tokens consumed by the AI consent / resolution dialogs.
+          The pre-V1 xaml had #11000000 / #22000000 as raw hex; moving them
+          into the palette lets V8 theme swap repaint the dialog chrome along
+          with everything else. "Scrim" is the dimming layer behind a modal;
+          "Dialog" is the border around the dialog surface.  -->
+    <Color x:Key="Merge.Surface.Scrim.Color">#11000000</Color>
+    <Color x:Key="Merge.Border.Dialog.Color">#22000000</Color>
+    <SolidColorBrush x:Key="Merge.Surface.Scrim" Color="#11000000"/>
+    <SolidColorBrush x:Key="Merge.Border.Dialog" Color="#22000000"/>
+
     <!--  Text  -->
     <Color x:Key="Merge.Text.Primary.Color">#FFE4E4E4</Color>
     <Color x:Key="Merge.Text.Secondary.Color">#FFD0D0D0</Color>

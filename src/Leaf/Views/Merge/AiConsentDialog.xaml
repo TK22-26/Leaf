@@ -24,8 +24,8 @@
                    Text="Leaf can send this conflict to a local MCP (Model Context Protocol) server, which then talks to an AI model on your behalf. Leaf itself does not call any model API directly."/>
 
         <Border Grid.Row="2" Margin="0,14,0,0"
-                Background="#11000000"
-                BorderBrush="#22000000" BorderThickness="1"
+                Background="{DynamicResource Merge.Surface.Scrim}"
+                BorderBrush="{DynamicResource Merge.Border.Dialog}" BorderThickness="1"
                 CornerRadius="4" Padding="12">
             <StackPanel>
                 <TextBlock FontWeight="SemiBold" Text="What will be sent:"/>
