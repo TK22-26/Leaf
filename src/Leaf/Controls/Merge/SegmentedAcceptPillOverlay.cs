@@ -149,8 +149,11 @@ public sealed class SegmentedAcceptPillOverlay : Canvas
         Children.Clear();
         _cachedPillWidth = 0;
         if (Ranges is null) return;
-        foreach (var range in Ranges)
+        // Indexed loop: foreach on IReadOnlyList<T> allocates an enumerator;
+        // Rebuild is on the per-scroll path when the conflict set changes.
+        for (int i = 0; i < Ranges.Count; i++)
         {
+            var range = Ranges[i];
             if (!range.IsConflicting) continue;
             var pill = new SegmentedAcceptPill
             {
@@ -159,6 +162,11 @@ public sealed class SegmentedAcceptPillOverlay : Canvas
                 AcceptTheirsCommand = AcceptTheirsCommand,
                 AcceptBothCommand = AcceptBothCommand,
             };
+            // Per-range AutomationId so Stagehand / AT clients can address
+            // individual pills ("Merge.Pill.Range.3") without walking the
+            // visual tree.
+            System.Windows.Automation.AutomationProperties.SetAutomationId(
+                pill, $"Merge.Pill.Range.{range.Index}");
             if (RangeStates is not null && RangeStates.TryGetValue(range.Index, out var state))
             {
                 pill.State = state;
@@ -185,8 +193,9 @@ public sealed class SegmentedAcceptPillOverlay : Canvas
     {
         if (Ranges is null) return;
         int childIdx = 0;
-        foreach (var range in Ranges)
+        for (int i = 0; i < Ranges.Count; i++)
         {
+            var range = Ranges[i];
             if (!range.IsConflicting) continue;
             if (childIdx >= Children.Count) break;
             var pill = (SegmentedAcceptPill)Children[childIdx++];
@@ -205,8 +214,12 @@ public sealed class SegmentedAcceptPillOverlay : Canvas
         var rightEdge = Math.Max(0, ActualWidth - ScrollBarInset);
         var left = Math.Max(0, rightEdge - _cachedPillWidth);
         int childIdx = 0;
-        foreach (var range in Ranges)
+        // Indexed loop: Reposition fires on every VerticalOffset change
+        // (60 Hz during smooth scroll). Dropping the enumerator allocation
+        // keeps the hot path alloc-free for large conflict lists.
+        for (int i = 0; i < Ranges.Count; i++)
         {
+            var range = Ranges[i];
             if (!range.IsConflicting) continue;
             if (childIdx >= Children.Count) break;
             var pill = (SegmentedAcceptPill)Children[childIdx++];

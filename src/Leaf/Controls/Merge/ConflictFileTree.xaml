@@ -33,7 +33,12 @@
              empty for file leaves, so WPF auto-terminates recursion. -->
         <HierarchicalDataTemplate DataType="{x:Type vm:ConflictTreeNode}"
                                   ItemsSource="{Binding Children}">
-            <Grid>
+            <!-- AutomationId on each row makes individual files / folders
+                 addressable from Stagehand and assistive tech — the TreeView
+                 itself only exposes a single AutomationId, so without this
+                 clients would need to walk the visual tree to pick a row. -->
+            <Grid AutomationProperties.AutomationId="{Binding FullPath, StringFormat='Merge.TreeRow.{0}'}"
+                  AutomationProperties.Name="{Binding DisplayName}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>

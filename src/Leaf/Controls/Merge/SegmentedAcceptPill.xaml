@@ -54,21 +54,27 @@
             <Button x:Name="OursCell"
                     Style="{StaticResource Merge.PillCell}"
                     Click="OnOursClicked"
-                    ToolTip="Accept Ours (◄)">
+                    ToolTip="Accept Ours (◄)"
+                    AutomationProperties.AutomationId="Merge.Pill.Ours"
+                    AutomationProperties.Name="Accept Ours">
                 <TextBlock><Run Text="◄ "/><Run Text="Ours"/></TextBlock>
             </Button>
             <Border Width="1" Background="{DynamicResource Merge.Border.Strong}"/>
             <Button x:Name="BothCell"
                     Style="{StaticResource Merge.PillCell}"
                     Click="OnBothClicked"
-                    ToolTip="Accept Both (◆)">
+                    ToolTip="Accept Both (◆)"
+                    AutomationProperties.AutomationId="Merge.Pill.Both"
+                    AutomationProperties.Name="Accept Both">
                 <TextBlock><Run Text="◆ "/><Run Text="Both"/></TextBlock>
             </Button>
             <Border Width="1" Background="{DynamicResource Merge.Border.Strong}"/>
             <Button x:Name="TheirsCell"
                     Style="{StaticResource Merge.PillCell}"
                     Click="OnTheirsClicked"
-                    ToolTip="Accept Theirs (►)">
+                    ToolTip="Accept Theirs (►)"
+                    AutomationProperties.AutomationId="Merge.Pill.Theirs"
+                    AutomationProperties.Name="Accept Theirs">
                 <TextBlock><Run Text="Theirs"/><Run Text=" ►"/></TextBlock>
             </Button>
         </StackPanel>
