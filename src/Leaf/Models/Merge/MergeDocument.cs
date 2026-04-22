@@ -47,6 +47,17 @@ public sealed class MergeDocument
 
     public bool HasConflicts => ConflictCount > 0;
 
+    /// <summary>
+    /// Filtered view of <see cref="Ranges"/> containing only the conflicting
+    /// ones — the regions with zdiff3 markers in <see cref="InitialMergedText"/>
+    /// that the user needs to resolve. Auto-merged ranges (<c>IsConflicting == false</c>)
+    /// are omitted. Centralised here so every navigation / resolution site
+    /// agrees on the filter predicate; without this, drift between
+    /// <c>Ranges.Where(r => r.IsConflicting)</c> inlined at each call site would
+    /// eventually produce off-by-one navigation and inconsistent composed output.
+    /// </summary>
+    public IEnumerable<ModifiedBaseRange> ConflictingRanges => Ranges.Where(r => r.IsConflicting);
+
     public MergeDocument(
         string filePath,
         string baseText,
@@ -94,7 +105,7 @@ public sealed class MergeDocument
         int cursor = 0;
 
         // Operate only on conflicting ranges — they are the ones with markers in InitialMergedText.
-        var conflictRanges = Ranges.Where(r => r.IsConflicting)
+        var conflictRanges = ConflictingRanges
                                    .OrderBy(r => r.ResultMarkedRange.StartLine)
                                    .ToList();
 

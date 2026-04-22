@@ -153,6 +153,11 @@ public sealed class StickyConflictHeader : Control
     internal string? ComputeLabel()
     {
         if (Ranges is null || Layout is null) return null;
+        // Inline filter (not MergeDocument.ConflictingRanges) because this
+        // control binds to a lower-level IReadOnlyList<ModifiedBaseRange> DP
+        // rather than the document itself — MergeDocument isn't in scope here.
+        // The predicate is pinned by StickyConflictHeaderTests so drift from
+        // the document-level helper would surface immediately.
         var conflicting = Ranges.Where(r => r.IsConflicting).ToList();
         if (conflicting.Count == 0) return null;
 

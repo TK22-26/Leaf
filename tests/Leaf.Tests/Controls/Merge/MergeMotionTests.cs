@@ -95,6 +95,37 @@ public class MergeMotionTests
     }
 
     [StaFact]
+    public void PulsePaneFocusColour_RequiresSolidColorBrushBorder_AndThrowsOtherwise()
+    {
+        // Strict contract: PaneCard.BorderBrush always comes from a
+        // SolidColorBrush token (Merge.Border.Subtle). If a future pane
+        // re-styles away from that shape, fail loudly instead of silently
+        // pulsing against a zero-animation from targetColor→targetColor.
+        EnsureMergeDictionaryMerged();
+        var border = new System.Windows.Controls.Border
+        {
+            BorderBrush = new System.Windows.Media.LinearGradientBrush(),
+        };
+        FluentActions.Invoking(() =>
+            MergeMotionHelpers.PulsePaneFocusColour(border, System.Windows.Media.Colors.Red))
+            .Should().Throw<InvalidOperationException>(
+                because: "non-SolidColorBrush BorderBrush is a programming error, not a silent no-op");
+    }
+
+    [StaFact]
+    public void PulsePaneFocusColour_WithSolidColorBrush_Animates()
+    {
+        EnsureMergeDictionaryMerged();
+        var border = new System.Windows.Controls.Border
+        {
+            BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray),
+        };
+        FluentActions.Invoking(() =>
+            MergeMotionHelpers.PulsePaneFocusColour(border, System.Windows.Media.Colors.Blue))
+            .Should().NotThrow();
+    }
+
+    [StaFact]
     public void PlayAcceptBounce_AttachesScaleTransform_AndStartsAnimation()
     {
         EnsureMergeDictionaryMerged();

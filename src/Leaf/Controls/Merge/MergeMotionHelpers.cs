@@ -86,10 +86,24 @@ internal static class MergeMotionHelpers
         var storyboard = CloneStoryboard("Merge.Motion.PaneFocus");
         var anim = AssertSingleAnimation<ColorAnimation>(storyboard, "Merge.Motion.PaneFocus");
 
+        // PaneCard.BorderBrush is always a SolidColorBrush from
+        // Merge.Border.Subtle (see MergeCardStyles.xaml) — gradient / null /
+        // ImageBrush would indicate the pane was re-styled away from PaneCard,
+        // at which point the pulse animation's ColorAnimation has no valid
+        // From/To to target. Fail loudly rather than silently substituting
+        // targetColor and producing a zero-animation pulse.
+        if (border.BorderBrush is not SolidColorBrush solidBrush)
+        {
+            throw new InvalidOperationException(
+                "PulsePaneFocusColour requires a SolidColorBrush BorderBrush (the Merge.PaneCard " +
+                "style supplies one from Merge.Border.Subtle). Received: " +
+                (border.BorderBrush?.GetType().Name ?? "null") + ".");
+        }
+        var currentColor = solidBrush.Color;
+
         // Replace the BorderBrush with a per-instance unfrozen SolidColorBrush
         // so ColorAnimation has something writable to drive. Palette brushes
         // come through DynamicResource as Frozen, which would refuse the write.
-        var currentColor = (border.BorderBrush as SolidColorBrush)?.Color ?? targetColor;
         var animated = new SolidColorBrush(currentColor);
         border.BorderBrush = animated;
 
