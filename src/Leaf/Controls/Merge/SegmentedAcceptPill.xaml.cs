@@ -134,19 +134,36 @@ public partial class SegmentedAcceptPill : UserControl
 
     private void OnOursClicked(object sender, RoutedEventArgs e)
     {
+        PlayBounceOn(sender);
         if (AcceptOursCommand?.CanExecute(RangeIndex) == true)
             AcceptOursCommand.Execute(RangeIndex);
     }
 
     private void OnBothClicked(object sender, RoutedEventArgs e)
     {
+        PlayBounceOn(sender);
         if (AcceptBothCommand?.CanExecute(RangeIndex) == true)
             AcceptBothCommand.Execute(RangeIndex);
     }
 
     private void OnTheirsClicked(object sender, RoutedEventArgs e)
     {
+        PlayBounceOn(sender);
         if (AcceptTheirsCommand?.CanExecute(RangeIndex) == true)
             AcceptTheirsCommand.Execute(RangeIndex);
+    }
+
+    /// <summary>
+    /// Run the plan §D3 AcceptButton storyboard on the clicked cell so the
+    /// pill gives immediate 150 ms 0.97→1.0 scale feedback. Safe to call
+    /// when the cell element is unset (design-time XAML previews never
+    /// route through this path).
+    /// </summary>
+    private static void PlayBounceOn(object clickSource)
+    {
+        if (clickSource is FrameworkElement fe)
+        {
+            MergeMotionHelpers.PlayAcceptBounce(fe);
+        }
     }
 }

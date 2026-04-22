@@ -226,7 +226,7 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
 
     private void RebuildHighlighter()
     {
-        var definition = ResolveHighlightingDefinition(FilePath);
+        var definition = MergeHighlightingResolver.ByFilePath(FilePath);
         if (definition is null || Lines.Count == 0)
         {
             _highlightDocument = null;
@@ -250,14 +250,6 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
             foreach (var c in lines[i]) yield return c;
             if (i < lines.Count - 1) yield return '\n';
         }
-    }
-
-    internal static IHighlightingDefinition? ResolveHighlightingDefinition(string? filePath)
-    {
-        if (string.IsNullOrEmpty(filePath)) return null;
-        var ext = Path.GetExtension(filePath);
-        if (string.IsNullOrEmpty(ext)) return null;
-        return HighlightingManager.Instance.GetDefinitionByExtension(ext);
     }
 
     /// <summary>

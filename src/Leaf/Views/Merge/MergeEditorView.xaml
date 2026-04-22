@@ -352,8 +352,7 @@
                                           Text="{Binding ComposedText, Mode=OneWay}"
                                           Layout="{Binding Layout}"
                                           FilePath="{Binding SelectedConflict.FilePath}"
-                                          ContextMenu="{DynamicResource Merge.PaneContextMenu}"
-                                          ResultTextChanged="OnResultTextChanged"/>
+                                          ContextMenu="{DynamicResource Merge.PaneContextMenu}"/>
                         <merge:CodeLensActionBar AutomationProperties.AutomationId="Merge.CodeLens"
                                                  Ranges="{Binding Document.Ranges}"
                                                  RangeStates="{Binding RangeStates}"

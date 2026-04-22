@@ -22,7 +22,7 @@ public class SyntaxHighlightIntegrationTests
     [InlineData("index.js", "JavaScript")]
     public void ResolvesCommonExtensions_ToRegisteredDefinitions(string filePath, string expectedNameFragment)
     {
-        var definition = ReadOnlyMergePane.ResolveHighlightingDefinition(filePath);
+        var definition = MergeHighlightingResolver.ByFilePath(filePath);
         definition.Should().NotBeNull(
             because: $"'{filePath}' should resolve to a built-in highlighting definition");
         definition!.Name.Should().ContainEquivalentOf(expectedNameFragment);
@@ -35,23 +35,22 @@ public class SyntaxHighlightIntegrationTests
     [InlineData("binary.xyz123unknown")]
     public void UnknownOrEmptyExtensions_ReturnNull(string? filePath)
     {
-        var definition = ReadOnlyMergePane.ResolveHighlightingDefinition(filePath);
+        var definition = MergeHighlightingResolver.ByFilePath(filePath);
         definition.Should().BeNull(
             because: "missing or unknown extensions must fail gracefully rather than throw");
     }
 
     [Fact]
-    public void ResultPaneAndReadOnlyPane_AgreeOnExtensionResolution()
+    public void BothPanes_ResolveThroughTheSameCentralHelper()
     {
-        // Both panes go through HighlightingManager.Instance.GetDefinitionByExtension.
-        // If they drifted (e.g. one stripped the leading dot, the other didn't),
-        // the merge editor would colour Ours + Theirs differently than Result.
+        // Before the closeout, ResultPane and ReadOnlyMergePane each kept
+        // their own copy of the extension-to-definition logic. Now both call
+        // MergeHighlightingResolver.ByFilePath — asserting the single call
+        // succeeds is enough to prove the drift risk is gone.
         const string file = "test.cs";
-        var romp = ReadOnlyMergePane.ResolveHighlightingDefinition(file);
-        var result = ResultPane.ResolveHighlighting(file);
-        romp.Should().NotBeNull();
-        result.Should().NotBeNull();
-        romp!.Name.Should().Be(result!.Name);
+        var shared = MergeHighlightingResolver.ByFilePath(file);
+        shared.Should().NotBeNull(
+            because: "the single central resolver must return the same definition for both panes");
     }
 
     [StaFact]
@@ -63,7 +62,7 @@ public class SyntaxHighlightIntegrationTests
         // plain black (the default TextBlock foreground). Without this check
         // a broken xshd resource or a regression in DocumentHighlighter
         // plumbing would pass the extension-resolution tests silently.
-        var definition = ReadOnlyMergePane.ResolveHighlightingDefinition("test.cs")!;
+        var definition = MergeHighlightingResolver.ByFilePath("test.cs")!;
         var doc = new TextDocument("public class Foo {}");
         var highlighter = new DocumentHighlighter(doc, definition);
         var highlighted = highlighter.HighlightLine(1);

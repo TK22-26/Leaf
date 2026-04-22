@@ -16,13 +16,13 @@ namespace Leaf.Tests.Controls.Merge;
 public class ReadOnlyMergePaneTests
 {
     [Fact]
-    public void ResolveHighlightingDefinition_IsExposedInternal()
+    public void HighlightingResolver_IsSharedAcrossPanes()
     {
-        // Internal-static helper consumed both by the pane at runtime and by
-        // SyntaxHighlightIntegrationTests. Pinned here as a canary — renaming
-        // it would break that integration without a compile error being
-        // routed through the visible-via-tests surface.
-        var definition = ReadOnlyMergePane.ResolveHighlightingDefinition("foo.cs");
+        // The panes no longer carry their own resolver — both call
+        // MergeHighlightingResolver.ByFilePath. Pinning a quick sanity check
+        // here keeps the shared helper on the test radar without duplicating
+        // coverage from FileTypeIconResolverTests / SyntaxHighlightIntegrationTests.
+        var definition = MergeHighlightingResolver.ByFilePath("foo.cs");
         definition.Should().NotBeNull();
     }
 }

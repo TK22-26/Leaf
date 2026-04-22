@@ -1,4 +1,5 @@
 #nullable enable
+using FluentIcons.Common;
 using Leaf.Models;
 
 namespace Leaf.ViewModels.Merge;
@@ -65,6 +66,15 @@ public sealed class ConflictTreeNode
     /// <summary><c>true</c> for folder nodes (i.e. <see cref="Conflict"/> is null).</summary>
     public bool IsFolder => Conflict is null;
 
+    /// <summary>
+    /// FluentIcon <see cref="Symbol"/> the tree row renders next to
+    /// <see cref="DisplayName"/>. Resolved once at node construction through
+    /// <see cref="FileTypeIconResolver"/> so the XAML binding stays a simple
+    /// <c>{Binding IconSymbol}</c> and swapping the extension-to-glyph table
+    /// only touches the resolver.
+    /// </summary>
+    public Symbol IconSymbol { get; }
+
     /// <summary>Constructs a folder node. Throws if <paramref name="children"/> is empty.</summary>
     public static ConflictTreeNode Folder(string displayName, string fullPath, IReadOnlyList<ConflictTreeNode> children)
     {
@@ -75,7 +85,7 @@ public sealed class ConflictTreeNode
             throw new ArgumentException("Folder nodes must have at least one child.", nameof(children));
         }
         var unresolved = children.Sum(c => c.UnresolvedCount);
-        return new ConflictTreeNode(displayName, fullPath, children, conflict: null, unresolved);
+        return new ConflictTreeNode(displayName, fullPath, children, conflict: null, unresolved, Symbol.Folder);
     }
 
     /// <summary>Constructs a file leaf node.</summary>
@@ -88,20 +98,23 @@ public sealed class ConflictTreeNode
         // on an unresolved file that's a bug upstream, and hiding it behind
         // a Max(..., 1) would mask the diagnostic.
         var unresolved = conflict.IsResolved ? 0 : conflict.ConflictCount;
+        var icon = FileTypeIconResolver.ResolveForFile(conflict.FilePath);
         return new ConflictTreeNode(
             displayName: System.IO.Path.GetFileName(conflict.FilePath),
             fullPath: conflict.FilePath,
             children: Array.Empty<ConflictTreeNode>(),
             conflict: conflict,
-            unresolvedCount: unresolved);
+            unresolvedCount: unresolved,
+            iconSymbol: icon);
     }
 
-    private ConflictTreeNode(string displayName, string fullPath, IReadOnlyList<ConflictTreeNode> children, ConflictInfo? conflict, int unresolvedCount)
+    private ConflictTreeNode(string displayName, string fullPath, IReadOnlyList<ConflictTreeNode> children, ConflictInfo? conflict, int unresolvedCount, Symbol iconSymbol)
     {
         DisplayName = displayName ?? string.Empty;
         FullPath = fullPath;
         Children = children;
         Conflict = conflict;
         UnresolvedCount = unresolvedCount;
+        IconSymbol = iconSymbol;
     }
 }
