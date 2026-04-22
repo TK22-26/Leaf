@@ -59,6 +59,42 @@ public class MergeEditorViewModelAltNavTests
     }
 
     [Fact]
+    public void ChangingCurrentConflictIndex_ResetsChangeSpanCursor()
+    {
+        // Regression guard: before the fix, F8 / Shift+F8 advanced
+        // CurrentConflictIndex without resetting CurrentChangeSpanIndex, so
+        // Alt+Right after a conflict jump could index past a shorter
+        // conflict's OursDiffs.Count + TheirsDiffs.Count and silently skip
+        // spans. The partial OnCurrentConflictIndexChanged hook zeroes the
+        // secondary cursor on every CurrentConflictIndex write.
+        var vm = CreateVm(DocWith(
+            Range(0, conflicting: true, diffCount: 3),
+            Range(1, conflicting: true, diffCount: 1)));
+        vm.CurrentConflictIndex = 0;
+        vm.CurrentChangeSpanIndex = 4;
+
+        vm.CurrentConflictIndex = 1;
+
+        vm.CurrentChangeSpanIndex.Should().Be(0,
+            because: "every CurrentConflictIndex change must reset the secondary cursor to avoid drift");
+    }
+
+    [Fact]
+    public void NextConflict_AfterManualSpanCursor_ResetsSpanIndexToZero()
+    {
+        // Same invariant via the NextConflictCommand path that F8 triggers.
+        var vm = CreateVm(DocWith(
+            Range(0, conflicting: true, diffCount: 5),
+            Range(1, conflicting: true, diffCount: 2)));
+        vm.CurrentConflictIndex = 0;
+        vm.CurrentChangeSpanIndex = 7;
+
+        vm.NextConflictCommand.Execute(null);
+
+        vm.CurrentChangeSpanIndex.Should().Be(0);
+    }
+
+    [Fact]
     public void NextChangeSpan_AdvancesCursorWithinCurrentConflict()
     {
         // Single conflict with 3 spans each on Ours and Theirs = 6 spans.

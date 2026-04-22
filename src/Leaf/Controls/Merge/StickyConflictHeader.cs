@@ -61,7 +61,7 @@ public sealed class StickyConflictHeader : Control
     public static readonly DependencyProperty LayoutProperty = DependencyProperty.Register(
         nameof(Layout), typeof(MergePaneGlyphLayout), typeof(StickyConflictHeader),
         new FrameworkPropertyMetadata(null,
-            FrameworkPropertyMetadataOptions.AffectsRender, OnInputChanged));
+            FrameworkPropertyMetadataOptions.AffectsRender, OnLayoutChanged));
 
     public static readonly DependencyProperty VerticalOffsetProperty = DependencyProperty.Register(
         nameof(VerticalOffset), typeof(double), typeof(StickyConflictHeader),
@@ -105,10 +105,33 @@ public sealed class StickyConflictHeader : Control
 
     private static void OnInputChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
+        ((StickyConflictHeader)d).RecomputeLabel();
+    }
+
+    private static void OnLayoutChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        // Subscribe to the Layout's own PropertyChanged so an in-place
+        // LineHeight tweak (font-size change without a Layout reference swap)
+        // re-runs ComputeLabel. AffectsRender on the DP alone only fires on
+        // reference change — without this, a font-size slider that rebuilds
+        // glyph metrics on the existing Layout instance would leave the
+        // sticky strip pointing at the wrong conflict until the next scroll.
         var header = (StickyConflictHeader)d;
-        header._currentLabel = header.ComputeLabel();
-        header.Visibility = header._currentLabel is null ? Visibility.Collapsed : Visibility.Visible;
-        header.InvalidateVisual();
+        if (e.OldValue is MergePaneGlyphLayout oldLayout)
+            oldLayout.PropertyChanged -= header.OnLayoutPropChanged;
+        if (e.NewValue is MergePaneGlyphLayout newLayout)
+            newLayout.PropertyChanged += header.OnLayoutPropChanged;
+        header.RecomputeLabel();
+    }
+
+    private void OnLayoutPropChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) =>
+        RecomputeLabel();
+
+    private void RecomputeLabel()
+    {
+        _currentLabel = ComputeLabel();
+        Visibility = _currentLabel is null ? Visibility.Collapsed : Visibility.Visible;
+        InvalidateVisual();
     }
 
     private string? _currentLabel;
