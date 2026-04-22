@@ -74,6 +74,19 @@ public class MergeCommandCatalogTests
     }
 
     [Fact]
+    public void BuildFor_IncludesC4CopyCommands()
+    {
+        var vm = CreateVm();
+        var items = MergeCommandCatalog.BuildFor(vm);
+
+        items.Select(i => i.DisplayName).Should().Contain(new[]
+        {
+            "Copy Ours version of file",
+            "Copy Theirs version of file",
+        });
+    }
+
+    [Fact]
     public void EveryItem_HasICommandInTag()
     {
         var vm = CreateVm();
@@ -141,6 +154,7 @@ public class MergeCommandCatalogTests
             nameof(vm.UnresolveConflictCommand),
             nameof(vm.CompareConflictCommand),
             nameof(vm.RequestAiResolutionForRangeCommand),
+            nameof(vm.CopySelectionCommand),
         };
 
         var commandProps = typeof(MergeEditorViewModel)

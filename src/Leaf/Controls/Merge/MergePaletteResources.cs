@@ -53,17 +53,22 @@ internal static class MergePaletteResources
     // fallback only runs in environments where the palette hasn't been merged.
     private static readonly Lazy<ResourceDictionary> _localPalette = new(LoadPaletteFromEmbeddedBaml);
 
-    // Umbrella dictionaries only declare MergedDictionaries with relative
-    // <ResourceDictionary Source="..."/> references that need pack-URI
-    // resolution to follow. That resolution can't work in this code path
-    // (no Application.ResourceAssembly guarantee), so we skip the umbrellas
-    // explicitly by name and rely on the leaf files' inline content. This
-    // explicit-skip list makes an umbrella rename show up as a missing file
-    // instead of silently falling out through a swallowed exception.
+    // Files the palette-flatten loader must NOT realize at static-init time:
+    //   • Umbrellas (Merge, MergePalette) hold only <ResourceDictionary
+    //     Source="..."/> references that need pack-URI resolution the
+    //     flatten loader doesn't support.
+    //   • MergePaneContextMenu contains a non-primitive ContextMenu whose
+    //     constructor requires the WPF STA thread; realizing it here would
+    //     crash every headless test that constructs a MergeEditorViewModel.
+    //     The live app picks up this file through the normal
+    //     Application.Current.Resources path (STA-safe).
+    // Explicit list — adding a new umbrella or non-primitive leaf requires
+    // adding its baml name here so a silent fallout never hides a rename.
     private static readonly HashSet<string> UmbrellaResourceKeys = new(StringComparer.Ordinal)
     {
         "resources/merge/merge.baml",
         "resources/merge/mergepalette.baml",
+        "resources/merge/mergepanecontextmenu.baml",
     };
 
     private static ResourceDictionary LoadPaletteFromEmbeddedBaml()

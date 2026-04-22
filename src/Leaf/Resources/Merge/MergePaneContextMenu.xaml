@@ -1,0 +1,61 @@
+<!--
+    Merge pane right-click context menu (C4).
+
+    Exposed as a shared resource (x:Shared="False" because WPF forbids a
+    single ContextMenu instance being hosted by multiple parents) so every
+    pane — Ours, Theirs, Result — can set ContextMenu="{DynamicResource
+    Merge.PaneContextMenu}" and get the same affordances.
+
+    Commands bind through the ContextMenu's PlacementTarget so the bindings
+    reach the placement target's DataContext (MergeEditorViewModel) rather
+    than the ContextMenu's own (null) DataContext. Matches the well-worn
+    WPF pattern already used by MergeStatusView for its row-level menus.
+
+    Plan §C4 (deferred): "Ask AI about selection" and "Expand / Collapse
+    context" were listed in the plan but are not yet wired because both
+    need abstractions that don't exist yet:
+      • Ask AI about selection → IAiMergeAssistant exposes only a range-
+        scoped RequestResolutionAsync; adding a free-form Q&A capability
+        is a separate MCP-protocol extension (see the paired comment in
+        MergeEditorViewModel around the CopyTheirsVersion command).
+      • Expand / Collapse context → Leaf renders full files in each pane,
+        so there is no collapsed region for this action to target. Same
+        reasoning as C2's deferred ContextExpanderHandle.
+    Both items will re-join this menu once the supporting infra lands.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ContextMenu x:Key="Merge.PaneContextMenu" x:Shared="False"
+                 AutomationProperties.AutomationId="Merge.PaneContextMenu">
+
+        <!-- Generic Copy — uses ApplicationCommands.Copy so it routes to
+             whatever control has focus (TextBox, AvalonEdit, etc.) rather
+             than the VM. Panes without selection handling (ReadOnlyMergePane)
+             gray this out via CanExecute. -->
+        <MenuItem Header="Copy"
+                  AutomationProperties.AutomationId="Merge.ContextMenu.Copy"
+                  Command="ApplicationCommands.Copy"
+                  InputGestureText="Ctrl+C"/>
+
+        <Separator/>
+
+        <MenuItem Header="Copy Ours version"
+                  AutomationProperties.AutomationId="Merge.ContextMenu.CopyOurs"
+                  Command="{Binding PlacementTarget.DataContext.CopyOursVersionCommand,
+                                    RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+
+        <MenuItem Header="Copy Theirs version"
+                  AutomationProperties.AutomationId="Merge.ContextMenu.CopyTheirs"
+                  Command="{Binding PlacementTarget.DataContext.CopyTheirsVersionCommand,
+                                    RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+
+        <MenuItem Header="Copy composed text"
+                  AutomationProperties.AutomationId="Merge.ContextMenu.CopyComposed"
+                  Command="{Binding PlacementTarget.DataContext.CopyComposedTextCommand,
+                                    RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+
+    </ContextMenu>
+
+</ResourceDictionary>

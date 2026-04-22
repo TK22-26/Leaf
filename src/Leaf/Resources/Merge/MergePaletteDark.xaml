@@ -74,6 +74,21 @@
     <SolidColorBrush x:Key="Merge.State.Manual"     Color="#FFFFC44D"/>
     <SolidColorBrush x:Key="Merge.State.Resolved.Overlay" Color="#4422C55E"/>
 
+    <!--  Status-pill chrome tokens (C4). Pill background is a translucent tint
+          of the state color so it reads as a contextual badge; pill text is
+          the saturated state color itself for high contrast against both the
+          tint and any surface depth underneath. Ship both the low-alpha Color
+          (for control code that freezes its own SolidColorBrush) and the
+          pre-frozen Brush (for xaml bindings).  -->
+    <Color x:Key="Merge.State.Unresolved.PillBg.Color">#33E04444</Color>
+    <Color x:Key="Merge.State.Unresolved.PillText.Color">#FFFFB2B2</Color>
+    <Color x:Key="Merge.State.Resolved.PillBg.Color">#3322C55E</Color>
+    <Color x:Key="Merge.State.Resolved.PillText.Color">#FF8BE0A8</Color>
+    <SolidColorBrush x:Key="Merge.State.Unresolved.PillBg"   Color="#33E04444"/>
+    <SolidColorBrush x:Key="Merge.State.Unresolved.PillText" Color="#FFFFB2B2"/>
+    <SolidColorBrush x:Key="Merge.State.Resolved.PillBg"     Color="#3322C55E"/>
+    <SolidColorBrush x:Key="Merge.State.Resolved.PillText"   Color="#FF8BE0A8"/>
+
     <!--  Surface depth layers (darker -> lighter)  -->
     <Color x:Key="Merge.Surface.1.Color">#FF181818</Color>
     <Color x:Key="Merge.Surface.2.Color">#FF1E1E1E</Color>

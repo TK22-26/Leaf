@@ -101,16 +101,16 @@
         </Border>
 
         <!-- File list card. PaneCard style brings the 1 px hairline + subtle
-             shadow; 8 px outer margin gives the corner radius room to breathe. -->
+             shadow; 8 px outer margin gives the corner radius room to breathe.
+             C4: replaced the flat ListBox with ConflictFileTree (grouped by
+             folder, per-file unresolved-count pill). AutomationId stays the
+             same so existing UI smoke tests continue to resolve the control. -->
         <Border Grid.Row="1" Grid.Column="0"
                 Style="{StaticResource Merge.PaneCard}"
                 Margin="8,4,4,4">
-            <ListBox AutomationProperties.AutomationId="Merge.ConflictFileList"
-                     ItemsSource="{Binding Conflicts}"
-                     SelectedItem="{Binding SelectedConflict}"
-                     DisplayMemberPath="FilePath"
-                     BorderThickness="0"
-                     Background="Transparent"/>
+            <merge:ConflictFileTree AutomationProperties.AutomationId="Merge.ConflictFileList"
+                                    ItemsSource="{Binding ConflictTree}"
+                                    SelectedFile="{Binding SelectedConflict, Mode=TwoWay}"/>
         </Border>
 
         <!-- C1 vertical splitter between the file list and the panes area.
@@ -203,6 +203,7 @@
                                                  Foreground="{DynamicResource Merge.Text.Primary}"
                                                  HighlightBrush="{DynamicResource Merge.Ours.BgSubtle}"
                                                  FilePath="{Binding SelectedConflict.FilePath}"
+                                                 ContextMenu="{DynamicResource Merge.PaneContextMenu}"
                                                  />
                     </ScrollViewer>
                     <merge:ConflictMinimap Grid.Column="1"
@@ -296,6 +297,7 @@
                                                  Foreground="{DynamicResource Merge.Text.Primary}"
                                                  HighlightBrush="{DynamicResource Merge.Theirs.BgSubtle}"
                                                  FilePath="{Binding SelectedConflict.FilePath}"
+                                                 ContextMenu="{DynamicResource Merge.PaneContextMenu}"
                                                  />
                     </ScrollViewer>
                     <merge:ConflictMinimap Grid.Column="1"
@@ -350,6 +352,7 @@
                                           Text="{Binding ComposedText, Mode=OneWay}"
                                           Layout="{Binding Layout}"
                                           FilePath="{Binding SelectedConflict.FilePath}"
+                                          ContextMenu="{DynamicResource Merge.PaneContextMenu}"
                                           ResultTextChanged="OnResultTextChanged"/>
                         <merge:CodeLensActionBar AutomationProperties.AutomationId="Merge.CodeLens"
                                                  Ranges="{Binding Document.Ranges}"
