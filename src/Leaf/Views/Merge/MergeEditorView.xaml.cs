@@ -436,17 +436,21 @@ public partial class MergeEditorView : Window
         // Invalidate both input panes so the change-bar / overlay re-render
         // after any resolution-changing operation (pill click, footer
         // AcceptAllOurs/Theirs, Undo, Redo). RangeStates is a plain dictionary
-        // — this is the designated re-render channel. Controls whose
-        // rendering depends on RangeStates need an explicit refresh because
-        // dictionary mutation in place doesn't fire WPF DP change
-        // notifications: the pill overlay caches per-range State on its
-        // children, and the three sticky headers cache a "· <state>" label.
+        // — this is the designated re-render channel. Every control whose
+        // rendering depends on RangeStates needs an explicit refresh
+        // because dictionary mutation in place doesn't fire WPF DP change
+        // notifications. If you add a new RangeStates-consuming control,
+        // add a Refresh() entry point on it and call it here.
         OursPane.InvalidateVisual();
         TheirsPane.InvalidateVisual();
         SegmentedPills?.RefreshPillStates();
         OursSticky?.RefreshState();
         TheirsSticky?.RefreshState();
         ResultSticky?.RefreshState();
+        OursMinimap?.Refresh();
+        TheirsMinimap?.Refresh();
+        ConnectionCanvas?.Refresh();
+        CodeLens?.Refresh();
     }
 
     // ── Scroll / minimap wire-up (Phase 4) ───────────────────────────────

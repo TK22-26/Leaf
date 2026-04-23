@@ -184,6 +184,8 @@ public class MergeEditorViewModelNotesTests
 
         vm.AddNoteCommand.Execute((0, "first draft"));
         vm.RangeStates[0].Note.Should().Be("first draft");
+        vm.RangeStates[0].Should().BeOfType<ResolutionState.AcceptOurs>(
+            because: "AddNote must preserve the existing variant");
         // Explicit CanUndo/CanRedo asserts pin the undo-stack wiring —
         // without them the state-only checks below would pass even if
         // PushUndo were accidentally removed from AddNote.
@@ -192,10 +194,14 @@ public class MergeEditorViewModelNotesTests
         vm.UndoCommand.Execute(null);
         vm.RangeStates[0].Note.Should().BeNull(
             because: "Undo must roll back the AddNote transition");
+        vm.RangeStates[0].Should().BeOfType<ResolutionState.AcceptOurs>(
+            because: "Undo must restore the pre-AddNote variant, not just clear the Note");
         vm.CanRedo.Should().BeTrue(because: "undoing leaves the entry on the redo stack");
 
         vm.RedoCommand.Execute(null);
         vm.RangeStates[0].Note.Should().Be("first draft");
+        vm.RangeStates[0].Should().BeOfType<ResolutionState.AcceptOurs>(
+            because: "Redo must restore both variant and note");
     }
 
     private static MergeEditorViewModel CreateVmWithDocument()

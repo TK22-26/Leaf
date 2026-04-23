@@ -144,6 +144,11 @@ public class MergeBlameServiceTests
     [Fact]
     public async Task ConcurrentLookups_SameFile_ShareOneFetch()
     {
+        // Tracks peak concurrent fetches: if the per-file gate is broken,
+        // all 5 lookups race into GetFileBlameAsync simultaneously and
+        // _currentConcurrency > 1. The gate serializes them, so peak == 1.
+        // (A serial-only cache hit wouldn't prove this — without the peak
+        // counter, the test would pass even if the gate were removed.)
         var git = new SlowBlameGitService(headSha: "abc",
             blame: new List<FileBlameLine>
             {
@@ -153,7 +158,6 @@ public class MergeBlameServiceTests
             delayMs: 50);
         var service = new MergeBlameService(git);
 
-        // Fire 5 concurrent lookups for different lines in the same file.
         var tasks = Enumerable.Range(1, 5)
             .Select(i => service.GetLineBlameAsync("/repo", "a.cs", (i % 2) + 1))
             .ToArray();
@@ -161,6 +165,9 @@ public class MergeBlameServiceTests
 
         git.BlameCallCount.Should().Be(1,
             because: "the per-file fetch gate must serialize concurrent lookups to one subprocess");
+        git.PeakConcurrency.Should().Be(1,
+            because: "peak concurrency > 1 would mean the gate allowed parallel fetches — the cache " +
+                     "alone can't guarantee this because the first waiter holds the slot open for 50 ms");
     }
 
     private class CountingBlameGitService : FakeGitService
@@ -188,6 +195,9 @@ public class MergeBlameServiceTests
     private sealed class SlowBlameGitService : CountingBlameGitService
     {
         private readonly int _delayMs;
+        private int _currentConcurrency;
+        public int PeakConcurrency { get; private set; }
+
         public SlowBlameGitService(string headSha, List<FileBlameLine> blame, int delayMs)
             : base(headSha, blame)
         {
@@ -196,8 +206,20 @@ public class MergeBlameServiceTests
 
         public override async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
         {
-            await Task.Delay(_delayMs, cancellationToken).ConfigureAwait(false);
-            return await base.GetFileBlameAsync(repoPath, filePath, cancellationToken).ConfigureAwait(false);
+            // Increment-and-track before the await so simultaneous entries
+            // bump the peak even if the caller races to the Delay. Interlocked
+            // keeps the counter correct under the xunit worker pool.
+            var current = System.Threading.Interlocked.Increment(ref _currentConcurrency);
+            PeakConcurrency = Math.Max(PeakConcurrency, current);
+            try
+            {
+                await Task.Delay(_delayMs, cancellationToken).ConfigureAwait(false);
+                return await base.GetFileBlameAsync(repoPath, filePath, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                System.Threading.Interlocked.Decrement(ref _currentConcurrency);
+            }
         }
     }
 }
