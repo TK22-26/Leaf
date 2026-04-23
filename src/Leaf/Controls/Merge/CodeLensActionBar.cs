@@ -154,6 +154,16 @@ public sealed class CodeLensActionBar : Canvas
     private static void OnStatesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((CodeLensActionBar)d).Rebuild();
 
+    /// <summary>
+    /// Explicit refresh entry point for hosts that mutate RangeStates in
+    /// place. The DP change metadata only fires on reference swap — without
+    /// this, an AcceptOurs click wouldn't update the bar's resolved-opacity
+    /// (40%) and the row would keep reading as unresolved. Mirrors the
+    /// <see cref="SegmentedAcceptPillOverlay.RefreshPillStates"/> /
+    /// <see cref="StickyConflictHeader.RefreshState"/> pattern.
+    /// </summary>
+    public void Refresh() => Rebuild();
+
     private static void OnLayoutChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var bar = (CodeLensActionBar)d;

@@ -36,6 +36,7 @@
                      Foreground="{DynamicResource Merge.Text.Primary}"
                      BorderBrush="{DynamicResource Merge.Border.Subtle}"
                      AutomationProperties.AutomationId="Merge.NoteEditor.Input"
+                     AutomationProperties.Name="Conflict note"
                      KeyDown="OnInputKeyDown"/>
             <StackPanel Orientation="Horizontal"
                         HorizontalAlignment="Right"

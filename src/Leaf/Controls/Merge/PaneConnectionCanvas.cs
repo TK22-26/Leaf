@@ -68,6 +68,17 @@ public sealed class PaneConnectionCanvas : FrameworkElement
         set => SetValue(RangeStatesProperty, value);
     }
 
+    /// <summary>
+    /// Explicit refresh entry point for hosts that mutate RangeStates in
+    /// place. Connection ribbons (resolved / unresolved / AcceptBoth) drive
+    /// their colour off the dictionary — in-place mutation doesn't fire
+    /// the DP change callback, so without this call the ribbon keeps the
+    /// pre-action colour until the next layout invalidation. Mirrors the
+    /// SegmentedAcceptPillOverlay.RefreshPillStates /
+    /// StickyConflictHeader.RefreshState / ConflictMinimap.Refresh pattern.
+    /// </summary>
+    public void Refresh() => InvalidateVisual();
+
     public double OursVerticalOffset
     {
         get => (double)GetValue(OursVerticalOffsetProperty);

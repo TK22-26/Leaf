@@ -93,6 +93,16 @@ public sealed class ConflictMinimap : FrameworkElement
     /// </summary>
     public event EventHandler<MinimapJumpEventArgs>? JumpRequested;
 
+    /// <summary>
+    /// Explicit refresh entry point for hosts that mutate RangeStates in
+    /// place. AffectsRender on the DP alone doesn't fire for in-place
+    /// dictionary mutations — without this, an AcceptOurs click would
+    /// leave the minimap still painting the range as unresolved-red.
+    /// Mirrors the SegmentedAcceptPillOverlay.RefreshPillStates /
+    /// StickyConflictHeader.RefreshState pattern.
+    /// </summary>
+    public void Refresh() => InvalidateVisual();
+
     // Palette-derived minimap swatches. The minimap reads the base side and
     // state colours from the central palette and applies per-swatch alpha so
     // stacked tints remain legible against the unchanged-grey backdrop.
