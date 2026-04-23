@@ -17,6 +17,14 @@ public class FileBlameLine
 
     public string Content { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Commit subject line ('summary' from git blame's porcelain output).
+    /// Empty when the blame command ran without <c>--line-porcelain</c> or
+    /// when the blame parser couldn't resolve the commit. Used by the
+    /// merge editor's C5 BlamePeekPopover alongside author / date / sha.
+    /// </summary>
+    public string Subject { get; set; } = string.Empty;
+
     public bool IsChunkStart { get; set; }
 
     public bool IsChunkEnd { get; set; }

@@ -101,6 +101,14 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         _repoPath = repoPath ?? throw new ArgumentNullException(nameof(repoPath));
     }
 
+    /// <summary>
+    /// Repository root path this editor session is bound to. Exposed for
+    /// surfaces that need to talk to git by path (C5 blame peek, future
+    /// history/pull-request integrations). The field itself stays private
+    /// so the editor can't be retargeted mid-session.
+    /// </summary>
+    public string RepoPath => _repoPath;
+
     public event EventHandler<bool>? MergeCompleted;
 
     /// <summary>

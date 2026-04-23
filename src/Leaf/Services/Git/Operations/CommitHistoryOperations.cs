@@ -430,6 +430,7 @@ internal class CommitHistoryOperations
         var lines = new List<FileBlameLine>();
         string currentSha = string.Empty;
         string currentAuthor = string.Empty;
+        string currentSubject = string.Empty;
         DateTimeOffset currentDate = DateTimeOffset.MinValue;
         int currentLineNumber = 0;
 
@@ -446,6 +447,7 @@ internal class CommitHistoryOperations
                     Sha = currentSha,
                     Author = currentAuthor,
                     Date = currentDate,
+                    Subject = currentSubject,
                     Content = line[1..]
                 });
                 continue;
@@ -470,6 +472,16 @@ internal class CommitHistoryOperations
             {
                 if (long.TryParse(line["author-time ".Length..], out var seconds))
                     currentDate = DateTimeOffset.FromUnixTimeSeconds(seconds);
+                continue;
+            }
+
+            // 'summary' = the commit subject line. Porcelain emits it once per
+            // commit (cached by sha) so the same subject applies to every
+            // subsequent "\t"-prefixed content line for that commit until a
+            // new sha header appears.
+            if (line.StartsWith("summary ", StringComparison.Ordinal))
+            {
+                currentSubject = line["summary ".Length..];
             }
         }
 

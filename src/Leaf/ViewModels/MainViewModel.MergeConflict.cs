@@ -28,8 +28,25 @@ public partial class MainViewModel
         {
             DataContext = MergeConflictResolutionViewModel
         };
+        // C5: blame-peek sha link → jump the commit graph to that commit.
+        // The editor window fires CommitJumpRequested; we route through the
+        // same OnNavigateToCommitRequested handler the CommitDetail panel
+        // uses for its own commit-hash hyperlinks.
+        conflictWindow.CommitJumpRequested += OnMergeEditorCommitJumpRequested;
+        try
+        {
+            await _dialogService.ShowDialogAsync(conflictWindow);
+        }
+        finally
+        {
+            conflictWindow.CommitJumpRequested -= OnMergeEditorCommitJumpRequested;
+        }
+    }
 
-        await _dialogService.ShowDialogAsync(conflictWindow);
+    private void OnMergeEditorCommitJumpRequested(object? sender, string sha)
+    {
+        if (string.IsNullOrEmpty(sha)) return;
+        GitGraphViewModel?.SelectCommitBySha(sha);
     }
 
     /// <summary>
@@ -258,8 +275,15 @@ public partial class MainViewModel
         {
             DataContext = MergeConflictResolutionViewModel
         };
-
-        await _dialogService.ShowDialogAsync(conflictWindow);
+        conflictWindow.CommitJumpRequested += OnMergeEditorCommitJumpRequested;
+        try
+        {
+            await _dialogService.ShowDialogAsync(conflictWindow);
+        }
+        finally
+        {
+            conflictWindow.CommitJumpRequested -= OnMergeEditorCommitJumpRequested;
+        }
     }
 
     [RelayCommand]
