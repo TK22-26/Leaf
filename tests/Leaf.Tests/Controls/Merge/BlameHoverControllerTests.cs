@@ -89,6 +89,66 @@ public class BlameHoverControllerTests
     }
 
     [StaFact]
+    public void TrackedPane_MouseEnter_UpdatesCurrentHoveredPane()
+    {
+        // Cross-pane transit invariant: the controller tracks which pane
+        // holds the pointer so OnPaneMouseLeave's deferred dismiss can
+        // tell "pointer went outside" from "pointer went to sibling pane".
+        // Without this, moving Ours → Theirs produces a close-then-reopen
+        // flicker while the 500 ms debounce runs.
+        EnsureMergeDictionaryMerged();
+        var service = new RecordingBlameService();
+        var controller = new BlameHoverController(
+            service,
+            repoPathProvider: () => "/repo",
+            filePathProvider: () => "foo.cs",
+            commitRequestedCallback: _ => { });
+
+        var paneA = new ContentControl();
+        var paneB = new ContentControl();
+        controller.TrackPane(paneA, (_, _) => 1);
+        controller.TrackPane(paneB, (_, _) => 1);
+
+        var currentField = typeof(BlameHoverController)
+            .GetField("_currentHoveredPane",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        // Sanity: nothing hovered yet.
+        currentField.GetValue(controller).Should().BeNull();
+
+        paneA.RaiseEvent(MakeMouseEvent(paneA, System.Windows.Input.Mouse.MouseEnterEvent));
+        currentField.GetValue(controller).Should().BeSameAs(paneA,
+            because: "MouseEnter on paneA sets it as the current hovered pane");
+
+        // Cross-pane transit: paneA.MouseLeave fires, then paneB.MouseEnter.
+        paneA.RaiseEvent(MakeMouseEvent(paneA, System.Windows.Input.Mouse.MouseLeaveEvent));
+        paneB.RaiseEvent(MakeMouseEvent(paneB, System.Windows.Input.Mouse.MouseEnterEvent));
+        currentField.GetValue(controller).Should().BeSameAs(paneB,
+            because: "after transit to sibling pane the tracker follows the pointer, not a null");
+
+        // Leaving paneB with no sibling entry clears the tracker.
+        paneB.RaiseEvent(MakeMouseEvent(paneB, System.Windows.Input.Mouse.MouseLeaveEvent));
+        currentField.GetValue(controller).Should().BeNull(
+            because: "leaving the last tracked pane clears the tracker so the deferred dismiss can run");
+    }
+
+    private static System.Windows.Input.MouseEventArgs MakeMouseEvent(
+        System.Windows.IInputElement source,
+        System.Windows.RoutedEvent routedEvent)
+    {
+        // Mouse events need a MouseDevice + timestamp + PresentationSource;
+        // since tests don't host a Window, construct a dummy HwndSource
+        // that matches the same pattern the KeyEvent tests use.
+        return new System.Windows.Input.MouseEventArgs(
+            System.Windows.Input.Mouse.PrimaryDevice,
+            timestamp: 0)
+        {
+            RoutedEvent = routedEvent,
+            Source = source,
+        };
+    }
+
+    [StaFact]
     public async Task ShowForLineAsync_SwallowsServiceException()
     {
         // Fire-and-forget contract: the keybinding handler discards the

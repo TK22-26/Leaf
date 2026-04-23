@@ -90,6 +90,11 @@ public class BlamePeekPopoverTests
     [StaFact]
     public void DismissRequested_Fires_OnEscapeKeyDown()
     {
+        // Raise the KeyDown routed event through WPF's event system
+        // (popover.RaiseEvent) rather than reflecting into the private
+        // handler. This validates the XAML binding `KeyDown="OnPopoverKeyDown"`
+        // is still wired — a previous reflection-based draft passed even
+        // if the XAML attribute were deleted.
         EnsureMergeDictionaryMerged();
         var popover = new BlamePeekPopover();
         popover.SetRecord(new FileBlameLine
@@ -102,21 +107,7 @@ public class BlamePeekPopoverTests
         bool dismissed = false;
         popover.DismissRequested += (_, _) => dismissed = true;
 
-        var handler = typeof(BlamePeekPopover).GetMethod(
-            "OnPopoverKeyDown",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        handler.Invoke(popover, new object[]
-        {
-            popover,
-            new System.Windows.Input.KeyEventArgs(
-                System.Windows.Input.Keyboard.PrimaryDevice,
-                new System.Windows.Interop.HwndSource(0, 0, 0, 0, 0, "h", IntPtr.Zero),
-                0,
-                System.Windows.Input.Key.Escape)
-            {
-                RoutedEvent = System.Windows.UIElement.KeyDownEvent,
-            },
-        });
+        popover.RaiseEvent(MakeKeyEvent(popover, System.Windows.Input.Key.Escape));
 
         dismissed.Should().BeTrue(because: "Escape inside the popover must fire DismissRequested");
     }
@@ -131,24 +122,31 @@ public class BlamePeekPopoverTests
         bool dismissed = false;
         popover.DismissRequested += (_, _) => dismissed = true;
 
-        var handler = typeof(BlamePeekPopover).GetMethod(
-            "OnPopoverKeyDown",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        handler.Invoke(popover, new object[]
-        {
-            popover,
-            new System.Windows.Input.KeyEventArgs(
-                System.Windows.Input.Keyboard.PrimaryDevice,
-                new System.Windows.Interop.HwndSource(0, 0, 0, 0, 0, "h", IntPtr.Zero),
-                0,
-                System.Windows.Input.Key.Enter)
-            {
-                RoutedEvent = System.Windows.UIElement.KeyDownEvent,
-            },
-        });
+        popover.RaiseEvent(MakeKeyEvent(popover, System.Windows.Input.Key.Enter));
 
         dismissed.Should().BeFalse(
             because: "only Escape dismisses; Enter activates the focused sha link via its Click handler");
+    }
+
+    private static System.Windows.Input.KeyEventArgs MakeKeyEvent(
+        System.Windows.IInputElement source, System.Windows.Input.Key key)
+    {
+        // A KeyEventArgs needs a real PresentationSource; in a headless
+        // STA test we haven't shown a Window, so make a disposable one.
+        // The Source field on the returned args is set via RaiseEvent
+        // when we route through the popover, so we don't need to wire
+        // the hwnd up beyond what the constructor requires.
+        var hwnd = new System.Windows.Interop.HwndSource(
+            new System.Windows.Interop.HwndSourceParameters("test-key-source"));
+        return new System.Windows.Input.KeyEventArgs(
+            System.Windows.Input.Keyboard.PrimaryDevice,
+            hwnd,
+            timestamp: 0,
+            key)
+        {
+            RoutedEvent = System.Windows.UIElement.KeyDownEvent,
+            Source = source,
+        };
     }
 
     [StaFact]
