@@ -14,32 +14,9 @@ namespace Leaf.Tests.Controls.Merge;
 /// </summary>
 public class BlamePeekPopoverTests
 {
-    // Match the palette-merge pattern used by MergeMotionTests so the
-    // PopoverShow storyboard resolves against Application.Current.Resources
-    // (same-thread guarantee) rather than the _localPalette fallback which
-    // captured the storyboard on whichever test thread touched it first.
-    private static readonly object _paletteLock = new();
-    private static bool _paletteMerged;
-    private static void EnsureMergeDictionaryMerged()
-    {
-        lock (_paletteLock)
-        {
-            if (System.Windows.Application.Current is null)
-            {
-                try { _ = new System.Windows.Application(); }
-                catch (InvalidOperationException) { /* already created */ }
-            }
-            if (_paletteMerged) return;
-            var dict = new System.Windows.ResourceDictionary
-            {
-                Source = new Uri(
-                    "pack://application:,,,/Leaf;component/Resources/Merge/Merge.xaml",
-                    UriKind.Absolute),
-            };
-            System.Windows.Application.Current!.Resources.MergedDictionaries.Add(dict);
-            _paletteMerged = true;
-        }
-    }
+    // Storyboard-clone needs Application.Current.Resources populated on
+    // the STA test thread — delegated to the shared fixture.
+    private static void EnsureMergeDictionaryMerged() => MergePaletteTestFixture.Ensure();
 
     [StaFact]
     public void SetRecord_CopiesFieldsFromBlameLine()

@@ -149,7 +149,18 @@
     <SolidColorBrush x:Key="Merge.Surface.Scrim" Color="#11000000"/>
     <SolidColorBrush x:Key="Merge.Border.Dialog" Color="#22000000"/>
 
-    <!--  Text  -->
+    <!--  Text.
+          Primary / Secondary / Tertiary are the three merge-chrome text
+          weights consumed across the editor. OnAccent is wired on the
+          Complete Merge button's foreground (reads against the accent
+          fill). Disabled is reserved for any future custom surface that
+          does NOT inherit the Fluent ControlTemplate's disabled state —
+          inside a Fluent Button the default template already fades text
+          via its own theme trigger, so the button doesn't need to bind
+          to this token explicitly. Keeping the key defined (per plan
+          §D1) means future custom chrome (drop-down cells, list rows)
+          has a single source of truth rather than inventing its own
+          disabled grey.  -->
     <Color x:Key="Merge.Text.Primary.Color">#FFE4E4E4</Color>
     <Color x:Key="Merge.Text.Secondary.Color">#FFD0D0D0</Color>
     <Color x:Key="Merge.Text.Tertiary.Color">#FF888888</Color>

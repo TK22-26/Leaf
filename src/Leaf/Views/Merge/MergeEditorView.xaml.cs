@@ -174,10 +174,19 @@ public partial class MergeEditorView : Window
         var idx = Math.Clamp(Vm.CurrentConflictIndex, 0, conflicting.Count - 1);
         var range = conflicting[idx];
 
-        // Pick the pane whose subtree has keyboard focus; default to Ours
-        // when focus is off the panes (e.g. user just came from the file
-        // tree or the command palette). Line resolves off the side's
-        // StartLine — that's where the conflict begins on disk.
+        // Pane-selection contract: if focus is inside the Theirs pane,
+        // show Theirs-side blame; otherwise show Ours-side blame. The
+        // Ours fallback covers:
+        //   • focus on the Ours pane (primary case),
+        //   • focus on the Result pane — blame against HEAD on composed
+        //     result content is semantically incoherent, so the left-
+        //     hand ancestor of the result (Ours) is the defensible
+        //     default,
+        //   • focus elsewhere (file tree, palette, footer) — user
+        //     pressed Alt+B without being on a pane; Ours is the
+        //     conventional "current side" for single-side views.
+        // Line resolves off the selected side's StartLine — that's
+        // where the conflict begins on the HEAD-blamed file.
         var focused = System.Windows.Input.Keyboard.FocusedElement;
         ReadOnlyMergePane targetPane;
         int line;

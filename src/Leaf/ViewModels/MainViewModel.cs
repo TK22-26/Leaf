@@ -43,6 +43,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly Services.Merge.IAiMergeAssistant? _aiMergeAssistant;
     private readonly Services.Merge.IWordDiffService _wordDiffService;
     private readonly Services.Merge.IImageMergeService? _imageMergeService;
+    private readonly Services.Merge.IMergeBlameService _mergeBlameService;
 
     // The per-repo DI scope. Owns the current IRepositorySession (scoped)
     // and — in future phases — the per-repo ViewModels. Disposed on repo
@@ -375,6 +376,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IExternalToolLauncherService externalToolLauncher,
         Services.Merge.IMergeEngine mergeEngine,
         Services.Merge.IWordDiffService wordDiffService,
+        Services.Merge.IMergeBlameService mergeBlameService,
         INotificationService? notificationService = null,
         Services.Merge.IAiMergeAssistant? aiMergeAssistant = null,
         Services.Merge.IImageMergeService? imageMergeService = null)
@@ -384,6 +386,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _wordDiffService = wordDiffService;
         _aiMergeAssistant = aiMergeAssistant;
         _imageMergeService = imageMergeService;
+        _mergeBlameService = mergeBlameService;
         _gitFlowService = gitFlowService;
         _credentialService = credentialService;
         _settingsService = settingsService;
@@ -565,6 +568,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     #endregion
+
+    partial void OnSelectedRepositoryChanging(RepositoryInfo? oldValue, RepositoryInfo? newValue)
+    {
+        // C5 blame cache is keyed on (repoPath, filePath) + HEAD sha. HEAD
+        // keying makes in-repo history changes self-invalidating, but a
+        // repo switch leaves the old entries (and their per-file
+        // SemaphoreSlim gates) dangling — a file with the same relative
+        // path in the new repo could briefly surface the previous repo's
+        // blame. Evict explicitly on transition so the singleton service
+        // doesn't accumulate per-repo state across a long session.
+        if (oldValue is not null
+            && !string.Equals(oldValue.Path, newValue?.Path, StringComparison.OrdinalIgnoreCase))
+        {
+            _mergeBlameService.InvalidateRepo(oldValue.Path);
+        }
+    }
 
     partial void OnSelectedRepositoryChanged(RepositoryInfo? value)
     {
