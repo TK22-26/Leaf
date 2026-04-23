@@ -88,6 +88,11 @@ public sealed class MergeBlameService : IMergeBlameService
     {
         ArgumentException.ThrowIfNullOrEmpty(repoPath);
         var normalizedRepo = NormalizePath(repoPath);
+        // Snapshot first — mutating a ConcurrentDictionary's key enumerator
+        // mid-iteration is documented to be safe, but paired with the
+        // separate _fetchGates dictionary we want to make sure both sides
+        // evict the same key set.
+        var victims = new List<CacheKey>();
         foreach (var key in _cache.Keys)
         {
             // Keys are already normalized by GetLineBlameAsync — ordinal
@@ -95,8 +100,21 @@ public sealed class MergeBlameService : IMergeBlameService
             // user-supplied differently-cased repoPath still invalidates.
             if (string.Equals(key.RepoPath, normalizedRepo, StringComparison.Ordinal))
             {
-                _cache.TryRemove(key, out _);
+                victims.Add(key);
             }
+        }
+        foreach (var key in victims)
+        {
+            _cache.TryRemove(key, out _);
+            // Evict (but don't Dispose) the per-key fetch gate. An in-flight
+            // fetch that's still holding the semaphore would see its
+            // subsequent Release throw ObjectDisposedException if we
+            // disposed here — a real race even if narrow. Removing the
+            // gate from the dictionary is enough: no new waiters can reach
+            // it, and GC reclaims the instance after the current holder
+            // finishes its finally-block. SemaphoreSlim.Dispose is
+            // documented optional for exactly this reason.
+            _fetchGates.TryRemove(key, out _);
         }
     }
 

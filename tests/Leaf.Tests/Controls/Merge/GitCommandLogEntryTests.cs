@@ -33,6 +33,31 @@ public class GitCommandLogEntryTests
         new GitCommandLogEntry(raw).ExitIndicator.Should().Be("✗");
     }
 
+    [Theory]
+    [InlineData("blame --line-porcelain -- foo.cs", true)]
+    [InlineData("blame -L 1,10 -- foo.cs", true)]
+    [InlineData("rev-parse HEAD", true)]
+    [InlineData("merge-file -p base.txt ours.txt theirs.txt", false)]
+    [InlineData("commit -m test", false)]
+    [InlineData("merge --abort", false)]
+    [InlineData("status", false)]
+    public void IsBackgroundChatter_ClassifiesArgsPrefix(string args, bool expectedChatty)
+    {
+        var e = new GitCommandEventArgs("/r", args, 0, "", "");
+        GitCommandLog.IsBackgroundChatter(e).Should().Be(expectedChatty,
+            because: "blame + rev-parse HEAD are C5 background probes; other commands are user actions");
+    }
+
+    [Fact]
+    public void IsBackgroundChatter_EmptyArgs_IsNotChatter()
+    {
+        // Defensive: empty args shouldn't be silently filtered out since we
+        // can't classify them. Letting them through surfaces a real bug
+        // (empty git command) instead of hiding it.
+        var e = new GitCommandEventArgs("/r", "", 0, "", "");
+        GitCommandLog.IsBackgroundChatter(e).Should().BeFalse();
+    }
+
     [StaFact]
     public void Entry_ExitBrush_ResolvesToPaletteState()
     {
