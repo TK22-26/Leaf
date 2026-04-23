@@ -781,14 +781,80 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         IsResolving = true;
         try
         {
-            // Use git's default merge-commit message — git auto-generates one from the
-            // merging branches. A future enhancement could surface a custom-message
-            // dialog here.
-            await _gitService.CompleteMergeAsync(_repoPath, commitMessage: string.Empty, SessionToken)
+            // C6: if any range carries a Note, surface them in the commit
+            // body under a "Conflict notes:" heading so code reviewers can
+            // see the user's reasoning for non-trivial resolutions. Empty
+            // notes collection → empty body → git uses its default merge
+            // message (same pre-C6 behavior, never regressed).
+            var commitMessage = BuildMergeCommitMessageFromNotes();
+            await _gitService.CompleteMergeAsync(_repoPath, commitMessage, SessionToken)
                 .ConfigureAwait(true);
             MergeCompleted?.Invoke(this, true);
         }
         finally { IsResolving = false; }
+    }
+
+    /// <summary>
+    /// Build the commit message body from all notes attached to ranges in
+    /// the current <see cref="RangeStates"/> dictionary. Returns empty when
+    /// no range has a non-empty note — git then falls through to its own
+    /// default merge-commit message. Exposed <c>internal</c> for testing.
+    /// </summary>
+    internal string BuildMergeCommitMessageFromNotes()
+    {
+        if (RangeStates.Count == 0 || Document is null) return string.Empty;
+        var notes = new List<(int Index, string Note)>();
+        foreach (var kvp in RangeStates)
+        {
+            if (string.IsNullOrWhiteSpace(kvp.Value.Note)) continue;
+            notes.Add((kvp.Key, kvp.Value.Note!));
+        }
+        if (notes.Count == 0) return string.Empty;
+        notes.Sort((a, b) => a.Index.CompareTo(b.Index));
+
+        var sb = new System.Text.StringBuilder();
+        // Leave the subject line empty so git inherits its auto-subject
+        // ("Merge branch '...'") and our notes become the body. Single
+        // leading newline separates subject from body per git convention.
+        sb.AppendLine();
+        sb.AppendLine("Conflict notes:");
+        foreach (var (idx, note) in notes)
+        {
+            sb.Append("- #").Append(idx + 1).Append(": ").AppendLine(note.Trim());
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Attach <paramref name="note"/> to the range at <paramref name="rangeIndex"/>.
+    /// Setting <paramref name="note"/> to null or whitespace clears the
+    /// existing note. Unlike <see cref="SetState"/>, this command preserves
+    /// the current resolution — attaching a note to an unresolved range
+    /// creates an <see cref="ResolutionState.Unresolved"/> entry with the
+    /// note rather than flipping the range to resolved.
+    /// </summary>
+    [RelayCommand]
+    private void AddNote((int rangeIndex, string? note) arg)
+    {
+        if (Document is null) return;
+        var before = CaptureState();
+        var existing = RangeStates.TryGetValue(arg.rangeIndex, out var state)
+            ? state
+            : ResolutionState.Unresolved.Instance;
+        var trimmed = string.IsNullOrWhiteSpace(arg.note) ? null : arg.note!.Trim();
+        var updated = existing with { Note = trimmed };
+        // If the result is a bare Unresolved with no note, drop the key
+        // entirely so RangeStates stays canonical ("no entry = Unresolved").
+        if (updated is ResolutionState.Unresolved && trimmed is null)
+        {
+            RangeStates.Remove(arg.rangeIndex);
+        }
+        else
+        {
+            RangeStates[arg.rangeIndex] = updated;
+        }
+        PushUndo(before);
+        NotifyResolutionCountsChanged();
     }
 
     [RelayCommand]

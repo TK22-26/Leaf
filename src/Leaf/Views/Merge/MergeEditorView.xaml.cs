@@ -18,6 +18,9 @@ public partial class MergeEditorView : Window
 {
     private MergeEditorViewModel? _subscribedVm;
     private BlameHoverController? _blameHover;
+    private System.Windows.Controls.Primitives.Popup? _notePopup;
+    private NoteEditor? _noteEditor;
+    private int _activeNoteRange = -1;
 
     public MergeEditorView()
     {
@@ -34,6 +37,21 @@ public partial class MergeEditorView : Window
             _subscribedVm = null;
             _blameHover?.Dispose();
             _blameHover = null;
+            // C6: mirror the VM-detach pattern for the pane-event subscriptions
+            // set up in WireNoteEditor. Panes are owned by this window so GC
+            // would reclaim them either way, but explicit detach keeps the
+            // subscription table symmetric.
+            OursPane.NoteEditRequested -= OnPaneNoteEditRequested;
+            TheirsPane.NoteEditRequested -= OnPaneNoteEditRequested;
+            if (_noteEditor is not null)
+            {
+                _noteEditor.CommitRequested -= OnNoteEditorCommit;
+            }
+            if (_notePopup is not null)
+            {
+                _notePopup.IsOpen = false;
+                _notePopup.PlacementTarget = null;
+            }
         };
         // C1: restore persisted grid-splitter widths/heights on load and
         // save the final values on close. Settings persist per user.
@@ -126,6 +144,57 @@ public partial class MergeEditorView : Window
         // panes; hover on either pane drives the same debounce timer so
         // sliding the pointer across them doesn't spawn parallel fetches.
         WireBlameHover();
+
+        // C6: one NoteEditor popup reused by both panes. Each pane raises
+        // NoteEditRequested with the clicked range index + glyph rect; the
+        // popup anchors to the pane that fired the event.
+        WireNoteEditor();
+    }
+
+    private void WireNoteEditor()
+    {
+        _noteEditor = new NoteEditor();
+        _notePopup = new System.Windows.Controls.Primitives.Popup
+        {
+            AllowsTransparency = true,
+            StaysOpen = false,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Right,
+            HorizontalOffset = 8,
+            Child = _noteEditor,
+        };
+        _noteEditor.CommitRequested += OnNoteEditorCommit;
+        _noteEditor.CancelRequested += (_, _) => ClosePopup();
+        OursPane.NoteEditRequested += OnPaneNoteEditRequested;
+        TheirsPane.NoteEditRequested += OnPaneNoteEditRequested;
+    }
+
+    private void OnPaneNoteEditRequested(object? sender, NoteEditRequestedEventArgs e)
+    {
+        if (_noteEditor is null || _notePopup is null || Vm is null) return;
+        _activeNoteRange = e.RangeIndex;
+        // Seed with the existing note (if any) so re-clicking the bubble
+        // edits the current note rather than blanking it.
+        Vm.RangeStates.TryGetValue(e.RangeIndex, out var state);
+        _noteEditor.NoteText = state?.Note ?? string.Empty;
+        _notePopup.PlacementTarget = sender as System.Windows.FrameworkElement;
+        _notePopup.PlacementRectangle = e.GlyphRect;
+        _notePopup.IsOpen = true;
+    }
+
+    private void OnNoteEditorCommit(object? sender, string text)
+    {
+        if (Vm is null || _activeNoteRange < 0) { ClosePopup(); return; }
+        // Tuple element names are compile-time metadata only — the
+        // [RelayCommand]-generated IRelayCommand<(int,string?)> unboxes the
+        // positional tuple regardless of field names on the caller side.
+        Vm.AddNoteCommand.Execute((_activeNoteRange, text));
+        ClosePopup();
+    }
+
+    private void ClosePopup()
+    {
+        if (_notePopup is not null) _notePopup.IsOpen = false;
+        _activeNoteRange = -1;
     }
 
     private void WireBlameHover()

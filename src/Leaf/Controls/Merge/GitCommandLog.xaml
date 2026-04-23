@@ -1,0 +1,82 @@
+<!--
+    GitCommandLog (C6) — collapsible footer panel that lists every git
+    subprocess the app fires while the merge editor is open. Subscribes to
+    IGitService.GitCommandExecuted on Loaded; detaches on Unloaded so a
+    re-opened editor doesn't accumulate stale subscriptions.
+
+    Plan §C6: "Show the exact git commands being run" — Sublime-Merge-style
+    transparency so users understand what actions they've triggered.
+-->
+<UserControl x:Class="Leaf.Controls.Merge.GitCommandLog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+             mc:Ignorable="d"
+             x:Name="LogRoot"
+             AutomationProperties.AutomationId="Merge.GitCommandLog">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ToggleButton x:Name="ExpanderToggle"
+                      Grid.Row="0"
+                      HorizontalAlignment="Left"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      Padding="6,2"
+                      Cursor="Hand"
+                      AutomationProperties.AutomationId="Merge.GitCommandLog.Toggle"
+                      Click="OnToggleClicked">
+            <StackPanel Orientation="Horizontal">
+                <ic:SymbolIcon x:Name="ToggleIcon" Symbol="ChevronRight" FontSize="12" VerticalAlignment="Center"/>
+                <TextBlock Text="Git command log"
+                           Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           FontSize="{DynamicResource Merge.Type.Caption.Size}"
+                           Foreground="{DynamicResource Merge.Text.Secondary}"/>
+                <TextBlock x:Name="CountBadge"
+                           Margin="8,0,0,0"
+                           VerticalAlignment="Center"
+                           FontSize="{DynamicResource Merge.Type.CaptionStrong.Size}"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Merge.Text.Tertiary}"/>
+            </StackPanel>
+        </ToggleButton>
+
+        <Border Grid.Row="1"
+                x:Name="LogBody"
+                Visibility="Collapsed"
+                Background="{DynamicResource Merge.Surface.1}"
+                BorderBrush="{DynamicResource Merge.Border.Subtle}"
+                BorderThickness="0,1,0,0"
+                MaxHeight="180">
+            <ListBox x:Name="EntriesList"
+                     BorderThickness="0"
+                     Background="Transparent"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.AutomationId="Merge.GitCommandLog.Entries">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding ExitIndicator}"
+                                       FontFamily="{DynamicResource Merge.FontFamily.Code}"
+                                       FontSize="{DynamicResource Merge.Type.Caption.Size}"
+                                       Foreground="{Binding ExitBrush}"
+                                       Width="24"/>
+                            <TextBlock Text="{Binding CommandText}"
+                                       FontFamily="{DynamicResource Merge.FontFamily.Code}"
+                                       FontSize="{DynamicResource Merge.Type.Caption.Size}"
+                                       Foreground="{DynamicResource Merge.Text.Primary}"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+    </Grid>
+</UserControl>
