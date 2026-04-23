@@ -120,6 +120,13 @@ public sealed class BlameHoverController
 
     private bool _popoverHasPointer;
     private FrameworkElement? _lastOpeningPane;
+    // Tracks which pane (if any) currently has the mouse pointer. Updated
+    // on each tracked pane's MouseEnter/Leave so the deferred-dismiss
+    // callback in OnPaneMouseLeave can tell whether the pointer has
+    // landed on a sibling pane rather than genuinely leaving the editor.
+    // Without this, moving from Ours → Theirs produced a
+    // close-then-reopen flicker while the fresh 500 ms debounce ran.
+    private FrameworkElement? _currentHoveredPane;
 
     private bool PopoverHasKeyboardFocus()
     {
@@ -150,8 +157,14 @@ public sealed class BlameHoverController
     {
         ArgumentNullException.ThrowIfNull(pane);
         ArgumentNullException.ThrowIfNull(resolver);
+        pane.MouseEnter += OnPaneMouseEnter;
         pane.MouseMove += (sender, e) => OnPaneMouseMove((FrameworkElement)sender!, e, resolver);
         pane.MouseLeave += OnPaneMouseLeave;
+    }
+
+    private void OnPaneMouseEnter(object sender, MouseEventArgs e)
+    {
+        _currentHoveredPane = sender as FrameworkElement;
     }
 
     private void OnPaneMouseMove(FrameworkElement pane, MouseEventArgs e, LineAtPointResolver resolver)
@@ -181,18 +194,32 @@ public sealed class BlameHoverController
 
     private void OnPaneMouseLeave(object sender, MouseEventArgs e)
     {
+        // Clear the currently-hovered-pane tracker if it was this pane.
+        // A sibling pane's MouseEnter (fired AFTER this MouseLeave per
+        // WPF's cross-element transit ordering) will re-set it so the
+        // deferred-dismiss check below sees the correct state.
+        if (ReferenceEquals(_currentHoveredPane, sender))
+        {
+            _currentHoveredPane = null;
+        }
+
         // Always cancel any in-flight debounce — moving off the pane
         // aborts the not-yet-shown popup.
         CancelPending();
         if (!_popup.IsOpen) return;
-        // Popup is already visible: don't dismiss if the user is mousing
-        // onto it (popover MouseEnter flag) or has Tab'd into it
-        // (keyboard focus check). WPF's MouseLeave fires before the
-        // popup's MouseEnter, so schedule the dismissal via the popup's
-        // own dispatcher so the flag has a chance to flip first.
+        // Popup is already visible: defer dismissal so we can tell the
+        // difference between three transit cases:
+        //   1. pane → popup  : popover.MouseEnter flips _popoverHasPointer
+        //   2. pane → sibling pane : that pane's MouseEnter sets
+        //      _currentHoveredPane — skip dismiss so the popup stays
+        //      visible while the new pane's debounce runs, then
+        //      OnDebounceElapsed swaps the record in place (no flicker).
+        //   3. pane → outside  : none of the above flip; dismiss runs.
+        // Also honours keyboard focus into the popup (Tab path).
         _popup.Dispatcher.BeginInvoke(() =>
         {
             if (_popoverHasPointer) return;
+            if (_currentHoveredPane is not null) return;
             if (PopoverHasKeyboardFocus()) return;
             DismissPopup(returnFocusToPane: false);
         }, System.Windows.Threading.DispatcherPriority.Input);
@@ -325,5 +352,7 @@ public sealed class BlameHoverController
         // so a disposed controller doesn't keep the pane rooted through
         // the window's Popup tracker.
         _popup.PlacementTarget = null;
+        _currentHoveredPane = null;
+        _lastOpeningPane = null;
     }
 }
