@@ -417,6 +417,10 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
 
         // 5. Text lines.
         DrawText(drawingContext, firstVisible, lastVisible);
+
+        // 6. C6 note glyphs. Drawn last so the speech-bubble sits on top of
+        //    the region background / change-bar layers.
+        DrawNoteGlyphs(drawingContext, firstVisible, lastVisible);
     }
 
     private void DrawChangeBars(DrawingContext dc, int firstVisible, int lastVisible)
@@ -637,6 +641,96 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
         }
     }
 
+    // C6 note glyphs. Tracks hit-test rects so MouseLeftButtonDown on a
+    // glyph raises NoteEditRequested. Rebuilt on every OnRender because the
+    // set of ranges + their Y positions drifts with scroll offset.
+    private static readonly SolidColorBrush NoteGlyphBrush = Freeze(
+        new SolidColorBrush(MergePaletteResources.ResolveColor("Merge.Note.Glyph.Color")));
+    private const double NoteGlyphSize = 12.0;
+    private const double NoteGlyphX = GutterWidth - 16; // sits in the right part of the gutter
+    private readonly List<(int RangeIndex, Rect HitBox)> _noteGlyphHitBoxes = new();
+
+    // Pre-built tail geometry in local coordinates (origin = rect's bottom-
+    // left corner). Drawing uses PushTransform(Translate) per glyph so the
+    // same frozen Geometry instance can serve every note — avoids a
+    // per-frame StreamGeometry allocation when multiple ranges have notes.
+    private static readonly Geometry NoteGlyphTailGeometry = BuildNoteGlyphTail();
+
+    private static Geometry BuildNoteGlyphTail()
+    {
+        var geo = new StreamGeometry();
+        using (var ctx = geo.Open())
+        {
+            // Origin = rect's bottom-left corner; tail extends 3 px below,
+            // 5 px wide along the bottom edge with a small notch.
+            ctx.BeginFigure(new Point(2, -1), isFilled: true, isClosed: true);
+            ctx.LineTo(new Point(4, 2), isStroked: false, isSmoothJoin: false);
+            ctx.LineTo(new Point(5, -1), isStroked: false, isSmoothJoin: false);
+        }
+        geo.Freeze();
+        return geo;
+    }
+
+    /// <summary>
+    /// Raised when the user clicks a speech-bubble glyph in the gutter.
+    /// Host shows an inline textarea for edit + commits back through
+    /// <c>MergeEditorViewModel.AddNoteCommand</c>.
+    /// </summary>
+    public event EventHandler<NoteEditRequestedEventArgs>? NoteEditRequested;
+
+    private void DrawNoteGlyphs(DrawingContext dc, int firstVisible, int lastVisible)
+    {
+        _noteGlyphHitBoxes.Clear();
+        if (Regions is null || Regions.Count == 0 || RangeStates is null) return;
+
+        for (int i = 0; i < Regions.Count; i++)
+        {
+            var range = Regions[i];
+            if (!RangeStates.TryGetValue(range.Index, out var state)) continue;
+            if (string.IsNullOrWhiteSpace(state.Note)) continue;
+
+            var sideRange = GetSideRange(range);
+            if (sideRange.IsEmpty) continue;
+            var firstLine0 = sideRange.StartLine - 1;
+            if (firstLine0 < firstVisible || firstLine0 > lastVisible) continue;
+
+            var y = firstLine0 * LineHeight - _verticalOffset + (LineHeight - NoteGlyphSize) / 2;
+            var rect = new Rect(NoteGlyphX, y, NoteGlyphSize, NoteGlyphSize);
+            // Speech-bubble: rounded rect + pre-built frozen tail geometry
+            // translated to the rect's bottom-left. Avoids a per-frame
+            // StreamGeometry allocation regardless of note count.
+            dc.DrawRoundedRectangle(NoteGlyphBrush, pen: null, rect, 2, 2);
+            dc.PushTransform(new TranslateTransform(rect.Left, rect.Bottom));
+            dc.DrawGeometry(NoteGlyphBrush, pen: null, NoteGlyphTailGeometry);
+            dc.Pop();
+
+            _noteGlyphHitBoxes.Add((range.Index, rect));
+        }
+    }
+
+    protected override void OnMouseLeftButtonDown(System.Windows.Input.MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonDown(e);
+        var point = e.GetPosition(this);
+        // Linear scan is fine — the hit-box list only contains ranges
+        // currently visible AND with a note, so N is tiny in practice.
+        for (int i = 0; i < _noteGlyphHitBoxes.Count; i++)
+        {
+            var entry = _noteGlyphHitBoxes[i];
+            // Widen the hit area slightly so the 12 px glyph isn't fiddly
+            // to click — 4 px inflate matches WPF touch-target guidance
+            // for mouse-adjacent affordances.
+            var hit = Rect.Inflate(entry.HitBox, 4, 4);
+            if (hit.Contains(point))
+            {
+                NoteEditRequested?.Invoke(this, new NoteEditRequestedEventArgs(
+                    entry.RangeIndex, entry.HitBox));
+                e.Handled = true;
+                return;
+            }
+        }
+    }
+
     private void DrawText(DrawingContext dc, int firstVisible, int lastVisible)
     {
         if (Layout is null) return;
@@ -759,4 +853,21 @@ public enum MergePaneSide
     Theirs,
     Base,
     Result,
+}
+
+/// <summary>
+/// Args for <see cref="ReadOnlyMergePane.NoteEditRequested"/>. Carries the
+/// conflict range index the click targeted plus the on-screen glyph rect
+/// so the host can anchor an editor popup to the exact click position.
+/// </summary>
+public sealed class NoteEditRequestedEventArgs : EventArgs
+{
+    public NoteEditRequestedEventArgs(int rangeIndex, Rect glyphRect)
+    {
+        RangeIndex = rangeIndex;
+        GlyphRect = glyphRect;
+    }
+
+    public int RangeIndex { get; }
+    public Rect GlyphRect { get; }
 }

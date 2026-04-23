@@ -470,14 +470,26 @@
                 Margin="8,4,8,8"
                 Padding="16,10">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
+                <!-- C6 git command log: collapsible panel at the footer's
+                     top edge that records every git subprocess the editor
+                     triggered. Collapsed by default (only the toggle is
+                     visible); expanding shows the scrolling entry list. -->
+                <merge:GitCommandLog Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                                     Margin="0,0,0,8"
+                                     AutomationProperties.AutomationId="Merge.FooterGitCommandLog"/>
+
                 <!-- Left cluster: history -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal">
                     <Button Command="{Binding UndoCommand}" Margin="0,0,8,0" Padding="12,6"
                             AutomationProperties.AutomationId="Merge.UndoButton">
                         <StackPanel Orientation="Horizontal">
@@ -497,7 +509,7 @@
                 <!-- Middle cluster: batch accept + AI. Right-aligned within the
                      middle column so the gap to the finalise cluster is fixed
                      at 32 px regardless of window width. -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="32,0,32,0">
+                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="32,0,32,0">
                     <!-- ArrowLeft/ArrowRight on the batch-accept buttons: the
                          glyphs match the pane layout (Ours on the left, Theirs
                          on the right) so users scanning the footer can tell
@@ -534,7 +546,7 @@
                 </StackPanel>
 
                 <!-- Right cluster: finalise -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal">
                     <Button Command="{Binding MarkResolvedCommand}" Margin="0,0,8,0" Padding="12,6"
                             AutomationProperties.AutomationId="Merge.MarkResolved">
                         <StackPanel Orientation="Horizontal">

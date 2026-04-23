@@ -155,6 +155,10 @@ public class MergeCommandCatalogTests
             nameof(vm.CompareConflictCommand),
             nameof(vm.RequestAiResolutionForRangeCommand),
             nameof(vm.CopySelectionCommand),
+            // C6: AddNote takes a (rangeIndex, note) tuple — invoked from
+            // the gutter speech-bubble UI, not the palette. Parameterized,
+            // so it cannot surface in the parameterless command catalog.
+            nameof(vm.AddNoteCommand),
         };
 
         var commandProps = typeof(MergeEditorViewModel)

@@ -131,6 +131,14 @@
     <Color x:Key="Merge.Shadow.Color">#FF000000</Color>
     <sys:Double x:Key="Merge.Shadow.Opacity" xmlns:sys="clr-namespace:System;assembly=System.Runtime">0.15</sys:Double>
 
+    <!--  C6 conflict-note indicator. Drawn as a filled speech-bubble glyph
+          in the ReadOnlyMergePane gutter when a range carries a Note.
+          Warm amber keeps it distinct from the resolved green and the
+          unresolved red so the note indicator reads as "additional info",
+          not a resolution state in its own right.  -->
+    <Color x:Key="Merge.Note.Glyph.Color">#FFFFC44D</Color>
+    <SolidColorBrush x:Key="Merge.Note.Glyph" Color="#FFFFC44D"/>
+
     <!--  Dialog chrome tokens consumed by the AI consent / resolution dialogs.
           The pre-V1 xaml had #11000000 / #22000000 as raw hex; moving them
           into the palette lets V8 theme swap repaint the dialog chrome along

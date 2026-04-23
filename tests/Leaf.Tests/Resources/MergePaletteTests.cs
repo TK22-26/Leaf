@@ -238,6 +238,7 @@ public class MergePaletteTests
         "Merge.State.Unresolved.PillBg","Merge.State.Unresolved.PillText",
         "Merge.State.Resolved.PillBg",  "Merge.State.Resolved.PillText",
         "Merge.State.AiPending.PillBg", "Merge.State.AiPending.PillText",
+        "Merge.Note.Glyph",
         "Merge.Surface.1", "Merge.Surface.2", "Merge.Surface.3", "Merge.Surface.4", "Merge.Surface.5",
         "Merge.Border.Subtle", "Merge.Border.Strong", "Merge.Border.Focus",
         "Merge.Text.Primary", "Merge.Text.Secondary", "Merge.Text.Tertiary",
