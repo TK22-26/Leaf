@@ -41,6 +41,14 @@
              does anything if the AI merge feature is enabled in settings and
              an MCP server is configured; otherwise the command is a silent no-op. -->
         <KeyBinding Modifiers="Alt" Key="A" Command="{Binding RequestAiResolutionCommand}"/>
+        <!-- Alt+B — Keyboard trigger for C5 blame peek. Shows the popover for
+             the start line of the currently-active conflict in whichever
+             read-only pane has focus (Ours by default). Focus transfers
+             into the sha Hyperlink so Enter jumps to the commit graph,
+             Escape dismisses. Complements the mouse-hover path for
+             keyboard-only users and AT clients. -->
+        <KeyBinding Modifiers="Alt" Key="B" Command="{Binding ShowBlamePeekForCurrentConflictCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}"/>
     </Window.InputBindings>
     <Grid Background="{DynamicResource ControlFillColorDefaultBrush}">
         <Grid.RowDefinitions>

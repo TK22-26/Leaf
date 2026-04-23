@@ -90,8 +90,25 @@ public sealed class BlameHoverController
         };
         _popover.CommitRequested += (_, sha) =>
         {
-            _popup.IsOpen = false;
+            DismissPopup(returnFocusToPane: true);
             _commitRequestedCallback(sha);
+        };
+        // Keyboard dismiss: Escape inside the popover returns focus to the
+        // active pane (the one whose MouseMove or keyboard trigger opened
+        // the popup) so the user doesn't land in limbo after closing.
+        _popover.DismissRequested += (_, _) => DismissPopup(returnFocusToPane: true);
+        // Popover mouse tracking: when the user moves the pointer from the
+        // pane into the popup, pane.MouseLeave fires and would otherwise
+        // dismiss immediately. Tracking popup's own IsMouseOver lets us
+        // defer dismissal while the user is interacting with the popup.
+        _popover.MouseEnter += (_, _) => _popoverHasPointer = true;
+        _popover.MouseLeave += (_, _) =>
+        {
+            _popoverHasPointer = false;
+            // If focus has already transferred into the popup, keep it
+            // open so keyboard users can Tab/Enter after the mouse moved
+            // away. Otherwise dismiss — the hover is over.
+            if (!PopoverHasKeyboardFocus()) DismissPopup(returnFocusToPane: false);
         };
 
         _debounce = new DispatcherTimer(DispatcherPriority.Background)
@@ -99,6 +116,33 @@ public sealed class BlameHoverController
             Interval = TimeSpan.FromMilliseconds(DebounceMs),
         };
         _debounce.Tick += OnDebounceElapsed;
+    }
+
+    private bool _popoverHasPointer;
+    private FrameworkElement? _lastOpeningPane;
+
+    private bool PopoverHasKeyboardFocus()
+    {
+        if (!_popup.IsOpen) return false;
+        var focused = System.Windows.Input.Keyboard.FocusedElement as DependencyObject;
+        while (focused is not null)
+        {
+            if (ReferenceEquals(focused, _popover)) return true;
+            focused = System.Windows.Media.VisualTreeHelper.GetParent(focused)
+                   ?? System.Windows.LogicalTreeHelper.GetParent(focused);
+        }
+        return false;
+    }
+
+    private void DismissPopup(bool returnFocusToPane)
+    {
+        _popup.IsOpen = false;
+        _popoverHasPointer = false;
+        if (returnFocusToPane && _lastOpeningPane is { } pane)
+        {
+            pane.Focus();
+        }
+        _lastOpeningPane = null;
     }
 
     /// <summary>Attach the controller's hover handlers to <paramref name="pane"/>.</summary>
@@ -137,8 +181,21 @@ public sealed class BlameHoverController
 
     private void OnPaneMouseLeave(object sender, MouseEventArgs e)
     {
+        // Always cancel any in-flight debounce — moving off the pane
+        // aborts the not-yet-shown popup.
         CancelPending();
-        _popup.IsOpen = false;
+        if (!_popup.IsOpen) return;
+        // Popup is already visible: don't dismiss if the user is mousing
+        // onto it (popover MouseEnter flag) or has Tab'd into it
+        // (keyboard focus check). WPF's MouseLeave fires before the
+        // popup's MouseEnter, so schedule the dismissal via the popup's
+        // own dispatcher so the flag has a chance to flip first.
+        _popup.Dispatcher.BeginInvoke(() =>
+        {
+            if (_popoverHasPointer) return;
+            if (PopoverHasKeyboardFocus()) return;
+            DismissPopup(returnFocusToPane: false);
+        }, System.Windows.Threading.DispatcherPriority.Input);
     }
 
     private void CancelPending()
@@ -192,7 +249,63 @@ public sealed class BlameHoverController
 
         _popover.SetRecord(record);
         _popup.PlacementTarget = pane;
+        _lastOpeningPane = pane;
         _popup.IsOpen = true;
+    }
+
+    /// <summary>
+    /// Keyboard-triggered blame peek. Host wires this to an Alt+B (or
+    /// similar) key binding on the pane so mouse-free users can request
+    /// blame for the caret/active line. Focus transfers into the popup's
+    /// sha link immediately — press Enter to jump, Escape to dismiss. No
+    /// debounce: the explicit invocation means the user wants the popup
+    /// now, not after a dwell.
+    /// </summary>
+    /// <remarks>
+    /// <b>Must not throw.</b> Key-binding handlers discard the returned
+    /// Task (fire-and-forget), so any unhandled exception here would land
+    /// on <c>TaskScheduler.UnobservedTaskException</c>. Every awaited call
+    /// inside is wrapped in the broad-catch block that falls through to
+    /// <c>Log.Info</c>. If a future edit introduces another await, keep
+    /// that invariant.
+    /// </remarks>
+    public async Task ShowForLineAsync(FrameworkElement pane, int oneBasedLine, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(pane);
+        if (oneBasedLine < 1) return;
+
+        var filePath = _filePathProvider();
+        if (string.IsNullOrEmpty(filePath)) return;
+        var repoPath = _repoPathProvider();
+        if (string.IsNullOrEmpty(repoPath)) return;
+
+        // Cancel any in-flight hover fetch before kicking the keyboard
+        // path's own request. Without this, a hover that resolves after
+        // the Alt+B fetch would overwrite the keyboard-focused record
+        // with stale data while the sha Hyperlink keeps its focus
+        // highlight — a confusing "click this sha, jump to a different
+        // commit" race.
+        CancelPending();
+
+        FileBlameLine? record;
+        try
+        {
+            record = await _service.GetLineBlameAsync(repoPath, filePath, oneBasedLine, cancellationToken)
+                .ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex)
+        {
+            Leaf.Services.Log.Info("MergeBlame", $"KeyboardFetchFailed: {ex.GetType().Name}");
+            return;
+        }
+        if (record is null) return;
+
+        _popover.SetRecord(record);
+        _popup.PlacementTarget = pane;
+        _lastOpeningPane = pane;
+        _popup.IsOpen = true;
+        _popover.FocusShaLink();
     }
 
     /// <summary>

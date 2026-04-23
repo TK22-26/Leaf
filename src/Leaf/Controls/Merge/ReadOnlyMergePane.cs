@@ -206,7 +206,15 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
 
     public ReadOnlyMergePane()
     {
-        Focusable = false;
+        // Focusable so keyboard users can Alt+B from the pane and have the
+        // blame popover open against the right side (Ours vs Theirs). The
+        // pane extends FrameworkElement (no IsTabStop), and KeyboardNavigation.
+        // IsTabStop on a Focusable FrameworkElement defaults to true —
+        // suppress it so the pane doesn't become an extra Tab stop in
+        // normal keyboard traversal. Users reach focus here by clicking or
+        // via the BlameHoverController.DismissPopup focus-restoration path.
+        Focusable = true;
+        KeyboardNavigation.SetIsTabStop(this, false);
         ClipToBounds = true;
         // Tear the dispatcher-timer ticker down when the pane leaves the
         // visual tree. Without this the timer's Tick handler keeps the pane

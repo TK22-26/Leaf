@@ -70,9 +70,32 @@ public partial class BlamePeekPopover : UserControl
     /// </summary>
     public event EventHandler<string>? CommitRequested;
 
+    /// <summary>
+    /// Raised when the user explicitly dismisses the popover via keyboard
+    /// (Escape). Host closes the popup and returns focus to the pane.
+    /// Distinct from mouse-out dismissal which the host handles directly.
+    /// </summary>
+    public event EventHandler? DismissRequested;
+
     public BlamePeekPopover()
     {
         InitializeComponent();
+    }
+
+    /// <summary>
+    /// Move keyboard focus onto the sha Hyperlink. Called by the host
+    /// when the user presses the blame-peek activation key (Alt+B) so
+    /// the popup is immediately keyboard-operable; mouse-hover callers
+    /// leave focus where it is so the pane keeps its keyboard context.
+    /// </summary>
+    public void FocusShaLink()
+    {
+        // Defer until the popup has actually been laid out — a fresh
+        // popup's Hyperlink can refuse focus before its visual tree
+        // materializes, even though IsOpen is already true.
+        Dispatcher.BeginInvoke(
+            () => ShaLink.Focus(),
+            System.Windows.Threading.DispatcherPriority.Input);
     }
 
     /// <summary>
@@ -99,5 +122,14 @@ public partial class BlamePeekPopover : UserControl
             CommitRequested?.Invoke(this, FullSha);
         }
         e.Handled = true;
+    }
+
+    private void OnPopoverKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Escape)
+        {
+            DismissRequested?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+        }
     }
 }

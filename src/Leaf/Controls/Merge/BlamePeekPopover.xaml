@@ -6,6 +6,12 @@
 
     Sha is a Hyperlink that raises CommitRequested; the view forwards this
     to the hosting MainViewModel which jumps the graph to that commit.
+
+    Keyboard a11y: Focusable=True + KeyDown handler for Escape so a
+    keyboard user who Tabs into the popup can close it without reaching
+    for the mouse. The Hyperlink child is natively focusable and will
+    be the first tab-stop inside the popup — Tab from the pane lands on
+    the sha link directly.
 -->
 <UserControl x:Class="Leaf.Controls.Merge.BlamePeekPopover"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -14,8 +20,11 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
              x:Name="PopoverRoot"
-             Focusable="False"
+             Focusable="True"
+             IsTabStop="False"
+             KeyboardNavigation.TabNavigation="Cycle"
              IsHitTestVisible="True"
+             KeyDown="OnPopoverKeyDown"
              AutomationProperties.AutomationId="Merge.BlamePeekPopover">
     <Border CornerRadius="6"
             BorderThickness="1"
@@ -48,11 +57,15 @@
                        Foreground="{DynamicResource Merge.Text.Primary}"
                        AutomationProperties.AutomationId="Merge.BlamePeek.Subject"/>
 
-            <!-- Row 3: clickable short-sha -->
+            <!-- Row 3: clickable short-sha. Hyperlink IsEnabled=true +
+                 Focusable=true (defaults) make it the first tab-stop
+                 inside the popover — keyboard users press Tab from the
+                 pane to land here, then Enter to invoke. -->
             <TextBlock Margin="0,4,0,0"
                        FontSize="{DynamicResource Merge.Type.Caption.Size}"
                        FontFamily="{DynamicResource Merge.FontFamily.Code}">
-                <Hyperlink Click="OnShaLinkClicked"
+                <Hyperlink x:Name="ShaLink"
+                           Click="OnShaLinkClicked"
                            Foreground="{DynamicResource Merge.Ours.Accent}"
                            AutomationProperties.AutomationId="Merge.BlamePeek.ShaLink"
                            AutomationProperties.Name="Jump to commit">
