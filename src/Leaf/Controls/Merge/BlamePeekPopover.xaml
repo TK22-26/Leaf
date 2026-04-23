@@ -1,0 +1,64 @@
+<!--
+    BlamePeekPopover (C5) — compact hover popover that surfaces
+    "author · relative date · subject · sha" for the line the user is
+    dwelling on. Hosted inside a Popup anchored to the pane so it floats
+    over neighbouring content without disturbing layout.
+
+    Sha is a Hyperlink that raises CommitRequested; the view forwards this
+    to the hosting MainViewModel which jumps the graph to that commit.
+-->
+<UserControl x:Class="Leaf.Controls.Merge.BlamePeekPopover"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Name="PopoverRoot"
+             Focusable="False"
+             IsHitTestVisible="True"
+             AutomationProperties.AutomationId="Merge.BlamePeekPopover">
+    <Border CornerRadius="6"
+            BorderThickness="1"
+            BorderBrush="{DynamicResource Merge.Border.Strong}"
+            Background="{DynamicResource Merge.Surface.3}"
+            Padding="10,6"
+            MaxWidth="480">
+        <StackPanel Orientation="Vertical">
+            <!-- Row 1: author + relative date -->
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding ElementName=PopoverRoot, Path=Author}"
+                           FontWeight="SemiBold"
+                           FontSize="{DynamicResource Merge.Type.Body.Size}"
+                           Foreground="{DynamicResource Merge.Text.Primary}"
+                           AutomationProperties.AutomationId="Merge.BlamePeek.Author"/>
+                <TextBlock Text="  ·  " VerticalAlignment="Center"
+                           Foreground="{DynamicResource Merge.Text.Tertiary}"/>
+                <TextBlock Text="{Binding ElementName=PopoverRoot, Path=RelativeDate}"
+                           FontSize="{DynamicResource Merge.Type.Caption.Size}"
+                           Foreground="{DynamicResource Merge.Text.Secondary}"
+                           VerticalAlignment="Center"
+                           AutomationProperties.AutomationId="Merge.BlamePeek.RelativeDate"/>
+            </StackPanel>
+
+            <!-- Row 2: commit subject -->
+            <TextBlock Text="{Binding ElementName=PopoverRoot, Path=Subject}"
+                       TextWrapping="Wrap"
+                       Margin="0,3,0,0"
+                       FontSize="{DynamicResource Merge.Type.Body.Size}"
+                       Foreground="{DynamicResource Merge.Text.Primary}"
+                       AutomationProperties.AutomationId="Merge.BlamePeek.Subject"/>
+
+            <!-- Row 3: clickable short-sha -->
+            <TextBlock Margin="0,4,0,0"
+                       FontSize="{DynamicResource Merge.Type.Caption.Size}"
+                       FontFamily="{DynamicResource Merge.FontFamily.Code}">
+                <Hyperlink Click="OnShaLinkClicked"
+                           Foreground="{DynamicResource Merge.Ours.Accent}"
+                           AutomationProperties.AutomationId="Merge.BlamePeek.ShaLink"
+                           AutomationProperties.Name="Jump to commit">
+                    <Run Text="{Binding ElementName=PopoverRoot, Path=ShortSha, Mode=OneWay}"/>
+                </Hyperlink>
+            </TextBlock>
+        </StackPanel>
+    </Border>
+</UserControl>

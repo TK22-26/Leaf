@@ -156,6 +156,39 @@ internal static class MergeMotionHelpers
         storyboard.Begin();
     }
 
+    /// <summary>
+    /// Play the <c>Merge.Motion.PopoverShow</c> entrance on
+    /// <paramref name="target"/> — plan §D3's 200 ms opacity 0→1 paired
+    /// with a 2 px upward translate easing in. Attaches a per-instance
+    /// <see cref="TranslateTransform"/> as the element's RenderTransform
+    /// so the translate animation has something writable to target; the
+    /// opacity animation runs against the element's built-in Opacity DP.
+    /// </summary>
+    public static void PlayPopoverShow(FrameworkElement target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        var storyboard = CloneStoryboard("Merge.Motion.PopoverShow");
+        if (storyboard.Children.Count < 2)
+        {
+            throw new InvalidOperationException(
+                "Merge.Motion.PopoverShow must have two DoubleAnimation children " +
+                "(Opacity + TranslateY). Check Resources/Merge/MergeMotion.xaml.");
+        }
+
+        var translate = new TranslateTransform(0, 0);
+        target.RenderTransform = translate;
+
+        var opacity = (DoubleAnimation)storyboard.Children[0];
+        Storyboard.SetTarget(opacity, target);
+        Storyboard.SetTargetProperty(opacity, new PropertyPath(UIElement.OpacityProperty));
+
+        var translateY = (DoubleAnimation)storyboard.Children[1];
+        Storyboard.SetTarget(translateY, translate);
+        Storyboard.SetTargetProperty(translateY, new PropertyPath(TranslateTransform.YProperty));
+
+        storyboard.Begin();
+    }
+
     private static Storyboard CloneStoryboard(string resourceKey)
     {
         // Strict resolve — throws on missing key. A silent fallback would

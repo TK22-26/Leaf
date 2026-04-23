@@ -17,6 +17,7 @@ namespace Leaf.Views.Merge;
 public partial class MergeEditorView : Window
 {
     private MergeEditorViewModel? _subscribedVm;
+    private BlameHoverController? _blameHover;
 
     public MergeEditorView()
     {
@@ -31,12 +32,21 @@ public partial class MergeEditorView : Window
         {
             DetachFromVm();
             _subscribedVm = null;
+            _blameHover?.Dispose();
+            _blameHover = null;
         };
         // C1: restore persisted grid-splitter widths/heights on load and
         // save the final values on close. Settings persist per user.
         Loaded += OnMergeEditorLoaded;
         Closing += OnMergeEditorClosing;
     }
+
+    /// <summary>
+    /// Raised when the user clicks the sha link in a BlamePeekPopover.
+    /// MainViewModel subscribes and navigates the commit graph to the
+    /// clicked commit.
+    /// </summary>
+    public event EventHandler<string>? CommitJumpRequested;
 
     private static SettingsService ResolveSettingsService() =>
         Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
@@ -111,6 +121,38 @@ public partial class MergeEditorView : Window
         WirePaneFocusPulse(OursCard);
         WirePaneFocusPulse(TheirsCard);
         WirePaneFocusPulse(ResultCard);
+
+        // C5: blame peek on hover. One controller + popup serves both input
+        // panes; hover on either pane drives the same debounce timer so
+        // sliding the pointer across them doesn't spawn parallel fetches.
+        WireBlameHover();
+    }
+
+    private void WireBlameHover()
+    {
+        var service = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<Leaf.Services.Merge.IMergeBlameService>(Leaf.App.Services);
+        _blameHover = new BlameHoverController(
+            service,
+            repoPathProvider: () => Vm?.RepoPath ?? string.Empty,
+            filePathProvider: () => Vm?.SelectedConflict?.FilePath,
+            commitRequestedCallback: sha => CommitJumpRequested?.Invoke(this, sha));
+
+        // Line-at-point resolver for ReadOnlyMergePane: the pane is hosted in
+        // a ScrollViewer that translates the pointer into content-local
+        // coordinates automatically (MouseMove fires on the pane itself, so
+        // the point is already relative to its un-scrolled content extent).
+        BlameHoverController.LineAtPointResolver romps = (pane, point) =>
+        {
+            if (pane is ReadOnlyMergePane romp && romp.Layout is { } layout && romp.Lines.Count > 0)
+            {
+                var line = layout.LineIndexAtYOffset(point.Y);
+                return line >= 1 && line <= romp.Lines.Count ? line : null;
+            }
+            return null;
+        };
+        _blameHover.TrackPane(OursPane, romps);
+        _blameHover.TrackPane(TheirsPane, romps);
     }
 
     private static void WirePaneFocusPulse(System.Windows.Controls.Border card)

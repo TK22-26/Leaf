@@ -26,12 +26,12 @@ public class MergeMotionTests
         var resources = Application.Current.Resources;
 
         // Every storyboard with a live consumer ships in MergeMotion.xaml.
-        // Other V5 §D3 entries (CheckboxToggle, RangeResolve, PopoverShow)
-        // are handled by dispatcher-timer tweens or deferred — rationale
-        // lives in MergeMotion.xaml's header comment.
+        // CheckboxToggle is deferred (surface removed in C2) and RangeResolve
+        // is a dispatcher-timer tween — rationale lives in MergeMotion.xaml.
         AssertStoryboardDuration(resources, "Merge.Motion.PaneFocus", TimeSpan.FromMilliseconds(250));
         AssertStoryboardDuration(resources, "Merge.Motion.MinimapJump", TimeSpan.FromMilliseconds(400));
         AssertStoryboardDuration(resources, "Merge.Motion.AcceptButton", TimeSpan.FromMilliseconds(150));
+        AssertStoryboardDuration(resources, "Merge.Motion.PopoverShow", TimeSpan.FromMilliseconds(200));
     }
 
     [StaFact]
@@ -45,6 +45,7 @@ public class MergeMotionTests
             "Merge.Motion.PaneFocus",
             "Merge.Motion.MinimapJump",
             "Merge.Motion.AcceptButton",
+            "Merge.Motion.PopoverShow",
         };
         foreach (var key in keys)
         {
@@ -123,6 +124,16 @@ public class MergeMotionTests
         FluentActions.Invoking(() =>
             MergeMotionHelpers.PulsePaneFocusColour(border, System.Windows.Media.Colors.Blue))
             .Should().NotThrow();
+    }
+
+    [StaFact]
+    public void PlayPopoverShow_AttachesTranslateTransform_AndAnimates()
+    {
+        EnsureMergeDictionaryMerged();
+        var fe = new System.Windows.Controls.Border();
+        MergeMotionHelpers.PlayPopoverShow(fe);
+        fe.RenderTransform.Should().BeOfType<System.Windows.Media.TranslateTransform>(
+            because: "PlayPopoverShow attaches a writable TranslateTransform to animate the Y offset");
     }
 
     [StaFact]
