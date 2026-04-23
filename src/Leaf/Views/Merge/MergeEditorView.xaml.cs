@@ -158,14 +158,38 @@ public partial class MergeEditorView : Window
         {
             AllowsTransparency = true,
             StaysOpen = false,
-            Placement = System.Windows.Controls.Primitives.PlacementMode.Right,
-            HorizontalOffset = 8,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Custom,
+            CustomPopupPlacementCallback = PlaceNoteEditor,
             Child = _noteEditor,
         };
         _noteEditor.CommitRequested += OnNoteEditorCommit;
         _noteEditor.CancelRequested += (_, _) => ClosePopup();
         OursPane.NoteEditRequested += OnPaneNoteEditRequested;
         TheirsPane.NoteEditRequested += OnPaneNoteEditRequested;
+    }
+
+    /// <summary>
+    /// Place the note editor to the right of the clicked glyph by default;
+    /// if the popup would clip off the target's right edge, flip to the
+    /// left. PlacementMode.Right alone would merely slide the popup along
+    /// the target, leaving it partly covering the glyph at the pane's edge.
+    /// </summary>
+    private static System.Windows.Controls.Primitives.CustomPopupPlacement[] PlaceNoteEditor(
+        Size popupSize,
+        Size targetSize,
+        Point offset)
+    {
+        // `targetSize` is the PlacementRectangle (glyph rect) size.
+        // Primary: just to the right of the glyph with an 8 px gap.
+        var rightOfGlyph = new System.Windows.Controls.Primitives.CustomPopupPlacement(
+            new Point(targetSize.Width + 8, 0),
+            System.Windows.Controls.Primitives.PopupPrimaryAxis.Horizontal);
+        // Fallback: just to the left if right-side doesn't fit. Offsets are
+        // relative to the PlacementRectangle origin.
+        var leftOfGlyph = new System.Windows.Controls.Primitives.CustomPopupPlacement(
+            new Point(-popupSize.Width - 8, 0),
+            System.Windows.Controls.Primitives.PopupPrimaryAxis.Horizontal);
+        return new[] { rightOfGlyph, leftOfGlyph };
     }
 
     private void OnPaneNoteEditRequested(object? sender, NoteEditRequestedEventArgs e)

@@ -46,11 +46,22 @@ public interface IMergeBlameService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Explicit cache invalidation. Called by <see cref="IRepositoryEventHub"/>
-    /// subscribers on fetch / pull / reset / merge so the next hover
-    /// refreshes instead of serving pre-ref-update data. HEAD-sha keying
-    /// guards against missed invalidations but this keeps the memory
-    /// footprint from growing across long sessions.
+    /// Explicit cache invalidation. HEAD-sha keying (see
+    /// <see cref="GetLineBlameAsync"/>) is the primary correctness path —
+    /// a ref update between hovers produces a cache miss automatically on
+    /// the next lookup. This method exists for operational cases the sha
+    /// guard can't cover:
+    /// <list type="bullet">
+    ///   <item><description>Repo path switch — the cache for the
+    ///   previously-open repo holds lookup + gate state that will never
+    ///   be used again; explicit invalidation reclaims both.</description></item>
+    ///   <item><description>File deletions / renames — the underlying
+    ///   blame output for a path becomes meaningless once the path
+    ///   no longer exists on HEAD.</description></item>
+    /// </list>
+    /// Also evicts the per-key <c>SemaphoreSlim</c> gates the service
+    /// allocates for serialised fetches so long-running sessions across
+    /// multiple repos don't leak unbounded gate state.
     /// </summary>
     void InvalidateRepo(string repoPath);
 }

@@ -550,7 +550,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         if (Document is null) return;
         var before = CaptureState();
         foreach (var range in Document.ConflictingRanges)
-            RangeStates[range.Index] = ResolutionState.AcceptOurs.Instance;
+            RangeStates[range.Index] = CarryNote(ResolutionState.AcceptOurs.Instance, range.Index);
         PushUndo(before);
         NotifyResolutionCountsChanged();
     }
@@ -561,7 +561,7 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         if (Document is null) return;
         var before = CaptureState();
         foreach (var range in Document.ConflictingRanges)
-            RangeStates[range.Index] = ResolutionState.AcceptTheirs.Instance;
+            RangeStates[range.Index] = CarryNote(ResolutionState.AcceptTheirs.Instance, range.Index);
         PushUndo(before);
         NotifyResolutionCountsChanged();
     }
@@ -576,12 +576,32 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     {
         if (Document is null) return;
         var before = CaptureState();
-        if (newState is ResolutionState.Unresolved)
+        // C6 invariant: Note is orthogonal to the resolution variant and
+        // must survive a variant switch. Without this, clicking AcceptOurs
+        // after the user typed a note would silently drop the note — a
+        // user-facing data-loss regression.
+        var carried = CarryNote(newState, rangeIndex);
+        if (carried is ResolutionState.Unresolved && carried.Note is null)
             RangeStates.Remove(rangeIndex);
         else
-            RangeStates[rangeIndex] = newState;
+            RangeStates[rangeIndex] = carried;
         PushUndo(before);
         NotifyResolutionCountsChanged();
+    }
+
+    /// <summary>
+    /// Overlay the existing range's <see cref="ResolutionState.Note"/> onto
+    /// <paramref name="newState"/> if any is present. Callers pass a fresh
+    /// variant instance (e.g. <see cref="ResolutionState.AcceptOurs.Instance"/>);
+    /// this helper ensures an attached note survives the transition.
+    /// </summary>
+    private ResolutionState CarryNote(ResolutionState newState, int rangeIndex)
+    {
+        if (RangeStates.TryGetValue(rangeIndex, out var prior) && prior.Note is not null)
+        {
+            return newState with { Note = prior.Note };
+        }
+        return newState;
     }
 
     [RelayCommand(CanExecute = nameof(CanUndo))]

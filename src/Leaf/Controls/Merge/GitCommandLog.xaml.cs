@@ -69,6 +69,13 @@ public partial class GitCommandLog : UserControl
 
     private void OnGitCommandExecuted(object? sender, GitCommandEventArgs e)
     {
+        // Drop "chatty" background reads before we hop the dispatcher — the
+        // user cares about actions they triggered (merge-file, commit,
+        // merge --abort), not C5's per-hover blame cache warmers. Filtering
+        // before the UI-thread hop also keeps the ObservableCollection
+        // pressure low on rapid hover.
+        if (IsBackgroundChatter(e)) return;
+
         // Dispatcher hop: the git runner can fire from a worker thread if
         // the command was awaited under ConfigureAwait(false). Use
         // BeginInvoke (asynchronous, ordered per-dispatcher) — synchronous
@@ -83,6 +90,24 @@ public partial class GitCommandLog : UserControl
             while (_entries.Count > MaxEntries) _entries.RemoveAt(0);
             EntriesList.ScrollIntoView(entry);
         });
+    }
+
+    /// <summary>
+    /// True when <paramref name="e"/> is a read-only probe fired by a
+    /// background service (blame hover, HEAD resolver, log-cache warmup)
+    /// rather than a user-triggered action. These flood the log with noise
+    /// on rapid hover and obscure the "what did I actually do" signal the
+    /// footer is meant to surface. Classification is argv-prefix based so
+    /// adding a new probe type is a one-line update here.
+    /// </summary>
+    internal static bool IsBackgroundChatter(GitCommandEventArgs e)
+    {
+        var args = e.Arguments;
+        if (string.IsNullOrEmpty(args)) return false;
+        // git blame / rev-parse HEAD are the two C5 blame-service calls.
+        // Both are invisible to the user and produce no state change.
+        return args.StartsWith("blame", StringComparison.Ordinal)
+            || args.StartsWith("rev-parse HEAD", StringComparison.Ordinal);
     }
 
     private void OnToggleClicked(object sender, RoutedEventArgs e)

@@ -79,6 +79,34 @@ public class MergeBlameServiceTests
     }
 
     [Fact]
+    public async Task InvalidateRepo_ReleasesFetchGates_ForEvictedKeys()
+    {
+        // Regression guard: _fetchGates used to grow monotonically because
+        // InvalidateRepo only cleared _cache. Leaky across long sessions
+        // that hover many files across repos. Fix: evict the gate alongside
+        // the cache entry. Reflection peek into the private dict pins the
+        // invariant without exposing the field publicly.
+        var git = new CountingBlameGitService(headSha: "abc",
+            blame: new List<FileBlameLine>
+            {
+                new() { LineNumber = 1, Sha = "abc", Author = "Alice" },
+            });
+        var service = new MergeBlameService(git);
+        _ = await service.GetLineBlameAsync("/repo", "a.cs", 1);
+        _ = await service.GetLineBlameAsync("/repo", "b.cs", 1);
+
+        var gatesField = typeof(MergeBlameService)
+            .GetField("_fetchGates", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var gates = (System.Collections.IDictionary)gatesField.GetValue(service)!;
+        gates.Count.Should().Be(2, because: "two distinct files produced two gate entries");
+
+        service.InvalidateRepo("/repo");
+
+        gates.Count.Should().Be(0,
+            because: "invalidation must release the SemaphoreSlim gates alongside the cache entries");
+    }
+
+    [Fact]
     public async Task InvalidateRepo_DropsEntries_ForThatRepoOnly()
     {
         var git = new CountingBlameGitService(headSha: "abc123",
