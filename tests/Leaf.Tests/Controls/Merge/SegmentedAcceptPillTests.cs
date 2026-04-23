@@ -17,32 +17,11 @@ namespace Leaf.Tests.Controls.Merge;
 /// </summary>
 public class SegmentedAcceptPillTests
 {
-    // Ensure the palette dict is merged before the first pill touches
+    // Palette dict must be merged before the first pill touches
     // DynamicResource lookups — otherwise UpdateCellHighlighting's
-    // ResolveBrush calls return Transparent and the highlighting test fails.
-    // Matches the pattern used by MergePaletteTests.
-    private static readonly object _paletteLock = new();
-    private static bool _paletteMerged;
-    private static void EnsurePaletteLoaded()
-    {
-        lock (_paletteLock)
-        {
-            if (Application.Current is null)
-            {
-                try { _ = new Application(); }
-                catch (InvalidOperationException) { /* another test class already created one */ }
-            }
-            if (_paletteMerged) return;
-            var dict = new ResourceDictionary
-            {
-                Source = new Uri(
-                    "pack://application:,,,/Leaf;component/Resources/Merge/Merge.xaml",
-                    UriKind.Absolute),
-            };
-            Application.Current!.Resources.MergedDictionaries.Add(dict);
-            _paletteMerged = true;
-        }
-    }
+    // ResolveBrush calls return Transparent and the highlighting test
+    // fails. Delegated to the shared fixture.
+    private static void EnsurePaletteLoaded() => MergePaletteTestFixture.Ensure();
 
     private sealed class RecordingCommand : ICommand
     {

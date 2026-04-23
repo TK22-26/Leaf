@@ -565,7 +565,7 @@
                     </Button>
                     <Button Command="{Binding CompleteMergeCommand}" Padding="12,6"
                             Background="{DynamicResource AccentFillColorDefaultBrush}"
-                            Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                            Foreground="{DynamicResource Merge.Text.OnAccent}"
                             AutomationProperties.AutomationId="Merge.CompleteMerge">
                         <StackPanel Orientation="Horizontal">
                             <ic:SymbolIcon Symbol="CheckmarkCircle" FontSize="16" VerticalAlignment="Center"/>

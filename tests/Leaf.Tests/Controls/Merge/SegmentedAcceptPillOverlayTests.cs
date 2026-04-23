@@ -17,32 +17,9 @@ namespace Leaf.Tests.Controls.Merge;
 /// </summary>
 public class SegmentedAcceptPillOverlayTests
 {
-    // Match the palette-loading pattern used by SegmentedAcceptPillTests so
-    // the overlay's inner pills can resolve palette brushes during click
-    // highlighting. Not strictly required for RefreshPillStates (which only
-    // reads State) but keeps test isolation consistent.
-    private static readonly object _paletteLock = new();
-    private static bool _paletteMerged;
-    private static void EnsurePaletteLoaded()
-    {
-        lock (_paletteLock)
-        {
-            if (Application.Current is null)
-            {
-                try { _ = new Application(); }
-                catch (InvalidOperationException) { /* already created by a sibling fixture */ }
-            }
-            if (_paletteMerged) return;
-            var dict = new ResourceDictionary
-            {
-                Source = new Uri(
-                    "pack://application:,,,/Leaf;component/Resources/Merge/Merge.xaml",
-                    UriKind.Absolute),
-            };
-            Application.Current!.Resources.MergedDictionaries.Add(dict);
-            _paletteMerged = true;
-        }
-    }
+    // Overlay's inner pills need the palette merged to resolve brushes
+    // during click highlighting. Delegated to the shared fixture.
+    private static void EnsurePaletteLoaded() => MergePaletteTestFixture.Ensure();
 
     private static ModifiedBaseRange Conflict(int index) =>
         new(

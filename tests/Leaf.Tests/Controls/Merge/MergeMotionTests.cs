@@ -162,31 +162,5 @@ public class MergeMotionTests
             because: $"'{key}' duration must match the Merge.Motion ramp");
     }
 
-    private static readonly object _mergeLock = new();
-    private static bool _merged;
-
-    private static void EnsureMergeDictionaryMerged()
-    {
-        lock (_mergeLock)
-        {
-            if (Application.Current is null)
-            {
-                // Another test class may have raced with us across a different
-                // lock; tolerate the "already created" error rather than
-                // double-creating the AppDomain-wide Application singleton.
-                try { _ = new Application(); }
-                catch (InvalidOperationException) { }
-            }
-            if (_merged) return;
-
-            var dict = new ResourceDictionary
-            {
-                Source = new Uri(
-                    "pack://application:,,,/Leaf;component/Resources/Merge/Merge.xaml",
-                    UriKind.Absolute),
-            };
-            Application.Current!.Resources.MergedDictionaries.Add(dict);
-            _merged = true;
-        }
-    }
+    private static void EnsureMergeDictionaryMerged() => MergePaletteTestFixture.Ensure();
 }

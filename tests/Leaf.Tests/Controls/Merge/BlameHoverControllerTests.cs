@@ -18,31 +18,7 @@ namespace Leaf.Tests.Controls.Merge;
 /// </summary>
 public class BlameHoverControllerTests
 {
-    // Match the palette-merge pattern used by BlamePeekPopoverTests so the
-    // PopoverShow storyboard clone runs on the same STA dispatcher thread
-    // that the popover's Focus+animation path uses.
-    private static readonly object _paletteLock = new();
-    private static bool _paletteMerged;
-    private static void EnsureMergeDictionaryMerged()
-    {
-        lock (_paletteLock)
-        {
-            if (Application.Current is null)
-            {
-                try { _ = new Application(); }
-                catch (InvalidOperationException) { /* already created */ }
-            }
-            if (_paletteMerged) return;
-            var dict = new ResourceDictionary
-            {
-                Source = new Uri(
-                    "pack://application:,,,/Leaf;component/Resources/Merge/Merge.xaml",
-                    UriKind.Absolute),
-            };
-            Application.Current!.Resources.MergedDictionaries.Add(dict);
-            _paletteMerged = true;
-        }
-    }
+    private static void EnsureMergeDictionaryMerged() => MergePaletteTestFixture.Ensure();
 
     [StaFact]
     public async Task ShowForLineAsync_EmptyRepoPath_ReturnsWithoutFetching()
