@@ -24,6 +24,12 @@ public partial class MergeEditorView : Window
 
     public MergeEditorView()
     {
+        // RelayCommand comes from CommunityToolkit.Mvvm, already a
+        // project-level PackageReference. The VM layer uses [RelayCommand]
+        // code-gen; at the view layer we instantiate RelayCommand directly
+        // since the action lives in the code-behind, not the VM.
+        ShowBlamePeekForCurrentConflictCommand =
+            new CommunityToolkit.Mvvm.Input.RelayCommand(ShowBlamePeekForCurrentConflict);
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         // N1: detach the RangeStatesChanged subscription when the window
@@ -65,6 +71,15 @@ public partial class MergeEditorView : Window
     /// clicked commit.
     /// </summary>
     public event EventHandler<string>? CommitJumpRequested;
+
+    /// <summary>
+    /// Alt+B handler bound from <see cref="Window.InputBindings"/>. Lives
+    /// on the view (not the VM) because the blame popover / hover
+    /// controller are view-layer — the VM doesn't know about Popups. Fires
+    /// the popover for the current conflict's start line in whichever
+    /// read-only pane has keyboard focus (falls back to OursPane).
+    /// </summary>
+    public System.Windows.Input.ICommand ShowBlamePeekForCurrentConflictCommand { get; }
 
     private static SettingsService ResolveSettingsService() =>
         Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
@@ -149,6 +164,52 @@ public partial class MergeEditorView : Window
         // NoteEditRequested with the clicked range index + glyph rect; the
         // popup anchors to the pane that fired the event.
         WireNoteEditor();
+    }
+
+    private void ShowBlamePeekForCurrentConflict()
+    {
+        if (_blameHover is null || Vm is null || Vm.Document is null) return;
+        var conflicting = Vm.Document.ConflictingRanges.ToList();
+        if (conflicting.Count == 0) return;
+        var idx = Math.Clamp(Vm.CurrentConflictIndex, 0, conflicting.Count - 1);
+        var range = conflicting[idx];
+
+        // Pick the pane whose subtree has keyboard focus; default to Ours
+        // when focus is off the panes (e.g. user just came from the file
+        // tree or the command palette). Line resolves off the side's
+        // StartLine — that's where the conflict begins on disk.
+        var focused = System.Windows.Input.Keyboard.FocusedElement;
+        ReadOnlyMergePane targetPane;
+        int line;
+        if (focused is System.Windows.DependencyObject dep
+            && IsInTreeOf(dep, TheirsPane))
+        {
+            targetPane = TheirsPane;
+            line = range.Theirs.StartLine;
+        }
+        else
+        {
+            targetPane = OursPane;
+            line = range.Ours.StartLine;
+        }
+        if (line < 1) return;
+
+        // Fire-and-forget: ShowForLineAsync awaits the blame fetch but the
+        // keybinding handler can't. Exceptions are logged inside the
+        // controller; nothing here needs the result.
+        _ = _blameHover.ShowForLineAsync(targetPane, line);
+    }
+
+    private static bool IsInTreeOf(System.Windows.DependencyObject candidate, System.Windows.DependencyObject ancestor)
+    {
+        var current = candidate;
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, ancestor)) return true;
+            current = System.Windows.Media.VisualTreeHelper.GetParent(current)
+                   ?? System.Windows.LogicalTreeHelper.GetParent(current);
+        }
+        return false;
     }
 
     private void WireNoteEditor()

@@ -14,9 +14,37 @@ namespace Leaf.Tests.Controls.Merge;
 /// </summary>
 public class BlamePeekPopoverTests
 {
+    // Match the palette-merge pattern used by MergeMotionTests so the
+    // PopoverShow storyboard resolves against Application.Current.Resources
+    // (same-thread guarantee) rather than the _localPalette fallback which
+    // captured the storyboard on whichever test thread touched it first.
+    private static readonly object _paletteLock = new();
+    private static bool _paletteMerged;
+    private static void EnsureMergeDictionaryMerged()
+    {
+        lock (_paletteLock)
+        {
+            if (System.Windows.Application.Current is null)
+            {
+                try { _ = new System.Windows.Application(); }
+                catch (InvalidOperationException) { /* already created */ }
+            }
+            if (_paletteMerged) return;
+            var dict = new System.Windows.ResourceDictionary
+            {
+                Source = new Uri(
+                    "pack://application:,,,/Leaf;component/Resources/Merge/Merge.xaml",
+                    UriKind.Absolute),
+            };
+            System.Windows.Application.Current!.Resources.MergedDictionaries.Add(dict);
+            _paletteMerged = true;
+        }
+    }
+
     [StaFact]
     public void SetRecord_CopiesFieldsFromBlameLine()
     {
+        EnsureMergeDictionaryMerged();
         var popover = new BlamePeekPopover();
         var record = new FileBlameLine
         {
@@ -40,6 +68,7 @@ public class BlamePeekPopoverTests
     [StaFact]
     public void CommitRequested_FiresWithFullSha_NotShortSha()
     {
+        EnsureMergeDictionaryMerged();
         var popover = new BlamePeekPopover();
         popover.SetRecord(new FileBlameLine
         {
@@ -66,6 +95,83 @@ public class BlamePeekPopoverTests
 
         captured.Should().Be("abcdef1234567890",
             because: "the graph navigator needs the full sha to disambiguate short-sha collisions");
+    }
+
+    [StaFact]
+    public void Popover_IsFocusable_SoKeyboardUsersCanTabIntoIt()
+    {
+        // Regression guard for the keyboard a11y fix: the popover used to
+        // have Focusable="False", blocking keyboard users from reaching
+        // the sha Hyperlink. Now the root is focusable with Cycle tab
+        // navigation; the Hyperlink inside is natively focusable and
+        // becomes the first tab-stop.
+        var popover = new BlamePeekPopover();
+        popover.Focusable.Should().BeTrue(
+            because: "keyboard users must be able to Tab into the popover to reach the sha link");
+    }
+
+    [StaFact]
+    public void DismissRequested_Fires_OnEscapeKeyDown()
+    {
+        EnsureMergeDictionaryMerged();
+        var popover = new BlamePeekPopover();
+        popover.SetRecord(new FileBlameLine
+        {
+            Sha = "abcdef1234567890",
+            Author = "Alice",
+            Subject = "Fix",
+        });
+
+        bool dismissed = false;
+        popover.DismissRequested += (_, _) => dismissed = true;
+
+        var handler = typeof(BlamePeekPopover).GetMethod(
+            "OnPopoverKeyDown",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        handler.Invoke(popover, new object[]
+        {
+            popover,
+            new System.Windows.Input.KeyEventArgs(
+                System.Windows.Input.Keyboard.PrimaryDevice,
+                new System.Windows.Interop.HwndSource(0, 0, 0, 0, 0, "h", IntPtr.Zero),
+                0,
+                System.Windows.Input.Key.Escape)
+            {
+                RoutedEvent = System.Windows.UIElement.KeyDownEvent,
+            },
+        });
+
+        dismissed.Should().BeTrue(because: "Escape inside the popover must fire DismissRequested");
+    }
+
+    [StaFact]
+    public void DismissRequested_DoesNotFire_OnNonEscapeKey()
+    {
+        EnsureMergeDictionaryMerged();
+        var popover = new BlamePeekPopover();
+        popover.SetRecord(new FileBlameLine { Sha = "abc", Author = "A", Subject = "s" });
+
+        bool dismissed = false;
+        popover.DismissRequested += (_, _) => dismissed = true;
+
+        var handler = typeof(BlamePeekPopover).GetMethod(
+            "OnPopoverKeyDown",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        handler.Invoke(popover, new object[]
+        {
+            popover,
+            new System.Windows.Input.KeyEventArgs(
+                System.Windows.Input.Keyboard.PrimaryDevice,
+                new System.Windows.Interop.HwndSource(0, 0, 0, 0, 0, "h", IntPtr.Zero),
+                0,
+                System.Windows.Input.Key.Enter)
+            {
+                RoutedEvent = System.Windows.UIElement.KeyDownEvent,
+            },
+        });
+
+        dismissed.Should().BeFalse(
+            because: "only Escape dismisses; Enter activates the focused sha link via its Click handler");
     }
 
     [StaFact]
