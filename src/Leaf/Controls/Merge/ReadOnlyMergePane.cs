@@ -8,6 +8,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Leaf.Helpers;
 using Leaf.Models.Merge;
 using Leaf.Services.Merge;
 using Leaf.TextEdit;
@@ -258,6 +259,14 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
             _documentHighlighter = null;
             return;
         }
+        // Remap raw .xshd colours to a dark-theme-friendly palette so tokens
+        // like type names (dark blue in the stock AvalonEdit C# definition)
+        // don't render as invisible-on-dark. Mirrors DiffViewerControl's
+        // pre-render step; the helper is idempotent, so it's safe to run on
+        // a definition already mutated by another consumer in the same
+        // AppDomain (HighlightingManager.Instance returns a shared singleton).
+        SyntaxHighlightingHelper.ApplyDarkThemeColors(definition);
+
         // Stream characters instead of allocating a single joined string —
         // matters for monorepo-scale conflict files (100k+ lines) where a
         // string.Join would burn a second copy of the merged content on every

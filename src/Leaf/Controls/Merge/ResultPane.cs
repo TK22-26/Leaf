@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Leaf.Helpers;
 using Leaf.TextEdit;
 using Leaf.TextEdit.Document;
 using Leaf.TextEdit.Highlighting;
@@ -179,7 +180,15 @@ public sealed class ResultPane : ContentControl
     private static void OnFilePathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var pane = (ResultPane)d;
-        pane._editor.SyntaxHighlighting = MergeHighlightingResolver.ByFilePath((string?)e.NewValue);
+        var definition = MergeHighlightingResolver.ByFilePath((string?)e.NewValue);
+        if (definition is not null)
+        {
+            // Same dark-theme remap the ReadOnlyMergePane + DiffViewerControl
+            // apply. Without this, AvalonEdit's stock .xshd colours include
+            // dark blues that read as invisible on the dark pane surface.
+            SyntaxHighlightingHelper.ApplyDarkThemeColors(definition);
+        }
+        pane._editor.SyntaxHighlighting = definition;
     }
 
     private static void OnForegroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
