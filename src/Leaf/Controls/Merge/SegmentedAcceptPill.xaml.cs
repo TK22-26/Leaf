@@ -87,50 +87,57 @@ public partial class SegmentedAcceptPill : UserControl
     }
 
     /// <summary>
-    /// Paint the currently-selected cell with the accent brush; clear the
-    /// others. Called whenever <see cref="State"/> changes. Uses direct
-    /// background assignment rather than DataTriggers so a palette swap (V8)
-    /// propagates through the {DynamicResource} lookup on the first UpdateCell
-    /// after the swap.
+    /// Paint the currently-selected cell with the accent colour; clear the
+    /// others. Called whenever <see cref="State"/> changes. Uses
+    /// <see cref="MergeMotionHelpers.PlayPillCellTransition"/> so each cell
+    /// whose colour actually changes crossfades over 200 ms (plan §D3's
+    /// post-checkbox analogue), while cells that stay the same colour are
+    /// left untouched. A palette swap (V8) still propagates correctly
+    /// because the colours are re-resolved per update.
     /// </summary>
     private void UpdateCellHighlighting()
     {
         // Cell-specific accents give each side a strong visual identity —
-        // Ours blue, Theirs green, Both amber — so the pill reads the same as
-        // the accept markers used elsewhere in the editor.
-        var oursAccent = ResolveBrush("Merge.Ours.BgStrong");
-        var theirsAccent = ResolveBrush("Merge.Theirs.BgStrong");
-        var bothAccent = ResolveBrush("Merge.State.Manual");
-        var clear = Brushes.Transparent;
+        // Ours blue, Theirs green, Both amber — so the pill reads the same
+        // as the accept markers used elsewhere in the editor.
+        var oursAccent = ResolveColor("Merge.Ours.BgStrong.Color");
+        var theirsAccent = ResolveColor("Merge.Theirs.BgStrong.Color");
+        var bothAccent = ResolveColor("Merge.State.Manual.Color");
+        var clear = Colors.Transparent;
 
-        OursCell.Background = clear;
-        BothCell.Background = clear;
-        TheirsCell.Background = clear;
-
-        switch (State)
+        var (oursTarget, bothTarget, theirsTarget) = State switch
         {
-            case ResolutionState.AcceptOurs:
-                OursCell.Background = oursAccent;
-                break;
-            case ResolutionState.AcceptTheirs:
-                TheirsCell.Background = theirsAccent;
-                break;
-            case ResolutionState.AcceptBoth:
-                BothCell.Background = bothAccent;
-                break;
-            case ResolutionState.Manual:
-            case ResolutionState.Unresolved:
-            case null:
-                // No cell selected — pill reads as "unresolved" via plain
-                // surface background on every cell.
-                break;
-        }
+            ResolutionState.AcceptOurs => (oursAccent, clear, clear),
+            ResolutionState.AcceptTheirs => (clear, clear, theirsAccent),
+            ResolutionState.AcceptBoth => (clear, bothAccent, clear),
+            // Manual / Unresolved / null — no cell selected; all transparent.
+            _ => (clear, clear, clear),
+        };
+
+        TransitionCellTo(OursCell, oursTarget);
+        TransitionCellTo(BothCell, bothTarget);
+        TransitionCellTo(TheirsCell, theirsTarget);
+    }
+
+    /// <summary>
+    /// Crossfade <paramref name="cell"/>'s Background from its current
+    /// colour to <paramref name="target"/>. Reads the current colour from
+    /// the installed <see cref="SolidColorBrush"/>; a non-solid Background
+    /// (never set by this control) falls through as Transparent for the
+    /// From value. No-op when the cell is already at <paramref name="target"/>
+    /// so repeat selections don't re-tween.
+    /// </summary>
+    private static void TransitionCellTo(Control cell, Color target)
+    {
+        var from = cell.Background is SolidColorBrush scb ? scb.Color : Colors.Transparent;
+        if (from == target) return;
+        MergeMotionHelpers.PlayPillCellTransition(cell, from, target);
     }
 
     // Strict palette lookup — a missing key is a programming error, not a
     // rendering fallback. Throws with a clear pointer to the palette XAML.
-    private Brush ResolveBrush(string key) =>
-        MergePaletteResources.Resolve<Brush>(key);
+    private static Color ResolveColor(string key) =>
+        MergePaletteResources.ResolveColor(key);
 
     private void OnOursClicked(object sender, RoutedEventArgs e)
     {

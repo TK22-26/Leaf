@@ -6,14 +6,22 @@
     surface) or genuinely deferred with documented rationale below.
 
     SHIPPED STORYBOARDS
-    - Merge.Motion.MinimapJump  — 400 ms smooth scroll of a ScrollViewer via
+    - Merge.Motion.MinimapJump   — 400 ms smooth scroll of a ScrollViewer via
       the AnimatedVerticalOffset attached DP on MergeMotionHelpers. Consumed
       by MergeMotionHelpers.SmoothScrollTo.
-    - Merge.Motion.PaneFocus    — 250 ms border-brush colour pulse. Consumed
+    - Merge.Motion.PaneFocus     — 250 ms border-brush colour pulse. Consumed
       by MergeMotionHelpers.PulsePaneFocusColour on GotKeyboardFocus.
-    - Merge.Motion.AcceptButton — 150 ms scale 0.97 → 1.0 ease-out bounce on
+    - Merge.Motion.AcceptButton  — 150 ms scale 0.97 → 1.0 ease-out bounce on
       the clicked SegmentedAcceptPill cell. Consumed by
       MergeMotionHelpers.PlayAcceptBounce.
+    - Merge.Motion.PopoverShow   — 200 ms fade + 2 px translateY ease-out.
+      Consumed by MergeMotionHelpers.PlayPopoverShow (blame peek, C5).
+    - Merge.Motion.PillCellTransition — 200 ms ColorAnimation crossfade
+      when a SegmentedAcceptPill cell transitions between selected and
+      cleared on a selection change. Replaces plan §D3's CheckboxToggle
+      (the checkbox was deleted in C2); the pill's exclusive-selection
+      cells are the closest analogue and this storyboard animates the
+      Background colour between the accent brush and Transparent.
 
     DISPATCHER-TIMER TWEENS (not WPF Storyboards — same timing shape)
     - RangeResolve: 350 ms ease-out-quadratic background crossfade. Lives
@@ -21,18 +29,6 @@
       DrawingContext, which has no addressable element for a Storyboard
       to target. Timing parameters mirror this file to keep the motion
       budget coherent.
-
-    DEFERRED (no consumer yet; adding the storyboard pre-emptively would
-    ship dead XAML that the palette-flatten loader would have to realize
-    on every test run)
-    - Merge.Motion.CheckboxToggle — targeted the per-side accept checkbox
-      that C2 removed. The replacement surface (SegmentedAcceptPill) uses
-      AcceptButton for click feedback; there is no "toggle" per se because
-      the pill is exclusive-selection.
-
-    Merge.Motion.PopoverShow ships in this file as of C5 (blame peek is
-    its first consumer). 200 ms fade + 2 px translateY ease-out matches
-    plan §D3. Helper: MergeMotionHelpers.PlayPopoverShow.
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -71,6 +67,18 @@
                          EasingFunction="{StaticResource Merge.Motion.Ease}"/>
         <DoubleAnimation Duration="0:0:0.2" From="2.0" To="0.0"
                          EasingFunction="{StaticResource Merge.Motion.Ease}"/>
+    </Storyboard>
+
+    <!--  PillCellTransition: 200 ms ColorAnimation crossfade applied to the
+          Background Color of a SegmentedAcceptPill cell when selection
+          changes. The helper clones this storyboard per pill-cell
+          transition, sets From/To to the previous and new accent colours,
+          and targets a per-cell SolidColorBrush that the helper installs
+          as the cell's Background. -->
+    <Storyboard x:Key="Merge.Motion.PillCellTransition">
+        <ColorAnimation Storyboard.TargetProperty="Color"
+                        Duration="0:0:0.2"
+                        EasingFunction="{StaticResource Merge.Motion.Ease}"/>
     </Storyboard>
 
 </ResourceDictionary>

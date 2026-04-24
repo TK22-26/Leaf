@@ -29,6 +29,17 @@ namespace Leaf.Controls.Merge;
 internal static class MergeMotionHelpers
 {
     /// <summary>
+    /// Opt-out gate for users with motion-sensitivity or older GPUs. When
+    /// <c>true</c>, every helper below writes its end-state immediately
+    /// instead of tweening — so the visual outcome is identical but no
+    /// animation frames run. App.OnStartup pushes the current
+    /// <c>AppSettings.ReduceMotion</c> value; any future settings UI
+    /// should assign to this property after <c>SaveSettings</c> so a
+    /// runtime toggle takes effect without restart.
+    /// </summary>
+    public static bool ReduceMotion { get; set; }
+
+    /// <summary>
     /// Animated scroll offset attached property on <see cref="ScrollViewer"/>.
     /// Writes flow through to <see cref="ScrollViewer.ScrollToVerticalOffset"/>
     /// so animating this DP produces a smooth scroll — the native
@@ -63,6 +74,11 @@ internal static class MergeMotionHelpers
     public static void SmoothScrollTo(ScrollViewer sv, double targetOffset)
     {
         ArgumentNullException.ThrowIfNull(sv);
+        if (ReduceMotion)
+        {
+            sv.ScrollToVerticalOffset(targetOffset);
+            return;
+        }
         var storyboard = CloneStoryboard("Merge.Motion.MinimapJump");
         var anim = AssertSingleAnimation<DoubleAnimation>(storyboard, "Merge.Motion.MinimapJump");
         anim.From = sv.VerticalOffset;
@@ -83,6 +99,20 @@ internal static class MergeMotionHelpers
     public static void PulsePaneFocusColour(Border border, Color targetColor, string? restoreResourceKey = null)
     {
         ArgumentNullException.ThrowIfNull(border);
+        if (ReduceMotion)
+        {
+            // The pulse's visible effect is temporary — the Completed hook
+            // restores the palette brush when restoreResourceKey is set, so
+            // the long-lived visual state is "BorderBrush bound to the
+            // palette key again". Jump straight to that end-state. With no
+            // restore key, the caller wanted a permanent colour change,
+            // so paint it directly.
+            if (restoreResourceKey is not null)
+                border.SetResourceReference(Border.BorderBrushProperty, restoreResourceKey);
+            else
+                border.BorderBrush = new SolidColorBrush(targetColor);
+            return;
+        }
         var storyboard = CloneStoryboard("Merge.Motion.PaneFocus");
         var anim = AssertSingleAnimation<ColorAnimation>(storyboard, "Merge.Motion.PaneFocus");
 
@@ -130,6 +160,14 @@ internal static class MergeMotionHelpers
     public static void PlayAcceptBounce(FrameworkElement target)
     {
         ArgumentNullException.ThrowIfNull(target);
+        if (ReduceMotion)
+        {
+            // Bounce ends at scale 1.0 — the pre-animation identity state.
+            // Nothing to write; returning keeps the click feedback silent
+            // for motion-sensitive users while still letting the
+            // downstream command execute.
+            return;
+        }
         var storyboard = CloneStoryboard("Merge.Motion.AcceptButton");
         if (storyboard.Children.Count < 2)
         {
@@ -167,6 +205,16 @@ internal static class MergeMotionHelpers
     public static void PlayPopoverShow(FrameworkElement target)
     {
         ArgumentNullException.ThrowIfNull(target);
+        if (ReduceMotion)
+        {
+            // Popover's end-state is fully visible at its natural
+            // position. Without the entrance tween the popover would stay
+            // stuck at opacity 0 (the storyboard's From value), so we
+            // paint the end-state explicitly: opacity 1, no translate.
+            target.Opacity = 1.0;
+            target.RenderTransform = new TranslateTransform(0, 0);
+            return;
+        }
         var storyboard = CloneStoryboard("Merge.Motion.PopoverShow");
         if (storyboard.Children.Count < 2)
         {
@@ -186,6 +234,37 @@ internal static class MergeMotionHelpers
         Storyboard.SetTarget(translateY, translate);
         Storyboard.SetTargetProperty(translateY, new PropertyPath(TranslateTransform.YProperty));
 
+        storyboard.Begin();
+    }
+
+    /// <summary>
+    /// Crossfade <paramref name="cell"/>'s Background colour from
+    /// <paramref name="from"/> to <paramref name="to"/> over
+    /// <c>Merge.Motion.PillCellTransition</c> (200 ms). Installs a per-cell
+    /// unfrozen <see cref="SolidColorBrush"/> as the cell's Background so
+    /// the animation has something writable to drive — palette brushes
+    /// come through DynamicResource frozen and would refuse the write.
+    /// Plan §D3 replacement for <c>CheckboxToggle</c>.
+    /// </summary>
+    public static void PlayPillCellTransition(Control cell, Color from, Color to)
+    {
+        ArgumentNullException.ThrowIfNull(cell);
+        if (ReduceMotion)
+        {
+            // End-state is the new selected/cleared colour. Writing a
+            // frozen brush here is fine because there's no animation
+            // waiting to mutate it.
+            cell.Background = new SolidColorBrush(to);
+            return;
+        }
+        var storyboard = CloneStoryboard("Merge.Motion.PillCellTransition");
+        var anim = AssertSingleAnimation<ColorAnimation>(storyboard, "Merge.Motion.PillCellTransition");
+        var animated = new SolidColorBrush(from);
+        cell.Background = animated;
+        anim.From = from;
+        anim.To = to;
+        Storyboard.SetTarget(anim, animated);
+        Storyboard.SetTargetProperty(anim, new PropertyPath("Color"));
         storyboard.Begin();
     }
 
