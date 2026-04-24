@@ -82,15 +82,21 @@
     <Color x:Key="Merge.State.Resolved.Color">#FF1E9B4E</Color>
     <Color x:Key="Merge.State.AiPending.Color">#FF1E6FC5</Color>
     <Color x:Key="Merge.State.Error.Color">#FFA83B3B</Color>
+    <!--  Warning and Manual sit in the same amber family but must read
+          distinct so status pills and gutter glyphs don't collapse. The
+          dark palette keeps Warning brighter than Manual; the light
+          palette inverts that (Manual is the darker, more saturated
+          amber so it stands out against a bright surface while Warning
+          is the softer tone).  -->
     <Color x:Key="Merge.State.Warning.Color">#FFBA7A00</Color>
-    <Color x:Key="Merge.State.Manual.Color">#FFBA7A00</Color>
+    <Color x:Key="Merge.State.Manual.Color">#FFD68A1E</Color>
     <Color x:Key="Merge.State.Resolved.Overlay.Color">#441E9B4E</Color>
     <SolidColorBrush x:Key="Merge.State.Unresolved" Color="#FFC53030"/>
     <SolidColorBrush x:Key="Merge.State.Resolved"   Color="#FF1E9B4E"/>
     <SolidColorBrush x:Key="Merge.State.AiPending"  Color="#FF1E6FC5"/>
     <SolidColorBrush x:Key="Merge.State.Error"      Color="#FFA83B3B"/>
     <SolidColorBrush x:Key="Merge.State.Warning"    Color="#FFBA7A00"/>
-    <SolidColorBrush x:Key="Merge.State.Manual"     Color="#FFBA7A00"/>
+    <SolidColorBrush x:Key="Merge.State.Manual"     Color="#FFD68A1E"/>
     <SolidColorBrush x:Key="Merge.State.Resolved.Overlay" Color="#441E9B4E"/>
 
     <!--  Status-pill chrome tokens. Alpha-backed bg tint stays the same

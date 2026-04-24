@@ -111,20 +111,41 @@ public sealed class ConflictOverviewRuler : FrameworkElement
     /// </summary>
     public void Refresh() => InvalidateVisual();
 
-    // Palette-derived minimap swatches. The minimap reads the base side and
-    // state colours from the central palette and applies per-swatch alpha so
-    // stacked tints remain legible against the unchanged-grey backdrop.
-    private static readonly Brush UnchangedBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color"), 0x22)));
-    private static readonly Brush OursBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Ours.Border.Color"), 0xAA)));
-    private static readonly Brush TheirsBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color"), 0xAA)));
-    private static readonly Brush UnresolvedBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.State.Unresolved.Color"), 0xDD)));
-    private static readonly Brush ResolvedBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.State.Resolved.Color"), 0xDD)));
+    // Palette-derived ruler swatches. V8 theme-swap support: wrapped in
+    // a ThemeBrushes bundle so MergeThemeSwitcher.PaletteChanged can
+    // swap the cache atomically and each live instance can repaint.
+    private sealed class ThemeBrushes
+    {
+        public Brush Unchanged = null!;
+        public Brush Ours = null!;
+        public Brush Theirs = null!;
+        public Brush Unresolved = null!;
+        public Brush Resolved = null!;
 
+        public static ThemeBrushes Build() => new()
+        {
+            Unchanged = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color"), 0x22))),
+            Ours = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Ours.Border.Color"), 0xAA))),
+            Theirs = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color"), 0xAA))),
+            Unresolved = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.State.Unresolved.Color"), 0xDD))),
+            Resolved = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.State.Resolved.Color"), 0xDD))),
+        };
+    }
+
+    private static volatile ThemeBrushes _brushes = ThemeBrushes.Build();
+
+    static ConflictOverviewRuler()
+    {
+        Leaf.Services.MergeThemeSwitcher.PaletteChanged += (_, _) =>
+            _brushes = ThemeBrushes.Build();
+    }
+
+    private static SolidColorBrush FreezeBrush(SolidColorBrush b) { b.Freeze(); return b; }
     private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
 
     public ConflictOverviewRuler()
@@ -133,7 +154,12 @@ public sealed class ConflictOverviewRuler : FrameworkElement
         Focusable = false;
         Width = 12;
         Cursor = Cursors.Hand;
+        Leaf.Services.MergeThemeSwitcher.PaletteChanged += OnPaletteChanged;
+        Unloaded += (_, _) =>
+            Leaf.Services.MergeThemeSwitcher.PaletteChanged -= OnPaletteChanged;
     }
+
+    private void OnPaletteChanged(object? sender, EventArgs e) => InvalidateVisual();
 
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -147,7 +173,8 @@ public sealed class ConflictOverviewRuler : FrameworkElement
         if (LineCount <= 0 || ActualHeight <= 0) return;
 
         // Base fill: unchanged grey.
-        dc.DrawRectangle(UnchangedBrush, pen: null, new Rect(0, 0, ActualWidth, ActualHeight));
+        var br = _brushes;
+        dc.DrawRectangle(br.Unchanged, pen: null, new Rect(0, 0, ActualWidth, ActualHeight));
 
         // One pixel row per document line, scaled to the available height.
         var rowHeight = Math.Max(1.0, ActualHeight / LineCount);
@@ -173,15 +200,15 @@ public sealed class ConflictOverviewRuler : FrameworkElement
                 && state is not ResolutionState.Unresolved;
 
             var brush = resolved
-                ? ResolvedBrush
-                : (Side == MergePaneSide.Ours ? OursBrush : TheirsBrush);
+                ? br.Resolved
+                : (Side == MergePaneSide.Ours ? br.Ours : br.Theirs);
             dc.DrawRectangle(brush, pen: null, new Rect(0, y0, ActualWidth, h));
 
             // Add a small red top-marker for unresolved ranges so they stand out
             // at a glance even against a dense resolved-but-theirs tint.
             if (!resolved)
             {
-                dc.DrawRectangle(UnresolvedBrush, pen: null, new Rect(0, y0, ActualWidth, Math.Min(2.0, h)));
+                dc.DrawRectangle(br.Unresolved, pen: null, new Rect(0, y0, ActualWidth, Math.Min(2.0, h)));
             }
         }
     }

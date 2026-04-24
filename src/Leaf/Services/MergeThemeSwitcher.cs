@@ -75,6 +75,17 @@ public static class MergeThemeSwitcher
     /// </summary>
     public static bool CurrentIsLight => _currentIsLight;
 
+    /// <summary>
+    /// Raised after the merge palette dictionary has been swapped. Merge
+    /// controls that cache palette-derived brushes in static fields
+    /// subscribe here so they can re-resolve on a runtime theme flip —
+    /// <c>{DynamicResource Merge.*}</c> bindings re-resolve automatically,
+    /// but <c>private static readonly SolidColorBrush</c> caches (hot-
+    /// path rendering in OnRender) don't see the swap without explicit
+    /// invalidation.
+    /// </summary>
+    public static event EventHandler? PaletteChanged;
+
     private static void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
     {
         if (e.Category != UserPreferenceCategory.General) return;
@@ -112,6 +123,7 @@ public static class MergeThemeSwitcher
             if (md.Source == other)
             {
                 umbrella.MergedDictionaries[i] = new ResourceDictionary { Source = desired };
+                PaletteChanged?.Invoke(null, EventArgs.Empty);
                 return;
             }
         }

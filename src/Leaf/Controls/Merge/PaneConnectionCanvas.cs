@@ -98,44 +98,74 @@ public sealed class PaneConnectionCanvas : FrameworkElement
     // when this canvas is wrapped in a PaneCard.
     private const double CardCornerInset = 6.0;
 
-    // Palette-derived curve colours. Each side's border colour is tinted to
-    // ~69% alpha so the curve reads as an accent behind the pane backgrounds
-    // rather than a dominant graphic element.
-    private static readonly Color OursColor = MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Ours.Border.Color"), 0xB0);
-    private static readonly Color TheirsColor = MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color"), 0xB0);
-    private static readonly Color UnresolvedColor = MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color"), 0x80);
-    private static readonly Color ManualColor = MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.State.Warning.Color"), 0xC0);
-
-    // Frozen brushes — allocating one per-range per-frame was both wasteful
-    // and inconsistent with the pattern used by ConflictOverviewRuler.
-    private static readonly SolidColorBrush UnresolvedBrush = Freeze(new SolidColorBrush(UnresolvedColor));
-    private static readonly SolidColorBrush OursBrush = Freeze(new SolidColorBrush(OursColor));
-    private static readonly SolidColorBrush TheirsBrush = Freeze(new SolidColorBrush(TheirsColor));
-    private static readonly SolidColorBrush ManualBrush = Freeze(new SolidColorBrush(ManualColor));
-    private static readonly LinearGradientBrush BothBrush = FreezeGradient(
-        new LinearGradientBrush(OursColor, TheirsColor, angle: 0));
-
-    // Pre-frozen pens keyed by brush so OnRender doesn't allocate one pen
-    // per range per frame. Round-cap matches the arrowhead so the join
-    // between the 2 px bezier stroke and the triangle cap reads as
-    // continuous. All five pens freeze at static-init.
+    // Palette-derived curve chrome, wrapped for V8 runtime theme swap.
+    // Previously separate static readonly fields; now rebuilt atomically
+    // on MergeThemeSwitcher.PaletteChanged so a runtime theme flip
+    // repaints the connection ribbons correctly. Each side's border
+    // colour is tinted to ~69 % alpha so the curve reads as an accent
+    // behind the pane backgrounds rather than a dominant graphic element.
     private const double CurvePenThickness = 2.0;
-    private static readonly Pen UnresolvedPen = FreezePen(MakeCurvePen(UnresolvedBrush));
-    private static readonly Pen OursPen = FreezePen(MakeCurvePen(OursBrush));
-    private static readonly Pen TheirsPen = FreezePen(MakeCurvePen(TheirsBrush));
-    private static readonly Pen ManualPen = FreezePen(MakeCurvePen(ManualBrush));
-    private static readonly Pen BothPen = FreezePen(MakeCurvePen(BothBrush));
+
+    private sealed class ThemeBrushes
+    {
+        public Brush Unresolved = null!;
+        public Brush Ours = null!;
+        public Brush Theirs = null!;
+        public Brush Manual = null!;
+        public Brush Both = null!;
+        public Pen UnresolvedPen = null!;
+        public Pen OursPen = null!;
+        public Pen TheirsPen = null!;
+        public Pen ManualPen = null!;
+        public Pen BothPen = null!;
+
+        public static ThemeBrushes Build()
+        {
+            var oursColor = MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Ours.Border.Color"), 0xB0);
+            var theirsColor = MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color"), 0xB0);
+            var unresolvedColor = MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color"), 0x80);
+            var manualColor = MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.State.Warning.Color"), 0xC0);
+
+            var unresolved = FreezeBrush(new SolidColorBrush(unresolvedColor));
+            var ours = FreezeBrush(new SolidColorBrush(oursColor));
+            var theirs = FreezeBrush(new SolidColorBrush(theirsColor));
+            var manual = FreezeBrush(new SolidColorBrush(manualColor));
+            var both = FreezeGradient(new LinearGradientBrush(oursColor, theirsColor, angle: 0));
+            return new ThemeBrushes
+            {
+                Unresolved = unresolved,
+                Ours = ours,
+                Theirs = theirs,
+                Manual = manual,
+                Both = both,
+                UnresolvedPen = FreezePen(MakeCurvePen(unresolved)),
+                OursPen = FreezePen(MakeCurvePen(ours)),
+                TheirsPen = FreezePen(MakeCurvePen(theirs)),
+                ManualPen = FreezePen(MakeCurvePen(manual)),
+                BothPen = FreezePen(MakeCurvePen(both)),
+            };
+        }
+    }
+
+    private static volatile ThemeBrushes _brushes = ThemeBrushes.Build();
+
+    static PaneConnectionCanvas()
+    {
+        Leaf.Services.MergeThemeSwitcher.PaletteChanged += (_, _) =>
+            _brushes = ThemeBrushes.Build();
+    }
+
     private static Pen MakeCurvePen(Brush brush) => new(brush, CurvePenThickness)
     {
         StartLineCap = PenLineCap.Round,
         EndLineCap = PenLineCap.Round,
     };
 
-    private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
+    private static SolidColorBrush FreezeBrush(SolidColorBrush b) { b.Freeze(); return b; }
     private static LinearGradientBrush FreezeGradient(LinearGradientBrush b) { b.Freeze(); return b; }
     private static Pen FreezePen(Pen p) { p.Freeze(); return p; }
 
@@ -207,7 +237,17 @@ public sealed class PaneConnectionCanvas : FrameworkElement
         // range-specific and rebuilt each hover-change.
         IsHitTestVisible = true;
         SizeChanged += OnSizeChanged;
+        // V8: static _brushes bundle rebuilds on palette swap; each live
+        // instance still needs an explicit InvalidateVisual to repaint
+        // with the new colours. Mirrors the ConflictMinimapPreview /
+        // ConflictOverviewRuler subscribe-on-ctor, unsubscribe-on-Unloaded
+        // pattern so the event doesn't retain detached canvases.
+        Leaf.Services.MergeThemeSwitcher.PaletteChanged += OnPaletteChanged;
+        Unloaded += (_, _) =>
+            Leaf.Services.MergeThemeSwitcher.PaletteChanged -= OnPaletteChanged;
     }
+
+    private void OnPaletteChanged(object? sender, EventArgs e) => InvalidateVisual();
 
     private double _lastMaskHeight = -1;
 
@@ -393,28 +433,37 @@ public sealed class PaneConnectionCanvas : FrameworkElement
     /// <summary>
     /// State → brush kind mapping. Exposed as <c>internal</c> so tests can
     /// verify the colour-coding without standing up a real visual tree.
-    /// Returns one of the static Frozen brushes declared above.
+    /// Returns a brush from the current <see cref="ThemeBrushes"/> bundle,
+    /// which is rebuilt atomically on a runtime palette swap.
     /// </summary>
-    internal static Brush? BrushForState(ResolutionState? state) => state switch
+    internal static Brush? BrushForState(ResolutionState? state)
     {
-        null or ResolutionState.Unresolved => UnresolvedBrush,
-        ResolutionState.AcceptOurs => OursBrush,
-        ResolutionState.AcceptTheirs => TheirsBrush,
-        ResolutionState.AcceptBoth => BothBrush,
-        ResolutionState.Manual => ManualBrush,
-        _ => null,
-    };
+        var br = _brushes;
+        return state switch
+        {
+            null or ResolutionState.Unresolved => br.Unresolved,
+            ResolutionState.AcceptOurs => br.Ours,
+            ResolutionState.AcceptTheirs => br.Theirs,
+            ResolutionState.AcceptBoth => br.Both,
+            ResolutionState.Manual => br.Manual,
+            _ => null,
+        };
+    }
 
     /// <summary>Cached-pen lookup paired with <see cref="BrushForState"/>.</summary>
-    private static Pen? PenForState(ResolutionState? state) => state switch
+    private static Pen? PenForState(ResolutionState? state)
     {
-        null or ResolutionState.Unresolved => UnresolvedPen,
-        ResolutionState.AcceptOurs => OursPen,
-        ResolutionState.AcceptTheirs => TheirsPen,
-        ResolutionState.AcceptBoth => BothPen,
-        ResolutionState.Manual => ManualPen,
-        _ => null,
-    };
+        var br = _brushes;
+        return state switch
+        {
+            null or ResolutionState.Unresolved => br.UnresolvedPen,
+            ResolutionState.AcceptOurs => br.OursPen,
+            ResolutionState.AcceptTheirs => br.TheirsPen,
+            ResolutionState.AcceptBoth => br.BothPen,
+            ResolutionState.Manual => br.ManualPen,
+            _ => null,
+        };
+    }
 
     /// <summary>
     /// Compute the Y-coordinate (in canvas space) of a bezier endpoint for
