@@ -29,4 +29,21 @@
     <ProjectReference Include="..\..\src\Leaf\Leaf.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Real-world merge fixture sides extracted from the
+         merge-overhaul-test repo's src/Services/UserService.cs. Used by
+         GitMergeFileEngineTests to regression-test the walker against the
+         exact scenario that originally broke (ours/theirs heavily diverge
+         with repeating `var user = ...`, `}`, `return all` idioms). -->
+    <None Update="Services\Merge\UserServiceFixture\base.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Services\Merge\UserServiceFixture\ours.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Services\Merge\UserServiceFixture\theirs.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

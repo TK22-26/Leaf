@@ -1,0 +1,146 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace ExampleCorp.Services;
+
+/// <summary>
+/// Primary user-management service. Wraps the user store, handles
+/// authentication, and exposes a query surface for the frontend and
+/// administrative tooling.
+/// </summary>
+public class UserService
+{
+    private readonly IUserStore _store;
+    private readonly IPasswordHasher _hasher;
+    private readonly ILogger<UserService> _logger;
+
+    public UserService(IUserStore store, IPasswordHasher hasher, ILogger<UserService> logger)
+    {
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _hasher = hasher ?? throw new ArgumentNullException(nameof(hasher));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    public async Task<User?> GetByIdAsync(int id)
+    {
+        if (id <= 0) throw new ArgumentException("id must be positive", nameof(id));
+        return await _store.FindAsync(id);
+    }
+
+    public async Task<User?> GetByUsernameAsync(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            throw new ArgumentException("username required", nameof(username));
+        return await _store.FindByUsernameAsync(username);
+    }
+
+    public async Task<User> RegisterAsync(string username, string email, string password)
+    {
+        ValidateUsername(username);
+        ValidateEmail(email);
+        ValidatePassword(password);
+
+        var existing = await _store.FindByUsernameAsync(username);
+        if (existing is not null)
+        {
+            throw new InvalidOperationException($"Username '{username}' already taken.");
+        }
+
+        var hash = _hasher.Hash(password);
+        var user = new User
+        {
+            Username = username,
+            Email = email,
+            PasswordHash = hash,
+            CreatedAt = DateTime.UtcNow,
+            Status = UserStatus.Active,
+        };
+        await _store.AddAsync(user);
+        _logger.LogInformation("Registered user {Username}", username);
+        return user;
+    }
+
+    public async Task<bool> AuthenticateAsync(string username, string password)
+    {
+        var user = await _store.FindByUsernameAsync(username);
+        if (user is null) return false;
+        if (user.Status != UserStatus.Active) return false;
+        return _hasher.Verify(password, user.PasswordHash);
+    }
+
+    public async Task<IReadOnlyList<User>> SearchAsync(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return Array.Empty<User>();
+        var all = await _store.ListAsync();
+        return all
+            .Where(u => u.Username.Contains(query, StringComparison.OrdinalIgnoreCase)
+                     || u.Email.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    public async Task<bool> DeactivateAsync(int id)
+    {
+        var user = await _store.FindAsync(id);
+        if (user is null) return false;
+        user.Status = UserStatus.Deactivated;
+        user.DeactivatedAt = DateTime.UtcNow;
+        await _store.UpdateAsync(user);
+        _logger.LogInformation("Deactivated user {Id}", id);
+        return true;
+    }
+
+    public async Task<bool> ReactivateAsync(int id)
+    {
+        var user = await _store.FindAsync(id);
+        if (user is null) return false;
+        if (user.Status == UserStatus.Active) return true;
+        user.Status = UserStatus.Active;
+        user.DeactivatedAt = null;
+        await _store.UpdateAsync(user);
+        _logger.LogInformation("Reactivated user {Id}", id);
+        return true;
+    }
+
+    public async Task<int> CountActiveAsync()
+    {
+        var all = await _store.ListAsync();
+        return all.Count(u => u.Status == UserStatus.Active);
+    }
+
+    public async Task<IReadOnlyList<User>> GetRecentAsync(int days = 30)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-days);
+        var all = await _store.ListAsync();
+        return all
+            .Where(u => u.CreatedAt >= cutoff)
+            .OrderByDescending(u => u.CreatedAt)
+            .ToList();
+    }
+
+    private static void ValidateUsername(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            throw new ArgumentException("Username required.", nameof(username));
+        if (username.Length < 3 || username.Length > 32)
+            throw new ArgumentException("Username must be 3-32 characters.", nameof(username));
+    }
+
+    private static void ValidateEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            throw new ArgumentException("Email required.", nameof(email));
+        if (!email.Contains('@'))
+            throw new ArgumentException("Email is not valid.", nameof(email));
+    }
+
+    private static void ValidatePassword(string password)
+    {
+        if (string.IsNullOrWhiteSpace(password))
+            throw new ArgumentException("Password required.", nameof(password));
+        if (password.Length < 8)
+            throw new ArgumentException("Password must be at least 8 characters.", nameof(password));
+    }
+}

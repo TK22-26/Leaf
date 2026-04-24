@@ -592,6 +592,90 @@ public class GitMergeFileEngineTests
     }
 
     [Fact]
+    public async Task Merge_RealWorld_UserServiceFromMergeOverhaulFixture_ProcessesWithoutError()
+    {
+        // Exact reproduction from the merge-overhaul-test fixture. This is the
+        // real-world ours/theirs/base content that broke the walker repeatedly
+        // through three successive fixes (theirs lookahead, base no-track,
+        // 2-line lookahead). Keeping the fixture as an end-to-end regression
+        // gate prevents a future walker refactor from silently reintroducing
+        // the drift on content with heavy divergence + repeated C# idioms.
+        var engine = CreateEngine();
+        var fixtureDir = Path.Combine(AppContext.BaseDirectory, "Services", "Merge", "UserServiceFixture");
+        var baseText = File.ReadAllText(Path.Combine(fixtureDir, "base.txt"));
+        var oursText = File.ReadAllText(Path.Combine(fixtureDir, "ours.txt"));
+        var theirsText = File.ReadAllText(Path.Combine(fixtureDir, "theirs.txt"));
+
+        var doc = await engine.MergeAsync("UserService.cs", baseText, oursText, theirsText);
+        doc.Should().NotBeNull();
+        doc.HasConflicts.Should().BeTrue(because: "the fixture was authored to produce multiple conflicts");
+        doc.ConflictCount.Should().BeGreaterThan(5, because: "the fixture has 8 conflicts by construction");
+        // Every conflict must carve cleanly across all three sides. Pre-fix,
+        // the walker drifted and CarveSlice threw MergeEngineException.
+        foreach (var range in doc.Ranges)
+        {
+            range.Ours.StartLine.Should().BeGreaterThan(0);
+            range.Theirs.StartLine.Should().BeGreaterThan(0);
+            range.Base.StartLine.Should().BeGreaterThan(0);
+        }
+    }
+
+    [Fact]
+    public async Task Merge_ForwardSearch_TwoLineLookahead_RejectsCoincidentalIdiomPairs()
+    {
+        // Observed on UserService.cs at a later conflict than the first
+        // UserService repro: ours cursor jumped 42 lines via a `blank + "return all"`
+        // pair that coincidentally appeared both before a fluent-LINQ return in ours's
+        // GetRecentAsync and in the output (from theirs's broken-up AdminListAsync
+        // return). 1-line lookahead confirmed the jump; 2-line lookahead rejects it
+        // because the line AFTER "return all" differs between ours and theirs.
+        var engine = CreateEngine();
+        const string baseText =
+            "public class Q {\n" +
+            "    public int A() { return 1; }\n" +
+            "    public int B() { return 2; }\n" +
+            "}\n";
+        // Theirs: adds a new method C whose fluent-return starts `return all\n    .X\n`.
+        // Its 2-line prefix (`return all` + `    .X`) is unique to theirs.
+        const string theirsText =
+            "public class Q {\n" +
+            "    public int A() { return 1; }\n" +
+            "    public int B() { return 2; }\n" +
+            "    public IEnumerable<int> C() {\n" +
+            "        var all = new[] {1,2,3};\n" +
+            "\n" +
+            "        return all\n" +
+            "            .Where(x => x > 0)\n" +
+            "            .ToList();\n" +
+            "    }\n" +
+            "}\n";
+        // Ours: also adds a method D whose fluent-return starts `return all\n    .Y\n`
+        // at a DIFFERENT line. 1-line lookahead on `return all` would confirm a jump
+        // into D from elsewhere in ours; 2-line lookahead catches that `.Y` != `.Where`.
+        const string oursText =
+            "public class Q {\n" +
+            "    public int A() { return 1; }\n" +
+            "    public int B() { return 2; }\n" +
+            "\n" +
+            "    public IEnumerable<int> D() {\n" +
+            "        var all = new[] {1,2,3};\n" +
+            "\n" +
+            "        return all\n" +
+            "            .OrderByDescending(x => x)\n" +
+            "            .Take(2)\n" +
+            "            .ToList();\n" +
+            "    }\n" +
+            "}\n";
+
+        // No conflict expected if both sides cleanly add. But the walker must not
+        // drift while processing the auto-merged additions — any drift would cause
+        // downstream CarveSlice invariant failures on repeat runs with a conflict
+        // in the same file. Critical assertion: merge must not throw.
+        var doc = await engine.MergeAsync("Q.cs", baseText, oursText, theirsText);
+        doc.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task Merge_BaseCursor_DoesNotDriftOnHeavyOursTheirsDivergence()
     {
         // Observed on src/Services/UserService.cs: ours added an audit log /
