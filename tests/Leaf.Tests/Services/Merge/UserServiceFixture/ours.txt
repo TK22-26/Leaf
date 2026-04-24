@@ -1,0 +1,174 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace ExampleCorp.Services;
+
+/// <summary>
+/// Primary user-management service. Extended with audit logging, bulk
+/// query support, and a dedicated UserNotFoundException surface that
+/// distinguishes "not there" from "storage error".
+/// </summary>
+public class UserService
+{
+    private readonly IUserStore _store;
+    private readonly IPasswordHasher _hasher;
+    private readonly IAuditLog _audit;
+    private readonly ILogger<UserService> _logger;
+
+    public UserService(IUserStore store, IPasswordHasher hasher, IAuditLog audit, ILogger<UserService> logger)
+    {
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _hasher = hasher ?? throw new ArgumentNullException(nameof(hasher));
+        _audit = audit ?? throw new ArgumentNullException(nameof(audit));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    public async Task<User> GetByIdAsync(int id)
+    {
+        if (id <= 0) throw new ArgumentException("id must be positive", nameof(id));
+        var user = await _store.FindAsync(id);
+        if (user is null) throw new UserNotFoundException(id);
+        return user;
+    }
+
+    public async Task<User?> GetByUsernameAsync(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            throw new ArgumentException("username required", nameof(username));
+        return await _store.FindByUsernameAsync(username);
+    }
+
+    public async Task<User> RegisterAsync(string username, string email, string password)
+    {
+        ValidateUsername(username);
+        ValidateEmail(email);
+        ValidatePassword(password);
+
+        var existing = await _store.FindByUsernameAsync(username);
+        if (existing is not null)
+        {
+            throw new UsernameAlreadyTakenException(username);
+        }
+
+        var hash = _hasher.Hash(password);
+        var user = new User
+        {
+            Username = username,
+            Email = email,
+            PasswordHash = hash,
+            CreatedAt = DateTime.UtcNow,
+            Status = UserStatus.Active,
+        };
+        await _store.AddAsync(user);
+        await _audit.RecordAsync(AuditEvent.UserRegistered(user.Id, username));
+        _logger.LogInformation("Registered user {Username}", username);
+        return user;
+    }
+
+    public async Task<bool> AuthenticateAsync(string username, string password)
+    {
+        var user = await _store.FindByUsernameAsync(username);
+        if (user is null)
+        {
+            await _audit.RecordAsync(AuditEvent.FailedLogin(username, "unknown user"));
+            return false;
+        }
+        if (user.Status != UserStatus.Active)
+        {
+            await _audit.RecordAsync(AuditEvent.FailedLogin(username, "account inactive"));
+            return false;
+        }
+        var ok = _hasher.Verify(password, user.PasswordHash);
+        if (!ok) await _audit.RecordAsync(AuditEvent.FailedLogin(username, "bad password"));
+        return ok;
+    }
+
+    public async Task<IReadOnlyList<User>> SearchAsync(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return Array.Empty<User>();
+        var all = await _store.ListAsync();
+        return all
+            .Where(u => u.Username.Contains(query, StringComparison.OrdinalIgnoreCase)
+                     || u.Email.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<User>> GetAllAsync()
+    {
+        return (await _store.ListAsync()).ToList();
+    }
+
+    public async Task<bool> DeactivateAsync(int id, string reason)
+    {
+        var user = await _store.FindAsync(id);
+        if (user is null) return false;
+        user.Status = UserStatus.Deactivated;
+        user.DeactivatedAt = DateTime.UtcNow;
+        user.DeactivationReason = reason;
+        await _store.UpdateAsync(user);
+        await _audit.RecordAsync(AuditEvent.UserDeactivated(id, reason));
+        _logger.LogInformation("Deactivated user {Id}: {Reason}", id, reason);
+        return true;
+    }
+
+    public async Task<bool> ReactivateAsync(int id)
+    {
+        var user = await _store.FindAsync(id);
+        if (user is null) return false;
+        if (user.Status == UserStatus.Active) return true;
+        user.Status = UserStatus.Active;
+        user.DeactivatedAt = null;
+        user.DeactivationReason = null;
+        await _store.UpdateAsync(user);
+        await _audit.RecordAsync(AuditEvent.UserReactivated(id));
+        _logger.LogInformation("Reactivated user {Id}", id);
+        return true;
+    }
+
+    public async Task<int> CountActiveAsync()
+    {
+        var all = await _store.ListAsync();
+        return all.Count(u => u.Status == UserStatus.Active);
+    }
+
+    public async Task<IReadOnlyList<User>> GetRecentAsync(int days = 30)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-days);
+        var all = await _store.ListAsync();
+        return all
+            .Where(u => u.CreatedAt >= cutoff)
+            .OrderByDescending(u => u.CreatedAt)
+            .ToList();
+    }
+
+    private static void ValidateUsername(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            throw new ArgumentException("Username required.", nameof(username));
+        if (username.Length < 3 || username.Length > 40)
+            throw new ArgumentException("Username must be 3-40 characters.", nameof(username));
+        if (username.Contains(' '))
+            throw new ArgumentException("Username cannot contain spaces.", nameof(username));
+    }
+
+    private static void ValidateEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            throw new ArgumentException("Email required.", nameof(email));
+        if (!email.Contains('@') || !email.Contains('.'))
+            throw new ArgumentException("Email is not valid.", nameof(email));
+    }
+
+    private static void ValidatePassword(string password)
+    {
+        if (string.IsNullOrWhiteSpace(password))
+            throw new ArgumentException("Password required.", nameof(password));
+        if (password.Length < 10)
+            throw new ArgumentException("Password must be at least 10 characters.", nameof(password));
+        if (password.ToLower() == password)
+            throw new ArgumentException("Password must contain an uppercase letter.", nameof(password));
+    }
+}

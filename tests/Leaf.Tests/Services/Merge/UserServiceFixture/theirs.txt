@@ -1,0 +1,148 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace ExampleCorp.Services;
+
+/// <summary>
+/// Primary user-management service. Refactored to return Result<T> instead
+/// of throwing on validation failures, so call sites dont swallow errors.
+/// </summary>
+public class UserService
+{
+    private readonly IUserStore _store;
+    private readonly IPasswordHasher _hasher;
+    private readonly ILogger<UserService> _logger;
+    private readonly IClock _clock;
+
+    public UserService(IUserStore store, IPasswordHasher hasher, ILogger<UserService> logger, IClock clock)
+    {
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _hasher = hasher ?? throw new ArgumentNullException(nameof(hasher));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+    }
+
+    public async Task<User?> GetByIdAsync(int id)
+    {
+        if (id <= 0) throw new ArgumentException("id must be positive", nameof(id));
+        return await _store.FindAsync(id);
+    }
+
+    public async Task<User?> GetByUsernameAsync(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            throw new ArgumentException("username required", nameof(username));
+        return await _store.FindByUsernameAsync(username);
+    }
+
+    public async Task<Result<User>> RegisterAsync(string username, string email, string password)
+    {
+        var validation = ValidateRegistration(username, email, password);
+        if (validation.IsFailure) return validation.Cast<User>();
+
+        var existing = await _store.FindByUsernameAsync(username);
+        if (existing is not null)
+        {
+            return Result<User>.Failure(RegistrationError.UsernameTaken);
+        }
+
+        var hash = _hasher.Hash(password);
+        var user = new User
+        {
+            Username = username,
+            Email = email,
+            PasswordHash = hash,
+            CreatedAt = _clock.UtcNow,
+            Status = UserStatus.Active,
+        };
+        await _store.AddAsync(user);
+        _logger.LogInformation("user.registered {Username} {UserId}", username, user.Id);
+        return Result<User>.Success(user);
+    }
+
+    public async Task<AuthenticationResult> AuthenticateAsync(string username, string password)
+    {
+        var user = await _store.FindByUsernameAsync(username);
+        if (user is null) return AuthenticationResult.UserNotFound;
+        if (user.Status != UserStatus.Active) return AuthenticationResult.AccountInactive;
+        if (!_hasher.Verify(password, user.PasswordHash))
+            return AuthenticationResult.InvalidPassword;
+        return AuthenticationResult.Success(user);
+    }
+
+    public async Task<IReadOnlyList<User>> SearchAsync(string query, int limit = 50)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return Array.Empty<User>();
+        var all = await _store.ListAsync();
+        return all
+            .Where(u => u.Username.Contains(query, StringComparison.OrdinalIgnoreCase)
+                     || u.Email.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Take(limit)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<User>> AdminListAsync(int page, int pageSize)
+    {
+        if (page < 1) page = 1;
+        if (pageSize < 1 || pageSize > 500) pageSize = 50;
+        var all = await _store.ListAsync();
+        return all
+            .OrderByDescending(u => u.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+    }
+
+    public async Task<bool> DeactivateAsync(int id)
+    {
+        var user = await _store.FindAsync(id);
+        if (user is null) return false;
+        user.Status = UserStatus.Deactivated;
+        user.DeactivatedAt = _clock.UtcNow;
+        await _store.UpdateAsync(user);
+        _logger.LogInformation("user.deactivated {UserId}", id);
+        return true;
+    }
+
+    public async Task<bool> ReactivateAsync(int id)
+    {
+        var user = await _store.FindAsync(id);
+        if (user is null) return false;
+        if (user.Status == UserStatus.Active) return true;
+        user.Status = UserStatus.Active;
+        user.DeactivatedAt = null;
+        await _store.UpdateAsync(user);
+        _logger.LogInformation("user.reactivated {UserId}", id);
+        return true;
+    }
+
+    public async Task<int> CountActiveAsync()
+    {
+        var all = await _store.ListAsync();
+        return all.Count(u => u.Status == UserStatus.Active);
+    }
+
+    public async Task<IReadOnlyList<User>> GetRecentAsync(int days = 30)
+    {
+        var cutoff = _clock.UtcNow.AddDays(-days);
+        var all = await _store.ListAsync();
+        return all
+            .Where(u => u.CreatedAt >= cutoff)
+            .OrderByDescending(u => u.CreatedAt)
+            .ToList();
+    }
+
+    private static Result ValidateRegistration(string username, string email, string password)
+    {
+        if (string.IsNullOrWhiteSpace(username) || username.Length < 3 || username.Length > 32)
+            return Result.Failure(RegistrationError.InvalidUsername);
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+            return Result.Failure(RegistrationError.InvalidEmail);
+        if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
+            return Result.Failure(RegistrationError.WeakPassword);
+        return Result.Success();
+    }
+}

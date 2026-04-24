@@ -259,11 +259,8 @@ public sealed class GitMergeFileEngine : IMergeEngine
             int walkStartBaseCursor = baseCursor;
             while (outputIdx < conflictStart)
             {
-                var nextLine = outputIdx + 1 < mergedLines.Count
-                    ? mergedLines[outputIdx + 1]
-                    : null;
                 AdvanceCursorsForAutoMergedLine(
-                    mergedLines[outputIdx], nextLine,
+                    mergedLines[outputIdx],
                     oursLines, theirsLines,
                     ref oursCursor, ref theirsCursor,
                     outputIdx + 1);
@@ -317,11 +314,8 @@ public sealed class GitMergeFileEngine : IMergeEngine
         // saw — silent corruption would reach the commit gate.
         while (outputIdx < mergedLines.Count)
         {
-            var nextLine = outputIdx + 1 < mergedLines.Count
-                ? mergedLines[outputIdx + 1]
-                : null;
             AdvanceCursorsForAutoMergedLine(
-                mergedLines[outputIdx], nextLine,
+                mergedLines[outputIdx],
                 oursLines, theirsLines,
                 ref oursCursor, ref theirsCursor,
                 outputIdx + 1);
@@ -369,7 +363,6 @@ public sealed class GitMergeFileEngine : IMergeEngine
     /// </remarks>
     private static void AdvanceCursorsForAutoMergedLine(
         string outputLine,
-        string? nextOutputLine,
         IReadOnlyList<string> oursLines,
         IReadOnlyList<string> theirsLines,
         ref int oursCursor,
@@ -391,8 +384,8 @@ public sealed class GitMergeFileEngine : IMergeEngine
             }
         }
 
-        TryAdvanceCursor(ref oursCursor, oursLines, outputLine, nextOutputLine, "ours");
-        TryAdvanceCursor(ref theirsCursor, theirsLines, outputLine, nextOutputLine, "theirs");
+        TryAdvanceCursor(ref oursCursor, oursLines, outputLine, "ours");
+        TryAdvanceCursor(ref theirsCursor, theirsLines, outputLine, "theirs");
     }
 
     /// <summary>
@@ -425,95 +418,51 @@ public sealed class GitMergeFileEngine : IMergeEngine
     }
 
     /// <summary>
-    /// Advance <paramref name="cursor"/> past <paramref name="outputLine"/>. Fast path
-    /// is an exact match at the current cursor. Slow path is a forward-search — but
-    /// with <b>lookahead confirmation</b> to reject singleton false positives. A
-    /// candidate match at position <c>i</c> is only accepted if <c>lines[i + 1]</c>
-    /// matches <paramref name="nextOutputLine"/>.
+    /// Advance <paramref name="cursor"/> past <paramref name="outputLine"/> if and only
+    /// if the line at the current cursor position matches — i.e., fast-path only.
+    /// The slow-path forward-search that previous versions used (with increasing
+    /// degrees of lookahead confirmation) was removed after three rounds of drift
+    /// bugs in real-world merges: any finite-N lookahead can be fooled by N-line
+    /// idiom coincidences in large C# files, producing cursor jumps of 40+ lines
+    /// that then cause downstream <see cref="CarveSlice"/> invariant failures.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Without lookahead, the slow-path would jump to the first forward occurrence of a
-    /// repeated line (e.g. <c>var user = ...;</c>, <c>{</c>, <c>}</c>, blank), which
-    /// in real C# files can drift the cursor dozens of lines past the intended position.
-    /// The subsequent <see cref="CarveSlice"/> then fails the invariant check and the
-    /// user sees "Merge engine could not process this file." Lookahead confirmation
-    /// requires two consecutive lines to match, which rules out singleton drift.
+    /// Removing the slow-path means the cursor may lag behind its "true" position
+    /// when one side's content appears in the output (the cursor doesn't advance
+    /// through it). <see cref="CarveSlice"/>'s forward-search handles this:
+    /// conflicts in zdiff3 output appear in source-order on each side, so a
+    /// conflict's OursLines / TheirsLines content is always found forward of the
+    /// previous conflict's corresponding slice end. For the universal case of
+    /// distinctive conflict content (method bodies, statements), the forward
+    /// search is unambiguous.
     /// </para>
     /// <para>
-    /// <b>Fallback cases</b> where lookahead can't help:
-    /// <list type="bullet">
-    /// <item><paramref name="nextOutputLine"/> is <c>null</c> (end of output) — no
-    /// confirmation available. Accept first match. Drift risk is bounded because we're
-    /// at EOF; nothing downstream will <see cref="CarveSlice"/> against a drifted cursor.</item>
-    /// <item><paramref name="nextOutputLine"/> is a zdiff3 marker — markers never appear
-    /// in content sides, so confirmation can never pass. Accept first match. The
-    /// conflict block that follows immediately re-pins all three cursors via
-    /// <see cref="CarveSlice"/>, so drift risk is bounded.</item>
-    /// </list>
+    /// The pathological case — a conflict's side content appears in that side's
+    /// haystack at multiple positions, one before and one at the true location —
+    /// was ALSO fragile under the old walker (slow-path drift could jump past the
+    /// real location). Now it fails loudly via the invariant-violation throw,
+    /// which the VM's engine-error overlay handles gracefully (Use Ours / Use
+    /// Theirs / external merge tool).
     /// </para>
     /// </remarks>
     private static void TryAdvanceCursor(
         ref int cursor,
         IReadOnlyList<string> lines,
         string outputLine,
-        string? nextOutputLine,
         string sideName = "?")
     {
-        // Fast path: exact match at the current cursor (keeps cursors aligned across
-        // repeated content and prevents jumps that would skip real occurrences).
         if (cursor < lines.Count && string.Equals(lines[cursor], outputLine, StringComparison.Ordinal))
         {
             cursor++;
             return;
         }
 
-        int startedAt = cursor;
-        bool hasLookahead = nextOutputLine is not null && !LooksLikeMarker(nextOutputLine);
-
-        for (int i = cursor + 1; i < lines.Count; i++)
-        {
-            if (!string.Equals(lines[i], outputLine, StringComparison.Ordinal)) continue;
-
-            if (!hasLookahead)
-            {
-                // EOF or about to enter a conflict — no reliable confirmation signal.
-                // Fall back to first-match (pre-fix behaviour). CarveSlice re-pins
-                // all three cursors immediately after, so drift risk is bounded.
-                cursor = i + 1;
-                Log.Info("MergeEngine",
-                    $"  [drift-unconfirmed] {sideName} cursor first-match-jumped " +
-                    $"{startedAt}->{cursor} (no lookahead: EOF or pre-marker)");
-                return;
-            }
-
-            // Confirmation: the next line in the haystack must match the next output line.
-            // A singleton false positive (e.g. an isolated blank line or `}`) will almost
-            // never have the correct successor; a genuine one-sided deletion will.
-            if (i + 1 < lines.Count
-                && string.Equals(lines[i + 1], nextOutputLine, StringComparison.Ordinal))
-            {
-                cursor = i + 1;
-                Log.Info("MergeEngine",
-                    $"  [drift-confirmed] {sideName} cursor jumped {startedAt}->{cursor} " +
-                    $"(next line confirmed: {Preview(nextOutputLine!)})");
-                return;
-            }
-
-            Log.Info("MergeEngine",
-                $"  [drift-rejected] {sideName} candidate at L{i + 1} failed lookahead " +
-                $"(next line was {(i + 1 < lines.Count ? Preview(lines[i + 1]) : "<eof>")}, " +
-                $"expected {Preview(nextOutputLine!)})");
-            // Keep scanning for a confirmed match further ahead — do not fall back
-            // to this unconfirmed candidate (that reintroduces the bug).
-        }
-
-        // Nothing confirmed (or nothing found). Leave cursor alone; CarveSlice has its
-        // own forward-search fallback that will either succeed or throw with a clean
-        // forensic dump.
+        // No fast-path match. Cursor stays put; CarveSlice at the next conflict
+        // will forward-search from here to locate the conflict's side content.
         Log.Info("MergeEngine",
-            $"  [miss ] {sideName} cursor stuck at {startedAt} (line {startedAt + 1}); " +
-            $"output line not found: {Preview(outputLine)}");
+            $"  [hold ] {sideName} cursor stays at {cursor} (line {cursor + 1}); " +
+            $"output line {Preview(outputLine)} not at cursor — likely from other side");
     }
 
     private static string Preview(string line)
