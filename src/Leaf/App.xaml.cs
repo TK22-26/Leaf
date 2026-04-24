@@ -69,6 +69,11 @@ public partial class App : Application
 
         settingsService.MigrateCredentialsIfNeeded(credentialService);
 
+        // V8: keep the merge-editor palette in lockstep with the OS theme.
+        // Must run before the first merge editor window renders so its
+        // bindings resolve against the correct palette on first paint.
+        MergeThemeSwitcher.Initialize();
+
         // Check for command-line arguments
         if (e.Args.Length > 0)
         {

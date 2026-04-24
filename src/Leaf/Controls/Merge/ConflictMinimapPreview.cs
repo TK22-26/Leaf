@@ -136,24 +136,54 @@ public sealed class ConflictMinimapPreview : FrameworkElement
     // Palette-derived brushes. Sketch = flat dim foreground for non-
     // whitespace character runs; region overlays = same translucent tints
     // the ConflictOverviewRuler uses so the two surfaces read consistently.
-    private static readonly Brush SketchBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Text.Secondary.Color"), 0x88)));
-    private static readonly Brush ViewportBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Text.Primary.Color"), 0x22)));
-    private static readonly Pen ViewportBorderPen = FreezePen(new Pen(
-        new SolidColorBrush(MergePaletteResources.WithAlpha(
-            MergePaletteResources.ResolveColor("Merge.Border.Strong.Color"), 0xAA)),
-        thickness: 1.0));
-    private static readonly Brush OursRegionBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Ours.Border.Color"), 0x55)));
-    private static readonly Brush TheirsRegionBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color"), 0x55)));
-    private static readonly Brush ResolvedRegionBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.State.Resolved.Color"), 0x55)));
-    private static readonly Brush UnresolvedRegionBrush = Freeze(new SolidColorBrush(MergePaletteResources.WithAlpha(
-        MergePaletteResources.ResolveColor("Merge.State.Unresolved.Color"), 0x55)));
+    // Wrapped in a ThemeBrushes bundle so V8's MergeThemeSwitcher.PaletteChanged
+    // event can invalidate and re-resolve on a runtime theme flip.
+    private sealed class ThemeBrushes
+    {
+        public Brush Sketch = null!;
+        public Brush Viewport = null!;
+        public Pen ViewportBorderPen = null!;
+        public Brush OursRegion = null!;
+        public Brush TheirsRegion = null!;
+        public Brush ResolvedRegion = null!;
+        public Brush UnresolvedRegion = null!;
 
-    private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
+        public static ThemeBrushes Build() => new()
+        {
+            Sketch = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Text.Secondary.Color"), 0x88))),
+            Viewport = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Text.Primary.Color"), 0x22))),
+            ViewportBorderPen = FreezePen(new Pen(
+                new SolidColorBrush(MergePaletteResources.WithAlpha(
+                    MergePaletteResources.ResolveColor("Merge.Border.Strong.Color"), 0xAA)),
+                thickness: 1.0)),
+            OursRegion = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Ours.Border.Color"), 0x55))),
+            TheirsRegion = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color"), 0x55))),
+            ResolvedRegion = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.State.Resolved.Color"), 0x55))),
+            UnresolvedRegion = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.State.Unresolved.Color"), 0x55))),
+        };
+    }
+
+    // Volatile so the UserPreferenceChanged-driven rebuild publishes the
+    // new bundle safely to concurrent OnRender readers. Reassignment is
+    // atomic on reference-sized fields, so OnRender sees either the old
+    // or new bundle — never a torn value.
+    private static volatile ThemeBrushes _brushes = ThemeBrushes.Build();
+
+    static ConflictMinimapPreview()
+    {
+        // Subscribe once at type-init. MergeThemeSwitcher's lifetime is
+        // the app; no unsubscribe needed.
+        Leaf.Services.MergeThemeSwitcher.PaletteChanged += (_, _) =>
+            _brushes = ThemeBrushes.Build();
+    }
+
+    private static SolidColorBrush FreezeBrush(SolidColorBrush b) { b.Freeze(); return b; }
     private static Pen FreezePen(Pen p) { p.Freeze(); return p; }
 
     public ConflictMinimapPreview()
@@ -162,7 +192,15 @@ public sealed class ConflictMinimapPreview : FrameworkElement
         Focusable = false;
         Width = PreviewWidth;
         Cursor = Cursors.Hand;
+        // Per-instance subscription repaints the control after a theme
+        // swap. Static type-init rebuilds the shared brush bundle; this
+        // tells every live instance to re-render with the new bundle.
+        Leaf.Services.MergeThemeSwitcher.PaletteChanged += OnPaletteChanged;
+        Unloaded += (_, _) =>
+            Leaf.Services.MergeThemeSwitcher.PaletteChanged -= OnPaletteChanged;
     }
+
+    private void OnPaletteChanged(object? sender, EventArgs e) => InvalidateVisual();
 
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -193,7 +231,7 @@ public sealed class ConflictMinimapPreview : FrameworkElement
                 {
                     var x0 = Math.Min(runStart * charWidth, PreviewWidth);
                     var x1 = Math.Min(col * charWidth, PreviewWidth);
-                    dc.DrawRectangle(SketchBrush, pen: null,
+                    dc.DrawRectangle(_brushes.Sketch, pen: null,
                         new Rect(x0, y, Math.Max(0.5, x1 - x0), LineRowHeight - 0.5));
                     runStart = -1;
                 }
@@ -220,14 +258,14 @@ public sealed class ConflictMinimapPreview : FrameworkElement
             if (!range.IsConflicting)
             {
                 // Auto-merged region — tint in the side's colour at low alpha.
-                regionBrush = Side == MergePaneSide.Ours ? OursRegionBrush : TheirsRegionBrush;
+                regionBrush = Side == MergePaneSide.Ours ? _brushes.OursRegion : _brushes.TheirsRegion;
             }
             else
             {
                 var resolved = RangeStates is not null
                     && RangeStates.TryGetValue(range.Index, out var state)
                     && state is not ResolutionState.Unresolved;
-                regionBrush = resolved ? ResolvedRegionBrush : UnresolvedRegionBrush;
+                regionBrush = resolved ? _brushes.ResolvedRegion : _brushes.UnresolvedRegion;
             }
             dc.DrawRectangle(regionBrush, pen: null, new Rect(0, y0, ActualWidth, Math.Max(1.0, y1 - y0)));
         }
@@ -247,7 +285,7 @@ public sealed class ConflictMinimapPreview : FrameworkElement
             viewH = Math.Min(viewH, ActualHeight - viewY);
             if (viewH > 0)
             {
-                dc.DrawRectangle(ViewportBrush, ViewportBorderPen,
+                dc.DrawRectangle(_brushes.Viewport, _brushes.ViewportBorderPen,
                     new Rect(0.5, viewY + 0.5, ActualWidth - 1, viewH - 1));
             }
         }

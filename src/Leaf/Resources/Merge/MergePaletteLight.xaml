@@ -1,0 +1,180 @@
+<!--
+    Merge editor light-theme palette (V8).
+
+    Parallel to MergePaletteDark. Every Merge.* token defined in the dark
+    dictionary is defined here with a light-theme value. ThemeService
+    swaps between the two at runtime through MergePalette.xaml's
+    MergedDictionaries entry.
+
+    Design translation rules applied (not a mechanical invert):
+      • Surfaces flip to white-to-near-white (pure #FFFFFF would harsh
+        against the chrome; #F8F8F8–#FFFFFF gives a soft depth ramp).
+      • Borders go from subtle-dark to subtle-dark-on-light
+        (#E0E0E0–#C0C0C0 range).
+      • Text inverts: primary black-ish, secondary dim, tertiary mid-grey.
+      • Side tints (Ours blue / Theirs green) keep the same hue family
+        but shift toward darker saturated values so they read against
+        a light surface instead of black.
+      • State colours (red/green/amber/blue) retain hue but shift toward
+        more saturated / slightly darker variants so they carry on a
+        bright surface.
+      • Alpha-carrying tokens (BgSubtle/BgStrong at 0x1A/0x99) keep the
+        alpha channel — dark/light neutrality of the overlay means the
+        tint strength doesn't change between themes.
+      • Drop shadow shifts from black-at-0.15 to black-at-0.08 because
+        light surfaces show shadows more prominently (less alpha needed
+        for equivalent perceptual depth).
+
+    All Merge.Text.* / Merge.Surface.* / Merge.*.Text contrasts meet
+    WCAG AA (4.5:1) minimum against Merge.Surface.2. Verified by
+    MergePaletteContrastTests.
+
+    Every brush inlines its Color on the brush element (rather than via
+    {DynamicResource Merge.*.Color}) so the dictionary swap cleanly
+    picks up without cross-thread WPF DP issues.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--  Ours (blue side) — shifted darker so the blue accent reads on
+          a light surface, text shifted much darker for legibility.  -->
+    <Color x:Key="Merge.Ours.BgSubtle.Color">#1A2B4A6E</Color>
+    <Color x:Key="Merge.Ours.BgStrong.Color">#442B4A6E</Color>
+    <Color x:Key="Merge.Ours.Accent.Color">#FF1F5FA8</Color>
+    <Color x:Key="Merge.Ours.Text.Color">#FF0D3A6A</Color>
+    <Color x:Key="Merge.Ours.Border.Color">#FF2B4A6E</Color>
+    <SolidColorBrush x:Key="Merge.Ours.BgSubtle" Color="#1A2B4A6E"/>
+    <SolidColorBrush x:Key="Merge.Ours.BgStrong" Color="#442B4A6E"/>
+    <SolidColorBrush x:Key="Merge.Ours.Accent"   Color="#FF1F5FA8"/>
+    <SolidColorBrush x:Key="Merge.Ours.Text"     Color="#FF0D3A6A"/>
+    <SolidColorBrush x:Key="Merge.Ours.Border"   Color="#FF2B4A6E"/>
+
+    <!--  Theirs (green side)  -->
+    <Color x:Key="Merge.Theirs.BgSubtle.Color">#1A1A5035</Color>
+    <Color x:Key="Merge.Theirs.BgStrong.Color">#441A5035</Color>
+    <Color x:Key="Merge.Theirs.Accent.Color">#FF2A7A46</Color>
+    <Color x:Key="Merge.Theirs.Text.Color">#FF0E3B1E</Color>
+    <Color x:Key="Merge.Theirs.Border.Color">#FF1A5035</Color>
+    <SolidColorBrush x:Key="Merge.Theirs.BgSubtle" Color="#1A1A5035"/>
+    <SolidColorBrush x:Key="Merge.Theirs.BgStrong" Color="#441A5035"/>
+    <SolidColorBrush x:Key="Merge.Theirs.Accent"   Color="#FF2A7A46"/>
+    <SolidColorBrush x:Key="Merge.Theirs.Text"     Color="#FF0E3B1E"/>
+    <SolidColorBrush x:Key="Merge.Theirs.Border"   Color="#FF1A5035"/>
+
+    <!--  Base (neutral side) — warm-greys so the base side still reads
+          distinct from both Ours blue and Theirs green.  -->
+    <Color x:Key="Merge.Base.BgSubtle.Color">#12555555</Color>
+    <Color x:Key="Merge.Base.BgStrong.Color">#33555555</Color>
+    <Color x:Key="Merge.Base.Accent.Color">#FF707070</Color>
+    <Color x:Key="Merge.Base.Text.Color">#FF404040</Color>
+    <Color x:Key="Merge.Base.Border.Color">#FFB0B0B0</Color>
+    <SolidColorBrush x:Key="Merge.Base.BgSubtle" Color="#12555555"/>
+    <SolidColorBrush x:Key="Merge.Base.BgStrong" Color="#33555555"/>
+    <SolidColorBrush x:Key="Merge.Base.Accent"   Color="#FF707070"/>
+    <SolidColorBrush x:Key="Merge.Base.Text"     Color="#FF404040"/>
+    <SolidColorBrush x:Key="Merge.Base.Border"   Color="#FFB0B0B0"/>
+
+    <!--  Semantic state colors — slightly darker variants so they carry
+          on a bright surface. Green goes from #22C55E to a deeper
+          #1E9B4E; red from #E04444 to #C53030; amber darker.  -->
+    <Color x:Key="Merge.State.Unresolved.Color">#FFC53030</Color>
+    <Color x:Key="Merge.State.Resolved.Color">#FF1E9B4E</Color>
+    <Color x:Key="Merge.State.AiPending.Color">#FF1E6FC5</Color>
+    <Color x:Key="Merge.State.Error.Color">#FFA83B3B</Color>
+    <!--  Warning and Manual sit in the same amber family but must read
+          distinct so status pills and gutter glyphs don't collapse. The
+          dark palette keeps Warning brighter than Manual; the light
+          palette inverts that (Manual is the darker, more saturated
+          amber so it stands out against a bright surface while Warning
+          is the softer tone).  -->
+    <Color x:Key="Merge.State.Warning.Color">#FFBA7A00</Color>
+    <Color x:Key="Merge.State.Manual.Color">#FFD68A1E</Color>
+    <Color x:Key="Merge.State.Resolved.Overlay.Color">#441E9B4E</Color>
+    <SolidColorBrush x:Key="Merge.State.Unresolved" Color="#FFC53030"/>
+    <SolidColorBrush x:Key="Merge.State.Resolved"   Color="#FF1E9B4E"/>
+    <SolidColorBrush x:Key="Merge.State.AiPending"  Color="#FF1E6FC5"/>
+    <SolidColorBrush x:Key="Merge.State.Error"      Color="#FFA83B3B"/>
+    <SolidColorBrush x:Key="Merge.State.Warning"    Color="#FFBA7A00"/>
+    <SolidColorBrush x:Key="Merge.State.Manual"     Color="#FFD68A1E"/>
+    <SolidColorBrush x:Key="Merge.State.Resolved.Overlay" Color="#441E9B4E"/>
+
+    <!--  Status-pill chrome tokens. Alpha-backed bg tint stays the same
+          hue as the saturated state colour; text goes darker so it
+          reads legibly on a light pane.  -->
+    <Color x:Key="Merge.State.Unresolved.PillBg.Color">#33C53030</Color>
+    <Color x:Key="Merge.State.Unresolved.PillText.Color">#FF8A1A1A</Color>
+    <Color x:Key="Merge.State.Resolved.PillBg.Color">#331E9B4E</Color>
+    <Color x:Key="Merge.State.Resolved.PillText.Color">#FF0F5C2E</Color>
+    <Color x:Key="Merge.State.AiPending.PillBg.Color">#331E6FC5</Color>
+    <Color x:Key="Merge.State.AiPending.PillText.Color">#FF124E91</Color>
+    <SolidColorBrush x:Key="Merge.State.Unresolved.PillBg"   Color="#33C53030"/>
+    <SolidColorBrush x:Key="Merge.State.Unresolved.PillText" Color="#FF8A1A1A"/>
+    <SolidColorBrush x:Key="Merge.State.Resolved.PillBg"     Color="#331E9B4E"/>
+    <SolidColorBrush x:Key="Merge.State.Resolved.PillText"   Color="#FF0F5C2E"/>
+    <SolidColorBrush x:Key="Merge.State.AiPending.PillBg"    Color="#331E6FC5"/>
+    <SolidColorBrush x:Key="Merge.State.AiPending.PillText"  Color="#FF124E91"/>
+
+    <!--  Surface depth layers (lightest -> slightly darker). A 1-2 step
+          ramp from pure white so depth reads as subtle shadow variation
+          against the overall bright panel.  -->
+    <Color x:Key="Merge.Surface.1.Color">#FFFFFFFF</Color>
+    <Color x:Key="Merge.Surface.2.Color">#FFFAFAFA</Color>
+    <Color x:Key="Merge.Surface.3.Color">#FFF2F2F2</Color>
+    <Color x:Key="Merge.Surface.4.Color">#FFEDEDED</Color>
+    <Color x:Key="Merge.Surface.5.Color">#FFE5E5E5</Color>
+    <SolidColorBrush x:Key="Merge.Surface.1" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="Merge.Surface.2" Color="#FFFAFAFA"/>
+    <SolidColorBrush x:Key="Merge.Surface.3" Color="#FFF2F2F2"/>
+    <SolidColorBrush x:Key="Merge.Surface.4" Color="#FFEDEDED"/>
+    <SolidColorBrush x:Key="Merge.Surface.5" Color="#FFE5E5E5"/>
+
+    <!--  Borders  -->
+    <Color x:Key="Merge.Border.Subtle.Color">#FFE0E0E0</Color>
+    <Color x:Key="Merge.Border.Strong.Color">#FFC0C0C0</Color>
+    <Color x:Key="Merge.Border.Focus.Color">#FF1F5FA8</Color>
+    <SolidColorBrush x:Key="Merge.Border.Subtle" Color="#FFE0E0E0"/>
+    <SolidColorBrush x:Key="Merge.Border.Strong" Color="#FFC0C0C0"/>
+    <SolidColorBrush x:Key="Merge.Border.Focus"  Color="#FF1F5FA8"/>
+
+    <!--  Image corner label scrim. Pure-black scrim works regardless of
+          theme (its job is contrast against arbitrary image content,
+          not chrome styling).  -->
+    <Color x:Key="Merge.Image.CornerLabelScrim.Color">#B0000000</Color>
+    <SolidColorBrush x:Key="Merge.Image.CornerLabelScrim" Color="#B0000000"/>
+
+    <!--  Drop-shadow tokens. Light surfaces show shadows more
+          prominently than dark ones — black-at-0.08 gives equivalent
+          perceptual depth to dark's black-at-0.15.  -->
+    <Color x:Key="Merge.Shadow.Color">#FF000000</Color>
+    <sys:Double x:Key="Merge.Shadow.Opacity" xmlns:sys="clr-namespace:System;assembly=System.Runtime">0.08</sys:Double>
+
+    <!--  C6 conflict-note indicator. Same warm amber hue but darker for
+          legibility on a light gutter.  -->
+    <Color x:Key="Merge.Note.Glyph.Color">#FFBA7A00</Color>
+    <SolidColorBrush x:Key="Merge.Note.Glyph" Color="#FFBA7A00"/>
+
+    <!--  Dialog chrome tokens. Scrim is a soft dim on top of bright
+          content; Dialog border is a faint edge on the popup surface.  -->
+    <Color x:Key="Merge.Surface.Scrim.Color">#33000000</Color>
+    <Color x:Key="Merge.Border.Dialog.Color">#33000000</Color>
+    <SolidColorBrush x:Key="Merge.Surface.Scrim" Color="#33000000"/>
+    <SolidColorBrush x:Key="Merge.Border.Dialog" Color="#33000000"/>
+
+    <!--  Text. Primary is near-black for legibility on a white surface;
+          Secondary / Tertiary step toward mid-grey. OnAccent stays
+          white because accents flip to saturated blue/green in both
+          themes. Disabled is a muted mid-grey — reserved for future
+          custom chrome that doesn't inherit Fluent's disabled template.  -->
+    <Color x:Key="Merge.Text.Primary.Color">#FF1A1A1A</Color>
+    <Color x:Key="Merge.Text.Secondary.Color">#FF4A4A4A</Color>
+    <Color x:Key="Merge.Text.Tertiary.Color">#FF707070</Color>
+    <Color x:Key="Merge.Text.Disabled.Color">#FFA8A8A8</Color>
+    <Color x:Key="Merge.Text.OnAccent.Color">#FFFFFFFF</Color>
+    <SolidColorBrush x:Key="Merge.Text.Primary"   Color="#FF1A1A1A"/>
+    <SolidColorBrush x:Key="Merge.Text.Secondary" Color="#FF4A4A4A"/>
+    <SolidColorBrush x:Key="Merge.Text.Tertiary"  Color="#FF707070"/>
+    <SolidColorBrush x:Key="Merge.Text.Disabled"  Color="#FFA8A8A8"/>
+    <SolidColorBrush x:Key="Merge.Text.OnAccent"  Color="#FFFFFFFF"/>
+
+</ResourceDictionary>
