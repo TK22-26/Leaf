@@ -264,8 +264,8 @@ public sealed class GitMergeFileEngine : IMergeEngine
                     : null;
                 AdvanceCursorsForAutoMergedLine(
                     mergedLines[outputIdx], nextLine,
-                    oursLines, theirsLines, baseLines,
-                    ref oursCursor, ref theirsCursor, ref baseCursor,
+                    oursLines, theirsLines,
+                    ref oursCursor, ref theirsCursor,
                     outputIdx + 1);
                 outputIdx++;
             }
@@ -275,7 +275,7 @@ public sealed class GitMergeFileEngine : IMergeEngine
                 $"walked {outputIdx - walkStartOutputIdx} auto-merged lines " +
                 $"(ours {walkStartOursCursor}->{oursCursor}, " +
                 $"theirs {walkStartTheirsCursor}->{theirsCursor}, " +
-                $"base {walkStartBaseCursor}->{baseCursor}); " +
+                $"base-cursor-at-entry={walkStartBaseCursor}); " +
                 $"needles: ours={conflict.OursLines.Count}L theirs={conflict.TheirsLines.Count}L " +
                 $"base={conflict.BaseLines.Count}L");
 
@@ -322,8 +322,8 @@ public sealed class GitMergeFileEngine : IMergeEngine
                 : null;
             AdvanceCursorsForAutoMergedLine(
                 mergedLines[outputIdx], nextLine,
-                oursLines, theirsLines, baseLines,
-                ref oursCursor, ref theirsCursor, ref baseCursor,
+                oursLines, theirsLines,
+                ref oursCursor, ref theirsCursor,
                 outputIdx + 1);
             outputIdx++;
         }
@@ -350,15 +350,30 @@ public sealed class GitMergeFileEngine : IMergeEngine
     /// handles gracefully (Use Ours / Use Theirs / external merge tool).
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// <para>
+    /// <b>Why base isn't advanced here:</b> base is the common ancestor. Between
+    /// conflicts, the merged output contains ours's or theirs's auto-accepted
+    /// changes — <i>not</i> base's original content. Base's position between
+    /// conflicts is structurally unknowable from the merged output text; any
+    /// text-matching heuristic will drift whenever ours/theirs diverge heavily
+    /// (observed in real C# refactor merges, where base cursor would jump 60+
+    /// lines on two-line idiom coincidences). Base cursor is instead maintained
+    /// by <see cref="BuildRanges"/> from <see cref="CarveSlice"/> results —
+    /// i.e., base cursor := end of the most recently carved base range. At the
+    /// next conflict, <see cref="CarveSlice"/> forward-searches base for the
+    /// conflict's BaseLines content starting from that position. For the
+    /// near-universal case of distinctive BaseLines content (statements,
+    /// method bodies), this is both correct and simpler than walking.
+    /// </para>
+    /// </remarks>
     private static void AdvanceCursorsForAutoMergedLine(
         string outputLine,
         string? nextOutputLine,
         IReadOnlyList<string> oursLines,
         IReadOnlyList<string> theirsLines,
-        IReadOnlyList<string> baseLines,
         ref int oursCursor,
         ref int theirsCursor,
-        ref int baseCursor,
         int outputLineNumber)
     {
         if (LooksLikeMarker(outputLine))
@@ -378,7 +393,6 @@ public sealed class GitMergeFileEngine : IMergeEngine
 
         TryAdvanceCursor(ref oursCursor, oursLines, outputLine, nextOutputLine, "ours");
         TryAdvanceCursor(ref theirsCursor, theirsLines, outputLine, nextOutputLine, "theirs");
-        TryAdvanceCursor(ref baseCursor, baseLines, outputLine, nextOutputLine, "base");
     }
 
     /// <summary>
