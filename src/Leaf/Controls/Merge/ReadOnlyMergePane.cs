@@ -286,6 +286,17 @@ public sealed class ReadOnlyMergePane : FrameworkElement, IScrollInfo
     /// </summary>
     public void StartRangeResolveAnimation(int rangeIndex)
     {
+        if (MergeMotionHelpers.ReduceMotion)
+        {
+            // Skip the tween entirely — the range's resolved-state overlay
+            // is already in the render path via RangeStates; the tween only
+            // controls the fade-in envelope. With ReduceMotion on we want
+            // the instant-paint look, so we do not record a start tick
+            // and do not kick the ticker. The overlay paints immediately
+            // through the normal InvalidateVisual driven by RangeStates DP.
+            InvalidateVisual();
+            return;
+        }
         _rangeResolveStarts[rangeIndex] = NowTicks();
         EnsureAnimationTicker();
     }

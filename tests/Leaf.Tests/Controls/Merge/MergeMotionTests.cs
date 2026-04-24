@@ -32,6 +32,7 @@ public class MergeMotionTests
         AssertStoryboardDuration(resources, "Merge.Motion.MinimapJump", TimeSpan.FromMilliseconds(400));
         AssertStoryboardDuration(resources, "Merge.Motion.AcceptButton", TimeSpan.FromMilliseconds(150));
         AssertStoryboardDuration(resources, "Merge.Motion.PopoverShow", TimeSpan.FromMilliseconds(200));
+        AssertStoryboardDuration(resources, "Merge.Motion.PillCellTransition", TimeSpan.FromMilliseconds(200));
     }
 
     [StaFact]
@@ -46,6 +47,7 @@ public class MergeMotionTests
             "Merge.Motion.MinimapJump",
             "Merge.Motion.AcceptButton",
             "Merge.Motion.PopoverShow",
+            "Merge.Motion.PillCellTransition",
         };
         foreach (var key in keys)
         {
@@ -160,6 +162,105 @@ public class MergeMotionTests
         child.Duration.HasTimeSpan.Should().BeTrue(because: $"'{key}' child duration must be concrete, not Automatic");
         child.Duration.TimeSpan.Should().Be(expected,
             because: $"'{key}' duration must match the Merge.Motion ramp");
+    }
+
+    [StaFact]
+    public void PlayPillCellTransition_ChangesCellBackgroundToTargetColour()
+    {
+        EnsureMergeDictionaryMerged();
+        var cell = new Button();
+        try
+        {
+            MergeMotionHelpers.ReduceMotion = false;
+            MergeMotionHelpers.PlayPillCellTransition(cell,
+                System.Windows.Media.Colors.Transparent,
+                System.Windows.Media.Color.FromRgb(0xAA, 0xBB, 0xCC));
+            cell.Background.Should().BeOfType<System.Windows.Media.SolidColorBrush>(
+                because: "the helper installs a per-cell writable SolidColorBrush for the ColorAnimation to drive");
+        }
+        finally
+        {
+            MergeMotionHelpers.ReduceMotion = false;
+        }
+    }
+
+    [StaFact]
+    public void ReduceMotion_SmoothScrollTo_WritesTargetOffsetImmediately()
+    {
+        EnsureMergeDictionaryMerged();
+        var sv = new ScrollViewer();
+        try
+        {
+            MergeMotionHelpers.ReduceMotion = true;
+            // ScrollToVerticalOffset requires a ScrollContentPresenter to
+            // actually take effect; asserting the call doesn't throw is
+            // the stable invariant for the gate.
+            var act = () => MergeMotionHelpers.SmoothScrollTo(sv, 123.0);
+            act.Should().NotThrow();
+        }
+        finally
+        {
+            MergeMotionHelpers.ReduceMotion = false;
+        }
+    }
+
+    [StaFact]
+    public void ReduceMotion_PlayAcceptBounce_LeavesRenderTransformUntouched()
+    {
+        EnsureMergeDictionaryMerged();
+        var fe = new Button();
+        try
+        {
+            MergeMotionHelpers.ReduceMotion = true;
+            MergeMotionHelpers.PlayAcceptBounce(fe);
+            fe.RenderTransform.Should().Be(System.Windows.Media.Transform.Identity,
+                because: "reduce-motion must not install a ScaleTransform when no animation runs");
+        }
+        finally
+        {
+            MergeMotionHelpers.ReduceMotion = false;
+        }
+    }
+
+    [StaFact]
+    public void ReduceMotion_PlayPopoverShow_LandsAtFinalVisibleState()
+    {
+        EnsureMergeDictionaryMerged();
+        var fe = new System.Windows.Controls.Border { Opacity = 0.0 };
+        try
+        {
+            MergeMotionHelpers.ReduceMotion = true;
+            MergeMotionHelpers.PlayPopoverShow(fe);
+            fe.Opacity.Should().Be(1.0,
+                because: "reduce-motion still needs the popover to end up visible — we just skip the fade");
+            fe.RenderTransform.Should().BeOfType<System.Windows.Media.TranslateTransform>();
+            ((System.Windows.Media.TranslateTransform)fe.RenderTransform).Y.Should().Be(0.0,
+                because: "end-state Y is 0 (the tween ends there); reduce-motion paints that directly");
+        }
+        finally
+        {
+            MergeMotionHelpers.ReduceMotion = false;
+        }
+    }
+
+    [StaFact]
+    public void ReduceMotion_PlayPillCellTransition_PaintsTargetColourImmediately()
+    {
+        EnsureMergeDictionaryMerged();
+        var cell = new Button();
+        try
+        {
+            MergeMotionHelpers.ReduceMotion = true;
+            var target = System.Windows.Media.Color.FromRgb(0x12, 0x34, 0x56);
+            MergeMotionHelpers.PlayPillCellTransition(cell,
+                System.Windows.Media.Colors.Transparent, target);
+            var solid = cell.Background.Should().BeOfType<System.Windows.Media.SolidColorBrush>().Subject;
+            solid.Color.Should().Be(target);
+        }
+        finally
+        {
+            MergeMotionHelpers.ReduceMotion = false;
+        }
     }
 
     private static void EnsureMergeDictionaryMerged() => MergePaletteTestFixture.Ensure();

@@ -72,7 +72,18 @@ public partial class App : Application
         // V8: keep the merge-editor palette in lockstep with the OS theme.
         // Must run before the first merge editor window renders so its
         // bindings resolve against the correct palette on first paint.
-        MergeThemeSwitcher.Initialize();
+        // The settings-driven custom palette path (post-V8 closeout) is
+        // passed in so an override, when present, is layered atop the
+        // Dark/Light base on first paint too.
+        var startupSettings = settingsService.LoadSettings();
+        MergeThemeSwitcher.Initialize(startupSettings.CustomMergePalettePath);
+
+        // Post-V8 motion closeout: push the persisted ReduceMotion preference
+        // into the static gate on MergeMotionHelpers so the first merge
+        // editor interaction already honours it. A future settings UI can
+        // assign to MergeMotionHelpers.ReduceMotion for runtime toggles.
+        Leaf.Controls.Merge.MergeMotionHelpers.ReduceMotion =
+            startupSettings.ReduceMotion;
 
         // Check for command-line arguments
         if (e.Args.Length > 0)

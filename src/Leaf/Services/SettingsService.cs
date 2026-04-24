@@ -199,6 +199,23 @@ public class AppSettings
     // UI display
     public bool CompactFileList { get; set; } = false;
 
+    // Merge editor accessibility / ergonomics. When true, all merge-editor
+    // motion helpers (scroll animations, pulse, bounce, popover entrance,
+    // range-resolve crossfade) write their end-state instantly instead of
+    // tweening. Matches the plan §Risks "opt-out setting under
+    // AppSettings.ReduceMotion" — paired with the system prefers-reduced-
+    // motion convention, though WPF has no native binding for that OS
+    // preference so the toggle stays explicit.
+    public bool ReduceMotion { get; set; } = false;
+
+    // Merge palette user override. When non-null and the file exists, the
+    // XAML at this absolute path is merged last into the running
+    // Merge.xaml umbrella, so its Merge.* tokens override the shipped
+    // Dark / Light palette. Enables the plan D1 "user-palette override"
+    // goal without a formal UI — drop a file in place and set the path,
+    // MergeThemeSwitcher picks it up on Initialize + palette flip.
+    public string? CustomMergePalettePath { get; set; }
+
     // Whether the collapsible "Options" row under the commit input is
     // expanded (reveals the Amend checkbox). Persisted so users who
     // amend often don't have to re-open it every launch.
