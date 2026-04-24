@@ -393,6 +393,8 @@
                                           Text="{Binding ComposedText, Mode=OneWay}"
                                           Layout="{Binding Layout}"
                                           FilePath="{Binding SelectedConflict.FilePath}"
+                                          Foreground="{DynamicResource Merge.Text.Primary}"
+                                          Background="{DynamicResource Merge.Surface.2}"
                                           ContextMenu="{DynamicResource Merge.PaneContextMenu}"/>
                         <merge:CodeLensActionBar x:Name="CodeLens"
                                                  AutomationProperties.AutomationId="Merge.CodeLens"
