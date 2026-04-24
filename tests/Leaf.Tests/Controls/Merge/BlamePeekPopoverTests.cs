@@ -128,19 +128,23 @@ public class BlamePeekPopoverTests
             because: "only Escape dismisses; Enter activates the focused sha link via its Click handler");
     }
 
+    // Shared HwndSource so repeated MakeKeyEvent calls don't leak native
+    // window handles across test runs. One HwndSource per test assembly
+    // run is enough — KeyEventArgs only needs it for the
+    // PresentationSource contract, the handle is never shown.
+    private static readonly System.Windows.Interop.HwndSource _keyEventSource
+        = new(new System.Windows.Interop.HwndSourceParameters("leaf-merge-test-keys"));
+
     private static System.Windows.Input.KeyEventArgs MakeKeyEvent(
         System.Windows.IInputElement source, System.Windows.Input.Key key)
     {
         // A KeyEventArgs needs a real PresentationSource; in a headless
-        // STA test we haven't shown a Window, so make a disposable one.
-        // The Source field on the returned args is set via RaiseEvent
-        // when we route through the popover, so we don't need to wire
-        // the hwnd up beyond what the constructor requires.
-        var hwnd = new System.Windows.Interop.HwndSource(
-            new System.Windows.Interop.HwndSourceParameters("test-key-source"));
+        // STA test we haven't shown a Window. Reuse the shared hwnd so
+        // back-to-back tests don't each allocate a native window that
+        // never gets disposed.
         return new System.Windows.Input.KeyEventArgs(
             System.Windows.Input.Keyboard.PrimaryDevice,
-            hwnd,
+            _keyEventSource,
             timestamp: 0,
             key)
         {

@@ -152,14 +152,27 @@ public sealed class BlameHoverController
         _lastOpeningPane = null;
     }
 
+    // Per-pane subscription records so Dispose can actually detach. The
+    // MouseMove handler captures `resolver` in a lambda, which means we
+    // must hold the delegate instance explicitly — lambdas with captured
+    // state can't be re-produced for unsubscription.
+    private readonly List<(FrameworkElement Pane,
+        MouseEventHandler Enter,
+        MouseEventHandler Move,
+        MouseEventHandler Leave)> _paneSubscriptions = new();
+
     /// <summary>Attach the controller's hover handlers to <paramref name="pane"/>.</summary>
     public void TrackPane(FrameworkElement pane, LineAtPointResolver resolver)
     {
         ArgumentNullException.ThrowIfNull(pane);
         ArgumentNullException.ThrowIfNull(resolver);
-        pane.MouseEnter += OnPaneMouseEnter;
-        pane.MouseMove += (sender, e) => OnPaneMouseMove((FrameworkElement)sender!, e, resolver);
-        pane.MouseLeave += OnPaneMouseLeave;
+        MouseEventHandler enter = OnPaneMouseEnter;
+        MouseEventHandler move = (sender, e) => OnPaneMouseMove((FrameworkElement)sender!, e, resolver);
+        MouseEventHandler leave = OnPaneMouseLeave;
+        pane.MouseEnter += enter;
+        pane.MouseMove += move;
+        pane.MouseLeave += leave;
+        _paneSubscriptions.Add((pane, enter, move, leave));
     }
 
     private void OnPaneMouseEnter(object sender, MouseEventArgs e)
@@ -354,5 +367,16 @@ public sealed class BlameHoverController
         _popup.PlacementTarget = null;
         _currentHoveredPane = null;
         _lastOpeningPane = null;
+
+        // Detach from every tracked pane so a disposed controller's
+        // handlers can't fire against stale state if the panes outlive it
+        // (e.g. the merge editor re-uses a pane instance across sessions).
+        foreach (var (pane, enter, move, leave) in _paneSubscriptions)
+        {
+            pane.MouseEnter -= enter;
+            pane.MouseMove -= move;
+            pane.MouseLeave -= leave;
+        }
+        _paneSubscriptions.Clear();
     }
 }
