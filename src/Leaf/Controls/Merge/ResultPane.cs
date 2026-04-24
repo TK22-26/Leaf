@@ -31,6 +31,20 @@ namespace Leaf.Controls.Merge;
 /// </remarks>
 public sealed class ResultPane : ContentControl
 {
+    static ResultPane()
+    {
+        // AvalonEdit's TextEditor does not inherit Foreground / Background from
+        // its outer ContentControl — its default style paints text in the WPF
+        // fallback colour (black on dark = invisible). Override metadata here
+        // so a Foreground / Background DP assignment on ResultPane forwards
+        // into _editor. Matches how ReadOnlyMergePane exposes a Foreground DP
+        // and consumes it in the custom draw path.
+        ForegroundProperty.OverrideMetadata(typeof(ResultPane),
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.Inherits, OnForegroundChanged));
+        BackgroundProperty.OverrideMetadata(typeof(ResultPane),
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.None, OnBackgroundChanged));
+    }
+
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
         nameof(Text), typeof(string), typeof(ResultPane),
         new FrameworkPropertyMetadata(string.Empty,
@@ -166,5 +180,15 @@ public sealed class ResultPane : ContentControl
     {
         var pane = (ResultPane)d;
         pane._editor.SyntaxHighlighting = MergeHighlightingResolver.ByFilePath((string?)e.NewValue);
+    }
+
+    private static void OnForegroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        ((ResultPane)d)._editor.Foreground = (Brush?)e.NewValue ?? Brushes.Transparent;
+    }
+
+    private static void OnBackgroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        ((ResultPane)d)._editor.Background = (Brush?)e.NewValue ?? Brushes.Transparent;
     }
 }
