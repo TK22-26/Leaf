@@ -89,6 +89,38 @@ public class BlameHoverControllerTests
     }
 
     [StaFact]
+    public void Dispose_DetachesHandlersFromTrackedPanes()
+    {
+        // Regression guard: TrackPane attaches three handlers (Enter/
+        // Move/Leave) per pane, and Dispose must detach them all.
+        // Without explicit detach the MouseMove lambda (which captures
+        // `resolver`) would keep the disposed controller alive through
+        // the pane's event subscription — a real leak if panes outlive
+        // their controller (e.g. editor reopen).
+        EnsureMergeDictionaryMerged();
+        var service = new RecordingBlameService();
+        var controller = new BlameHoverController(
+            service,
+            repoPathProvider: () => "/repo",
+            filePathProvider: () => "foo.cs",
+            commitRequestedCallback: _ => { });
+
+        var pane = new ContentControl();
+        controller.TrackPane(pane, (_, _) => 1);
+
+        var subsField = typeof(BlameHoverController)
+            .GetField("_paneSubscriptions",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var subs = (System.Collections.ICollection)subsField.GetValue(controller)!;
+        subs.Count.Should().Be(1, because: "TrackPane should record one subscription tuple");
+
+        controller.Dispose();
+
+        subs.Count.Should().Be(0,
+            because: "Dispose must detach every subscription so a stale controller can't respond to future pane events");
+    }
+
+    [StaFact]
     public void TrackedPane_MouseEnter_UpdatesCurrentHoveredPane()
     {
         // Cross-pane transit invariant: the controller tracks which pane
