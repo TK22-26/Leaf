@@ -592,6 +592,83 @@ public class GitMergeFileEngineTests
     }
 
     [Fact]
+    public async Task Merge_BaseCursor_DoesNotDriftOnHeavyOursTheirsDivergence()
+    {
+        // Observed on src/Services/UserService.cs: ours added an audit log /
+        // UserNotFoundException flow, theirs switched to Result<User> / IClock.
+        // Base has neither. Before the fix, base cursor was walked via text-
+        // matching against the merged output (which contains ours's and theirs's
+        // auto-accepted changes, NOT base's content), causing the cursor to
+        // drift 60+ lines on two-line idiom coincidences — the walker confirmed
+        // a jump on `}` followed by `if (...)`, a pattern that repeats across
+        // multiple methods in a typical C# class.
+        //
+        // Fix: base cursor is not advanced during the auto-merge walk. It only
+        // moves forward when CarveSlice completes a conflict. Subsequent carves
+        // forward-search base from the previous range end.
+        var engine = CreateEngine();
+        const string baseText =
+            "public class Svc {\n" +
+            "    public async Task<User> One() {\n" +
+            "        return await repo.FindAsync();\n" +
+            "    }\n" +
+            "    public async Task<User> Two() {\n" +
+            "        return await repo.FindAsync();\n" +
+            "    }\n" +
+            "    public string Register(string name) {\n" +
+            "        throw new InvalidOperationException(\"not yet\");\n" +
+            "    }\n" +
+            "}\n";
+        // Ours: adds logging + audit (heavy divergence, introduces repeated
+        // `var user = ...` and `log.Info(...)` lines that also appear in One).
+        const string oursText =
+            "public class Svc {\n" +
+            "    public async Task<User> One() {\n" +
+            "        var user = await repo.FindAsync();\n" +
+            "        log.Info(\"one\");\n" +
+            "        return user;\n" +
+            "    }\n" +
+            "    public async Task<User> Two() {\n" +
+            "        var user = await repo.FindAsync();\n" +
+            "        log.Info(\"two\");\n" +
+            "        return user;\n" +
+            "    }\n" +
+            "    public string Register(string name) {\n" +
+            "        log.Info(\"registering \" + name);\n" +
+            "        throw new UsernameAlreadyTakenException(name);\n" +
+            "    }\n" +
+            "}\n";
+        // Theirs: switches to Result<User> (heavy divergence, different
+        // pattern from ours).
+        const string theirsText =
+            "public class Svc {\n" +
+            "    public async Task<Result<User>> One() {\n" +
+            "        return Result<User>.Success(await repo.FindAsync());\n" +
+            "    }\n" +
+            "    public async Task<Result<User>> Two() {\n" +
+            "        return Result<User>.Success(await repo.FindAsync());\n" +
+            "    }\n" +
+            "    public string Register(string name) {\n" +
+            "        return Result<string>.Failure(RegistrationError.UsernameTaken);\n" +
+            "    }\n" +
+            "}\n";
+
+        // The critical assertion: merging must not throw. Pre-fix, base would
+        // drift and the third conflict's CarveSlice would fail the invariant.
+        var doc = await engine.MergeAsync("Svc.cs", baseText, oursText, theirsText);
+        doc.Should().NotBeNull();
+        doc.HasConflicts.Should().BeTrue();
+        // Base ranges should carve correctly by forward-searching from each
+        // previous range end — all BaseLines content is unique so forward
+        // search always finds the right occurrence.
+        foreach (var range in doc.Ranges)
+        {
+            range.Base.IsEmpty.Should().BeFalse(
+                because: "every conflict has a base region; empty ranges indicate carve failure");
+        }
+    }
+
+    [Fact]
     public async Task Merge_ForwardSearch_NextLineIsMarker_AcceptsFirstMatch()
     {
         // The output line just before `<<<<<<<` is a common line that appears
