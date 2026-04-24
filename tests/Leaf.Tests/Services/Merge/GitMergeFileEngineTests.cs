@@ -422,4 +422,206 @@ public class GitMergeFileEngineTests
             if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
         }
     }
+
+    // =========================================================================
+    // Forward-search lookahead-confirmation tests (follow-up to a real bug on
+    // src/Services/UserService.cs in the merge-overhaul-test fixture, where the
+    // walker drifted 72 lines on a singleton common line `var user = ...`).
+    // See TryAdvanceCursor in GitMergeFileEngine.cs for the lookahead algorithm.
+    // =========================================================================
+
+    [Fact]
+    public async Task Merge_ForwardSearch_RejectsSingletonCommonLineDrift_DoesNotThrow()
+    {
+        // The bug: one-sided addition in ours introduces a line (`var user = ...;`)
+        // that already appears elsewhere on the theirs side (inside a later method
+        // that stays unchanged). Without lookahead, theirs cursor drifts to the
+        // later occurrence, invariant fails, engine-error overlay fires.
+        // With lookahead, the walker notices `{` doesn't come after the singleton
+        // match and keeps cursor correctly positioned; three conflicts carve cleanly.
+        var engine = CreateEngine();
+        const string baseText =
+            "public class Svc {\n" +
+            "    public async Task<User> A() {\n" +
+            "        return await repo.FindAsync();\n" +
+            "    }\n" +
+            "    public async Task<User> B() {\n" +
+            "        var user = await repo.GetAsync();\n" +
+            "        return user;\n" +
+            "    }\n" +
+            "}\n";
+        // Ours: rewrites A to use a local var (introducing `var user = ...`);
+        // B untouched. Theirs: rewrites A return inline; B untouched.
+        // The `var user = ...` line on ours A has no match in theirs A, but
+        // appears in theirs B.
+        const string oursText =
+            "public class Svc {\n" +
+            "    public async Task<User> A() {\n" +
+            "        var user = await repo.GetAsync();\n" +
+            "        return user;\n" +
+            "    }\n" +
+            "    public async Task<User> B() {\n" +
+            "        var user = await repo.GetAsync();\n" +
+            "        return user;\n" +
+            "    }\n" +
+            "}\n";
+        const string theirsText =
+            "public class Svc {\n" +
+            "    public async Task<User> A() {\n" +
+            "        return await repo.FindByIdAsync();\n" +
+            "    }\n" +
+            "    public async Task<User> B() {\n" +
+            "        var user = await repo.GetAsync();\n" +
+            "        return user;\n" +
+            "    }\n" +
+            "}\n";
+
+        var doc = await engine.MergeAsync("Svc.cs", baseText, oursText, theirsText);
+        // With lookahead, the merge processes cleanly. The exact conflict count
+        // depends on git's block-merging heuristic but the invariant must hold.
+        doc.Should().NotBeNull();
+        doc.HasConflicts.Should().BeTrue(because: "A diverges on both sides so a conflict is expected");
+        // All conflict ranges must carve successfully — no MergeEngineException.
+    }
+
+    [Fact]
+    public async Task Merge_ForwardSearch_EmptyLineDoesNotCauseDrift()
+    {
+        // Universal false-positive: every file has many `""` lines. Without
+        // lookahead, a forward-search for `""` takes the first one it sees,
+        // potentially skipping over intended context. With lookahead, `""`
+        // followed by a distinctive next line stays anchored.
+        var engine = CreateEngine();
+        const string baseText =
+            "alpha\n" +
+            "\n" +
+            "beta\n" +
+            "\n" +
+            "gamma\n" +
+            "\n" +
+            "delta\n";
+        const string oursText =
+            "alpha\n" +
+            "\n" +
+            "beta-ours\n" +
+            "\n" +
+            "gamma\n" +
+            "\n" +
+            "delta-ours\n";
+        const string theirsText =
+            "alpha\n" +
+            "\n" +
+            "beta-theirs\n" +
+            "\n" +
+            "gamma\n" +
+            "\n" +
+            "delta-theirs\n";
+
+        var doc = await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+        doc.ConflictCount.Should().Be(2);
+        doc.Ranges[0].OursLines.Should().Equal("beta-ours");
+        doc.Ranges[1].OursLines.Should().Equal("delta-ours");
+        doc.Ranges[0].TheirsLines.Should().Equal("beta-theirs");
+        doc.Ranges[1].TheirsLines.Should().Equal("delta-theirs");
+    }
+
+    [Fact]
+    public async Task Merge_ForwardSearch_GenuineOneSidedDeletion_StillAdvances()
+    {
+        // Regression gate for the original slow-path purpose: a one-sided
+        // deletion where the next output line is a distinctive follow-up.
+        // Lookahead must pass on this legitimate multi-line shared-context
+        // skip. (Parallel to Merge_OneSidedDeletionBeforeConflict_DoesNotThrow
+        // but with an extra distinctive follow-up line after the skip to
+        // exercise the confirmed path.)
+        var engine = CreateEngine();
+        const string baseText =
+            "alpha\n" +
+            "skipped\n" +
+            "distinctive-follow-up\n" +
+            "beta\n" +
+            "gamma\n";
+        const string oursText =
+            "alpha\n" +
+            "distinctive-follow-up\n" +
+            "beta-ours\n" +
+            "gamma\n";
+        const string theirsText =
+            "alpha\n" +
+            "skipped\n" +
+            "distinctive-follow-up\n" +
+            "beta-theirs\n" +
+            "gamma\n";
+
+        var doc = await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+        doc.ConflictCount.Should().Be(1);
+        doc.Ranges.Single().OursLines.Should().Equal("beta-ours");
+        doc.Ranges.Single().TheirsLines.Should().Equal("beta-theirs");
+    }
+
+    [Fact]
+    public async Task Merge_ForwardSearch_EndOfOutput_AcceptsFirstMatch()
+    {
+        // The last output line is a common line (`}`) with no next line
+        // available — `nextOutputLine` is null. The walker must fall back
+        // to first-match (pre-fix behaviour) rather than stalling at EOF.
+        var engine = CreateEngine();
+        const string baseText =
+            "public class X {\n" +
+            "    void A() {\n" +
+            "        doA();\n" +
+            "    }\n" +
+            "}\n";
+        const string oursText =
+            "public class X {\n" +
+            "    void A() {\n" +
+            "        doA-ours();\n" +
+            "    }\n" +
+            "}\n";
+        const string theirsText =
+            "public class X {\n" +
+            "    void A() {\n" +
+            "        doA-theirs();\n" +
+            "    }\n" +
+            "}\n";
+
+        var doc = await engine.MergeAsync("X.cs", baseText, oursText, theirsText);
+        doc.ConflictCount.Should().Be(1);
+        doc.Ranges.Single().OursLines.Should().Equal("        doA-ours();");
+        doc.Ranges.Single().TheirsLines.Should().Equal("        doA-theirs();");
+    }
+
+    [Fact]
+    public async Task Merge_ForwardSearch_NextLineIsMarker_AcceptsFirstMatch()
+    {
+        // The output line just before `<<<<<<<` is a common line that appears
+        // multiple times on the same side. `nextOutputLine` is a marker;
+        // lookahead can't succeed (markers never appear in content sides).
+        // The walker must fall back to first-match so the conflict parsing
+        // can proceed. The conflict's CarveSlice re-pins cursors after.
+        var engine = CreateEngine();
+        const string baseText =
+            "line1\n" +
+            "\n" +
+            "line2\n" +
+            "\n" +
+            "line3\n";
+        const string oursText =
+            "line1\n" +
+            "\n" +
+            "line2\n" +
+            "\n" +
+            "line3-ours\n";
+        const string theirsText =
+            "line1\n" +
+            "\n" +
+            "line2\n" +
+            "\n" +
+            "line3-theirs\n";
+
+        var doc = await engine.MergeAsync("f.txt", baseText, oursText, theirsText);
+        doc.ConflictCount.Should().Be(1);
+        doc.Ranges.Single().OursLines.Should().Equal("line3-ours");
+        doc.Ranges.Single().TheirsLines.Should().Equal("line3-theirs");
+    }
 }
