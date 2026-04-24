@@ -190,8 +190,16 @@
                                             RangeStates="{Binding RangeStates}"
                                             Layout="{Binding Layout}"/>
                 <Grid Grid.Row="2">
+                    <!-- V6 layout: [pane] [60 px content preview] [12 px
+                         overview ruler]. Preview renders actual text at
+                         2 px line height with a viewport rectangle;
+                         ruler is the narrower conflict-tick strip. Both
+                         Refresh on RangeStates mutation and share the
+                         MinimapJumpEventArgs contract so either can
+                         scroll the paired pane. -->
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="60"/>
                         <ColumnDefinition Width="12"/>
                     </Grid.ColumnDefinitions>
                     <ScrollViewer Grid.Column="0" x:Name="OursScrollViewer"
@@ -214,15 +222,26 @@
                                                  ContextMenu="{DynamicResource Merge.PaneContextMenu}"
                                                  />
                     </ScrollViewer>
-                    <merge:ConflictMinimap Grid.Column="1"
-                                           x:Name="OursMinimap"
-                                           AutomationProperties.AutomationId="Merge.OursMinimap"
+                    <merge:ConflictMinimapPreview Grid.Column="1"
+                                           x:Name="OursMinimapPreview"
+                                           AutomationProperties.AutomationId="Merge.OursMinimapPreview"
+                                           Side="Ours"
+                                           Lines="{Binding OursLines}"
+                                           Regions="{Binding Document.Ranges}"
+                                           RangeStates="{Binding RangeStates}"
+                                           Layout="{Binding Layout}"
+                                           VerticalOffset="{Binding ElementName=OursScrollViewer, Path=VerticalOffset, Mode=OneWay}"
+                                           ViewportHeight="{Binding ElementName=OursScrollViewer, Path=ViewportHeight, Mode=OneWay}"
+                                           JumpRequested="OnOursScrollJumpRequested"/>
+                    <merge:ConflictOverviewRuler Grid.Column="2"
+                                           x:Name="OursOverviewRuler"
+                                           AutomationProperties.AutomationId="Merge.OursOverviewRuler"
                                            Side="Ours"
                                            LineCount="{Binding OursLines.Count, FallbackValue=0}"
                                            Regions="{Binding Document.Ranges}"
                                            RangeStates="{Binding RangeStates}"
                                            Layout="{Binding Layout}"
-                                           JumpRequested="OnOursMinimapJump"/>
+                                           JumpRequested="OnOursScrollJumpRequested"/>
                 </Grid>
             </Grid>
             </Border>
@@ -284,8 +303,11 @@
                                             RangeStates="{Binding RangeStates}"
                                             Layout="{Binding Layout}"/>
                 <Grid Grid.Row="2">
+                    <!-- V6 Theirs layout mirrors the Ours side: scrollable
+                         pane + 60 px preview + 12 px overview ruler. -->
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="60"/>
                         <ColumnDefinition Width="12"/>
                     </Grid.ColumnDefinitions>
                     <ScrollViewer Grid.Column="0" x:Name="TheirsScrollViewer"
@@ -308,15 +330,26 @@
                                                  ContextMenu="{DynamicResource Merge.PaneContextMenu}"
                                                  />
                     </ScrollViewer>
-                    <merge:ConflictMinimap Grid.Column="1"
-                                           x:Name="TheirsMinimap"
-                                           AutomationProperties.AutomationId="Merge.TheirsMinimap"
+                    <merge:ConflictMinimapPreview Grid.Column="1"
+                                           x:Name="TheirsMinimapPreview"
+                                           AutomationProperties.AutomationId="Merge.TheirsMinimapPreview"
+                                           Side="Theirs"
+                                           Lines="{Binding TheirsLines}"
+                                           Regions="{Binding Document.Ranges}"
+                                           RangeStates="{Binding RangeStates}"
+                                           Layout="{Binding Layout}"
+                                           VerticalOffset="{Binding ElementName=TheirsScrollViewer, Path=VerticalOffset, Mode=OneWay}"
+                                           ViewportHeight="{Binding ElementName=TheirsScrollViewer, Path=ViewportHeight, Mode=OneWay}"
+                                           JumpRequested="OnTheirsScrollJumpRequested"/>
+                    <merge:ConflictOverviewRuler Grid.Column="2"
+                                           x:Name="TheirsOverviewRuler"
+                                           AutomationProperties.AutomationId="Merge.TheirsOverviewRuler"
                                            Side="Theirs"
                                            LineCount="{Binding TheirsLines.Count, FallbackValue=0}"
                                            Regions="{Binding Document.Ranges}"
                                            RangeStates="{Binding RangeStates}"
                                            Layout="{Binding Layout}"
-                                           JumpRequested="OnTheirsMinimapJump"/>
+                                           JumpRequested="OnTheirsScrollJumpRequested"/>
                 </Grid>
             </Grid>
             </Border>

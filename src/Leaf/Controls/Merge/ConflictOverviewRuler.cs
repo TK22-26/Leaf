@@ -8,10 +8,14 @@ using Leaf.TextEdit;
 namespace Leaf.Controls.Merge;
 
 /// <summary>
-/// Narrow vertical heat-strip rendered alongside a <see cref="ReadOnlyMergePane"/>,
-/// summarising the file's conflict landscape at a glance. Each row represents one
-/// line of the pane's content; colour indicates the resolution state of any
-/// conflict that intersects that line.
+/// 12 px vertical tick-strip rendered alongside a <see cref="ReadOnlyMergePane"/>'s
+/// scrollbar, surfacing the file's conflict landscape at a glance as
+/// colour-coded ticks. Plan §V6 renamed this control from ConflictMinimap
+/// once the research confirmed the 12 px width + tick-only rendering is
+/// semantically an "overview ruler" (per VS Code / JetBrains terminology)
+/// rather than a content-preview minimap. The C6 ConflictMinimapPreview
+/// is the companion 60–80 px text-rendering surface that mirrors VS Code's
+/// editor.minimap.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -33,28 +37,28 @@ namespace Leaf.Controls.Merge;
 /// held as additional click events.
 /// </para>
 /// </remarks>
-public sealed class ConflictMinimap : FrameworkElement
+public sealed class ConflictOverviewRuler : FrameworkElement
 {
     public static readonly DependencyProperty LayoutProperty = DependencyProperty.Register(
-        nameof(Layout), typeof(MergePaneGlyphLayout), typeof(ConflictMinimap),
+        nameof(Layout), typeof(MergePaneGlyphLayout), typeof(ConflictOverviewRuler),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty LineCountProperty = DependencyProperty.Register(
-        nameof(LineCount), typeof(int), typeof(ConflictMinimap),
+        nameof(LineCount), typeof(int), typeof(ConflictOverviewRuler),
         new FrameworkPropertyMetadata(0,
             FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty RegionsProperty = DependencyProperty.Register(
-        nameof(Regions), typeof(IReadOnlyList<ModifiedBaseRange>), typeof(ConflictMinimap),
+        nameof(Regions), typeof(IReadOnlyList<ModifiedBaseRange>), typeof(ConflictOverviewRuler),
         new FrameworkPropertyMetadata(Array.Empty<ModifiedBaseRange>(),
             FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty RangeStatesProperty = DependencyProperty.Register(
-        nameof(RangeStates), typeof(IReadOnlyDictionary<int, ResolutionState>), typeof(ConflictMinimap),
+        nameof(RangeStates), typeof(IReadOnlyDictionary<int, ResolutionState>), typeof(ConflictOverviewRuler),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty SideProperty = DependencyProperty.Register(
-        nameof(Side), typeof(MergePaneSide), typeof(ConflictMinimap),
+        nameof(Side), typeof(MergePaneSide), typeof(ConflictOverviewRuler),
         new FrameworkPropertyMetadata(MergePaneSide.Ours, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public MergePaneGlyphLayout? Layout
@@ -88,8 +92,12 @@ public sealed class ConflictMinimap : FrameworkElement
     }
 
     /// <summary>
-    /// Fires when the user clicks or drags on the minimap. <see cref="MinimapJumpEventArgs.LineNumber"/>
-    /// is the 1-based line the pointer addressed; the consumer scrolls the paired pane.
+    /// Fires when the user clicks or drags on the overview ruler.
+    /// <see cref="MinimapJumpEventArgs.LineNumber"/> is the 1-based line
+    /// the pointer addressed; the consumer scrolls the paired pane. The
+    /// event-args type keeps the neutral "Minimap" name because it's
+    /// shared with <see cref="ConflictMinimapPreview"/> — both surfaces
+    /// raise the same shape for the same downstream handler.
     /// </summary>
     public event EventHandler<MinimapJumpEventArgs>? JumpRequested;
 
@@ -119,7 +127,7 @@ public sealed class ConflictMinimap : FrameworkElement
 
     private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
 
-    public ConflictMinimap()
+    public ConflictOverviewRuler()
     {
         ClipToBounds = true;
         Focusable = false;

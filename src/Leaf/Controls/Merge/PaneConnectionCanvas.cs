@@ -75,7 +75,7 @@ public sealed class PaneConnectionCanvas : FrameworkElement
     /// the DP change callback, so without this call the ribbon keeps the
     /// pre-action colour until the next layout invalidation. Mirrors the
     /// SegmentedAcceptPillOverlay.RefreshPillStates /
-    /// StickyConflictHeader.RefreshState / ConflictMinimap.Refresh pattern.
+    /// StickyConflictHeader.RefreshState / ConflictOverviewRuler.Refresh pattern.
     /// </summary>
     public void Refresh() => InvalidateVisual();
 
@@ -109,7 +109,7 @@ public sealed class PaneConnectionCanvas : FrameworkElement
         MergePaletteResources.ResolveColor("Merge.State.Warning.Color"), 0xC0);
 
     // Frozen brushes — allocating one per-range per-frame was both wasteful
-    // and inconsistent with the pattern used by ConflictMinimap.
+    // and inconsistent with the pattern used by ConflictOverviewRuler.
     private static readonly SolidColorBrush UnresolvedBrush = Freeze(new SolidColorBrush(UnresolvedColor));
     private static readonly SolidColorBrush OursBrush = Freeze(new SolidColorBrush(OursColor));
     private static readonly SolidColorBrush TheirsBrush = Freeze(new SolidColorBrush(TheirsColor));

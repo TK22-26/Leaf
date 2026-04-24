@@ -517,8 +517,10 @@ public partial class MergeEditorView : Window
         OursSticky?.RefreshState();
         TheirsSticky?.RefreshState();
         ResultSticky?.RefreshState();
-        OursMinimap?.Refresh();
-        TheirsMinimap?.Refresh();
+        OursOverviewRuler?.Refresh();
+        TheirsOverviewRuler?.Refresh();
+        OursMinimapPreview?.Refresh();
+        TheirsMinimapPreview?.Refresh();
         ConnectionCanvas?.Refresh();
         CodeLens?.Refresh();
     }
@@ -560,12 +562,16 @@ public partial class MergeEditorView : Window
         }
     }
 
-    private void OnOursMinimapJump(object? sender, MinimapJumpEventArgs e)
+    // Shared by the V6 ConflictOverviewRuler (12 px tick strip) and
+    // ConflictMinimapPreview (60–80 px text preview). Both raise
+    // MinimapJumpEventArgs with a 1-based target line; the handler scrolls
+    // the paired pane's ScrollViewer.
+    private void OnOursScrollJumpRequested(object? sender, MinimapJumpEventArgs e)
     {
         ScrollPaneToLine(OursScrollViewer, e.LineNumber);
     }
 
-    private void OnTheirsMinimapJump(object? sender, MinimapJumpEventArgs e)
+    private void OnTheirsScrollJumpRequested(object? sender, MinimapJumpEventArgs e)
     {
         ScrollPaneToLine(TheirsScrollViewer, e.LineNumber);
     }
