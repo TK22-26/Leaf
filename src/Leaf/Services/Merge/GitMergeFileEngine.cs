@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using Leaf.Models.Merge;
+using Leaf.Services;
 
 namespace Leaf.Services.Merge;
 
@@ -110,6 +111,10 @@ public sealed class GitMergeFileEngine : IMergeEngine
         var oursLines = SplitLines(oursLf);
         var theirsLines = SplitLines(theirsLf);
 
+        Log.Info("MergeEngine",
+            $"MergeAsync entry: file={filePath} base={baseLines.Count}L ours={oursLines.Count}L " +
+            $"theirs={theirsLines.Count}L lineEnding={(lineEnding == "\r\n" ? "CRLF" : "LF")}");
+
         var tempDir = CreateUniqueTempDir();
         try
         {
@@ -144,6 +149,10 @@ public sealed class GitMergeFileEngine : IMergeEngine
 
             var mergedLf = result.StandardOutput;
             var parseResult = ConflictMarkerParser.Parse(mergedLf);
+
+            Log.Info("MergeEngine",
+                $"git merge-file exit={result.ExitCode} outputLines={parseResult.OutputLines.Count} " +
+                $"conflictBlocks={parseResult.Conflicts.Count}");
 
             var ranges = BuildRanges(parseResult, baseLines, oursLines, theirsLines);
 
@@ -244,6 +253,10 @@ public sealed class GitMergeFileEngine : IMergeEngine
         {
             // Walk auto-merged output lines between the previous position and this conflict's start.
             int conflictStart = conflict.MarkedRange.StartLine - 1;
+            int walkStartOutputIdx = outputIdx;
+            int walkStartOursCursor = oursCursor;
+            int walkStartTheirsCursor = theirsCursor;
+            int walkStartBaseCursor = baseCursor;
             while (outputIdx < conflictStart)
             {
                 AdvanceCursorsForAutoMergedLine(
@@ -252,6 +265,15 @@ public sealed class GitMergeFileEngine : IMergeEngine
                     outputIdx + 1);
                 outputIdx++;
             }
+
+            Log.Info("MergeEngine",
+                $"Conflict#{ranges.Count}: outputLine={conflict.MarkedRange.StartLine} " +
+                $"walked {outputIdx - walkStartOutputIdx} auto-merged lines " +
+                $"(ours {walkStartOursCursor}->{oursCursor}, " +
+                $"theirs {walkStartTheirsCursor}->{theirsCursor}, " +
+                $"base {walkStartBaseCursor}->{baseCursor}); " +
+                $"needles: ours={conflict.OursLines.Count}L theirs={conflict.TheirsLines.Count}L " +
+                $"base={conflict.BaseLines.Count}L");
 
             // Conflict block: the cursors are now positioned at the start of this region
             // in each input. Validate and carve out ranges directly.
@@ -345,9 +367,9 @@ public sealed class GitMergeFileEngine : IMergeEngine
             }
         }
 
-        TryAdvanceCursor(ref oursCursor, oursLines, outputLine);
-        TryAdvanceCursor(ref theirsCursor, theirsLines, outputLine);
-        TryAdvanceCursor(ref baseCursor, baseLines, outputLine);
+        TryAdvanceCursor(ref oursCursor, oursLines, outputLine, "ours");
+        TryAdvanceCursor(ref theirsCursor, theirsLines, outputLine, "theirs");
+        TryAdvanceCursor(ref baseCursor, baseLines, outputLine, "base");
     }
 
     /// <summary>
@@ -379,7 +401,7 @@ public sealed class GitMergeFileEngine : IMergeEngine
         return false;
     }
 
-    private static void TryAdvanceCursor(ref int cursor, IReadOnlyList<string> lines, string outputLine)
+    private static void TryAdvanceCursor(ref int cursor, IReadOnlyList<string> lines, string outputLine, string sideName = "?")
     {
         // Fast path: exact match at the current cursor (keeps cursors aligned across
         // repeated content and prevents jumps that would skip real occurrences).
@@ -391,16 +413,29 @@ public sealed class GitMergeFileEngine : IMergeEngine
 
         // Slow path: forward-search from the current cursor. Handles one-sided
         // deletions where the output moved past a line that was removed from this side.
+        int startedAt = cursor;
         for (int i = cursor + 1; i < lines.Count; i++)
         {
             if (string.Equals(lines[i], outputLine, StringComparison.Ordinal))
             {
                 cursor = i + 1;
+                Log.Info("MergeEngine",
+                    $"  [drift] {sideName} cursor forward-jumped {startedAt}->{cursor} " +
+                    $"searching for line: {Preview(outputLine)}");
                 return;
             }
         }
         // Not found anywhere ahead — leave cursor alone. CarveSlice has its own
         // forward-search fallback for conflict-boundary anchoring.
+        Log.Info("MergeEngine",
+            $"  [miss ] {sideName} cursor stuck at {startedAt} (line {startedAt + 1}); " +
+            $"output line not found: {Preview(outputLine)}");
+    }
+
+    private static string Preview(string line)
+    {
+        var s = line.Replace("\r", "\\r").Replace("\t", "\\t");
+        return s.Length > 60 ? "\"" + s.Substring(0, 60) + "...\"" : "\"" + s + "\"";
     }
 
     /// <summary>
@@ -433,9 +468,27 @@ public sealed class GitMergeFileEngine : IMergeEngine
         {
             if (MatchesAt(haystack, i, needle))
             {
+                Log.Info("MergeEngine",
+                    $"  [carve] {sideName} slice not at cursor {cursor + 1}; forward-found at {i + 1} " +
+                    $"(drift {i - cursor} lines). First needle line: {Preview(needle[0])}");
                 return new LineRange(i + 1, i + 1 + needle.Count);
             }
         }
+
+        // Diagnostic context before throw: dump the first needle line and a few
+        // surrounding haystack lines at the cursor so the user can see exactly
+        // why the invariant broke.
+        var needlePreview = needle.Count > 0 ? Preview(needle[0]) : "(empty)";
+        var cursorContext = new StringBuilder();
+        for (int i = Math.Max(0, cursor - 2); i < Math.Min(haystack.Count, cursor + 3); i++)
+        {
+            var marker = i == cursor ? ">" : " ";
+            cursorContext.Append($"\n      {marker} L{i + 1}: {Preview(haystack[i])}");
+        }
+        Log.Error("MergeEngine",
+            $"CarveSlice FAILED: {sideName} conflict at output line {conflictStartOutputLine}, " +
+            $"cursor={cursor + 1}, needle={needle.Count}L starting {needlePreview}. " +
+            $"Haystack window:{cursorContext}");
 
         throw new MergeEngineException(
             $"Merge invariant violated: conflict block at output line {conflictStartOutputLine} " +
