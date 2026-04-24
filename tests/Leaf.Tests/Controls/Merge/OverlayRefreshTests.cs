@@ -17,9 +17,9 @@ namespace Leaf.Tests.Controls.Merge;
 public class OverlayRefreshTests
 {
     [StaFact]
-    public void ConflictMinimap_Refresh_IsCallable()
+    public void ConflictOverviewRuler_Refresh_IsCallable()
     {
-        var map = new ConflictMinimap();
+        var map = new ConflictOverviewRuler();
         FluentActions.Invoking(() => map.Refresh()).Should().NotThrow();
     }
 
