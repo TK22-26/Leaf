@@ -138,4 +138,101 @@ public class PaneConnectionCanvasTests
         PaneConnectionCanvas.IsEntirelyOffScreen(-10, -10, canvasHeight: 400, lineHeight: 20)
             .Should().BeFalse();
     }
+
+    // ── V7 hover-tooltip formatting ────────────────────────────────────────
+
+    [Fact]
+    public void BuildHoverTooltip_IncludesRangeIndex_OneBased()
+    {
+        var range = MakeRange(index: 2, oursStart: 10, oursEnd: 15, theirsStart: 20, theirsEnd: 22);
+        var tooltip = PaneConnectionCanvas.BuildHoverTooltip(range);
+        tooltip.Should().StartWith("Conflict 3",
+            because: "range.Index is 0-based; the header presents it as 1-based for users");
+    }
+
+    [Fact]
+    public void BuildHoverTooltip_SingleLineRange_RendersAsSingleNumber()
+    {
+        // LineRange(10, 11) means "line 10 only" — the tooltip should read
+        // "Ours 10", not "Ours 10–10".
+        var range = MakeRange(index: 0, oursStart: 10, oursEnd: 11, theirsStart: 20, theirsEnd: 22);
+        var tooltip = PaneConnectionCanvas.BuildHoverTooltip(range);
+        tooltip.Should().Contain("Ours 10");
+        tooltip.Should().NotContain("Ours 10–10");
+    }
+
+    [Fact]
+    public void BuildHoverTooltip_MultiLineRange_UsesEnDash()
+    {
+        // LineRange(10, 15) means "lines 10 through 14" — tooltip renders
+        // the inclusive range "10–14".
+        var range = MakeRange(index: 0, oursStart: 10, oursEnd: 15, theirsStart: 20, theirsEnd: 22);
+        var tooltip = PaneConnectionCanvas.BuildHoverTooltip(range);
+        tooltip.Should().Contain("Ours 10–14");
+    }
+
+    [Fact]
+    public void BuildHoverTooltip_IncludesFirstLineSnippet_FromEachSide()
+    {
+        var range = MakeRange(
+            index: 0,
+            oursStart: 1, oursEnd: 3,
+            theirsStart: 10, theirsEnd: 12,
+            oursLines: new[] { "int x = 1;", "int y = 2;" },
+            theirsLines: new[] { "int x = 99;" });
+        var tooltip = PaneConnectionCanvas.BuildHoverTooltip(range);
+        tooltip.Should().Contain("Ours: int x = 1;");
+        tooltip.Should().Contain("Theirs: int x = 99;");
+    }
+
+    [Fact]
+    public void BuildHoverTooltip_Truncates_LongLineSnippets()
+    {
+        var longLine = new string('a', 200);
+        var range = MakeRange(
+            index: 0,
+            oursStart: 1, oursEnd: 2,
+            theirsStart: 10, theirsEnd: 11,
+            oursLines: new[] { longLine },
+            theirsLines: Array.Empty<string>());
+        var tooltip = PaneConnectionCanvas.BuildHoverTooltip(range);
+        tooltip.Should().Contain("…", because: "truncation marker signals the line is longer than shown");
+        // Header + "Ours: " prefix + 80 chars + ellipsis — must fit in
+        // ~100 chars for the line; the exact cap is an implementation
+        // detail, so assert boundedness, not exact length.
+        tooltip.Length.Should().BeLessThan(longLine.Length + 50);
+    }
+
+    [Fact]
+    public void BuildHoverTooltip_EmptySideRange_RendersDash()
+    {
+        // Deletion: a side with no content on this range. Format with a
+        // dash so "Ours -" reads as "nothing on this side".
+        var range = MakeRange(
+            index: 0,
+            oursStart: 10, oursEnd: 10, // IsEmpty = StartLine == EndLineExclusive
+            theirsStart: 20, theirsEnd: 22);
+        var tooltip = PaneConnectionCanvas.BuildHoverTooltip(range);
+        tooltip.Should().Contain("Ours -");
+    }
+
+    private static ModifiedBaseRange MakeRange(
+        int index,
+        int oursStart, int oursEnd,
+        int theirsStart, int theirsEnd,
+        string[]? oursLines = null,
+        string[]? theirsLines = null) =>
+        new(
+            Index: index,
+            Base: new LineRange(1, 2),
+            Ours: new LineRange(oursStart, oursEnd),
+            Theirs: new LineRange(theirsStart, theirsEnd),
+            ResultMarkedRange: new LineRange(1, 6),
+            BaseLines: Array.Empty<string>(),
+            OursLines: oursLines ?? Array.Empty<string>(),
+            TheirsLines: theirsLines ?? Array.Empty<string>(),
+            OursDiffs: Array.Empty<DetailedLineRangeMapping>(),
+            TheirsDiffs: Array.Empty<DetailedLineRangeMapping>(),
+            IsConflicting: true,
+            IsOrderRelevant: true);
 }
