@@ -1,6 +1,7 @@
 #nullable enable
 using System.Windows;
 using System.Windows.Media;
+using Leaf.Controls.Merge;
 using Leaf.Services.Merge;
 
 namespace Leaf.Views.Merge;
@@ -44,10 +45,14 @@ public partial class AiResolutionDialog : Window
         DialogResult = false;
     }
 
+    // Confidence → merge-palette token. Matches the plan D1 rule that every
+    // merge-feature colour flows through the Merge.* palette; the three
+    // tokens here are the same state colours used by SegmentedAcceptPill
+    // and StatusPill, so a theme swap reaches the confidence chip too.
     private static Brush ConfidenceToBrush(AiConfidence confidence) => confidence switch
     {
-        AiConfidence.High => new SolidColorBrush(Color.FromRgb(0x2E, 0x7D, 0x32)),   // green
-        AiConfidence.Low => new SolidColorBrush(Color.FromRgb(0xC6, 0x28, 0x28)),    // red
-        _ => new SolidColorBrush(Color.FromRgb(0xF5, 0x7C, 0x00)),                   // amber (medium)
+        AiConfidence.High => MergePaletteResources.ResolveFrozenBrush("Merge.State.Resolved.Color"),
+        AiConfidence.Low => MergePaletteResources.ResolveFrozenBrush("Merge.State.Unresolved.Color"),
+        _ => MergePaletteResources.ResolveFrozenBrush("Merge.State.Warning.Color"),
     };
 }

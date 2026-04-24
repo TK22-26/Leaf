@@ -51,14 +51,14 @@
                        Margin="0,4,0,0"
                        FontFamily="Consolas"
                        TextWrapping="Wrap"
-                       Foreground="#666"/>
+                       Foreground="{DynamicResource Merge.Text.Secondary}"/>
             <TextBlock x:Name="ContextLinesText"
                        Margin="0,6,0,0"
-                       Foreground="#666"/>
+                       Foreground="{DynamicResource Merge.Text.Secondary}"/>
         </StackPanel>
 
         <TextBlock Grid.Row="4" Margin="0,14,0,0" TextWrapping="Wrap"
-                   FontStyle="Italic" Foreground="#666"
+                   FontStyle="Italic" Foreground="{DynamicResource Merge.Text.Secondary}"
                    Text="You can revoke this at any time from Settings → AI Integrations → Merge Assistant. This dialog will not appear again unless consent is reset."/>
 
         <StackPanel Grid.Row="5" Margin="0,18,0,0"
