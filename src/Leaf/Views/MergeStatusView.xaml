@@ -285,9 +285,9 @@
                         Margin="0,0,12,0">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource MergeActionButtonStyle}">
-                            <Setter Property="Background" Value="#16A34A"/>
-                            <Setter Property="BorderBrush" Value="#22C55E"/>
-                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            <Setter Property="Background" Value="{DynamicResource Merge.State.Resolved}"/>
+                            <Setter Property="BorderBrush" Value="{DynamicResource Merge.State.Resolved}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Merge.Text.OnAccent}"/>
                             <Style.Triggers>
                                 <Trigger Property="IsEnabled" Value="False">
                                     <Setter Property="Background" Value="{DynamicResource ControlFillColorDisabledBrush}"/>
@@ -309,9 +309,9 @@
                         Command="{Binding AbortMergeCommand}">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource MergeActionButtonStyle}">
-                            <Setter Property="Background" Value="#DC2626"/>
-                            <Setter Property="BorderBrush" Value="#F87171"/>
-                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            <Setter Property="Background" Value="{DynamicResource Merge.State.Unresolved}"/>
+                            <Setter Property="BorderBrush" Value="{DynamicResource Merge.State.Unresolved}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Merge.Text.OnAccent}"/>
                         </Style>
                     </Button.Style>
                     <StackPanel Orientation="Horizontal">

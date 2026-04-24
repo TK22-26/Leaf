@@ -26,7 +26,7 @@
                 <TextBlock x:Name="ConfidenceText"
                            FontSize="11"
                            FontWeight="SemiBold"
-                           Foreground="White"/>
+                           Foreground="{DynamicResource Merge.Text.OnAccent}"/>
             </Border>
         </StackPanel>
 
@@ -34,7 +34,7 @@
                    Grid.Row="1"
                    Margin="0,8,0,8"
                    TextWrapping="Wrap"
-                   Foreground="#555"
+                   Foreground="{DynamicResource Merge.Text.Secondary}"
                    FontStyle="Italic"/>
 
         <Border Grid.Row="2"
@@ -54,7 +54,7 @@
 
         <TextBlock Grid.Row="3"
                    Margin="0,10,0,0"
-                   Foreground="#888"
+                   Foreground="{DynamicResource Merge.Text.Tertiary}"
                    FontStyle="Italic"
                    TextWrapping="Wrap"
                    Text="Edit the text freely before accepting. The accepted text is applied as a manual resolution — same semantics as typing it by hand."/>
