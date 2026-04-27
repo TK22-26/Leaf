@@ -49,8 +49,14 @@ public class StickyConflictHeaderTests
     }
 
     [StaFact]
-    public void ViewportAboveFirstConflict_ReturnsNull()
+    public void ViewportAboveFirstConflict_ShowsCurrentIndexLabel()
     {
+        // The header always shows whenever there's at least one conflict in
+        // the file, even if the viewport hasn't scrolled into one yet — the
+        // user's expectation when opening a merge file is "tell me where I
+        // am right away" and hiding the strip until first scroll left
+        // clicking the Next chevron feeling broken (you couldn't even see
+        // the chevron until you'd already scrolled, defeating the point).
         var layout = new MergePaneGlyphLayout();
         var header = new StickyConflictHeader
         {
@@ -61,8 +67,8 @@ public class StickyConflictHeaderTests
             VerticalOffset = 4 * layout.LineHeight,
         };
 
-        header.ComputeLabel().Should().BeNull(
-            because: "the label only fires once the user has scrolled into or past a conflict");
+        header.ComputeLabel().Should().Be("Conflict 1 of 1 · Unresolved",
+            because: "header reflects VM's CurrentConflictIndex (default 0) regardless of scroll position");
     }
 
     [StaFact]
@@ -224,33 +230,37 @@ public class StickyConflictHeaderTests
     }
 
     [StaFact]
-    public void SettingVerticalOffset_FiresDpCallback_FlippingVisibilityAndLabel()
+    public void SettingCurrentIndex_FiresDpCallback_UpdatingLabel()
     {
-        // Guards the FrameworkPropertyMetadata wiring: the DP's AffectsRender +
-        // OnInputChanged hookup is what synchronizes _currentLabel with
-        // incoming property changes. A regression that forgot the callback (or
-        // dropped AffectsRender) would silently leave Visibility stuck at its
-        // constructor default — every "ComputeLabel()" test would still pass.
+        // Guards the FrameworkPropertyMetadata wiring on the CurrentIndex DP.
+        // Clicking a chevron (or pressing F8) ultimately writes a new
+        // CurrentConflictIndex into the VM, which propagates here via the
+        // TwoWay binding. The label MUST refresh when CurrentIndex changes —
+        // otherwise the user sees "Conflict 1 of N" stuck while their scroll
+        // position has actually moved (the prior bug that made the chevron
+        // feel broken).
         var layout = new MergePaneGlyphLayout();
         var header = new StickyConflictHeader
         {
             Layout = layout,
             Side = MergePaneSide.Ours,
-            Ranges = new[] { Range(0, 10, 15, conflicting: true) },
-            // Start above the conflict so the header is Collapsed.
-            VerticalOffset = 0,
+            Ranges = new[]
+            {
+                Range(0, 10, 15, conflicting: true),
+                Range(1, 30, 35, conflicting: true),
+            },
+            CurrentIndex = 0,
         };
 
-        header.Visibility.Should().Be(Visibility.Collapsed,
-            because: "before scrolling into a conflict, the sticky strip is hidden");
+        header.ComputeLabel().Should().Be("Conflict 1 of 2 · Unresolved",
+            because: "initial CurrentIndex=0 → label shows the first conflict");
 
-        // Scroll the viewport down to the top of the conflict — the DP
-        // callback must fire, recompute the label, and unhide the strip.
-        header.VerticalOffset = (10 - 1) * layout.LineHeight;
+        // Simulate Next chevron click: VM advances CurrentConflictIndex,
+        // which propagates here via the TwoWay binding.
+        header.CurrentIndex = 1;
 
-        header.Visibility.Should().Be(Visibility.Visible,
-            because: "scrolling into a conflict must flip the strip visible via OnInputChanged");
-        header.ComputeLabel().Should().Be("Conflict 1 of 1 · Unresolved");
+        header.ComputeLabel().Should().Be("Conflict 2 of 2 · Unresolved",
+            because: "label must follow CurrentIndex changes — chevron click depends on this");
     }
 
     [StaFact]

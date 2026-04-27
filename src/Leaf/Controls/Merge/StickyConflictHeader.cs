@@ -110,7 +110,7 @@ public sealed class StickyConflictHeader : Border
     /// </summary>
     public static readonly DependencyProperty CurrentIndexProperty = DependencyProperty.Register(
         nameof(CurrentIndex), typeof(int), typeof(StickyConflictHeader),
-        new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
+        new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnInputChanged));
 
     public IReadOnlyList<ModifiedBaseRange> Ranges
     {
@@ -328,17 +328,15 @@ public sealed class StickyConflictHeader : Border
         btn.MouseLeave += (_, _) => btn.Background = Brushes.Transparent;
         btn.Click += (_, _) =>
         {
-            // Resync CurrentIndex to the conflict the user is VISUALLY on
-            // (computed from VerticalOffset, identical to the sticky label
-            // logic) BEFORE invoking the navigation command. If the user
-            // scrolled manually since the last navigation click, the VM's
-            // CurrentConflictIndex would otherwise be stale and the next
-            // click would advance from the wrong seed.
-            var visualIdx = ComputeCurrentVisibleIndex();
-            if (visualIdx >= 0 && visualIdx != CurrentIndex)
-            {
-                CurrentIndex = visualIdx;
-            }
+            // Trust the VM's CurrentConflictIndex as-is and advance from
+            // there. Earlier versions resynced CurrentIndex to the visually-
+            // current conflict before invoking the command, but that broke
+            // mid-scroll: rapid clicks during the smooth-scroll animation
+            // computed an intermediate visual index and snapped the VM back,
+            // making the second click a no-op (it scrolled the result pane
+            // backwards to the prior conflict instead of advancing). Manual-
+            // scroll-then-click drift is acceptable — Next still moves to the
+            // next position, which is what the keyboard F8 path does.
             var cmd = isPrevious ? PreviousCommand : NextCommand;
             if (cmd?.CanExecute(null) == true) cmd.Execute(null);
         };
@@ -354,16 +352,45 @@ public sealed class StickyConflictHeader : Border
     /// </summary>
     internal string? ComputeLabel()
     {
-        if (Ranges is null || Layout is null) return null;
+        if (Ranges is null) return null;
         var conflicting = Ranges.Where(r => r.IsConflicting).ToList();
         if (conflicting.Count == 0) return null;
 
-        var currentIdx = ComputeCurrentVisibleIndex(conflicting);
-        if (currentIdx < 0) return null;
+        // Resolve which conflict to label. Prefer the VM's tracked
+        // CurrentConflictIndex (set by Next / Previous navigation —
+        // either keyboard F8 / Shift+F8 or the chevron buttons here)
+        // because the label MUST update on click. Earlier the label
+        // was driven purely by VerticalOffset, which made the chevron
+        // feel broken: clicking Next advanced the VM and scrolled the
+        // panes, but the visually-current conflict (whichever one had
+        // just scrolled past the top of the viewport) frequently
+        // stayed pointing at the prior conflict — so the user saw the
+        // label remain "Conflict 1 of N" even though they had in fact
+        // moved.
+        // Visual override: if the user manually scrolled FORWARD past
+        // the VM's tracked conflict (e.g. wheel-scrolled past three
+        // conflicts) the label catches up so it doesn't lag behind
+        // their position. Backward scrolls don't override — the label
+        // sticks at the most-recently-navigated conflict, which is
+        // what most editors do.
+        var visualIdx = Layout is null ? -1 : ComputeCurrentVisibleIndex(conflicting);
+        int idx;
+        if (CurrentIndex >= 0 && CurrentIndex < conflicting.Count)
+        {
+            idx = visualIdx > CurrentIndex ? visualIdx : CurrentIndex;
+        }
+        else if (visualIdx >= 0)
+        {
+            idx = visualIdx;
+        }
+        else
+        {
+            return null;
+        }
 
-        var range = conflicting[currentIdx];
+        var range = conflicting[idx];
         var stateLabel = DescribeState(range);
-        return $"Conflict {currentIdx + 1} of {conflicting.Count} · {stateLabel}";
+        return $"Conflict {idx + 1} of {conflicting.Count} · {stateLabel}";
     }
 
     /// <summary>

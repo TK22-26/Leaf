@@ -179,14 +179,14 @@ public class MergePaletteTests
         new Dictionary<string, Color>
         {
             // Ours
-            ["Merge.Ours.BgSubtle.Color"] = Color.FromArgb(0x1A, 0x2B, 0x4A, 0x6E),
+            ["Merge.Ours.BgSubtle.Color"] = Color.FromArgb(0x55, 0x4A, 0x8F, 0xE0),
             ["Merge.Ours.BgStrong.Color"] = Color.FromArgb(0x99, 0x2B, 0x4A, 0x6E),
             ["Merge.Ours.Accent.Color"] = Color.FromArgb(0xFF, 0x4A, 0x88, 0xC4),
             ["Merge.Ours.Text.Color"] = Color.FromArgb(0xFF, 0xB4, 0xD4, 0xFF),
             ["Merge.Ours.Border.Color"] = Color.FromArgb(0xFF, 0x2B, 0x4A, 0x6E),
 
             // Theirs
-            ["Merge.Theirs.BgSubtle.Color"] = Color.FromArgb(0x1A, 0x1A, 0x50, 0x35),
+            ["Merge.Theirs.BgSubtle.Color"] = Color.FromArgb(0x55, 0x3D, 0xA0, 0x5C),
             ["Merge.Theirs.BgStrong.Color"] = Color.FromArgb(0x99, 0x1A, 0x50, 0x35),
             ["Merge.Theirs.Accent.Color"] = Color.FromArgb(0xFF, 0x3D, 0xA0, 0x5C),
             ["Merge.Theirs.Text.Color"] = Color.FromArgb(0xFF, 0xA8, 0xE6, 0xB8),

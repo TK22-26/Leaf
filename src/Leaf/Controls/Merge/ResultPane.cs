@@ -156,7 +156,21 @@ public sealed class ResultPane : ContentControl
     /// existing <c>RangeStatesChanged</c> hook alongside the other
     /// in-place-state refresh entry points.
     /// </summary>
-    public void RefreshResolvedTints() => _editor.TextArea.TextView.InvalidateLayer(KnownLayer.Background);
+    public void RefreshResolvedTints()
+    {
+        _editor.TextArea.TextView.InvalidateLayer(KnownLayer.Background);
+        // RangeStates is mutated in place on accept-side clicks, so the
+        // line-number map needs the same explicit kick — it tracks resolved
+        // vs unresolved per-conflict to decide which side's numbers to draw.
+        _lineNumberMargin.Refresh();
+        // Re-run element generators so the inline toolbar's
+        // FindRangeIndexForLine pass walks the FRESH document text and
+        // re-pairs marker rows to the correct conflict indices. Without
+        // this, after the user accepts conflict N the toolbars on every
+        // unresolved conflict below shift one slot and fire commands
+        // against the wrong range — the "everything below jumbles" bug.
+        _editor.TextArea.TextView.Redraw();
+    }
 
     /// <summary>
     /// Scroll the result pane so <paramref name="lineNumber1Based"/> is at
@@ -199,7 +213,12 @@ public sealed class ResultPane : ContentControl
 
     private readonly TextEditor _editor = new()
     {
-        ShowLineNumbers = true,
+        // The custom MergeResultLineNumberMargin replaces the stock gutter so
+        // marker lines (toolbar / BASE / THEIRS / END rows) get NO number and
+        // in-conflict content shows file-side-specific numbers (ours / base /
+        // theirs StartLine + offset). ShowLineNumbers=true would add a second
+        // stock margin alongside ours.
+        ShowLineNumbers = false,
         // Phase 2c ships the Result pane as read-only: manual editing requires
         // per-range text mapping (Phase 3) to know which range the user's edit
         // falls inside. Without that, whole-buffer edits destroyed both the
@@ -236,6 +255,7 @@ public sealed class ResultPane : ContentControl
         _editor.TextArea.TextView.ElementGenerators.Add(
             new ConflictMarkerInlineGenerator(
                 () => MergeDocument,
+                () => RangeStates,
                 () => AcceptOursCommand,
                 () => AcceptTheirsCommand,
                 () => AcceptBothCommand,
@@ -247,7 +267,18 @@ public sealed class ResultPane : ContentControl
         // so syntax-highlighted glyphs read on top of the tint.
         _editor.TextArea.TextView.BackgroundRenderers.Add(
             new ResultPaneBackgroundRenderer(() => MergeDocument, () => RangeStates));
+
+        // Custom gutter that skips marker lines and renders file-side line
+        // numbers inside conflicts. Stored so OnGeneratorInputChanged can
+        // poke it to rebuild after a state-dictionary mutation (which doesn't
+        // change document text and so wouldn't fire TextChanged).
+        _lineNumberMargin = new MergeResultLineNumberMargin(
+            () => MergeDocument,
+            () => RangeStates);
+        _editor.TextArea.LeftMargins.Add(_lineNumberMargin);
     }
+
+    private readonly MergeResultLineNumberMargin _lineNumberMargin;
 
     private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -261,6 +292,18 @@ public sealed class ResultPane : ContentControl
         if (pane._editor.Text == newText) return;
         pane._editor.Document ??= new TextDocument();
         pane._editor.Document.Text = newText;
+        // The Text DP fires when the VM's ComposedText recomputes — which
+        // happens after a RangeStates mutation. Both the line-number margin
+        // and the BackgroundRenderer derive from RangeStates AND the new
+        // doc text, but neither hears about in-place dictionary mutations.
+        // Kick both here so they rebuild against the fresh doc + state in
+        // a single synchronous step, ordered AFTER Document.Text has been
+        // assigned. RefreshResolvedTints (called from the VM's
+        // RangeStatesChanged event) may run before this binding propagation
+        // completes, so without the kick here the BG layer is left painting
+        // its pre-acceptance tint map.
+        pane._lineNumberMargin?.Refresh();
+        pane._editor.TextArea.TextView.InvalidateLayer(KnownLayer.Background);
     }
 
     private static void OnLayoutChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -328,6 +371,11 @@ public sealed class ResultPane : ContentControl
     /// </summary>
     private static void OnGeneratorInputChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        ((ResultPane)d)._editor.TextArea.TextView.Redraw();
+        var pane = (ResultPane)d;
+        // Re-run element generators so the inline CodeLens picks up the new
+        // ranges, and rebuild the line-number map so file-side numbers
+        // re-anchor to the new document's range list.
+        pane._lineNumberMargin.Refresh();
+        pane._editor.TextArea.TextView.Redraw();
     }
 }

@@ -19,25 +19,33 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!--  Ours (blue side)  -->
-    <Color x:Key="Merge.Ours.BgSubtle.Color">#1A2B4A6E</Color>
+    <!--  Ours (blue side). BgSubtle bumped from 0x1A→0x55 alpha and the
+          base hue brightened from #2B4A6E (washed-out navy) to #4A8FE0
+          (cleaner blue) so region tints in the input panes read as
+          deliberate blue blocks rather than barely-perceptible smudges.
+          Text remains legible because the alpha is still well below
+          BgStrong (used for hover swap / inline pill backgrounds).  -->
+    <Color x:Key="Merge.Ours.BgSubtle.Color">#554A8FE0</Color>
     <Color x:Key="Merge.Ours.BgStrong.Color">#992B4A6E</Color>
     <Color x:Key="Merge.Ours.Accent.Color">#FF4A88C4</Color>
     <Color x:Key="Merge.Ours.Text.Color">#FFB4D4FF</Color>
     <Color x:Key="Merge.Ours.Border.Color">#FF2B4A6E</Color>
-    <SolidColorBrush x:Key="Merge.Ours.BgSubtle" Color="#1A2B4A6E"/>
+    <SolidColorBrush x:Key="Merge.Ours.BgSubtle" Color="#554A8FE0"/>
     <SolidColorBrush x:Key="Merge.Ours.BgStrong" Color="#992B4A6E"/>
     <SolidColorBrush x:Key="Merge.Ours.Accent"   Color="#FF4A88C4"/>
     <SolidColorBrush x:Key="Merge.Ours.Text"     Color="#FFB4D4FF"/>
     <SolidColorBrush x:Key="Merge.Ours.Border"   Color="#FF2B4A6E"/>
 
-    <!--  Theirs (green side)  -->
-    <Color x:Key="Merge.Theirs.BgSubtle.Color">#1A1A5035</Color>
+    <!--  Theirs (green side). Same vibrancy bump as Ours: 0x1A→0x55
+          alpha + brighter base hue (#1A5035 → #3DA05C) so the green
+          and blue sides read as clearly distinct sections at a glance,
+          rather than two near-identical near-transparent washes.  -->
+    <Color x:Key="Merge.Theirs.BgSubtle.Color">#553DA05C</Color>
     <Color x:Key="Merge.Theirs.BgStrong.Color">#991A5035</Color>
     <Color x:Key="Merge.Theirs.Accent.Color">#FF3DA05C</Color>
     <Color x:Key="Merge.Theirs.Text.Color">#FFA8E6B8</Color>
     <Color x:Key="Merge.Theirs.Border.Color">#FF1A5035</Color>
-    <SolidColorBrush x:Key="Merge.Theirs.BgSubtle" Color="#1A1A5035"/>
+    <SolidColorBrush x:Key="Merge.Theirs.BgSubtle" Color="#553DA05C"/>
     <SolidColorBrush x:Key="Merge.Theirs.BgStrong" Color="#991A5035"/>
     <SolidColorBrush x:Key="Merge.Theirs.Accent"   Color="#FF3DA05C"/>
     <SolidColorBrush x:Key="Merge.Theirs.Text"     Color="#FFA8E6B8"/>

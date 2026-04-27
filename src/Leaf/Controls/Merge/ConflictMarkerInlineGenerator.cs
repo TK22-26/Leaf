@@ -52,7 +52,18 @@ namespace Leaf.Controls.Merge;
 /// </remarks>
 public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
 {
+    /// <summary>
+    /// Exact height of the OURS section-header row stacked beneath the
+    /// opener toolbar. Exposed so <see cref="ResultPaneBackgroundRenderer"/>
+    /// can paint a full-width ours-tinted strip across that bottom slice
+    /// of the Open-marker visual line — the inline element itself only
+    /// spans the toolbar's natural width, so without a renderer-painted
+    /// strip the OURS row only shows tinted up to the toolbar's right edge.
+    /// </summary>
+    internal const double OursRowHeight = 22.0;
+
     private readonly Func<MergeDocument?> _getDocument;
+    private readonly Func<IReadOnlyDictionary<int, ResolutionState>?> _getStates;
     private readonly Func<ICommand?> _getAcceptOurs;
     private readonly Func<ICommand?> _getAcceptTheirs;
     private readonly Func<ICommand?> _getAcceptBoth;
@@ -60,12 +71,14 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
 
     public ConflictMarkerInlineGenerator(
         Func<MergeDocument?> getDocument,
+        Func<IReadOnlyDictionary<int, ResolutionState>?> getStates,
         Func<ICommand?> getAcceptOurs,
         Func<ICommand?> getAcceptTheirs,
         Func<ICommand?> getAcceptBoth,
         Func<ICommand?> getCompare)
     {
         _getDocument = getDocument;
+        _getStates = getStates;
         _getAcceptOurs = getAcceptOurs;
         _getAcceptTheirs = getAcceptTheirs;
         _getAcceptBoth = getAcceptBoth;
@@ -124,10 +137,18 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
         if (kind == MarkerKind.None) return null;
 
         var rangeIndex = FindRangeIndexForLine(line.LineNumber);
+        // When the base section is empty (zdiff3 still emits a `||||||| base`
+        // marker followed immediately by `=======`) the BASE caption row is
+        // visual noise — it introduces a section that has no content. Drop
+        // the caption to a 1 px collapsed strip so the user sees ours-content
+        // flow straight into theirs-content with only a hairline divider.
+        bool baseEmpty = kind == MarkerKind.Base
+            && rangeIndex >= 0
+            && IsBaseEmptyForRangeIndex(rangeIndex);
         UIElement element = kind switch
         {
             MarkerKind.Open => BuildOpenerToolbar(rangeIndex),
-            MarkerKind.Base => BuildSeparator("BASE"),
+            MarkerKind.Base => baseEmpty ? BuildCollapsedMarker() : BuildSeparator("BASE"),
             MarkerKind.Equals => BuildSeparator("THEIRS"),
             // Without a caption the close marker collapses to a 1 px rule
             // inside an otherwise empty visual line — the user sees an
@@ -159,81 +180,191 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
         return new InlineObjectElement(line.Length, element);
     }
 
+    /// <summary>
+    /// Map a marker-line's <em>displayed</em> document-line number to the
+    /// underlying <see cref="ModifiedBaseRange.Index"/>. Walks the doc text
+    /// from line 1, counting <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c> markers and
+    /// pairing each with the next unresolved conflict in
+    /// <see cref="MergeDocument.ConflictingRanges"/> order. Resolved
+    /// conflicts have no markers in the displayed text, so they're skipped
+    /// over silently.
+    /// </summary>
+    /// <remarks>
+    /// Earlier this looked up <see cref="ModifiedBaseRange.ResultMarkedRange"/>
+    /// directly, but ResultMarkedRange describes positions in the
+    /// <em>InitialMergedText</em> (which has marker blocks for every
+    /// conflict, resolved or not). After the user accepts a side, the
+    /// displayed text shrinks for that conflict (markers + alt content
+    /// replaced by the chosen side's content), and every subsequent
+    /// conflict's displayed line position no longer matches its
+    /// ResultMarkedRange. Using ResultMarkedRange there made the toolbar
+    /// for conflict N+1 fire commands against conflict N's index,
+    /// scrambling all chrome below the first accepted change.
+    /// </remarks>
     private int FindRangeIndexForLine(int lineNumber)
     {
+        var doc = CurrentContext.Document;
         var mergeDoc = _getDocument();
-        if (mergeDoc is null) return -1;
-        for (int i = 0; i < mergeDoc.Ranges.Count; i++)
+        if (doc is null || mergeDoc is null) return -1;
+
+        var states = _getStates();
+        var unresolvedConflicts = new List<ModifiedBaseRange>();
+        foreach (var r in mergeDoc.Ranges)
         {
-            var range = mergeDoc.Ranges[i];
-            if (!range.IsConflicting) continue;
-            if (lineNumber >= range.ResultMarkedRange.StartLine
-                && lineNumber < range.ResultMarkedRange.EndLineExclusive)
+            if (!r.IsConflicting) continue;
+            var state = states is not null && states.TryGetValue(r.Index, out var s)
+                ? s
+                : ResolutionState.Unresolved.Instance;
+            if (state is ResolutionState.Unresolved) unresolvedConflicts.Add(r);
+        }
+        if (unresolvedConflicts.Count == 0) return -1;
+        unresolvedConflicts.Sort((a, b) => a.Index.CompareTo(b.Index));
+
+        int conflictPos = 0;
+        int currentRangeIdx = -1;
+        int totalLines = doc.LineCount;
+        for (int line = 1; line <= totalLines && line <= lineNumber; line++)
+        {
+            var ln = doc.GetLineByNumber(line);
+            var text = doc.GetText(ln.Offset, ln.Length);
+            var kind = ClassifyMarker(text);
+            if (kind == MarkerKind.Open)
             {
-                return i;
+                if (conflictPos < unresolvedConflicts.Count)
+                {
+                    currentRangeIdx = unresolvedConflicts[conflictPos].Index;
+                    conflictPos++;
+                }
+                else
+                {
+                    currentRangeIdx = -1;
+                }
+            }
+            if (line == lineNumber)
+            {
+                return currentRangeIdx;
+            }
+            if (kind == MarkerKind.Close)
+            {
+                currentRangeIdx = -1;
             }
         }
-        return -1;
+        return currentRangeIdx;
+    }
+
+    private bool IsBaseEmptyForRangeIndex(int rangeIndex)
+    {
+        var mergeDoc = _getDocument();
+        if (mergeDoc is null) return false;
+        if (rangeIndex < 0) return false;
+        foreach (var r in mergeDoc.Ranges)
+        {
+            if (r.Index == rangeIndex) return r.BaseLines.Count == 0;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Inline element for an empty-base marker line. Renders as a 1 px
+    /// transparent strip — the doc line still exists (zdiff3 always emits
+    /// the <c>|||||||</c> marker even when base is empty) but visually
+    /// collapses so ours- and theirs-content blocks meet across a hairline.
+    /// </summary>
+    private static FrameworkElement BuildCollapsedMarker()
+    {
+        return new Border
+        {
+            Height = 1,
+            Background = Brushes.Transparent,
+        };
     }
 
     private FrameworkElement BuildOpenerToolbar(int rangeIndex)
     {
-        // Toolbar = surface-3 pill containing 3 side-tinted accept buttons
-        // (Ours blue / Theirs green / Both amber) and a compact text link
-        // for Compare. Mirrors VS Code's merge-editor pattern of giving the
-        // primary actions clear chip-shaped affordances and the secondary
-        // action (Compare) less visual weight.
-        var stack = new StackPanel
+        // Two-row layout:
+        //   Row 1: [Accept Ours] [Accept Theirs] [Accept Both] [Compare]
+        //   Row 2: OURS — section header with ours-tint chip background
+        // Earlier the OURS caption sat inline with the buttons on a single
+        // toolbar row, but the user expects the section header to look like
+        // the BASE / THEIRS / END caption rows that already exist below —
+        // those each occupy their own row and are tinted by section. Stacking
+        // OURS underneath the toolbar keeps the four marker rows visually
+        // consistent (toolbar=neutral, ours-row=blue, base=grey, theirs=green,
+        // end=neutral) while preserving a single doc line for the opener so
+        // line numbering doesn't drift.
+        var toolbar = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        stack.Children.Add(BuildAcceptPill(
+        toolbar.Children.Add(BuildAcceptPill(
             "Accept Ours", _getAcceptOurs(), rangeIndex,
             "Merge.Ours.BgSubtle.Color",
             "Merge.Ours.BgStrong.Color",
             "Merge.Ours.Border.Color",
             "Merge.Ours.Text.Color",
             "Merge.CodeLens.Inline.AcceptOurs"));
-        stack.Children.Add(BuildAcceptPill(
+        toolbar.Children.Add(BuildAcceptPill(
             "Accept Theirs", _getAcceptTheirs(), rangeIndex,
             "Merge.Theirs.BgSubtle.Color",
             "Merge.Theirs.BgStrong.Color",
             "Merge.Theirs.Border.Color",
             "Merge.Theirs.Text.Color",
             "Merge.CodeLens.Inline.AcceptTheirs"));
-        // "Accept Both" follows the same dark-themed pattern as Ours / Theirs
-        // pills (subtle BG + border + tinted text), styled with a desaturated
-        // surface-4 background so it visually distinguishes from the
-        // side-tinted accepts without looking like a primary CTA. Solid amber
-        // was too bright and read as "Mark as resolved" rather than the
-        // peer action it actually is.
-        stack.Children.Add(BuildAcceptPill(
+        toolbar.Children.Add(BuildAcceptPill(
             "Accept Both", _getAcceptBoth(), rangeIndex,
             "Merge.Surface.4.Color",
             "Merge.Surface.5.Color",
             "Merge.Border.Strong.Color",
             "Merge.Text.Primary.Color",
             "Merge.CodeLens.Inline.AcceptBoth"));
-        stack.Children.Add(BuildCompareLink(rangeIndex));
+        toolbar.Children.Add(BuildCompareLink(rangeIndex));
 
-        // No outer Background / BorderBrush on the inline element itself —
-        // an InlineObjectElement is sized to its content's DesiredSize, so a
-        // Border here would only span the toolbar's natural width (~250 px)
-        // and leave the rest of the marker line un-styled. Instead the
-        // ResultPaneBackgroundRenderer paints a full-width Surface-3 strip
-        // (with hairline top + bottom borders) for opener-marker lines —
-        // see ResultPaneBackgroundRenderer.PaintMarkerLineChrome. This
-        // wrapper just holds the buttons and provides padding from the
-        // line edges so they don't sit flush against the gutter.
-        var wrapper = new Border
+        var toolbarRow = new Border
         {
             Padding = new Thickness(8, 4, 8, 4),
-            Child = stack,
+            Child = toolbar,
             Background = Brushes.Transparent,
         };
-        return wrapper;
+
+        // Ours-tinted strip with the OURS caption. The Border carries an
+        // explicit ours-strong background so the strip still reads as the
+        // ours-section header even though the surrounding doc-line is
+        // neutral (the BackgroundRenderer paints Open markers Surface-3 to
+        // keep the toolbar surface neutral). Stretches to match the toolbar's
+        // natural width via HorizontalAlignment.Stretch on the StackPanel.
+        var oursLabel = new TextBlock
+        {
+            Text = "OURS",
+            FontSize = MergePaletteResources.Resolve<double>("Merge.Type.Caption.Size"),
+            FontFamily = MergePaletteResources.Resolve<FontFamily>("Merge.FontFamily.Chrome"),
+            FontWeight = FontWeights.SemiBold,
+            Foreground = MergePaletteResources.ResolveFrozenBrush("Merge.Ours.Text.Color"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        // The Border's background is intentionally Transparent — the
+        // ResultPaneBackgroundRenderer paints a FULL-WIDTH ours-tinted strip
+        // across the bottom OursRowHeight slice of the Open-marker visual
+        // line, which extends past this inline element's natural width
+        // (the user wants the OURS strip to span the entire row, not just
+        // the width of the toolbar above it).
+        var oursRow = new Border
+        {
+            Padding = new Thickness(8, 2, 8, 2),
+            Child = oursLabel,
+            Height = OursRowHeight,
+            Background = Brushes.Transparent,
+        };
+
+        var stack = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+        };
+        stack.Children.Add(toolbarRow);
+        stack.Children.Add(oursRow);
+
+        return stack;
     }
 
     /// <summary>
