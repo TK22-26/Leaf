@@ -158,6 +158,21 @@ public sealed class ResultPane : ContentControl
     /// </summary>
     public void RefreshResolvedTints() => _editor.TextArea.TextView.InvalidateLayer(KnownLayer.Background);
 
+    /// <summary>
+    /// Scroll the result pane so <paramref name="lineNumber1Based"/> is at
+    /// the top of the viewport. Mirrors <c>ScrollPaneToLine</c> for the
+    /// ReadOnly panes — used by the F8 / chevron / Alt-arrow conflict
+    /// navigators so all three panes track together when the user
+    /// jumps between conflicts.
+    /// </summary>
+    public void ScrollToLine(int lineNumber1Based)
+    {
+        if (lineNumber1Based < 1) return;
+        if (_editor.Document is null) return;
+        if (lineNumber1Based > _editor.Document.LineCount) return;
+        _editor.ScrollToLine(lineNumber1Based);
+    }
+
     public ICommand? AcceptOursCommand
     {
         get => (ICommand?)GetValue(AcceptOursCommandProperty);

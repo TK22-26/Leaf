@@ -374,6 +374,7 @@ public partial class MergeEditorView : Window
             _subscribedVm.AiResolutionReceived += OnAiResolutionReceived;
             _subscribedVm.AiError += OnAiError;
             _subscribedVm.CompareRequested += OnCompareRequested;
+            _subscribedVm.PropertyChanged += OnVmPropertyChanged;
         }
     }
 
@@ -385,6 +386,37 @@ public partial class MergeEditorView : Window
         _subscribedVm.AiResolutionReceived -= OnAiResolutionReceived;
         _subscribedVm.AiError -= OnAiError;
         _subscribedVm.CompareRequested -= OnCompareRequested;
+        _subscribedVm.PropertyChanged -= OnVmPropertyChanged;
+    }
+
+    /// <summary>
+    /// Listen for VM property changes that should trigger view-side
+    /// effects beyond plain DP binding. Today: <c>CurrentConflictIndex</c>
+    /// changes drive a scroll-into-view on all three panes so F8 /
+    /// Shift+F8 / sticky-header chevrons / Alt+arrow span navigation
+    /// actually move the user's viewport — without this the index just
+    /// updates as a private state value and the panes stay where they
+    /// were.
+    /// </summary>
+    private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MergeEditorViewModel.CurrentConflictIndex))
+        {
+            ScrollAllPanesToCurrentConflict();
+        }
+    }
+
+    private void ScrollAllPanesToCurrentConflict()
+    {
+        if (Vm?.Document is null) return;
+        var conflicting = Vm.Document.ConflictingRanges.ToList();
+        if (conflicting.Count == 0) return;
+        var idx = Math.Clamp(Vm.CurrentConflictIndex, 0, conflicting.Count - 1);
+        var range = conflicting[idx];
+        ScrollPaneToLine(OursScrollViewer, range.Ours.StartLine);
+        ScrollPaneToLine(TheirsScrollViewer, range.Theirs.StartLine);
+        // Result pane uses AvalonEdit's own scroll API; ScrollToLine wraps it.
+        ResultPaneInstance?.ScrollToLine(range.ResultMarkedRange.StartLine);
     }
 
     private void OnCompareRequested(object? sender, int rangeIndex)

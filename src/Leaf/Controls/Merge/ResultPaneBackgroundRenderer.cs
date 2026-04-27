@@ -41,6 +41,8 @@ public sealed class ResultPaneBackgroundRenderer : IBackgroundRenderer
     private readonly Brush _theirsBg;
     private readonly Brush _baseBg;
     private readonly Brush _resolvedBg;
+    private readonly Brush _markerStripBg;
+    private readonly Brush _markerBorder;
 
     public ResultPaneBackgroundRenderer(
         Func<MergeDocument?> getDocument,
@@ -52,6 +54,8 @@ public sealed class ResultPaneBackgroundRenderer : IBackgroundRenderer
         _theirsBg = MergePaletteResources.ResolveFrozenBrush("Merge.Theirs.BgSubtle.Color");
         _baseBg = MergePaletteResources.ResolveFrozenBrush("Merge.Base.BgSubtle.Color");
         _resolvedBg = MergePaletteResources.ResolveFrozenBrush("Merge.State.Resolved.Overlay.Color");
+        _markerStripBg = MergePaletteResources.ResolveFrozenBrush("Merge.Surface.3.Color");
+        _markerBorder = MergePaletteResources.ResolveFrozenBrush("Merge.Border.Subtle.Color");
     }
 
     public KnownLayer Layer => KnownLayer.Background;
@@ -64,17 +68,52 @@ public sealed class ResultPaneBackgroundRenderer : IBackgroundRenderer
         if (!textView.VisualLinesValid) return;
 
         var states = _getRangeStates();
+        var width = textView.ActualWidth;
+        // Paint past the visible viewport edges so a partially-scrolled
+        // strip doesn't show a visible seam at the right margin.
+        var paintWidth = Math.Max(width, textView.RenderSize.Width);
 
         foreach (var visualLine in textView.VisualLines)
         {
             var lineNumber = visualLine.FirstDocumentLine.LineNumber;
+            var y = visualLine.VisualTop - textView.VerticalOffset;
+            var rect = new Rect(0, y, paintWidth, visualLine.Height);
+
+            if (IsMarkerLine(doc, lineNumber))
+            {
+                // Marker chrome: full-width Surface-3 strip + 1 px hairline
+                // top + bottom borders. The InlineObjectElement (the toolbar
+                // / caption) renders its content over this surface, so the
+                // strip extends beyond the natural width of the buttons.
+                drawingContext.DrawRectangle(_markerStripBg, pen: null, rect);
+                drawingContext.DrawRectangle(_markerBorder, pen: null,
+                    new Rect(0, y, paintWidth, 1));
+                drawingContext.DrawRectangle(_markerBorder, pen: null,
+                    new Rect(0, y + visualLine.Height - 1, paintWidth, 1));
+                continue;
+            }
+
             var brush = ClassifyLine(doc, states, lineNumber);
             if (brush is null) continue;
-
-            var y = visualLine.VisualTop - textView.VerticalOffset;
-            var rect = new Rect(0, y, textView.ActualWidth, visualLine.Height);
             drawingContext.DrawRectangle(brush, pen: null, rect);
         }
+    }
+
+    /// <summary>
+    /// True when <paramref name="lineNumber"/> is one of the four zdiff3
+    /// marker lines inside any conflict's marked range. Read directly from
+    /// the document text rather than the parser output so this stays in
+    /// sync with the result-pane's actual rendered text.
+    /// </summary>
+    private static bool IsMarkerLine(MergeDocument doc, int lineNumber)
+    {
+        if (lineNumber < 1 || lineNumber > doc.InitialMergedLines.Count) return false;
+        var text = doc.InitialMergedLines[lineNumber - 1];
+        if (string.IsNullOrEmpty(text)) return false;
+        return text.StartsWith("<<<<<<<", StringComparison.Ordinal)
+            || text.StartsWith(">>>>>>>", StringComparison.Ordinal)
+            || text.StartsWith("|||||||", StringComparison.Ordinal)
+            || text == "=======";
     }
 
     /// <summary>
