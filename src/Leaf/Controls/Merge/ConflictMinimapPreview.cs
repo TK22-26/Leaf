@@ -283,10 +283,20 @@ public sealed class ConflictMinimapPreview : FrameworkElement
             // draw a rectangle outside the visual bounds (ClipToBounds does
             // this too, but explicit clamp keeps the drawn rect honest).
             viewH = Math.Min(viewH, ActualHeight - viewY);
-            if (viewH > 0)
+
+            // Guard the inset dimensions: the half-pixel inset (-1) makes
+            // either dimension negative when the input is < 1 — which can
+            // happen mid-layout (ActualWidth not yet measured) or when the
+            // pane shrinks faster than the bound ViewportHeight propagates
+            // (observed clicking Next Conflict rapidly: layout briefly
+            // reports ActualWidth ~0 or viewH ~0.4 between scroll frames,
+            // and Rect throws on negative width / height).
+            var rectW = Math.Max(0, ActualWidth - 1);
+            var rectH = Math.Max(0, viewH - 1);
+            if (rectW > 0 && rectH > 0)
             {
                 dc.DrawRectangle(_brushes.Viewport, _brushes.ViewportBorderPen,
-                    new Rect(0.5, viewY + 0.5, ActualWidth - 1, viewH - 1));
+                    new Rect(0.5, viewY + 0.5, rectW, rectH));
             }
         }
     }

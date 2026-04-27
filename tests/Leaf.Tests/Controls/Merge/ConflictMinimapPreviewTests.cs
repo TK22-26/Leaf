@@ -77,4 +77,50 @@ public class ConflictMinimapPreviewTests
         preview.Side.Should().Be(MergePaneSide.Ours,
             because: "most callers bind one preview per pane — Ours default matches the left-side placement");
     }
+
+    [StaFact]
+    public void OnRender_DoesNotThrow_WhenViewportDimensionsAreSubPixel()
+    {
+        // Reproduces the "Width and Height must be non-negative" crash that
+        // fired clicking Next Conflict rapidly: between scroll frames the
+        // bound ViewportHeight transiently reports values that, after the
+        // 0.5 px inset for the viewport border rect, would compute to a
+        // negative Rect dimension. The fix clamps both dimensions via
+        // Math.Max(0, ...). This synthetic case (sub-pixel ActualWidth)
+        // exercises the same guard.
+        var preview = new ConflictMinimapPreview
+        {
+            VerticalOffset = 0,
+            ViewportHeight = 0.5,
+            Layout = new MergePaneGlyphLayout(),
+        };
+        preview.Measure(new System.Windows.Size(0.5, 0.5));
+        preview.Arrange(new System.Windows.Rect(0, 0, 0.5, 0.5));
+
+        var dv = new System.Windows.Media.DrawingVisual();
+        var dc = dv.RenderOpen();
+        try
+        {
+            var act = () => InvokeOnRender(preview, dc);
+            act.Should().NotThrow();
+        }
+        finally
+        {
+            dc.Close();
+        }
+    }
+
+    /// <summary>
+    /// Reflection helper to call the protected <c>OnRender</c> override —
+    /// the negative-dimension bug only manifests inside the draw path so
+    /// the test must reach that path directly.
+    /// </summary>
+    private static void InvokeOnRender(ConflictMinimapPreview preview, System.Windows.Media.DrawingContext dc)
+    {
+        var method = typeof(ConflictMinimapPreview).GetMethod(
+            "OnRender",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        method.Should().NotBeNull(because: "OnRender exists as a protected override on FrameworkElement");
+        method!.Invoke(preview, new object[] { dc });
+    }
 }
