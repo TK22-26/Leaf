@@ -129,7 +129,12 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
             MarkerKind.Open => BuildOpenerToolbar(rangeIndex),
             MarkerKind.Base => BuildSeparator("BASE"),
             MarkerKind.Equals => BuildSeparator("THEIRS"),
-            MarkerKind.Close => BuildSeparator(null),
+            // Without a caption the close marker collapses to a 1 px rule
+            // inside an otherwise empty visual line — the user sees an
+            // unexplained line-number with no content. "END" mirrors the
+            // BASE / THEIRS captions so the affordance reads as a deliberate
+            // section divider.
+            MarkerKind.Close => BuildSeparator("END"),
             _ => BuildSeparator(null),
         };
 
@@ -138,6 +143,16 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
         // Without this the inline run reports 0×0 and the editor lays the
         // line out as if the marker text were still present.
         element.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+
+        // Vertically center the line number in the gutter for this taller-
+        // than-text-line visual line. AvalonEdit reads the baseline via
+        // TextBlock.GetBaselineOffset(element); for arbitrary FrameworkElements
+        // that returns NaN, falling back to desiredSize.Height (the bottom),
+        // which makes the line number bottom-aligned and visually offset.
+        // Setting the attached property explicitly to the element's mid-
+        // height puts the baseline at the visual line's centre, which the
+        // line-number margin then tracks.
+        TextBlock.SetBaselineOffset(element, element.DesiredSize.Height * 0.7);
 
         // Document length = full marker line content. The editor renders
         // the inline element in place of the line's text.
@@ -188,32 +203,37 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
             "Merge.Theirs.Border.Color",
             "Merge.Theirs.Text.Color",
             "Merge.CodeLens.Inline.AcceptTheirs"));
+        // "Accept Both" follows the same dark-themed pattern as Ours / Theirs
+        // pills (subtle BG + border + tinted text), styled with a desaturated
+        // surface-4 background so it visually distinguishes from the
+        // side-tinted accepts without looking like a primary CTA. Solid amber
+        // was too bright and read as "Mark as resolved" rather than the
+        // peer action it actually is.
         stack.Children.Add(BuildAcceptPill(
             "Accept Both", _getAcceptBoth(), rangeIndex,
-            "Merge.State.Manual.Color",
-            "Merge.State.Manual.Color",
-            "Merge.State.Manual.Color",
-            "Merge.Text.OnAccent.Color",
-            "Merge.CodeLens.Inline.AcceptBoth",
-            // "Both" pill carries solid manual-amber bg straight away —
-            // it's the merge-flavoured action so the visual weight matches
-            // its semantic seriousness.
-            solidFill: true));
+            "Merge.Surface.4.Color",
+            "Merge.Surface.5.Color",
+            "Merge.Border.Strong.Color",
+            "Merge.Text.Primary.Color",
+            "Merge.CodeLens.Inline.AcceptBoth"));
         stack.Children.Add(BuildCompareLink(rangeIndex));
 
-        // Outer toolbar: surface-3 pill with subtle 1 px hairline border
-        // matching the existing card / pane chrome treatment.
-        var border = new Border
+        // No outer Background / BorderBrush on the inline element itself —
+        // an InlineObjectElement is sized to its content's DesiredSize, so a
+        // Border here would only span the toolbar's natural width (~250 px)
+        // and leave the rest of the marker line un-styled. Instead the
+        // ResultPaneBackgroundRenderer paints a full-width Surface-3 strip
+        // (with hairline top + bottom borders) for opener-marker lines —
+        // see ResultPaneBackgroundRenderer.PaintMarkerLineChrome. This
+        // wrapper just holds the buttons and provides padding from the
+        // line edges so they don't sit flush against the gutter.
+        var wrapper = new Border
         {
-            Background = MergePaletteResources.ResolveFrozenBrush("Merge.Surface.3.Color"),
-            BorderBrush = MergePaletteResources.ResolveFrozenBrush("Merge.Border.Subtle.Color"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(6, 3, 6, 3),
-            Margin = new Thickness(0, 2, 0, 2),
+            Padding = new Thickness(8, 4, 8, 4),
             Child = stack,
+            Background = Brushes.Transparent,
         };
-        return border;
+        return wrapper;
     }
 
     /// <summary>
@@ -328,34 +348,25 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
 
     private static FrameworkElement BuildSeparator(string? caption)
     {
-        var grid = new Grid { VerticalAlignment = VerticalAlignment.Center };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        if (!string.IsNullOrEmpty(caption))
+        // Just the caption (no horizontal rule) — the rule is painted by
+        // ResultPaneBackgroundRenderer.PaintMarkerLineChrome at full width
+        // because an InlineObjectElement can't stretch beyond its DesiredSize.
+        // Padding matches the opener toolbar so chrome lines up vertically.
+        var label = new TextBlock
         {
-            var label = new TextBlock
-            {
-                Text = caption,
-                FontSize = MergePaletteResources.Resolve<double>("Merge.Type.Caption.Size"),
-                FontFamily = MergePaletteResources.Resolve<FontFamily>("Merge.FontFamily.Chrome"),
-                Foreground = MergePaletteResources.ResolveFrozenBrush("Merge.Text.Tertiary.Color"),
-                Margin = new Thickness(0, 0, 8, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            Grid.SetColumn(label, 0);
-            grid.Children.Add(label);
-        }
-
-        var rule = new Border
-        {
-            Height = 1,
-            Background = MergePaletteResources.ResolveFrozenBrush("Merge.Border.Subtle.Color"),
+            Text = caption ?? string.Empty,
+            FontSize = MergePaletteResources.Resolve<double>("Merge.Type.Caption.Size"),
+            FontFamily = MergePaletteResources.Resolve<FontFamily>("Merge.FontFamily.Chrome"),
+            FontWeight = FontWeights.SemiBold,
+            Foreground = MergePaletteResources.ResolveFrozenBrush("Merge.Text.Secondary.Color"),
             VerticalAlignment = VerticalAlignment.Center,
         };
-        Grid.SetColumn(rule, 1);
-        grid.Children.Add(rule);
-        return grid;
+        return new Border
+        {
+            Padding = new Thickness(8, 4, 8, 4),
+            Child = label,
+            Background = Brushes.Transparent,
+        };
     }
 
     /// <summary>

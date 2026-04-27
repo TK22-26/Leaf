@@ -255,13 +255,17 @@ public sealed class StickyConflictHeader : Border
     /// </summary>
     private void UpdateAccent()
     {
+        // Side-accent bar carries the SIDE's signature colour. The Result
+        // strip is intentionally a neutral hairline (Border.Strong) — Result
+        // represents the combination of ours+theirs and shouldn't visually
+        // claim a side, and using a green here read as "resolved" semantics
+        // even when the conflict is still unresolved.
         var key = Side switch
         {
             MergePaneSide.Ours => "Merge.Ours.Accent.Color",
             MergePaneSide.Theirs => "Merge.Theirs.Accent.Color",
             MergePaneSide.Base => "Merge.Base.Accent.Color",
-            MergePaneSide.Result => "Merge.State.Resolved.Color",
-            _ => "Merge.Border.Subtle.Color",
+            _ => "Merge.Border.Strong.Color",  // Result + any future side
         };
         try
         {
