@@ -77,6 +77,15 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
     /// <paramref name="startOffset"/>, or -1 if none. Walks the document
     /// line-by-line scanning for the four marker prefixes.
     /// </summary>
+    /// <remarks>
+    /// AvalonEdit's contract requires the returned offset to be
+    /// <c>&gt;= startOffset</c>. The whole-line replacement strategy means
+    /// we can only act on a marker line when <paramref name="startOffset"/>
+    /// is at or before that line's beginning — once the editor has walked
+    /// past a line's start while constructing visual elements (e.g. after
+    /// consuming our own InlineObjectElement) the same line is no longer
+    /// eligible. Skip any line whose <c>Offset &lt; startOffset</c>.
+    /// </remarks>
     public override int GetFirstInterestedOffset(int startOffset)
     {
         var doc = CurrentContext.Document;
@@ -84,14 +93,16 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
         var startLine = doc.GetLineByOffset(startOffset);
         for (var line = startLine; line is not null; line = line.NextLine)
         {
-            var lineOffset = Math.Max(line.Offset, startOffset);
-            if (lineOffset > line.EndOffset) continue;
+            if (line.Offset < startOffset)
+            {
+                // We've already walked past this line's start; can't insert
+                // a whole-line element here. Continue searching forward.
+                continue;
+            }
             var text = doc.GetText(line.Offset, line.Length);
             if (IsConflictMarker(text))
             {
-                // Return the LINE start offset, not the search start. The
-                // generator handles the whole-line replacement; partial-line
-                // segmentation isn't useful here.
+                // Whole-line replacement: signal interest at the line's start.
                 return line.Offset;
             }
         }
