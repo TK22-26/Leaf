@@ -521,6 +521,10 @@ public partial class MergeEditorView : Window
         OursMinimapPreview?.Refresh();
         TheirsMinimapPreview?.Refresh();
         ConnectionCanvas?.Refresh();
+        // ResultPane's BackgroundRenderer reads the live RangeStates dict;
+        // an in-place mutation doesn't fire its DP callback, so explicitly
+        // invalidate the background layer to repaint resolved-overlay tints.
+        ResultPaneInstance?.RefreshResolvedTints();
         // The previous floating CodeLensActionBar + SegmentedAcceptPillOverlay
         // were removed when ConflictMarkerInlineGenerator landed; their
         // Refresh hooks are no longer needed because the inline generator
