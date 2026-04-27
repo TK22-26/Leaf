@@ -399,28 +399,23 @@
                                           Text="{Binding ComposedText, Mode=OneWay}"
                                           Layout="{Binding Layout}"
                                           FilePath="{Binding SelectedConflict.FilePath}"
+                                          MergeDocument="{Binding Document}"
+                                          AcceptOursCommand="{Binding AcceptOursCommand}"
+                                          AcceptTheirsCommand="{Binding AcceptTheirsCommand}"
+                                          AcceptBothCommand="{Binding AcceptBothCommand}"
+                                          CompareCommand="{Binding CompareConflictCommand}"
                                           Foreground="{DynamicResource Merge.Text.Primary}"
                                           Background="{DynamicResource Merge.Surface.2}"
                                           ContextMenu="{DynamicResource Merge.PaneContextMenu}"/>
-                        <merge:CodeLensActionBar x:Name="CodeLens"
-                                                 AutomationProperties.AutomationId="Merge.CodeLens"
-                                                 Ranges="{Binding Document.Ranges}"
-                                                 RangeStates="{Binding RangeStates}"
-                                                 Layout="{Binding Layout}"
-                                                 VerticalOffset="{Binding ElementName=ResultPaneInstance, Path=VerticalOffset}"
-                                                 AcceptOursCommand="{Binding AcceptOursCommand}"
-                                                 AcceptTheirsCommand="{Binding AcceptTheirsCommand}"
-                                                 AcceptBothCommand="{Binding AcceptBothCommand}"
-                                                 CompareCommand="{Binding CompareConflictCommand}"/>
-                        <merge:SegmentedAcceptPillOverlay x:Name="SegmentedPills"
-                            AutomationProperties.AutomationId="Merge.SegmentedPills"
-                            Ranges="{Binding Document.Ranges}"
-                            RangeStates="{Binding RangeStates}"
-                            Layout="{Binding Layout}"
-                            VerticalOffset="{Binding ElementName=ResultPaneInstance, Path=VerticalOffset}"
-                            AcceptOursCommand="{Binding AcceptOursCommand}"
-                            AcceptTheirsCommand="{Binding AcceptTheirsCommand}"
-                            AcceptBothCommand="{Binding AcceptBothCommand}"/>
+                        <!-- The floating CodeLensActionBar + SegmentedAcceptPillOverlay
+                             from C1/C2 were removed once ConflictMarkerInlineGenerator
+                             landed: the inline element generator replaces each marker
+                             line in the result pane's text view with a real
+                             [Accept Ours · Accept Theirs · Accept Both · Compare]
+                             toolbar (matching VS Code's merge editor), eliminating
+                             the prior floating-overlay overlap with surrounding
+                             code text. The control classes still exist for
+                             potential reuse but no longer render here. -->
                     </Grid>
                 </Grid>
             </Border>

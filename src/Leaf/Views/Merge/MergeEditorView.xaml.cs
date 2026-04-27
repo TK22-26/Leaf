@@ -513,7 +513,6 @@ public partial class MergeEditorView : Window
         // add a Refresh() entry point on it and call it here.
         OursPane.InvalidateVisual();
         TheirsPane.InvalidateVisual();
-        SegmentedPills?.RefreshPillStates();
         OursSticky?.RefreshState();
         TheirsSticky?.RefreshState();
         ResultSticky?.RefreshState();
@@ -522,7 +521,11 @@ public partial class MergeEditorView : Window
         OursMinimapPreview?.Refresh();
         TheirsMinimapPreview?.Refresh();
         ConnectionCanvas?.Refresh();
-        CodeLens?.Refresh();
+        // The previous floating CodeLensActionBar + SegmentedAcceptPillOverlay
+        // were removed when ConflictMarkerInlineGenerator landed; their
+        // Refresh hooks are no longer needed because the inline generator
+        // re-runs on every TextView.Redraw() (which the ResultPane DPs
+        // trigger via OnGeneratorInputChanged).
     }
 
     // ── Scroll / minimap wire-up (Phase 4) ───────────────────────────────

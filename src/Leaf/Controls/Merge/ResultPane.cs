@@ -2,8 +2,10 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using Leaf.Helpers;
+using Leaf.Models.Merge;
 using Leaf.TextEdit;
 using Leaf.TextEdit.Document;
 using Leaf.TextEdit.Highlighting;
@@ -76,6 +78,29 @@ public sealed class ResultPane : ContentControl
         nameof(VerticalOffset), typeof(double), typeof(ResultPane),
         new PropertyMetadata(0.0));
 
+    /// <summary>
+    /// Reference to the active <see cref="MergeDocument"/>. The inline
+    /// CodeLens generator uses this to map marker line numbers to range
+    /// indices so each <em>Accept Ours / Theirs / Both / Compare</em>
+    /// click carries the right CommandParameter. Bound from MergeEditorView
+    /// to the VM's <c>Document</c> property.
+    /// </summary>
+    public static readonly DependencyProperty MergeDocumentProperty = DependencyProperty.Register(
+        nameof(MergeDocument), typeof(MergeDocument), typeof(ResultPane),
+        new PropertyMetadata(null, OnGeneratorInputChanged));
+
+    public static readonly DependencyProperty AcceptOursCommandProperty = DependencyProperty.Register(
+        nameof(AcceptOursCommand), typeof(ICommand), typeof(ResultPane));
+
+    public static readonly DependencyProperty AcceptTheirsCommandProperty = DependencyProperty.Register(
+        nameof(AcceptTheirsCommand), typeof(ICommand), typeof(ResultPane));
+
+    public static readonly DependencyProperty AcceptBothCommandProperty = DependencyProperty.Register(
+        nameof(AcceptBothCommand), typeof(ICommand), typeof(ResultPane));
+
+    public static readonly DependencyProperty CompareCommandProperty = DependencyProperty.Register(
+        nameof(CompareCommand), typeof(ICommand), typeof(ResultPane));
+
     public string Text
     {
         get => (string)GetValue(TextProperty);
@@ -98,6 +123,36 @@ public sealed class ResultPane : ContentControl
     {
         get => (double)GetValue(VerticalOffsetProperty);
         private set => SetValue(VerticalOffsetProperty, value);
+    }
+
+    public MergeDocument? MergeDocument
+    {
+        get => (MergeDocument?)GetValue(MergeDocumentProperty);
+        set => SetValue(MergeDocumentProperty, value);
+    }
+
+    public ICommand? AcceptOursCommand
+    {
+        get => (ICommand?)GetValue(AcceptOursCommandProperty);
+        set => SetValue(AcceptOursCommandProperty, value);
+    }
+
+    public ICommand? AcceptTheirsCommand
+    {
+        get => (ICommand?)GetValue(AcceptTheirsCommandProperty);
+        set => SetValue(AcceptTheirsCommandProperty, value);
+    }
+
+    public ICommand? AcceptBothCommand
+    {
+        get => (ICommand?)GetValue(AcceptBothCommandProperty);
+        set => SetValue(AcceptBothCommandProperty, value);
+    }
+
+    public ICommand? CompareCommand
+    {
+        get => (ICommand?)GetValue(CompareCommandProperty);
+        set => SetValue(CompareCommandProperty, value);
     }
 
     private readonly TextEditor _editor = new()
@@ -129,6 +184,20 @@ public sealed class ResultPane : ContentControl
         // declaratively via WPF bindings rather than hooking the event itself.
         _editor.TextArea.TextView.ScrollOffsetChanged += (_, _) =>
             VerticalOffset = _editor.TextArea.TextView.ScrollOffset.Y;
+
+        // Phantom-line CodeLens: replace each conflict-marker line in the
+        // rendered text with an inline UI affordance. Closures pull the
+        // current values of the dependency properties at generation time
+        // so the editor doesn't have to be rebuilt when commands or the
+        // document change — AvalonEdit re-runs the generator on every
+        // visual-line construction (i.e. scroll, layout invalidation).
+        _editor.TextArea.TextView.ElementGenerators.Add(
+            new ConflictMarkerInlineGenerator(
+                () => MergeDocument,
+                () => AcceptOursCommand,
+                () => AcceptTheirsCommand,
+                () => AcceptBothCommand,
+                () => CompareCommand));
     }
 
     private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -199,5 +268,17 @@ public sealed class ResultPane : ContentControl
     private static void OnBackgroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         ((ResultPane)d)._editor.Background = (Brush?)e.NewValue ?? Brushes.Transparent;
+    }
+
+    /// <summary>
+    /// Force the editor to re-run its element generators when the inputs the
+    /// inline CodeLens depends on change (most importantly: a new conflict
+    /// document arrives). Without this the generator's cached visual lines
+    /// would keep pointing at the previous document's range list and either
+    /// throw on stale lookups or render the wrong toolbar at each marker.
+    /// </summary>
+    private static void OnGeneratorInputChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        ((ResultPane)d)._editor.TextArea.TextView.Redraw();
     }
 }
