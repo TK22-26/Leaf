@@ -96,6 +96,22 @@ public sealed class StickyConflictHeader : Border
     public static readonly DependencyProperty NextCommandProperty = DependencyProperty.Register(
         nameof(NextCommand), typeof(ICommand), typeof(StickyConflictHeader));
 
+    /// <summary>
+    /// Two-way mirror of the VM's <c>CurrentConflictIndex</c>. The chevron
+    /// click handlers write the visually-current conflict (computed from
+    /// <see cref="VerticalOffset"/> the same way <see cref="ComputeLabel"/>
+    /// does) into this DP before invoking <see cref="NextCommand"/> /
+    /// <see cref="PreviousCommand"/>. Without this sync, manual scrolling
+    /// (mouse wheel, scrollbar, minimap click) leaves the VM's index
+    /// pointing at wherever the last Next/Previous click landed — so
+    /// clicking Next at "Conflict 6" (per the sticky strip) when the VM
+    /// internally has CurrentConflictIndex==6 from a prior click would
+    /// advance to conflict 8, perceived as "skipped 7".
+    /// </summary>
+    public static readonly DependencyProperty CurrentIndexProperty = DependencyProperty.Register(
+        nameof(CurrentIndex), typeof(int), typeof(StickyConflictHeader),
+        new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
+
     public IReadOnlyList<ModifiedBaseRange> Ranges
     {
         get => (IReadOnlyList<ModifiedBaseRange>)GetValue(RangesProperty);
@@ -136,6 +152,12 @@ public sealed class StickyConflictHeader : Border
     {
         get => (ICommand?)GetValue(NextCommandProperty);
         set => SetValue(NextCommandProperty, value);
+    }
+
+    public int CurrentIndex
+    {
+        get => (int)GetValue(CurrentIndexProperty);
+        set => SetValue(CurrentIndexProperty, value);
     }
 
     private static void OnInputChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -306,6 +328,17 @@ public sealed class StickyConflictHeader : Border
         btn.MouseLeave += (_, _) => btn.Background = Brushes.Transparent;
         btn.Click += (_, _) =>
         {
+            // Resync CurrentIndex to the conflict the user is VISUALLY on
+            // (computed from VerticalOffset, identical to the sticky label
+            // logic) BEFORE invoking the navigation command. If the user
+            // scrolled manually since the last navigation click, the VM's
+            // CurrentConflictIndex would otherwise be stale and the next
+            // click would advance from the wrong seed.
+            var visualIdx = ComputeCurrentVisibleIndex();
+            if (visualIdx >= 0 && visualIdx != CurrentIndex)
+            {
+                CurrentIndex = visualIdx;
+            }
             var cmd = isPrevious ? PreviousCommand : NextCommand;
             if (cmd?.CanExecute(null) == true) cmd.Execute(null);
         };
@@ -322,18 +355,32 @@ public sealed class StickyConflictHeader : Border
     internal string? ComputeLabel()
     {
         if (Ranges is null || Layout is null) return null;
-        // Inline filter (not MergeDocument.ConflictingRanges) because this
-        // control binds to a lower-level IReadOnlyList<ModifiedBaseRange> DP
-        // rather than the document itself — MergeDocument isn't in scope here.
-        // The predicate is pinned by StickyConflictHeaderTests so drift from
-        // the document-level helper would surface immediately.
         var conflicting = Ranges.Where(r => r.IsConflicting).ToList();
         if (conflicting.Count == 0) return null;
 
+        var currentIdx = ComputeCurrentVisibleIndex(conflicting);
+        if (currentIdx < 0) return null;
+
+        var range = conflicting[currentIdx];
+        var stateLabel = DescribeState(range);
+        return $"Conflict {currentIdx + 1} of {conflicting.Count} · {stateLabel}";
+    }
+
+    /// <summary>
+    /// Compute which conflict (0-based index into the filtered conflicting
+    /// list) is currently at or above the viewport top — i.e. "the conflict
+    /// the user is looking at right now". Shared by <see cref="ComputeLabel"/>
+    /// (for the visible label) and the chevron click handlers (for syncing
+    /// <see cref="CurrentIndex"/> before navigation). Returns -1 when the
+    /// viewport is above the first conflict.
+    /// </summary>
+    internal int ComputeCurrentVisibleIndex() =>
+        ComputeCurrentVisibleIndex(Ranges?.Where(r => r.IsConflicting).ToList());
+
+    private int ComputeCurrentVisibleIndex(List<ModifiedBaseRange>? conflicting)
+    {
+        if (conflicting is null || conflicting.Count == 0 || Layout is null) return -1;
         var lineHeight = Layout.LineHeight;
-        // Walk the conflict list and pick the last range whose visual top is
-        // at or above the viewport top — that's "where the user is right now"
-        // even if they've scrolled past the opening line.
         int currentIdx = -1;
         for (int i = 0; i < conflicting.Count; i++)
         {
@@ -343,11 +390,7 @@ public sealed class StickyConflictHeader : Border
             if (topY <= VerticalOffset) currentIdx = i;
             else break;
         }
-        if (currentIdx < 0) return null;
-
-        var range = conflicting[currentIdx];
-        var stateLabel = DescribeState(range);
-        return $"Conflict {currentIdx + 1} of {conflicting.Count} · {stateLabel}";
+        return currentIdx;
     }
 
     private LineRange GetSideRange(ModifiedBaseRange range) => Side switch
