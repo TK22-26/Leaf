@@ -413,10 +413,22 @@ public partial class MergeEditorView : Window
         if (conflicting.Count == 0) return;
         var idx = Math.Clamp(Vm.CurrentConflictIndex, 0, conflicting.Count - 1);
         var range = conflicting[idx];
-        ScrollPaneToLine(OursScrollViewer, range.Ours.StartLine);
-        ScrollPaneToLine(TheirsScrollViewer, range.Theirs.StartLine);
+        // For one-sided conflicts (e.g. theirs added lines that ours didn't
+        // touch) the empty side has StartLine=0, which would scroll that pane
+        // to negative offset → effectively to 0 → the mirror sync in
+        // OnOursScrollChanged / OnTheirsScrollChanged would then yank the
+        // OTHER pane back to 0 too, hiding the sticky banner. Skip the empty
+        // side; the mirror handler will sync it from the non-empty side's
+        // post-scroll offset.
+        if (!range.Ours.IsEmpty)
+            ScrollPaneToLine(OursScrollViewer, range.Ours.StartLine);
+        if (!range.Theirs.IsEmpty)
+            ScrollPaneToLine(TheirsScrollViewer, range.Theirs.StartLine);
         // Result pane uses AvalonEdit's own scroll API; ScrollToLine wraps it.
-        ResultPaneInstance?.ScrollToLine(range.ResultMarkedRange.StartLine);
+        // ResultMarkedRange always has at least the marker lines so it is
+        // never empty for a real conflicting range.
+        if (!range.ResultMarkedRange.IsEmpty)
+            ResultPaneInstance?.ScrollToLine(range.ResultMarkedRange.StartLine);
     }
 
     private void OnCompareRequested(object? sender, int rangeIndex)
@@ -619,6 +631,11 @@ public partial class MergeEditorView : Window
     {
         var layout = Vm?.Layout;
         if (layout is null || sv is null) return;
+        // Defensive: callers should already filter empty ranges, but a 0 or
+        // negative line number falls through layout.GetVisualTop to a
+        // negative Y and the mirror-scroll sync would then yank both panes
+        // to offset 0 (banner disappears). Bail rather than no-op-scroll.
+        if (lineNumber1Based < 1) return;
         var y = layout.GetVisualTop(lineNumber1Based);
         // Center the target line in the viewport when possible.
         var target = Math.Max(0, y - sv.ViewportHeight / 2);
