@@ -618,6 +618,16 @@ public class GitMergeFileEngineTests
             range.Theirs.StartLine.Should().BeGreaterThan(0);
             range.Base.StartLine.Should().BeGreaterThan(0);
         }
+
+        // Diagnostic: confirm ComposeResolvedText (the source of the
+        // ResultPane's bound ComposedText) produces non-empty content.
+        // The Result pane was reportedly rendering blank — pinpoint
+        // whether the engine output or downstream binding is at fault.
+        var composedEmpty = doc.ComposeResolvedText(rangeStates: null);
+        composedEmpty.Should().NotBeNullOrEmpty(
+            because: "merged text with conflict markers must be non-empty for the Result pane to render");
+        composedEmpty.Should().Contain("<<<<<<<",
+            because: "with no resolutions, all conflicts keep their zdiff3 markers");
     }
 
     [Fact]
