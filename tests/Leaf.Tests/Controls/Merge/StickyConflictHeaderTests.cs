@@ -307,4 +307,38 @@ public class StickyConflictHeaderTests
 
         header.ComputeLabel().Should().Be("Conflict 1 of 1 · Unresolved");
     }
+
+    [StaFact]
+    public void PreviousAndNextCommands_AreExposedAsBindableDPs()
+    {
+        // Pins the new DP surface added for the chevron-button navigation.
+        // A future refactor that drops or renames PreviousCommand /
+        // NextCommand would silently break the wiring at MergeEditorView.xaml
+        // — this test catches it at build time via the property name.
+        var header = new StickyConflictHeader();
+        var prevExecuted = 0;
+        var nextExecuted = 0;
+        header.PreviousCommand = new RelayTestCommand(() => prevExecuted++);
+        header.NextCommand = new RelayTestCommand(() => nextExecuted++);
+
+        header.PreviousCommand.Execute(null);
+        header.NextCommand.Execute(null);
+
+        prevExecuted.Should().Be(1);
+        nextExecuted.Should().Be(1);
+    }
+}
+
+/// <summary>
+/// Trivial ICommand used by sticky-header tests that need to assert routing
+/// without depending on the full VM. Lives next to the test class rather
+/// than in a shared fixture because no other test uses it today.
+/// </summary>
+file sealed class RelayTestCommand : System.Windows.Input.ICommand
+{
+    private readonly Action _execute;
+    public RelayTestCommand(Action execute) { _execute = execute; }
+    public bool CanExecute(object? parameter) => true;
+    public void Execute(object? parameter) => _execute();
+    public event EventHandler? CanExecuteChanged;
 }

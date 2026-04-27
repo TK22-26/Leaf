@@ -1,7 +1,11 @@
 #nullable enable
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
+using FluentIcons.Common;
+using FluentIcons.Wpf;
 using Leaf.Models.Merge;
 using Leaf.TextEdit;
 
@@ -9,44 +13,52 @@ namespace Leaf.Controls.Merge;
 
 file static class StickyConflictHeaderBrushes
 {
-    // Cached frozen brushes keep OnRender off the resource-dictionary hot path
-    // and give WPF a cross-thread-safe reference for compositor re-use. Tokens
-    // resolve strictly (Resolve<T> throws on missing key) — the sticky header
-    // will not silently fall back to Transparent / Gray if a palette drifts.
+    // Cached frozen brushes keep the layout pass off the resource-dictionary
+    // hot path and give WPF a cross-thread-safe reference for compositor
+    // re-use. Tokens resolve strictly (Resolve<T> throws on missing key) —
+    // the sticky header will not silently fall back to Transparent / Gray
+    // if a palette drifts.
     public static readonly SolidColorBrush Background =
         MergePaletteResources.ResolveFrozenBrush("Merge.Surface.3.Color");
 
     public static readonly SolidColorBrush Foreground =
         MergePaletteResources.ResolveFrozenBrush("Merge.Text.Secondary.Color");
 
+    public static readonly SolidColorBrush HoverSurface =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Surface.4.Color");
+
     public static readonly FontFamily ChromeFont =
         MergePaletteResources.Resolve<FontFamily>("Merge.FontFamily.Chrome");
+
+    public static readonly double CaptionSize =
+        MergePaletteResources.Resolve<double>("Merge.Type.Caption.Size");
 }
 
 /// <summary>
-/// Sticky strip shown at the top of a merge pane's viewport surfacing
+/// Sticky strip shown at the top of a merge pane's viewport. Surfaces
 /// "Conflict N of M · &lt;state&gt;" for whichever conflicting range the user
-/// has currently scrolled into. Matches VS Code's sticky-scroll / Sublime
-/// Merge's conflict-header affordance — the label stays visible so the user
-/// always knows which conflict the edits around it belong to, even after
-/// scrolling past the conflict's opening line.
+/// has currently scrolled into and provides clickable chevrons to step
+/// to the previous / next conflict — matching VS Code's sticky-scroll +
+/// inline navigation pattern, JetBrains' diff-toolbar chevrons, and
+/// GitKraken's floating-panel arrows.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Self-rendered (no XAML) because the content is a single TextBlock whose
-/// string is derived from <see cref="Ranges"/>, <see cref="RangeStates"/>,
-/// <see cref="Layout"/>, <see cref="VerticalOffset"/>, and <see cref="Side"/>.
-/// Hosting as a plain <see cref="TextBlock"/> with a multi-parameter
-/// converter would fight the standard WPF binding pipeline; keeping the
-/// derivation in code-behind is clearer and easier to unit-test.
+/// Layout: <c>[‹ button] [conflict-counter TextBlock] [› button]</c>. The
+/// strip is hit-test enabled so chevrons receive clicks; the label region
+/// is passive (IsHitTestVisible=false on the TextBlock) so a click in the
+/// dead space falls through to the underlying pane. Buttons bind to the
+/// <see cref="PreviousCommand"/> / <see cref="NextCommand"/> DPs which the
+/// host wires to the VM's existing F8 / Shift+F8 commands.
 /// </para>
 /// <para>
-/// Placement: the pane wraps its scroll viewer in a Grid with this control
-/// at <c>Grid.Row="0" Height="Auto"</c> above the scroll viewer. The strip
-/// is only visible when a conflict is in range of the top of the viewport.
+/// Visibility: hidden until <see cref="ComputeLabel"/> resolves a label,
+/// which only happens once a conflicting range has scrolled to or above
+/// the viewport top. Without this, the strip would render an empty bar
+/// at the top of every pane.
 /// </para>
 /// </remarks>
-public sealed class StickyConflictHeader : Control
+public sealed class StickyConflictHeader : Border
 {
     public static readonly DependencyProperty RangesProperty = DependencyProperty.Register(
         nameof(Ranges), typeof(IReadOnlyList<ModifiedBaseRange>), typeof(StickyConflictHeader),
@@ -72,6 +84,14 @@ public sealed class StickyConflictHeader : Control
         nameof(Side), typeof(MergePaneSide), typeof(StickyConflictHeader),
         new FrameworkPropertyMetadata(MergePaneSide.Ours,
             FrameworkPropertyMetadataOptions.AffectsRender, OnInputChanged));
+
+    /// <summary>VM command invoked when the prev-conflict chevron is clicked.</summary>
+    public static readonly DependencyProperty PreviousCommandProperty = DependencyProperty.Register(
+        nameof(PreviousCommand), typeof(ICommand), typeof(StickyConflictHeader));
+
+    /// <summary>VM command invoked when the next-conflict chevron is clicked.</summary>
+    public static readonly DependencyProperty NextCommandProperty = DependencyProperty.Register(
+        nameof(NextCommand), typeof(ICommand), typeof(StickyConflictHeader));
 
     public IReadOnlyList<ModifiedBaseRange> Ranges
     {
@@ -101,6 +121,18 @@ public sealed class StickyConflictHeader : Control
     {
         get => (MergePaneSide)GetValue(SideProperty);
         set => SetValue(SideProperty, value);
+    }
+
+    public ICommand? PreviousCommand
+    {
+        get => (ICommand?)GetValue(PreviousCommandProperty);
+        set => SetValue(PreviousCommandProperty, value);
+    }
+
+    public ICommand? NextCommand
+    {
+        get => (ICommand?)GetValue(NextCommandProperty);
+        set => SetValue(NextCommandProperty, value);
     }
 
     private static void OnInputChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -140,41 +172,84 @@ public sealed class StickyConflictHeader : Control
 
     private void RecomputeLabel()
     {
-        _currentLabel = ComputeLabel();
-        Visibility = _currentLabel is null ? Visibility.Collapsed : Visibility.Visible;
-        InvalidateVisual();
+        var label = ComputeLabel();
+        _label.Text = label ?? string.Empty;
+        Visibility = label is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private string? _currentLabel;
+    private readonly TextBlock _label;
 
     public StickyConflictHeader()
     {
         Focusable = false;
         Height = 22;
-        IsHitTestVisible = false;
         Visibility = Visibility.Collapsed; // hidden until a conflict comes into view
+        Background = StickyConflictHeaderBrushes.Background;
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var prevBtn = BuildChevronButton(Symbol.ChevronLeft, "Previous conflict (Shift+F8)",
+            "Merge.Sticky.PrevConflict", isPrevious: true);
+        Grid.SetColumn(prevBtn, 0);
+
+        _label = new TextBlock
+        {
+            FontFamily = StickyConflictHeaderBrushes.ChromeFont,
+            FontSize = StickyConflictHeaderBrushes.CaptionSize,
+            Foreground = StickyConflictHeaderBrushes.Foreground,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(8, 0, 8, 0),
+            IsHitTestVisible = false,  // clicks in the label region fall through
+        };
+        Grid.SetColumn(_label, 1);
+
+        var nextBtn = BuildChevronButton(Symbol.ChevronRight, "Next conflict (F8)",
+            "Merge.Sticky.NextConflict", isPrevious: false);
+        Grid.SetColumn(nextBtn, 2);
+
+        grid.Children.Add(prevBtn);
+        grid.Children.Add(_label);
+        grid.Children.Add(nextBtn);
+        Child = grid;
     }
 
-    protected override void OnRender(DrawingContext dc)
+    private Button BuildChevronButton(Symbol symbol, string tooltip, string automationId, bool isPrevious)
     {
-        base.OnRender(dc);
-        if (_currentLabel is null) return;
-
-        dc.DrawRectangle(StickyConflictHeaderBrushes.Background, pen: null,
-            new Rect(0, 0, ActualWidth, ActualHeight));
-
-        var text = new FormattedText(
-            _currentLabel,
-            System.Globalization.CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
-            new Typeface(StickyConflictHeaderBrushes.ChromeFont,
-                FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
-            MergePaletteResources.Resolve<double>("Merge.Type.Caption.Size"),
-            StickyConflictHeaderBrushes.Foreground,
-            numberSubstitution: null,
-            System.Windows.Media.TextFormattingMode.Ideal,
-            pixelsPerDip: VisualTreeHelper.GetDpi(this).PixelsPerDip);
-        dc.DrawText(text, new Point(12, (ActualHeight - text.Height) / 2));
+        var icon = new SymbolIcon
+        {
+            Symbol = symbol,
+            FontSize = 14,
+            Foreground = StickyConflictHeaderBrushes.Foreground,
+        };
+        var btn = new Button
+        {
+            Content = icon,
+            ToolTip = tooltip,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(8, 0, 8, 0),
+            Cursor = Cursors.Hand,
+            Focusable = false,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetAutomationId(btn, automationId);
+        AutomationProperties.SetName(btn, tooltip);
+        // Hover tint: re-style on MouseEnter / MouseLeave rather than build
+        // a full ControlTemplate. Keeps the file XAML-free and the tint
+        // stays in lockstep with palette tokens.
+        btn.MouseEnter += (_, _) => btn.Background = StickyConflictHeaderBrushes.HoverSurface;
+        btn.MouseLeave += (_, _) => btn.Background = Brushes.Transparent;
+        btn.Click += (_, _) =>
+        {
+            var cmd = isPrevious ? PreviousCommand : NextCommand;
+            if (cmd?.CanExecute(null) == true) cmd.Execute(null);
+        };
+        return btn;
     }
 
     /// <summary>
