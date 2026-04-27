@@ -19,19 +19,22 @@ file static class StickyConflictHeaderBrushes
     // the sticky header will not silently fall back to Transparent / Gray
     // if a palette drifts.
     public static readonly SolidColorBrush Background =
-        MergePaletteResources.ResolveFrozenBrush("Merge.Surface.3.Color");
+        MergePaletteResources.ResolveFrozenBrush("Merge.Surface.4.Color");
 
     public static readonly SolidColorBrush Foreground =
-        MergePaletteResources.ResolveFrozenBrush("Merge.Text.Secondary.Color");
+        MergePaletteResources.ResolveFrozenBrush("Merge.Text.Primary.Color");
 
     public static readonly SolidColorBrush HoverSurface =
-        MergePaletteResources.ResolveFrozenBrush("Merge.Surface.4.Color");
+        MergePaletteResources.ResolveFrozenBrush("Merge.Surface.5.Color");
+
+    public static readonly SolidColorBrush BorderBrush =
+        MergePaletteResources.ResolveFrozenBrush("Merge.Border.Subtle.Color");
 
     public static readonly FontFamily ChromeFont =
         MergePaletteResources.Resolve<FontFamily>("Merge.FontFamily.Chrome");
 
-    public static readonly double CaptionSize =
-        MergePaletteResources.Resolve<double>("Merge.Type.Caption.Size");
+    public static readonly double LabelSize =
+        MergePaletteResources.Resolve<double>("Merge.Type.BodyStrong.Size");
 }
 
 /// <summary>
@@ -137,7 +140,12 @@ public sealed class StickyConflictHeader : Border
 
     private static void OnInputChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        ((StickyConflictHeader)d).RecomputeLabel();
+        var header = (StickyConflictHeader)d;
+        header.RecomputeLabel();
+        // The Side DP also routes through here. Repainting the accent bar
+        // is cheap (one brush assignment) so unconditionally re-tint —
+        // simpler than a separate OnSideChanged callback.
+        header.UpdateAccent();
     }
 
     private static void OnLayoutChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -182,39 +190,87 @@ public sealed class StickyConflictHeader : Border
     public StickyConflictHeader()
     {
         Focusable = false;
-        Height = 22;
+        Height = 30;  // bumped from 22 so the strip reads as deliberate chrome
+                      // rather than a thin line — VS Code uses a similar weight.
         Visibility = Visibility.Collapsed; // hidden until a conflict comes into view
         Background = StickyConflictHeaderBrushes.Background;
+        BorderBrush = StickyConflictHeaderBrushes.BorderBrush;
+        BorderThickness = new Thickness(0, 0, 0, 1);  // bottom hairline only
 
         var grid = new Grid();
+        // Side-accent bar (4 px) + prev chevron + flexible label cell + next chevron.
+        // The accent bar's color flips per-side (Ours blue / Theirs green / Result
+        // primary) so the user can tell at a glance which pane's strip they're
+        // looking at, even if scrolled to the same Y in two different panes.
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+        _accentBar = new Border();
+        Grid.SetColumn(_accentBar, 0);
+        // Color set in OnInputChanged via UpdateAccent so a Side DP change
+        // re-tints the bar.
+
         var prevBtn = BuildChevronButton(Symbol.ChevronLeft, "Previous conflict (Shift+F8)",
             "Merge.Sticky.PrevConflict", isPrevious: true);
-        Grid.SetColumn(prevBtn, 0);
+        Grid.SetColumn(prevBtn, 1);
 
         _label = new TextBlock
         {
             FontFamily = StickyConflictHeaderBrushes.ChromeFont,
-            FontSize = StickyConflictHeaderBrushes.CaptionSize,
+            FontSize = StickyConflictHeaderBrushes.LabelSize,
+            FontWeight = FontWeights.SemiBold,
             Foreground = StickyConflictHeaderBrushes.Foreground,
             VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalAlignment = HorizontalAlignment.Center,  // centered now, was Left
             Margin = new Thickness(8, 0, 8, 0),
             IsHitTestVisible = false,  // clicks in the label region fall through
         };
-        Grid.SetColumn(_label, 1);
+        Grid.SetColumn(_label, 2);
 
         var nextBtn = BuildChevronButton(Symbol.ChevronRight, "Next conflict (F8)",
             "Merge.Sticky.NextConflict", isPrevious: false);
-        Grid.SetColumn(nextBtn, 2);
+        Grid.SetColumn(nextBtn, 3);
 
+        grid.Children.Add(_accentBar);
         grid.Children.Add(prevBtn);
         grid.Children.Add(_label);
         grid.Children.Add(nextBtn);
         Child = grid;
+
+        UpdateAccent();
+    }
+
+    private readonly Border _accentBar;
+
+    /// <summary>
+    /// Paint the 4 px side-accent bar with the side's signature colour
+    /// (Ours blue / Theirs green / Base grey / Result primary). Called
+    /// from the Side DP change handler so a re-binding flips the
+    /// indicator immediately. No-op if the palette token is missing —
+    /// guarded by a <c>Resolve</c> try so a future palette without one
+    /// of these tokens degrades to "no accent" rather than crashing
+    /// the merge editor's first render.
+    /// </summary>
+    private void UpdateAccent()
+    {
+        var key = Side switch
+        {
+            MergePaneSide.Ours => "Merge.Ours.Accent.Color",
+            MergePaneSide.Theirs => "Merge.Theirs.Accent.Color",
+            MergePaneSide.Base => "Merge.Base.Accent.Color",
+            MergePaneSide.Result => "Merge.State.Resolved.Color",
+            _ => "Merge.Border.Subtle.Color",
+        };
+        try
+        {
+            _accentBar.Background = MergePaletteResources.ResolveFrozenBrush(key);
+        }
+        catch
+        {
+            _accentBar.Background = StickyConflictHeaderBrushes.BorderBrush;
+        }
     }
 
     private Button BuildChevronButton(Symbol symbol, string tooltip, string automationId, bool isPrevious)

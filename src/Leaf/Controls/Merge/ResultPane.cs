@@ -9,6 +9,7 @@ using Leaf.Models.Merge;
 using Leaf.TextEdit;
 using Leaf.TextEdit.Document;
 using Leaf.TextEdit.Highlighting;
+using Leaf.TextEdit.Rendering;
 
 namespace Leaf.Controls.Merge;
 
@@ -89,6 +90,17 @@ public sealed class ResultPane : ContentControl
         nameof(MergeDocument), typeof(MergeDocument), typeof(ResultPane),
         new PropertyMetadata(null, OnGeneratorInputChanged));
 
+    /// <summary>
+    /// Live <see cref="ResolutionState"/> dictionary. The background renderer
+    /// reads this to paint resolved conflicts with the resolved-overlay tint.
+    /// Bound from <c>MergeEditorView.xaml</c> to the VM's <c>RangeStates</c>
+    /// property; mutated in-place for accept-side clicks, so consumers should
+    /// call <see cref="RefreshResolvedTints"/> after a state change to repaint.
+    /// </summary>
+    public static readonly DependencyProperty RangeStatesProperty = DependencyProperty.Register(
+        nameof(RangeStates), typeof(IReadOnlyDictionary<int, ResolutionState>), typeof(ResultPane),
+        new PropertyMetadata(null, OnGeneratorInputChanged));
+
     public static readonly DependencyProperty AcceptOursCommandProperty = DependencyProperty.Register(
         nameof(AcceptOursCommand), typeof(ICommand), typeof(ResultPane));
 
@@ -130,6 +142,21 @@ public sealed class ResultPane : ContentControl
         get => (MergeDocument?)GetValue(MergeDocumentProperty);
         set => SetValue(MergeDocumentProperty, value);
     }
+
+    public IReadOnlyDictionary<int, ResolutionState>? RangeStates
+    {
+        get => (IReadOnlyDictionary<int, ResolutionState>?)GetValue(RangeStatesProperty);
+        set => SetValue(RangeStatesProperty, value);
+    }
+
+    /// <summary>
+    /// Force a repaint of the background renderer so resolved-conflict
+    /// tints update after an in-place mutation of the RangeStates
+    /// dictionary. The host <c>MergeEditorView</c> calls this from its
+    /// existing <c>RangeStatesChanged</c> hook alongside the other
+    /// in-place-state refresh entry points.
+    /// </summary>
+    public void RefreshResolvedTints() => _editor.TextArea.TextView.InvalidateLayer(KnownLayer.Background);
 
     public ICommand? AcceptOursCommand
     {
@@ -198,6 +225,13 @@ public sealed class ResultPane : ContentControl
                 () => AcceptTheirsCommand,
                 () => AcceptBothCommand,
                 () => CompareCommand));
+
+        // Side-tinted backgrounds: ours blue / theirs green / base grey for
+        // unresolved conflicts; resolved-overlay green for resolved ones.
+        // Painted under the text by AvalonEdit's BackgroundRenderers layer
+        // so syntax-highlighted glyphs read on top of the tint.
+        _editor.TextArea.TextView.BackgroundRenderers.Add(
+            new ResultPaneBackgroundRenderer(() => MergeDocument, () => RangeStates));
     }
 
     private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

@@ -400,6 +400,7 @@
                                           Layout="{Binding Layout}"
                                           FilePath="{Binding SelectedConflict.FilePath}"
                                           MergeDocument="{Binding Document}"
+                                          RangeStates="{Binding RangeStates}"
                                           AcceptOursCommand="{Binding AcceptOursCommand}"
                                           AcceptTheirsCommand="{Binding AcceptTheirsCommand}"
                                           AcceptBothCommand="{Binding AcceptBothCommand}"
