@@ -309,6 +309,48 @@ public class StickyConflictHeaderTests
     }
 
     [StaFact]
+    public void ComputeCurrentVisibleIndex_TracksManualScroll()
+    {
+        // Pin the chevron-click resync logic that fixes the
+        // "click Next at conflict 6 jumps to 8 skipping 7" bug. After a
+        // user manually scrolls, the chevron handlers compute the
+        // visually-current conflict via this method and write it to
+        // CurrentIndex BEFORE invoking the navigation command — so
+        // navigation always advances from the conflict the user is
+        // visually on, not from a stale prior-click index.
+        var layout = new MergePaneGlyphLayout();
+        var ranges = new[]
+        {
+            Range(0, 10, 15, conflicting: true),  // user 1
+            Range(1, 30, 35, conflicting: true),  // user 2
+            Range(2, 50, 55, conflicting: true),  // user 3
+        };
+        var header = new StickyConflictHeader
+        {
+            Layout = layout,
+            Side = MergePaneSide.Ours,
+            Ranges = ranges,
+        };
+
+        // Scroll to before any conflict → no current visible.
+        header.VerticalOffset = 0;
+        header.ComputeCurrentVisibleIndex().Should().Be(-1,
+            because: "viewport above the first conflict means no conflict is current");
+
+        // Scroll to top of conflict 1 (line 10 0-based 9 * lineHeight).
+        header.VerticalOffset = (10 - 1) * layout.LineHeight;
+        header.ComputeCurrentVisibleIndex().Should().Be(0);
+
+        // Scroll past conflict 2's top → it becomes current.
+        header.VerticalOffset = (30 - 1) * layout.LineHeight;
+        header.ComputeCurrentVisibleIndex().Should().Be(1);
+
+        // Scroll past conflict 3's top → it becomes current.
+        header.VerticalOffset = (50 - 1) * layout.LineHeight;
+        header.ComputeCurrentVisibleIndex().Should().Be(2);
+    }
+
+    [StaFact]
     public void PreviousAndNextCommands_AreExposedAsBindableDPs()
     {
         // Pins the new DP surface added for the chevron-button navigation.

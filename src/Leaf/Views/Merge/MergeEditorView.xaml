@@ -205,7 +205,8 @@
                                             RangeStates="{Binding RangeStates}"
                                             Layout="{Binding Layout}"
                                             PreviousCommand="{Binding PreviousConflictCommand}"
-                                            NextCommand="{Binding NextConflictCommand}"/>
+                                            NextCommand="{Binding NextConflictCommand}"
+                                            CurrentIndex="{Binding CurrentConflictIndex, Mode=TwoWay}"/>
                 <Grid Grid.Row="2">
                     <!-- V6 layout: [pane] [60 px content preview] [12 px
                          overview ruler]. Preview renders actual text at
@@ -322,7 +323,8 @@
                                             RangeStates="{Binding RangeStates}"
                                             Layout="{Binding Layout}"
                                             PreviousCommand="{Binding PreviousConflictCommand}"
-                                            NextCommand="{Binding NextConflictCommand}"/>
+                                            NextCommand="{Binding NextConflictCommand}"
+                                            CurrentIndex="{Binding CurrentConflictIndex, Mode=TwoWay}"/>
                 <Grid Grid.Row="2">
                     <!-- V6 Theirs layout mirrors the Ours side: scrollable
                          pane + 60 px preview + 12 px overview ruler. -->
@@ -411,7 +413,8 @@
                                                 Layout="{Binding Layout}"
                                                 VerticalOffset="{Binding ElementName=ResultPaneInstance, Path=VerticalOffset}"
                                                 PreviousCommand="{Binding PreviousConflictCommand}"
-                                                NextCommand="{Binding NextConflictCommand}"/>
+                                                NextCommand="{Binding NextConflictCommand}"
+                                            CurrentIndex="{Binding CurrentConflictIndex, Mode=TwoWay}"/>
                     <Grid Grid.Row="2">
                         <merge:ResultPane x:Name="ResultPaneInstance"
                                           AutomationProperties.AutomationId="Merge.ResultPane"
