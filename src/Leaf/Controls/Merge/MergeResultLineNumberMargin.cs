@@ -76,26 +76,14 @@ public sealed class MergeResultLineNumberMargin : LineNumberMargin
     protected override void OnDocumentChanged(TextDocument oldDocument, TextDocument newDocument)
     {
         base.OnDocumentChanged(oldDocument, newDocument);
-        if (_subscribedDocument is not null)
-        {
-            _subscribedDocument.TextChanged -= OnDocumentTextChanged;
-        }
+        // Rebuild on the document SWAP itself (e.g. ResultPane assigns a
+        // fresh TextDocument when the bound file changes). Per-text-change
+        // rebuilds are NOT subscribed here — ResultPane.OnTextChanged is
+        // the single trigger for that, calling Refresh() in lockstep with
+        // the BG layer invalidation. Subscribing to TextChanged would
+        // double the rebuild work on every state-mutation cycle.
         _subscribedDocument = newDocument;
-        if (newDocument is not null)
-        {
-            newDocument.TextChanged += OnDocumentTextChanged;
-        }
         RebuildDisplayMap();
-    }
-
-    private void OnDocumentTextChanged(object? sender, EventArgs e)
-    {
-        // Document text changes happen when the result pane swaps to a new
-        // file or the VM rebuilds the composed text after a state change.
-        // Both invalidate the line-number mapping.
-        RebuildDisplayMap();
-        InvalidateMeasure();
-        InvalidateVisual();
     }
 
     /// <summary>
@@ -110,16 +98,7 @@ public sealed class MergeResultLineNumberMargin : LineNumberMargin
         var lineCount = doc?.LineCount ?? 0;
         var mergeDoc = _getDocument();
         var states = _getStates();
-
-        var docLineTextProvider = doc is null
-            ? null
-            : new Func<int, string>(n =>
-            {
-                var line = doc.GetLineByNumber(n);
-                return doc.GetText(line.Offset, line.Length);
-            });
-
-        _displayMap = BuildDisplayMap(lineCount, mergeDoc, states, docLineTextProvider);
+        _displayMap = BuildDisplayMap(lineCount, mergeDoc, states);
 
         // Re-derive width-driving digit count: base class sizes the gutter to
         // hold `'9' * maxLineNumberLength`. With file-side numbers some entries
@@ -164,17 +143,10 @@ public sealed class MergeResultLineNumberMargin : LineNumberMargin
     /// <param name="docLineCount">Total number of lines in the displayed result document (1-based count).</param>
     /// <param name="mergeDoc">The bound merge document, or <c>null</c> for a fallback 1:1 map.</param>
     /// <param name="states">Resolution states, or <c>null</c> to treat all conflicts as Unresolved.</param>
-    /// <param name="getDocLineText">
-    /// Optional callback that returns the displayed text of a 1-based document line.
-    /// Currently unused by the walker — reserved for a future heuristic that
-    /// re-aligns the cursor on Manual resolutions by counting newlines in
-    /// the displayed text. Pass <c>null</c> in tests.
-    /// </param>
     internal static int?[] BuildDisplayMap(
         int docLineCount,
         MergeDocument? mergeDoc,
-        IReadOnlyDictionary<int, ResolutionState>? states,
-        Func<int, string>? getDocLineText)
+        IReadOnlyDictionary<int, ResolutionState>? states)
     {
         // Index 0 is unused — line numbers are 1-based to match AvalonEdit.
         var map = new int?[docLineCount + 1];
@@ -240,14 +212,24 @@ public sealed class MergeResultLineNumberMargin : LineNumberMargin
             EmitConflictBody(map, ref docLine, docLineCount, r, state);
             int bodyDisplayedLines = docLine - docLineBeforeBody;
 
-            // Snap ours-pointer past this range's body. For Unresolved bodies
-            // the slot's ours-coverage equals Ours.EndLineExclusive (no
-            // resolution applied yet). For RESOLVED bodies the displayed
-            // body length depends on the accepted side — accepting theirs
-            // (4 lines) when ours had 3 must advance the cursor 4 lines so
-            // the post-conflict context resumes at slotStart+4 instead of
-            // ours-end (slotStart+3) which would produce a backward gutter
-            // jump. Math.Max forbids rewind for empty / out-of-order ranges.
+            // Snap ours-pointer past this range's body.
+            //
+            // Unresolved bodies: ours-coverage equals Ours.EndLineExclusive
+            // — markers are still visible, the displayed body matches
+            // InitialMergedText positions exactly.
+            //
+            // Resolved bodies: snap to slotStart + actual displayed body
+            // lines. This is a deliberate trade-off — labels diverge from
+            // "real ours-file line" coordinates but the gutter stays
+            // monotonic. The alternative (always snap to
+            // Ours.EndLineExclusive) keeps labels file-accurate but
+            // introduces backward jumps in the gutter when the accepted
+            // side is shorter than ours: e.g. ours.Length=3, AcceptTheirs
+            // emits 1 line. With file-accurate snap, the body labels go
+            // [slot, slot, slot] truncated to [slot] then post-conflict
+            // jumps to slot+3 — gutter reads "5, 8, 9" with no 6 or 7.
+            // Users called this "impossible" so we picked monotonic.
+            // Math.Max forbids rewind for empty / out-of-order ranges.
             int snapTarget = state is ResolutionState.Unresolved
                 ? r.Ours.EndLineExclusive
                 : slotStartNumber + bodyDisplayedLines;
@@ -334,27 +316,45 @@ public sealed class MergeResultLineNumberMargin : LineNumberMargin
                 for (int j = 0; j < manualLines && docLine <= docLineCount; j++)
                     map[docLine++] = null;
                 return;
+
+            default:
+                // Match MergeDocument.AppendResolution's exhaustive-switch
+                // convention — a future ResolutionState variant must update
+                // this walker explicitly rather than silently fall through.
+                throw new InvalidOperationException(
+                    $"Unknown resolution state: {state.GetType().Name}");
         }
     }
 
     /// <summary>
     /// Count the displayed-line span of a free-form Manual resolution. Mirrors
     /// the line-emission convention in <see cref="MergeDocument.ComposeResolvedText"/>
-    /// (one trailing newline appended if the text doesn't end with one) so
-    /// the cursor advance matches what the composer actually wrote into the
-    /// result document.
+    /// — including its <c>NormaliseToLf</c> pass that converts CR-only and
+    /// CRLF endings to LF before counting. Without that normalisation a
+    /// legacy-Mac-classic <c>"foo\rbar"</c> Manual paste counts as 1 line
+    /// here but the composer emits 2, off-setting every conflict below.
     /// </summary>
     private static int CountLines(string text)
     {
         if (string.IsNullOrEmpty(text)) return 0;
         int count = 1;
+        char prev = '\0';
         for (int i = 0; i < text.Length; i++)
         {
-            if (text[i] == '\n') count++;
+            char c = text[i];
+            // Match NormaliseToLf semantics: CRLF → \n, CR-only → \n.
+            // Handle both by counting line breaks at any \n OR a \r not
+            // followed by \n.
+            if (c == '\n') count++;
+            else if (c == '\r' && (i + 1 >= text.Length || text[i + 1] != '\n')) count++;
+            prev = c;
         }
-        // Trailing '\n' would over-count by one — the composer treats a
-        // newline-terminated text as N lines, not N+1.
-        if (text[text.Length - 1] == '\n') count--;
+        // Trailing line terminator: composer treats a newline-terminated
+        // text as N lines, not N+1. Cover \n, \r, and CRLF (the trailing
+        // \n already accounted for by the \n branch).
+        char last = text[text.Length - 1];
+        if (last == '\n' || last == '\r') count--;
+        _ = prev;
         return count == 0 ? 1 : count;
     }
 

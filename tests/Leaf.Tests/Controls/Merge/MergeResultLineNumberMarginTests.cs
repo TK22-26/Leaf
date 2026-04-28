@@ -25,7 +25,7 @@ public class MergeResultLineNumberMarginTests
         // matches the stock LineNumberMargin so a missing document doesn't
         // read as a bug.
         var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: 5, mergeDoc: null, states: null, getDocLineText: null);
+            docLineCount: 5, mergeDoc: null, states: null);
         for (int i = 1; i <= 5; i++)
         {
             map[i].Should().Be(i);
@@ -40,7 +40,7 @@ public class MergeResultLineNumberMarginTests
         // without forcing the host to special-case "no conflicts".
         var doc = MakeDocument(new[] { "alpha", "beta", "gamma" });
         var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: 3, mergeDoc: doc, states: null, getDocLineText: null);
+            docLineCount: 3, mergeDoc: doc, states: null);
         map[1].Should().Be(1);
         map[2].Should().Be(2);
         map[3].Should().Be(3);
@@ -99,7 +99,7 @@ public class MergeResultLineNumberMarginTests
         var doc = MakeDocument(lines, conflict);
 
         var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: null, getDocLineText: null);
+            docLineCount: lines.Length, mergeDoc: doc, states: null);
 
         map[1].Should().Be(1, because: "ignored line is ours-line 1, auto-merged context");
         map[2].Should().Be(2, because: "'The dog' is ours-line 2, auto-merged context");
@@ -156,7 +156,7 @@ public class MergeResultLineNumberMarginTests
         var doc = MakeDocument(lines, conflict);
 
         var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: null, getDocLineText: null);
+            docLineCount: lines.Length, mergeDoc: doc, states: null);
 
         map[1].Should().Be(1, because: "pre-context line is ours-line 1");
         map[2].Should().BeNull();             // <<<<<<<
@@ -196,7 +196,7 @@ public class MergeResultLineNumberMarginTests
         };
 
         var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: states, getDocLineText: null);
+            docLineCount: lines.Length, mergeDoc: doc, states: states);
 
         map[1].Should().Be(1, because: "header is ours-line 1, pre-conflict context");
         map[2].Should().Be(2, because: "first accepted ours line is ours-file line 2");
@@ -228,7 +228,7 @@ public class MergeResultLineNumberMarginTests
         };
 
         var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: states, getDocLineText: null);
+            docLineCount: lines.Length, mergeDoc: doc, states: states);
 
         map[1].Should().Be(1);
         map[2].Should().Be(2, because: "accepted theirs takes the conflict slot, numbered from Ours.StartLine for monotonic gutter");
@@ -270,7 +270,7 @@ public class MergeResultLineNumberMarginTests
         };
 
         var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: states, getDocLineText: null);
+            docLineCount: lines.Length, mergeDoc: doc, states: states);
 
         map[1].Should().Be(1);
         map[2].Should().Be(2, because: "first accept-both line is at conflict slot start (Ours.StartLine=2)");
@@ -307,7 +307,7 @@ public class MergeResultLineNumberMarginTests
         };
 
         var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: states, getDocLineText: null);
+            docLineCount: lines.Length, mergeDoc: doc, states: states);
 
         map[1].Should().Be(1);
         map[2].Should().BeNull(because: "manual lines have no ours/theirs anchor");
@@ -390,7 +390,7 @@ public class MergeResultLineNumberMarginTests
         var doc = MakeDocument(lines, conflict1, autoMerged, conflict2);
 
         var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: null, getDocLineText: null);
+            docLineCount: lines.Length, mergeDoc: doc, states: null);
 
         // Conflict 1: markers null, content numbered from Ours.StartLine.
         map[1].Should().BeNull();
@@ -435,7 +435,7 @@ public class MergeResultLineNumberMarginTests
         var doc = MakeDocument(lines, autoMerged);
 
         var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: null, getDocLineText: null);
+            docLineCount: lines.Length, mergeDoc: doc, states: null);
 
         map[1].Should().Be(1);
         map[2].Should().Be(2);

@@ -294,6 +294,13 @@ public sealed class ResultPaneBackgroundRenderer : IBackgroundRenderer
                         for (int j = 0; j < manualLines && docLine <= docLineCount; j++)
                             map[docLine++] = _resolvedBg;
                         break;
+                    default:
+                        // Match MergeDocument.AppendResolution: future
+                        // ResolutionState variants must add a case here
+                        // explicitly rather than silently leave the body
+                        // un-tinted.
+                        throw new InvalidOperationException(
+                            $"Unknown resolution state: {state.GetType().Name}");
                 }
             }
 
@@ -303,13 +310,25 @@ public sealed class ResultPaneBackgroundRenderer : IBackgroundRenderer
         return map;
     }
 
+    /// <summary>
+    /// Count Manual-resolution displayed-line span. Matches the
+    /// <c>NormaliseToLf</c> pass <see cref="MergeDocument.ComposeResolvedText"/>
+    /// applies before emitting Manual content — without that, a CR-only or
+    /// CRLF-terminated Manual paste counts wrong here and offsets every
+    /// conflict's tinting below.
+    /// </summary>
     private static int CountManualLines(string text)
     {
         if (string.IsNullOrEmpty(text)) return 0;
         int count = 1;
         for (int i = 0; i < text.Length; i++)
-            if (text[i] == '\n') count++;
-        if (text[text.Length - 1] == '\n') count--;
+        {
+            char c = text[i];
+            if (c == '\n') count++;
+            else if (c == '\r' && (i + 1 >= text.Length || text[i + 1] != '\n')) count++;
+        }
+        char last = text[text.Length - 1];
+        if (last == '\n' || last == '\r') count--;
         return count == 0 ? 1 : count;
     }
 
@@ -319,144 +338,4 @@ public sealed class ResultPaneBackgroundRenderer : IBackgroundRenderer
     /// visual tree.
     /// </summary>
     internal enum MarkerKind { None, Open, Base, Equals, Close }
-
-    /// <summary>
-    /// Classify <paramref name="lineNumber"/> by its zdiff3 marker prefix.
-    /// Reads directly from the merged-text source so this stays in sync
-    /// with the result-pane's actual rendered text rather than depending
-    /// on a separately-cached parser output.
-    /// </summary>
-    /// <summary>
-    /// True when <paramref name="lineNumber"/> is a <c>|||||||</c> base
-    /// marker for a conflicting range whose <see cref="ModifiedBaseRange.BaseLines"/>
-    /// is empty. Used to suppress the marker chrome on otherwise-noise
-    /// rows that zdiff3 emits even with no base content.
-    /// </summary>
-    private static bool IsBaseEmptyForLine(MergeDocument doc, int lineNumber)
-    {
-        foreach (var range in doc.Ranges)
-        {
-            if (!range.IsConflicting) continue;
-            if (lineNumber < range.ResultMarkedRange.StartLine) break;
-            if (lineNumber >= range.ResultMarkedRange.EndLineExclusive) continue;
-            return range.BaseLines.Count == 0;
-        }
-        return false;
-    }
-
-    internal static MarkerKind ClassifyMarkerLine(MergeDocument doc, int lineNumber)
-    {
-        if (lineNumber < 1 || lineNumber > doc.InitialMergedLines.Count) return MarkerKind.None;
-        var text = doc.InitialMergedLines[lineNumber - 1];
-        if (string.IsNullOrEmpty(text)) return MarkerKind.None;
-        if (text.StartsWith("<<<<<<<", StringComparison.Ordinal)) return MarkerKind.Open;
-        if (text.StartsWith(">>>>>>>", StringComparison.Ordinal)) return MarkerKind.Close;
-        if (text.StartsWith("|||||||", StringComparison.Ordinal)) return MarkerKind.Base;
-        if (text == "=======") return MarkerKind.Equals;
-        return MarkerKind.None;
-    }
-
-    /// <summary>
-    /// Decide which side-tint brush (if any) applies to <paramref name="lineNumber"/>.
-    /// Walks the document's conflict ranges and tests:
-    /// <list type="number">
-    /// <item>Is the line inside a resolved range? → resolved tint.</item>
-    /// <item>Is the line inside an unresolved conflict's <c>ResultMarkedRange</c>?
-    /// Sub-classify by marker boundaries (ours / base / theirs).</item>
-    /// <item>Otherwise → no tint (transparent).</item>
-    /// </list>
-    /// Exposed as <c>internal</c> so tests can drive the classification with
-    /// synthetic inputs without standing up a real visual tree.
-    /// </summary>
-    internal Brush? ClassifyLine(
-        MergeDocument doc,
-        IReadOnlyDictionary<int, ResolutionState>? states,
-        int lineNumber)
-    {
-        // The result-pane text comes from MergeDocument.ComposeResolvedText —
-        // which keeps markers verbatim for unresolved ranges and replaces
-        // them with the chosen side's text for resolved ones. Walking the
-        // document text line-by-line is the only way to know exactly where
-        // each conflict's content lives in the COMPOSED output, because
-        // resolved ranges shift subsequent line numbers down.
-        var allLines = doc.InitialMergedLines;  // backing for unresolved tinting
-        if (lineNumber < 1) return null;
-
-        // For UNRESOLVED tinting we use InitialMergedLines (the merged text
-        // before any range-state substitution) since that's what the result
-        // pane currently renders for unresolved ranges. Resolved ranges that
-        // changed the line count would shift things — handled in step 2 below.
-        // Fast path: walk conflicts in order and find the one whose
-        // ResultMarkedRange covers this line.
-        foreach (var range in doc.Ranges)
-        {
-            if (!range.IsConflicting) continue;
-            if (lineNumber < range.ResultMarkedRange.StartLine) break;
-            if (lineNumber >= range.ResultMarkedRange.EndLineExclusive) continue;
-
-            // Inside this conflict's marked range. Check resolution.
-            if (states is not null && states.TryGetValue(range.Index, out var state)
-                && state is not ResolutionState.Unresolved)
-            {
-                // Resolved range: the user has already chosen. Tint the
-                // marker block with the resolved overlay so the user can
-                // see at a glance which conflicts are settled.
-                return _resolvedBg;
-            }
-
-            // Unresolved: classify by which marker section we're in.
-            return ClassifyUnresolvedLine(allLines, range, lineNumber);
-        }
-        return null;
-    }
-
-    private Brush? ClassifyUnresolvedLine(
-        IReadOnlyList<string> mergedLines,
-        ModifiedBaseRange range,
-        int lineNumber)
-    {
-        int oursStart = range.ResultMarkedRange.StartLine;        // line of `<<<<<<<`
-        int closeMarker = range.ResultMarkedRange.EndLineExclusive - 1;  // line of `>>>>>>>`
-
-        // Locate optional `|||||||` (zdiff3 base separator) and `=======` between
-        // ours and theirs. Exactly seven `=` (no trailing content) is the
-        // separator; the base separator starts with seven `|`.
-        int baseSeparator = -1;
-        int equalsSeparator = -1;
-        for (int line = oursStart + 1; line < closeMarker; line++)
-        {
-            // mergedLines is 0-based.
-            if (line < 1 || line > mergedLines.Count) continue;
-            var text = mergedLines[line - 1];
-            if (string.IsNullOrEmpty(text)) continue;
-            if (baseSeparator < 0 && text.StartsWith("|||||||", StringComparison.Ordinal))
-            {
-                baseSeparator = line;
-            }
-            else if (equalsSeparator < 0 && text == "=======")
-            {
-                equalsSeparator = line;
-            }
-        }
-
-        // The marker lines themselves carry no tint — the inline element
-        // generator paints its own toolbar / separator chrome over them.
-        if (lineNumber == oursStart) return null;
-        if (lineNumber == closeMarker) return null;
-        if (lineNumber == baseSeparator) return null;
-        if (lineNumber == equalsSeparator) return null;
-
-        // Section boundaries:
-        //   ours:    oursStart+1 .. (baseSeparator>0 ? baseSeparator-1 : equalsSeparator-1)
-        //   base:    baseSeparator+1 .. equalsSeparator-1     (zdiff3 only)
-        //   theirs:  equalsSeparator+1 .. closeMarker-1
-        if (lineNumber > oursStart
-            && lineNumber < (baseSeparator > 0 ? baseSeparator : equalsSeparator))
-            return _oursBg;
-        if (baseSeparator > 0 && lineNumber > baseSeparator && lineNumber < equalsSeparator)
-            return _baseBg;
-        if (equalsSeparator > 0 && lineNumber > equalsSeparator && lineNumber < closeMarker)
-            return _theirsBg;
-        return null;
-    }
 }

@@ -262,6 +262,21 @@ public sealed class StickyConflictHeader : Border
         Child = grid;
 
         UpdateAccent();
+
+        // Detach from the bound Layout when this header leaves the visual
+        // tree. MergePaneGlyphLayout instances are reused across
+        // pane re-binds — without an Unloaded teardown the header keeps a
+        // strong reference back from Layout.PropertyChanged, leaking one
+        // header per merge-editor open over a long Leaf session.
+        Unloaded += OnHeaderUnloaded;
+    }
+
+    private void OnHeaderUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (Layout is { } layout)
+        {
+            layout.PropertyChanged -= OnLayoutPropChanged;
+        }
     }
 
     private readonly Border _accentBar;

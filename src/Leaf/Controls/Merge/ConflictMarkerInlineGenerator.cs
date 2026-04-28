@@ -180,22 +180,29 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
         return new InlineObjectElement(line.Length, element);
     }
 
+    // Cached marker-line → range-index map. Rebuilt on the first
+    // FindRangeIndexForLine call after the document text changes (detected
+    // by Document.Version reference identity). Avoids the per-call O(N)
+    // doc-text walk + per-call List<ModifiedBaseRange> allocation that
+    // ConstructElement would otherwise pay for every marker line on every
+    // visual-line construction pass.
+    private int[]? _markerLineRangeIndex;
+    private object? _cachedDocumentVersion;
+
     /// <summary>
     /// Map a marker-line's <em>displayed</em> document-line number to the
-    /// underlying <see cref="ModifiedBaseRange.Index"/>. Walks the doc text
-    /// from line 1, counting <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c> markers and
-    /// pairing each with the next unresolved conflict in
+    /// underlying <see cref="ModifiedBaseRange.Index"/>. Reads from a cache
+    /// that's rebuilt by walking the doc text + matching <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>
+    /// markers to the next unresolved conflict in
     /// <see cref="MergeDocument.ConflictingRanges"/> order. Resolved
-    /// conflicts have no markers in the displayed text, so they're skipped
-    /// over silently.
+    /// conflicts have no markers in the displayed text, so they're skipped.
     /// </summary>
     /// <remarks>
     /// Earlier this looked up <see cref="ModifiedBaseRange.ResultMarkedRange"/>
     /// directly, but ResultMarkedRange describes positions in the
     /// <em>InitialMergedText</em> (which has marker blocks for every
-    /// conflict, resolved or not). After the user accepts a side, the
-    /// displayed text shrinks for that conflict (markers + alt content
-    /// replaced by the chosen side's content), and every subsequent
+    /// conflict, resolved or not). After the user accepts a side the
+    /// displayed text shrinks for that conflict and every subsequent
     /// conflict's displayed line position no longer matches its
     /// ResultMarkedRange. Using ResultMarkedRange there made the toolbar
     /// for conflict N+1 fire commands against conflict N's index,
@@ -207,49 +214,94 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
         var mergeDoc = _getDocument();
         if (doc is null || mergeDoc is null) return -1;
 
-        var states = _getStates();
-        var unresolvedConflicts = new List<ModifiedBaseRange>();
-        foreach (var r in mergeDoc.Ranges)
-        {
-            if (!r.IsConflicting) continue;
-            var state = states is not null && states.TryGetValue(r.Index, out var s)
-                ? s
-                : ResolutionState.Unresolved.Instance;
-            if (state is ResolutionState.Unresolved) unresolvedConflicts.Add(r);
-        }
-        if (unresolvedConflicts.Count == 0) return -1;
-        unresolvedConflicts.Sort((a, b) => a.Index.CompareTo(b.Index));
+        EnsureMarkerMapCached(doc, mergeDoc);
+        if (_markerLineRangeIndex is null) return -1;
+        if (lineNumber < 1 || lineNumber >= _markerLineRangeIndex.Length) return -1;
+        return _markerLineRangeIndex[lineNumber];
+    }
 
-        int conflictPos = 0;
-        int currentRangeIdx = -1;
-        int totalLines = doc.LineCount;
-        for (int line = 1; line <= totalLines && line <= lineNumber; line++)
+    private void EnsureMarkerMapCached(Leaf.TextEdit.Document.TextDocument doc, MergeDocument mergeDoc)
+    {
+        var version = doc.Version;
+        if (_markerLineRangeIndex is not null
+            && ReferenceEquals(version, _cachedDocumentVersion)
+            && _markerLineRangeIndex.Length == doc.LineCount + 1)
         {
-            var ln = doc.GetLineByNumber(line);
-            var text = doc.GetText(ln.Offset, ln.Length);
+            return;
+        }
+
+        _markerLineRangeIndex = BuildMarkerMap(
+            doc.LineCount,
+            mergeDoc.Ranges,
+            _getStates(),
+            line =>
+            {
+                var ln = doc.GetLineByNumber(line);
+                return doc.GetText(ln.Offset, ln.Length);
+            });
+        _cachedDocumentVersion = version;
+    }
+
+    /// <summary>
+    /// Pure walker: builds a 1-based <c>lineNumber → ModifiedBaseRange.Index</c>
+    /// map by walking <paramref name="getDocLineText"/> from line 1 to
+    /// <paramref name="docLineCount"/> and pairing each <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>
+    /// with the next unresolved conflict in <paramref name="ranges"/>'
+    /// declaration order. Index 0 is unused. Lines outside any unresolved
+    /// conflict (context, post-Close, lines past last unresolved) get -1.
+    /// Exposed as <c>internal static</c> so unit tests can drive it without
+    /// standing up an AvalonEdit document.
+    /// </summary>
+    internal static int[] BuildMarkerMap(
+        int docLineCount,
+        IReadOnlyList<ModifiedBaseRange> ranges,
+        IReadOnlyDictionary<int, ResolutionState>? states,
+        Func<int, string> getDocLineText)
+    {
+        var map = new int[docLineCount + 1];
+        for (int i = 0; i < map.Length; i++) map[i] = -1;
+
+        int unresolvedIdx = -1;
+        int currentRangeIdx = -1;
+        for (int line = 1; line <= docLineCount; line++)
+        {
+            var text = getDocLineText(line);
             var kind = ClassifyMarker(text);
             if (kind == MarkerKind.Open)
             {
-                if (conflictPos < unresolvedConflicts.Count)
-                {
-                    currentRangeIdx = unresolvedConflicts[conflictPos].Index;
-                    conflictPos++;
-                }
-                else
-                {
-                    currentRangeIdx = -1;
-                }
+                currentRangeIdx = NextUnresolvedRangeIndex(ranges, states, ref unresolvedIdx);
             }
-            if (line == lineNumber)
-            {
-                return currentRangeIdx;
-            }
+            map[line] = currentRangeIdx;
             if (kind == MarkerKind.Close)
             {
                 currentRangeIdx = -1;
             }
         }
-        return currentRangeIdx;
+        return map;
+    }
+
+    /// <summary>
+    /// Advance <paramref name="cursor"/> through <paramref name="ranges"/>
+    /// (in declaration order) and return the <see cref="ModifiedBaseRange.Index"/>
+    /// of the next unresolved conflict, or -1 if none remain. Mutates
+    /// <paramref name="cursor"/> in place so subsequent calls pick up where
+    /// the previous one stopped.
+    /// </summary>
+    private static int NextUnresolvedRangeIndex(
+        IReadOnlyList<ModifiedBaseRange> ranges,
+        IReadOnlyDictionary<int, ResolutionState>? states,
+        ref int cursor)
+    {
+        for (cursor = cursor + 1; cursor < ranges.Count; cursor++)
+        {
+            var r = ranges[cursor];
+            if (!r.IsConflicting) continue;
+            var state = states is not null && states.TryGetValue(r.Index, out var s)
+                ? s
+                : ResolutionState.Unresolved.Instance;
+            if (state is ResolutionState.Unresolved) return r.Index;
+        }
+        return -1;
     }
 
     private bool IsBaseEmptyForRangeIndex(int rangeIndex)
@@ -281,6 +333,18 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
 
     private FrameworkElement BuildOpenerToolbar(int rangeIndex)
     {
+        // Defensive: a stale-display tick or a literal `<<<<<<<` typed into a
+        // Manual resolution can land on a marker line that doesn't pair with
+        // any unresolved range. Returning a fully-wired toolbar with
+        // CommandParameter=-1 would route accept clicks against a phantom
+        // range and downstream lookups would either no-op silently or throw.
+        // Render an OURS placeholder with no buttons so the user sees the
+        // chrome but can't fire stale commands.
+        if (rangeIndex < 0)
+        {
+            return BuildPlaceholderOpener();
+        }
+
         // Two-row layout:
         //   Row 1: [Accept Ours] [Accept Theirs] [Accept Both] [Compare]
         //   Row 2: OURS — section header with ours-tint chip background
@@ -368,6 +432,34 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
     }
 
     /// <summary>
+    /// Inline element rendered when an Open marker line can't be paired with
+    /// an unresolved conflict — typically a stale-render edge case (one
+    /// dispatcher tick behind a state mutation) or a literal <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>
+    /// inside a Manual resolution. Shows the OURS strip but no buttons, so
+    /// the section reads as visible chrome without firing accept commands
+    /// against an invalid range index.
+    /// </summary>
+    private static FrameworkElement BuildPlaceholderOpener()
+    {
+        var label = new TextBlock
+        {
+            Text = "OURS",
+            FontSize = MergePaletteResources.Resolve<double>("Merge.Type.Caption.Size"),
+            FontFamily = MergePaletteResources.Resolve<FontFamily>("Merge.FontFamily.Chrome"),
+            FontWeight = FontWeights.SemiBold,
+            Foreground = MergePaletteResources.ResolveFrozenBrush("Merge.Ours.Text.Color"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        return new Border
+        {
+            Padding = new Thickness(8, 2, 8, 2),
+            Child = label,
+            Height = OursRowHeight,
+            Background = Brushes.Transparent,
+        };
+    }
+
+    /// <summary>
     /// Render one accept-side pill button — rounded chip with side-tinted
     /// background, hover swap to a stronger fill, and underlined text gone
     /// (we want the chip shape to read as a button, not a hyperlink).
@@ -377,7 +469,7 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
     private static FrameworkElement BuildAcceptPill(
         string label, ICommand? cmd, int rangeIndex,
         string normalBgKey, string hoverBgKey, string borderKey, string textKey,
-        string automationId, bool solidFill = false)
+        string automationId)
     {
         var normalBg = MergePaletteResources.ResolveFrozenBrush(normalBgKey);
         var hoverBg = MergePaletteResources.ResolveFrozenBrush(hoverBgKey);
@@ -397,7 +489,7 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
         var button = new Button
         {
             Content = text,
-            Background = solidFill ? hoverBg : normalBg,
+            Background = normalBg,
             BorderBrush = borderBrush,
             BorderThickness = new Thickness(1),
             Padding = new Thickness(10, 2, 10, 2),
@@ -414,17 +506,8 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
             Template = BuildPillTemplate(),
         };
         AutomationProperties.SetAutomationId(button, automationId);
-        // Hover swap: solidFill pills already start at the strong colour,
-        // so they get a slight Surface.4 hover overlay instead of the
-        // normal-to-strong swap.
-        button.MouseEnter += (_, _) =>
-        {
-            button.Background = hoverBg;
-        };
-        button.MouseLeave += (_, _) =>
-        {
-            button.Background = solidFill ? hoverBg : normalBg;
-        };
+        button.MouseEnter += (_, _) => button.Background = hoverBg;
+        button.MouseLeave += (_, _) => button.Background = normalBg;
         return button;
     }
 

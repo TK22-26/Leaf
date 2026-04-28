@@ -22,9 +22,11 @@ namespace Leaf.Controls.Merge;
 /// <remarks>
 /// <para>
 /// We expose a <see cref="Text"/> dependency property bound to the VM's composed
-/// text (one-way today — the pane is <c>IsReadOnly=true</c>). No conflict chrome
-/// is drawn here — overlays live in the parent <see cref="MergeEditorView"/> and
-/// share the Result pane's scroll viewport.
+/// text. The DP is registered with <c>BindsTwoWayByDefault</c> so Phase 3's
+/// editable-result mode can wire the reverse path through this same DP without
+/// re-registering; today the pane is <c>IsReadOnly=true</c> so the reverse path
+/// is unused. No conflict chrome is drawn here — overlays live in the parent
+/// <see cref="MergeEditorView"/> and share the Result pane's scroll viewport.
 /// </para>
 /// <para>
 /// When Phase 3 re-enables manual editing with range-aware text mapping, the
@@ -276,6 +278,21 @@ public sealed class ResultPane : ContentControl
             () => MergeDocument,
             () => RangeStates);
         _editor.TextArea.LeftMargins.Add(_lineNumberMargin);
+
+        // Detach from the bound Layout when the pane leaves the visual tree.
+        // Layout instances are reused across pane re-binds, so without this
+        // teardown the pane keeps a strong reference back from
+        // Layout.PropertyChanged and accumulates one ResultPane per merge-
+        // editor open over a long Leaf session.
+        Unloaded += OnPaneUnloaded;
+    }
+
+    private void OnPaneUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (Layout is { } layout)
+        {
+            layout.PropertyChanged -= OnLayoutPropertyChanged;
+        }
     }
 
     private readonly MergeResultLineNumberMargin _lineNumberMargin;
