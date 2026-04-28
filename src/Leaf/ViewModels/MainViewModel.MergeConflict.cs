@@ -186,7 +186,7 @@ public partial class MainViewModel
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanOpenConflictInMergeTool))]
+    [RelayCommand]
     public async Task OpenConflictInMergeToolAsync(ConflictInfo? conflict)
     {
         if (SelectedRepository == null || conflict == null) return;
@@ -195,11 +195,34 @@ public partial class MainViewModel
             SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
         if (mergeTool == null)
         {
-            // Config changed out from under us; refresh availability so
-            // the button disables itself on the next UI pass.
-            HasExternalMergeTool = false;
-            StatusMessage = "No external merge tool configured. See Settings → External Tools.";
-            return;
+            // No tool configured. Drop the user directly into the External
+            // Tools settings page — earlier the button would be disabled
+            // (and so wouldn't even surface its tooltip), leaving users
+            // with no clue why nothing was happening. The "configure on
+            // demand" pattern matches GitHub Desktop and Sourcetree, and
+            // the settings page already offers auto-detection so most
+            // users land back here with a working tool one click later.
+            //
+            // ExternalToolsSettings persists tool selection via its Apply
+            // button (writes to `git config --global` through
+            // IExternalToolConfigService.SetSelectedToolAsync), so a
+            // user who picks a tool + clicks Apply + closes the dialog
+            // gets picked up by the re-fetch below. If they close without
+            // Apply, no tool is saved — explicit user choice, we honour
+            // it by returning early.
+            StatusMessage = "Configure an external merge tool to resolve conflicts in it.";
+            await OpenSettingsAsync("ExternalTools");
+            // OpenSettingsAsync calls RefreshExternalMergeToolAvailabilityAsync
+            // on close, which updates HasExternalMergeTool — no need to
+            // pre-set it false here, that would just flicker any consumer
+            // bound to the property during the window the dialog is open.
+            mergeTool = await _externalToolConfig.GetCurrentToolAsync(
+                SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
+            if (mergeTool == null)
+            {
+                StatusMessage = "No external merge tool configured.";
+                return;
+            }
         }
 
         try
@@ -230,8 +253,6 @@ public partial class MainViewModel
             IsBusy = false;
         }
     }
-
-    private bool CanOpenConflictInMergeTool(ConflictInfo? conflict) => HasExternalMergeTool;
 
     /// <summary>
     /// Re-check whether an external merge tool is configured for the

@@ -20,18 +20,30 @@ public partial class SettingsDialog : Window
     private readonly AppSettings _settings;
     private bool _suppressNavSelection;
     private bool _externalToolsBound;
+    private readonly string? _initialSection;
 
     // Search items for settings
     private readonly List<SettingsSearchItem> _allSearchItems;
 
+    /// <summary>
+    /// <paramref name="initialSection"/> matches the navigation tags used
+    /// internally (<c>"ExternalTools"</c>, <c>"AiMerge"</c>, etc.) and
+    /// pre-selects that section instead of the default Clone Path. Lets
+    /// callers deep-link the user to the section that's relevant to the
+    /// action they triggered — e.g. clicking "Resolve in External Tool"
+    /// when no tool is configured opens directly to External Tools rather
+    /// than dropping the user on Clone Path with no hint.
+    /// </summary>
     public SettingsDialog(
         CredentialService credentialService,
         SettingsService settingsService,
         IExternalToolConfigService externalToolConfig,
         IExternalToolDetectorService externalToolDetector,
-        string? currentRepoPath)
+        string? currentRepoPath,
+        string? initialSection = null)
     {
         InitializeComponent();
+        _initialSection = initialSection;
 
         _credentialService = credentialService;
         _settingsService = settingsService;
@@ -93,8 +105,19 @@ public partial class SettingsDialog : Window
 
         LoadCurrentSettings();
 
-        // Select first item by default
-        NavClonePath.IsSelected = true;
+        // Caller-provided deep-link target wins over the Clone Path default.
+        // Use SelectNavItem to pick the right TreeViewItem so the navigation
+        // tree highlights its own selected row, then ShowContent fires the
+        // panel swap (no-op equivalent to the SelectionChanged hook firing).
+        if (!string.IsNullOrEmpty(_initialSection))
+        {
+            SelectNavItem(_initialSection);
+            ShowContent(_initialSection);
+        }
+        else
+        {
+            NavClonePath.IsSelected = true;
+        }
     }
 
     private void SettingsNavTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)

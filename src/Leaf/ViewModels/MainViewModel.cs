@@ -100,11 +100,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// True when the current repository has an external merge tool
-    /// configured (via Leaf's Settings or `git config`). Drives the
-    /// "Resolve in External Tool" button's enabled state.
+    /// configured (via Leaf's Settings or `git config`). Tracked for
+    /// status / UI feedback; the OpenConflictInMergeTool command is
+    /// always executable now — when no tool is configured it deep-links
+    /// the user into Settings → External Tools instead of being disabled.
     /// </summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OpenConflictInMergeToolCommand))]
     private bool _hasExternalMergeTool;
 
     [ObservableProperty]

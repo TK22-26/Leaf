@@ -231,6 +231,32 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     /// <summary>UI toggle; pass-through from settings. Used by MainWindow binding.</summary>
     [ObservableProperty]
     private bool _isCompactFileList;
+
+    /// <summary>
+    /// Expand/collapse state of the right-side MergeStatusView's
+    /// "Conflicted Files" section. Defaults to <c>true</c> so the section
+    /// is open when the panel first appears, matching
+    /// <c>WorkingChangesView</c>'s unstaged-section default
+    /// (<see cref="WorkingChangesViewModel.IsUnstagedExpanded"/>). Bound
+    /// via <c>BoolToSectionRowHeightConverter</c> so the section row
+    /// collapses to its header height when toggled off.
+    /// </summary>
+    /// <remarks>
+    /// Intentionally not persisted across sessions — matches the working-
+    /// changes convention. A merge is short-lived; the user wants to see
+    /// what's left to resolve every time the panel comes up.
+    /// </remarks>
+    [ObservableProperty]
+    private bool _isConflictedExpanded = true;
+
+    /// <summary>
+    /// Expand/collapse state of the right-side MergeStatusView's
+    /// "Resolved Files" section. Same defaults / binding / non-persistence
+    /// rationale as <see cref="IsConflictedExpanded"/>.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isResolvedExpanded = true;
+
     public bool CanMarkResolved => SelectedConflict != null && (IsFullyResolved || IsEngineError);
 
     /// <summary>

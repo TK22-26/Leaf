@@ -61,17 +61,22 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Open settings.
+    /// Open settings. Pass <paramref name="initialSection"/> (e.g.
+    /// <c>"ExternalTools"</c>) to deep-link the user to a specific section
+    /// instead of the Clone Path default — used by call sites that
+    /// surface a "configure me" prompt and want the user to land directly
+    /// on the relevant config screen.
     /// </summary>
     [RelayCommand]
-    public async Task OpenSettingsAsync()
+    public async Task OpenSettingsAsync(string? initialSection = null)
     {
         var dialog = new SettingsDialog(
             _credentialService,
             _settingsService,
             _externalToolConfig,
             _externalToolDetector,
-            SelectedRepository?.Path)
+            SelectedRepository?.Path,
+            initialSection)
         {
             Width = 1000,
             Height = 750

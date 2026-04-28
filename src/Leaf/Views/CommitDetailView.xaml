@@ -2,6 +2,7 @@
     x:Class="Leaf.Views.CommitDetailView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:behaviors="clr-namespace:Leaf.Behaviors"
     xmlns:controls="clr-namespace:Leaf.Controls"
     xmlns:converters="clr-namespace:Leaf.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -663,8 +664,10 @@
                         Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
                 </Grid>
 
-                <!--  File List Content  -->
-                <Grid Grid.Row="1" Background="Transparent">
+                <!--  File List Content with scroll-aware edge fade.  -->
+                <Grid Grid.Row="1"
+                      Background="Transparent"
+                      behaviors:ScrollEdgeFader.IsEnabled="True">
                     <!--  List View  -->
                     <ScrollViewer
                         x:Name="FileListScrollViewer"
