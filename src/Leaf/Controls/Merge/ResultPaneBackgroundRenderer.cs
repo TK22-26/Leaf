@@ -8,29 +8,25 @@ namespace Leaf.Controls.Merge;
 
 /// <summary>
 /// AvalonEdit background renderer for the merge editor's Result pane.
-/// Paints each conflict region's content lines with a side-tinted
-/// background so the user can tell at a glance which lines came from
-/// ours, theirs, or base — matching Beyond Compare's color-coded panes
-/// and VS Code's merge-editor side tinting.
+/// Reads its per-line classification from a shared <see cref="MergeDisplayMap"/>
+/// built once on <see cref="MergeDocument"/>, then maps each
+/// <see cref="MergeLineKind"/> to a palette brush. Same map drives the
+/// gutter margin and inline-element generator — single source of truth.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Tinting strategy per conflict region:
+/// Tinting strategy per line kind:
 /// <list type="bullet">
-/// <item><b>Unresolved:</b> ours content gets <c>Merge.Ours.BgSubtle</c>,
-/// base content (zdiff3) gets <c>Merge.Base.BgSubtle</c>, theirs content
-/// gets <c>Merge.Theirs.BgSubtle</c>. The content boundaries are inferred
-/// from marker line positions (<c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c> /
-/// <c>|||||||</c> / <c>=======</c> / <c>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</c>),
-/// not from <c>ModifiedBaseRange</c> directly, because the result-pane
-/// document carries inline marker lines that occupy real line numbers.</item>
-/// <item><b>Resolved:</b> the chosen side's content (which has REPLACED
-/// the markers in <c>ComposeResolvedText</c>'s output) is painted with
-/// <c>Merge.State.Resolved.Overlay</c> as a "this conflict is settled"
-/// indicator. Locating those lines requires walking the result-pane's
-/// document line-by-line because resolved ranges no longer have markers.</item>
+/// <item><b>Marker rows</b> get section-tinted chrome painted by Draw
+///   itself (Open=neutral toolbar + ours-strong OURS strip, Base=base-strong,
+///   Equals=theirs-strong, Close=neutral). Marker chrome is rendered from
+///   the LIVE displayed text (a literal <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>
+///   typed into Manual text would otherwise paint a fake toolbar).</item>
+/// <item><b>Unresolved content</b> uses the side's BgSubtle tint per
+///   <see cref="MergeLineKind"/>: ours=blue, base=grey, theirs=green.</item>
+/// <item><b>Resolved content</b> uses the side's BgSubtle tint matching
+///   the kind chosen — AcceptOurs blue, AcceptTheirs green, AcceptBoth
+///   per-line by section, Manual gets the generic resolved-overlay.</item>
 /// </list>
-/// </para>
 /// </remarks>
 public sealed class ResultPaneBackgroundRenderer : IBackgroundRenderer
 {
@@ -41,11 +37,9 @@ public sealed class ResultPaneBackgroundRenderer : IBackgroundRenderer
     private readonly Brush _theirsBg;
     private readonly Brush _baseBg;
     private readonly Brush _resolvedBg;
-    // Marker-row chrome. The Open ("toolbar") and Close ("END") rows paint
-    // NEUTRAL (Surface-3) — the toolbar is a command surface, not part of
-    // any side, and the END row simply closes the conflict. Only the BASE
-    // and EQUALS markers carry their section's tint, since each one
-    // introduces a content section the user is about to read.
+    // Marker-row chrome. Open ("toolbar") and Close ("END") rows paint
+    // NEUTRAL (Surface-3) — toolbar is a command surface, END just closes
+    // the conflict. Only Base and Equals carry their section's tint.
     private readonly Brush _neutralMarkerBg;
     private readonly Brush _theirsMarkerBg;
     private readonly Brush _baseMarkerBg;
@@ -71,6 +65,15 @@ public sealed class ResultPaneBackgroundRenderer : IBackgroundRenderer
 
     public KnownLayer Layer => KnownLayer.Background;
 
+    // Cached display map keyed by document version. Avoids the per-Draw
+    // O(N) walk + O(N) Brush?[] allocation that would otherwise occur on
+    // every scroll tick. The cache invalidates whenever Document.Version
+    // changes (text mutation) or the bound MergeDocument reference flips.
+    private MergeDisplayMap? _cachedMap;
+    private object? _cachedVersion;
+    private MergeDocument? _cachedDocument;
+    private IReadOnlyDictionary<int, ResolutionState>? _cachedStates;
+
     public void Draw(TextView textView, DrawingContext drawingContext)
     {
         var mergeDoc = _getDocument();
@@ -80,54 +83,13 @@ public sealed class ResultPaneBackgroundRenderer : IBackgroundRenderer
         textView.EnsureVisualLines();
         if (!textView.VisualLinesValid) return;
 
-        // Helper: classify a marker line by reading the LIVE displayed
-        // document text rather than mergeDoc.InitialMergedLines. After the
-        // user accepts a side, the displayed text shrinks but
-        // InitialMergedLines still points at the pre-acceptance layout —
-        // using that for marker detection paints marker chrome (toolbar /
-        // base / theirs / END strip backgrounds) at the OLD line positions
-        // in the displayed text, leaving stale colored bands across what
-        // are now plain content lines.
-        MarkerKind ClassifyDisplayed(int lineNumber)
-        {
-            if (lineNumber < 1 || lineNumber > docModel.LineCount) return MarkerKind.None;
-            var ln = docModel.GetLineByNumber(lineNumber);
-            var text = docModel.GetText(ln.Offset, ln.Length);
-            if (string.IsNullOrEmpty(text)) return MarkerKind.None;
-            if (text.StartsWith("<<<<<<<", StringComparison.Ordinal)) return MarkerKind.Open;
-            if (text.StartsWith(">>>>>>>", StringComparison.Ordinal)) return MarkerKind.Close;
-            if (text.StartsWith("|||||||", StringComparison.Ordinal)) return MarkerKind.Base;
-            if (text == "=======") return MarkerKind.Equals;
-            return MarkerKind.None;
-        }
-
-        bool IsBaseEmptyDisplayed(int lineNumber)
-        {
-            // Walk doc text to find the conflict containing this line, count
-            // its base content lines (between `|||||||` and `=======`).
-            // Returning false on any irregularity is safe — we just keep the
-            // base caption visible.
-            if (ClassifyDisplayed(lineNumber) != MarkerKind.Base) return false;
-            int next = lineNumber + 1;
-            if (next > docModel.LineCount) return false;
-            return ClassifyDisplayed(next) == MarkerKind.Equals;
-        }
-
         var states = _getRangeStates();
+        var map = GetOrBuildDisplayMap(docModel, mergeDoc, states);
+
         var width = textView.ActualWidth;
         // Paint past the visible viewport edges so a partially-scrolled
         // strip doesn't show a visible seam at the right margin.
         var paintWidth = Math.Max(width, textView.RenderSize.Width);
-
-        // Per-displayed-line tint map. Built fresh per Draw because both
-        // RangeStates and Document.Text can change between renders without
-        // notifying the renderer; rebuilding is O(N+M) where N is doc lines
-        // and M is conflict count, which is fast enough for typical files.
-        // The map encodes resolution-aware positions: a resolved AcceptOurs
-        // body shows ours.Length displayed lines tinted resolved-overlay,
-        // not ResultMarkedRange.Length lines (which would over-paint
-        // post-conflict context that has scrolled up to fill the gap).
-        var tintMap = BuildTintMap(docModel.LineCount, mergeDoc, states);
 
         foreach (var visualLine in textView.VisualLines)
         {
@@ -135,207 +97,123 @@ public sealed class ResultPaneBackgroundRenderer : IBackgroundRenderer
             var y = visualLine.VisualTop - textView.VerticalOffset;
             var rect = new Rect(0, y, paintWidth, visualLine.Height);
 
-            var markerKind = ClassifyDisplayed(lineNumber);
-            if (markerKind == MarkerKind.Base && IsBaseEmptyDisplayed(lineNumber))
+            var displayLine = map.GetLine(lineNumber);
+
+            // Marker rows: paint chrome via the dedicated path. Empty-base
+            // BASE markers (next line is `=======`) render as a 1 px collapsed
+            // strip via the inline generator; skip painting any chrome here
+            // so ours- and theirs-content blocks visually meet across the
+            // hairline.
+            if (IsMarkerKind(displayLine.Kind))
             {
-                continue;
-            }
-            if (markerKind != MarkerKind.None)
-            {
-                if (markerKind == MarkerKind.Open)
+                if (displayLine.Kind == MergeLineKind.BaseMarker
+                    && IsBaseEmptyAtLine(map, lineNumber))
                 {
-                    double oursStripHeight = Math.Min(ConflictMarkerInlineGenerator.OursRowHeight, visualLine.Height);
-                    double topPortion = visualLine.Height - oursStripHeight;
-                    if (topPortion > 0)
-                    {
-                        drawingContext.DrawRectangle(_neutralMarkerBg, pen: null,
-                            new Rect(0, y, paintWidth, topPortion));
-                    }
-                    drawingContext.DrawRectangle(_oursStrongBg, pen: null,
-                        new Rect(0, y + topPortion, paintWidth, oursStripHeight));
+                    continue;
                 }
-                else
-                {
-                    var markerBg = markerKind switch
-                    {
-                        MarkerKind.Base => _baseMarkerBg,
-                        MarkerKind.Equals => _theirsMarkerBg,
-                        MarkerKind.Close => _neutralMarkerBg,
-                        _ => _neutralMarkerBg,
-                    };
-                    drawingContext.DrawRectangle(markerBg, pen: null, rect);
-                }
-                drawingContext.DrawRectangle(_markerBorder, pen: null,
-                    new Rect(0, y, paintWidth, 1));
-                drawingContext.DrawRectangle(_markerBorder, pen: null,
-                    new Rect(0, y + visualLine.Height - 1, paintWidth, 1));
+                PaintMarkerChrome(drawingContext, displayLine.Kind, y, paintWidth, visualLine.Height, rect);
                 continue;
             }
 
-            if (lineNumber < 1 || lineNumber >= tintMap.Length) continue;
-            var brush = tintMap[lineNumber];
+            var brush = BrushForKind(displayLine.Kind);
             if (brush is null) continue;
             drawingContext.DrawRectangle(brush, pen: null, rect);
         }
     }
 
-    /// <summary>
-    /// Per-displayed-line tint map. Walks the conflicting ranges in
-    /// <see cref="ModifiedBaseRange.ResultMarkedRange"/> order and assigns
-    /// a brush to every line inside a conflict body, using resolution state
-    /// to determine each body's actual displayed line count.
-    /// </summary>
-    /// <remarks>
-    /// Earlier <c>ClassifyLine</c> looked up
-    /// <see cref="ModifiedBaseRange.ResultMarkedRange"/> positions directly
-    /// — but those are <em>InitialMergedText</em> coordinates, not displayed
-    /// coordinates. After the user accepts a side, the displayed body shrinks
-    /// (e.g. AcceptOurs replaces the whole marker block with just ours
-    /// content) and every subsequent context line shifts up. The classifier
-    /// then painted the resolved-overlay tint over those shifted-up context
-    /// lines, making swaths of file context look like resolved-conflict
-    /// content. This walker tracks the displayed cursor explicitly and
-    /// only tints the actual body extent.
-    /// </remarks>
-    internal Brush?[] BuildTintMap(
-        int docLineCount,
+    private MergeDisplayMap GetOrBuildDisplayMap(
+        Leaf.TextEdit.Document.TextDocument docModel,
         MergeDocument mergeDoc,
         IReadOnlyDictionary<int, ResolutionState>? states)
     {
-        var map = new Brush?[docLineCount + 1];
-        if (docLineCount <= 0) return map;
-
-        var conflicts = mergeDoc.Ranges
-            .Where(r => r.IsConflicting)
-            .OrderBy(r => r.ResultMarkedRange.StartLine)
-            .ToList();
-        if (conflicts.Count == 0) return map;
-
-        int docLine = 1;
-        int prevDisplayedEndExclusive = 1;
-
-        foreach (var r in conflicts)
+        // Cache on (Document.Version, MergeDocument identity, RangeStates
+        // identity). Document.Version is reference-equal until the next
+        // text mutation; MergeDocument and RangeStates are reassigned
+        // whenever the bound file or VM changes. RangeStates can also be
+        // mutated in place — those mutations route through ResultPane's
+        // explicit InvalidateLayer call after Refresh(), which doesn't
+        // invalidate this cache by itself, so additionally bump on
+        // Document.Version which Document.Text writes always change.
+        var version = docModel.Version;
+        if (_cachedMap is not null
+            && ReferenceEquals(version, _cachedVersion)
+            && ReferenceEquals(mergeDoc, _cachedDocument)
+            && ReferenceEquals(states, _cachedStates)
+            && _cachedMap.LineCount == docModel.LineCount)
         {
-            int contextLines = Math.Max(0, r.ResultMarkedRange.StartLine - prevDisplayedEndExclusive);
-            docLine += contextLines;
-            if (docLine > docLineCount) break;
-
-            var state = states is not null && states.TryGetValue(r.Index, out var s)
-                ? s
-                : ResolutionState.Unresolved.Instance;
-
-            if (state is ResolutionState.Unresolved)
-            {
-                // Marker block: <<<<<<<, ours, |||||||, base, =======, theirs, >>>>>>>.
-                // Markers themselves don't get a content tint — Draw paints
-                // them via the marker-chrome path. Skip with docLine++.
-                if (docLine <= docLineCount) docLine++;                                  // <<<<<<<
-                for (int j = 0; j < r.Ours.Length && docLine <= docLineCount; j++)
-                    map[docLine++] = _oursBg;
-                if (docLine <= docLineCount) docLine++;                                  // |||||||
-                for (int j = 0; j < r.Base.Length && docLine <= docLineCount; j++)
-                    map[docLine++] = _baseBg;
-                if (docLine <= docLineCount) docLine++;                                  // =======
-                for (int j = 0; j < r.Theirs.Length && docLine <= docLineCount; j++)
-                    map[docLine++] = _theirsBg;
-                if (docLine <= docLineCount) docLine++;                                  // >>>>>>>
-            }
-            else
-            {
-                // Resolved: tint each emitted line with the SIDE's colour
-                // (blue for ours, green for theirs) instead of the generic
-                // resolved-overlay green. Earlier every accept tinted green
-                // — making AcceptOurs visually indistinguishable from
-                // AcceptTheirs, since both ended up green.
-                //   AcceptOurs   → all body lines ours-tinted (blue)
-                //   AcceptTheirs → all body lines theirs-tinted (green)
-                //   AcceptBoth   → ours-lines blue, theirs-lines green
-                //                  (in chosen order so the gutter reads as
-                //                  "this came from ours, this came from theirs")
-                //   Manual       → resolved-overlay (no canonical side)
-                switch (state)
-                {
-                    case ResolutionState.AcceptOurs:
-                        for (int j = 0; j < r.Ours.Length && docLine <= docLineCount; j++)
-                            map[docLine++] = _oursBg;
-                        break;
-                    case ResolutionState.AcceptTheirs:
-                        for (int j = 0; j < r.Theirs.Length && docLine <= docLineCount; j++)
-                            map[docLine++] = _theirsBg;
-                        break;
-                    case ResolutionState.AcceptBoth ab:
-                        if (r.OursLines.Count == 0)
-                        {
-                            for (int j = 0; j < r.Theirs.Length && docLine <= docLineCount; j++)
-                                map[docLine++] = _theirsBg;
-                        }
-                        else if (r.TheirsLines.Count == 0)
-                        {
-                            for (int j = 0; j < r.Ours.Length && docLine <= docLineCount; j++)
-                                map[docLine++] = _oursBg;
-                        }
-                        else if (ab.FirstOurs)
-                        {
-                            for (int j = 0; j < r.Ours.Length && docLine <= docLineCount; j++)
-                                map[docLine++] = _oursBg;
-                            for (int j = 0; j < r.Theirs.Length && docLine <= docLineCount; j++)
-                                map[docLine++] = _theirsBg;
-                        }
-                        else
-                        {
-                            for (int j = 0; j < r.Theirs.Length && docLine <= docLineCount; j++)
-                                map[docLine++] = _theirsBg;
-                            for (int j = 0; j < r.Ours.Length && docLine <= docLineCount; j++)
-                                map[docLine++] = _oursBg;
-                        }
-                        break;
-                    case ResolutionState.Manual m:
-                        int manualLines = CountManualLines(m.Text);
-                        for (int j = 0; j < manualLines && docLine <= docLineCount; j++)
-                            map[docLine++] = _resolvedBg;
-                        break;
-                    default:
-                        // Match MergeDocument.AppendResolution: future
-                        // ResolutionState variants must add a case here
-                        // explicitly rather than silently leave the body
-                        // un-tinted.
-                        throw new InvalidOperationException(
-                            $"Unknown resolution state: {state.GetType().Name}");
-                }
-            }
-
-            prevDisplayedEndExclusive = r.ResultMarkedRange.EndLineExclusive;
+            return _cachedMap;
         }
-
-        return map;
+        _cachedMap = mergeDoc.BuildDisplayMap(docModel.LineCount, states);
+        _cachedVersion = version;
+        _cachedDocument = mergeDoc;
+        _cachedStates = states;
+        return _cachedMap;
     }
 
-    /// <summary>
-    /// Count Manual-resolution displayed-line span. Matches the
-    /// <c>NormaliseToLf</c> pass <see cref="MergeDocument.ComposeResolvedText"/>
-    /// applies before emitting Manual content — without that, a CR-only or
-    /// CRLF-terminated Manual paste counts wrong here and offsets every
-    /// conflict's tinting below.
-    /// </summary>
-    private static int CountManualLines(string text)
+    private static bool IsMarkerKind(MergeLineKind kind) => kind switch
     {
-        if (string.IsNullOrEmpty(text)) return 0;
-        int count = 1;
-        for (int i = 0; i < text.Length; i++)
-        {
-            char c = text[i];
-            if (c == '\n') count++;
-            else if (c == '\r' && (i + 1 >= text.Length || text[i + 1] != '\n')) count++;
-        }
-        char last = text[text.Length - 1];
-        if (last == '\n' || last == '\r') count--;
-        return count == 0 ? 1 : count;
+        MergeLineKind.OpenMarker or MergeLineKind.BaseMarker
+            or MergeLineKind.EqualsMarker or MergeLineKind.CloseMarker => true,
+        _ => false,
+    };
+
+    private static bool IsBaseEmptyAtLine(MergeDisplayMap map, int lineNumber)
+    {
+        // The inline generator collapses an empty-base marker (the row
+        // followed immediately by `=======`) to a 1 px strip. Detect the
+        // same condition by reading the NEXT line's kind from the map.
+        var next = map.GetLine(lineNumber + 1);
+        return next.Kind == MergeLineKind.EqualsMarker;
     }
 
-    /// <summary>
-    /// Marker categories used to pick the side-specific background tint.
-    /// Internal so tests can pin the classification without standing up a
-    /// visual tree.
-    /// </summary>
-    internal enum MarkerKind { None, Open, Base, Equals, Close }
+    private void PaintMarkerChrome(
+        DrawingContext drawingContext,
+        MergeLineKind kind,
+        double y,
+        double paintWidth,
+        double height,
+        Rect fullRect)
+    {
+        if (kind == MergeLineKind.OpenMarker)
+        {
+            // Two-band chrome: top portion neutral (toolbar surface),
+            // bottom OursRowHeight slice ours-strong-tinted (full-width
+            // OURS section header — the inline element only spans the
+            // toolbar's natural width, so the ours-tint must come from
+            // the renderer to span the whole row).
+            double oursStripHeight = Math.Min(ConflictMarkerInlineGenerator.OursRowHeight, height);
+            double topPortion = height - oursStripHeight;
+            if (topPortion > 0)
+            {
+                drawingContext.DrawRectangle(_neutralMarkerBg, pen: null,
+                    new Rect(0, y, paintWidth, topPortion));
+            }
+            drawingContext.DrawRectangle(_oursStrongBg, pen: null,
+                new Rect(0, y + topPortion, paintWidth, oursStripHeight));
+        }
+        else
+        {
+            var markerBg = kind switch
+            {
+                MergeLineKind.BaseMarker => _baseMarkerBg,
+                MergeLineKind.EqualsMarker => _theirsMarkerBg,
+                MergeLineKind.CloseMarker => _neutralMarkerBg,
+                _ => _neutralMarkerBg,
+            };
+            drawingContext.DrawRectangle(markerBg, pen: null, fullRect);
+        }
+        drawingContext.DrawRectangle(_markerBorder, pen: null,
+            new Rect(0, y, paintWidth, 1));
+        drawingContext.DrawRectangle(_markerBorder, pen: null,
+            new Rect(0, y + height - 1, paintWidth, 1));
+    }
+
+    private Brush? BrushForKind(MergeLineKind kind) => kind switch
+    {
+        MergeLineKind.UnresolvedOurs or MergeLineKind.ResolvedOurs => _oursBg,
+        MergeLineKind.UnresolvedBase => _baseBg,
+        MergeLineKind.UnresolvedTheirs or MergeLineKind.ResolvedTheirs => _theirsBg,
+        MergeLineKind.ResolvedManual => _resolvedBg,
+        _ => null,
+    };
 }

@@ -180,128 +180,47 @@ public sealed class ConflictMarkerInlineGenerator : VisualLineElementGenerator
         return new InlineObjectElement(line.Length, element);
     }
 
-    // Cached marker-line → range-index map. Rebuilt on the first
-    // FindRangeIndexForLine call after the document text changes (detected
-    // by Document.Version reference identity). Avoids the per-call O(N)
-    // doc-text walk + per-call List<ModifiedBaseRange> allocation that
-    // ConstructElement would otherwise pay for every marker line on every
-    // visual-line construction pass.
-    private int[]? _markerLineRangeIndex;
+    // Cached MergeDisplayMap covering the full result-pane document. Built
+    // on the first ConstructElement call after the document text changes
+    // (detected by Document.Version reference identity). Reading the map
+    // for marker→rangeIndex lookup avoids the per-call O(N) doc-text walk
+    // + per-call List<ModifiedBaseRange> allocation that ConstructElement
+    // would otherwise pay for every marker line on every visual-line
+    // construction pass.
+    private MergeDisplayMap? _cachedDisplayMap;
     private object? _cachedDocumentVersion;
+    private int _cachedLineCount = -1;
 
     /// <summary>
     /// Map a marker-line's <em>displayed</em> document-line number to the
-    /// underlying <see cref="ModifiedBaseRange.Index"/>. Reads from a cache
-    /// that's rebuilt by walking the doc text + matching <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>
-    /// markers to the next unresolved conflict in
-    /// <see cref="MergeDocument.ConflictingRanges"/> order. Resolved
-    /// conflicts have no markers in the displayed text, so they're skipped.
+    /// underlying <see cref="ModifiedBaseRange.Index"/>. Reads from the
+    /// shared <see cref="MergeDisplayMap"/> on
+    /// <see cref="MergeDocument.BuildDisplayMap"/>, cached per
+    /// <see cref="Leaf.TextEdit.Document.TextDocument.Version"/>.
     /// </summary>
-    /// <remarks>
-    /// Earlier this looked up <see cref="ModifiedBaseRange.ResultMarkedRange"/>
-    /// directly, but ResultMarkedRange describes positions in the
-    /// <em>InitialMergedText</em> (which has marker blocks for every
-    /// conflict, resolved or not). After the user accepts a side the
-    /// displayed text shrinks for that conflict and every subsequent
-    /// conflict's displayed line position no longer matches its
-    /// ResultMarkedRange. Using ResultMarkedRange there made the toolbar
-    /// for conflict N+1 fire commands against conflict N's index,
-    /// scrambling all chrome below the first accepted change.
-    /// </remarks>
     private int FindRangeIndexForLine(int lineNumber)
     {
         var doc = CurrentContext.Document;
         var mergeDoc = _getDocument();
         if (doc is null || mergeDoc is null) return -1;
 
-        EnsureMarkerMapCached(doc, mergeDoc);
-        if (_markerLineRangeIndex is null) return -1;
-        if (lineNumber < 1 || lineNumber >= _markerLineRangeIndex.Length) return -1;
-        return _markerLineRangeIndex[lineNumber];
+        EnsureDisplayMapCached(doc, mergeDoc);
+        if (_cachedDisplayMap is null) return -1;
+        return _cachedDisplayMap.GetLine(lineNumber).RangeIndex;
     }
 
-    private void EnsureMarkerMapCached(Leaf.TextEdit.Document.TextDocument doc, MergeDocument mergeDoc)
+    private void EnsureDisplayMapCached(Leaf.TextEdit.Document.TextDocument doc, MergeDocument mergeDoc)
     {
         var version = doc.Version;
-        if (_markerLineRangeIndex is not null
+        if (_cachedDisplayMap is not null
             && ReferenceEquals(version, _cachedDocumentVersion)
-            && _markerLineRangeIndex.Length == doc.LineCount + 1)
+            && _cachedLineCount == doc.LineCount)
         {
             return;
         }
-
-        _markerLineRangeIndex = BuildMarkerMap(
-            doc.LineCount,
-            mergeDoc.Ranges,
-            _getStates(),
-            line =>
-            {
-                var ln = doc.GetLineByNumber(line);
-                return doc.GetText(ln.Offset, ln.Length);
-            });
+        _cachedDisplayMap = mergeDoc.BuildDisplayMap(doc.LineCount, _getStates());
         _cachedDocumentVersion = version;
-    }
-
-    /// <summary>
-    /// Pure walker: builds a 1-based <c>lineNumber → ModifiedBaseRange.Index</c>
-    /// map by walking <paramref name="getDocLineText"/> from line 1 to
-    /// <paramref name="docLineCount"/> and pairing each <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>
-    /// with the next unresolved conflict in <paramref name="ranges"/>'
-    /// declaration order. Index 0 is unused. Lines outside any unresolved
-    /// conflict (context, post-Close, lines past last unresolved) get -1.
-    /// Exposed as <c>internal static</c> so unit tests can drive it without
-    /// standing up an AvalonEdit document.
-    /// </summary>
-    internal static int[] BuildMarkerMap(
-        int docLineCount,
-        IReadOnlyList<ModifiedBaseRange> ranges,
-        IReadOnlyDictionary<int, ResolutionState>? states,
-        Func<int, string> getDocLineText)
-    {
-        var map = new int[docLineCount + 1];
-        for (int i = 0; i < map.Length; i++) map[i] = -1;
-
-        int unresolvedIdx = -1;
-        int currentRangeIdx = -1;
-        for (int line = 1; line <= docLineCount; line++)
-        {
-            var text = getDocLineText(line);
-            var kind = ClassifyMarker(text);
-            if (kind == MarkerKind.Open)
-            {
-                currentRangeIdx = NextUnresolvedRangeIndex(ranges, states, ref unresolvedIdx);
-            }
-            map[line] = currentRangeIdx;
-            if (kind == MarkerKind.Close)
-            {
-                currentRangeIdx = -1;
-            }
-        }
-        return map;
-    }
-
-    /// <summary>
-    /// Advance <paramref name="cursor"/> through <paramref name="ranges"/>
-    /// (in declaration order) and return the <see cref="ModifiedBaseRange.Index"/>
-    /// of the next unresolved conflict, or -1 if none remain. Mutates
-    /// <paramref name="cursor"/> in place so subsequent calls pick up where
-    /// the previous one stopped.
-    /// </summary>
-    private static int NextUnresolvedRangeIndex(
-        IReadOnlyList<ModifiedBaseRange> ranges,
-        IReadOnlyDictionary<int, ResolutionState>? states,
-        ref int cursor)
-    {
-        for (cursor = cursor + 1; cursor < ranges.Count; cursor++)
-        {
-            var r = ranges[cursor];
-            if (!r.IsConflicting) continue;
-            var state = states is not null && states.TryGetValue(r.Index, out var s)
-                ? s
-                : ResolutionState.Unresolved.Instance;
-            if (state is ResolutionState.Unresolved) return r.Index;
-        }
-        return -1;
+        _cachedLineCount = doc.LineCount;
     }
 
     private bool IsBaseEmptyForRangeIndex(int rangeIndex)

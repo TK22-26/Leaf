@@ -256,4 +256,216 @@ public sealed class MergeDocument
         var step1 = text.Replace("\r\n", "\n");
         return step1.IndexOf('\r') < 0 ? step1 : step1.Replace('\r', '\n');
     }
+
+    /// <summary>
+    /// Build a per-line classification of the result-pane's displayed text
+    /// that the gutter margin, background renderer, and inline-element
+    /// generator all consume — eliminating the three duplicated walkers
+    /// each computed independently. Output is immutable and safe to cache
+    /// per (document version, range-states) tuple.
+    /// </summary>
+    /// <param name="displayedLineCount">
+    /// Total displayed line count, typically <c>_editor.Document.LineCount</c>.
+    /// The map is sized for indices 1..<paramref name="displayedLineCount"/>;
+    /// out-of-range lookups return <see cref="MergeLineKind.Context"/>.
+    /// </param>
+    /// <param name="rangeStates">
+    /// Resolution states; <c>null</c> treats every conflict as Unresolved.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Walks <see cref="ConflictingRanges"/> in <see cref="ModifiedBaseRange.ResultMarkedRange"/>
+    /// order. Pre-context length per conflict is computed in InitialMergedText
+    /// coordinates (<c>next.ResultMarkedRange.StartLine - prev.ResultMarkedRange.EndLineExclusive</c>);
+    /// the composer copies context lines verbatim so this count equals the
+    /// displayed gap regardless of which sides have been accepted on
+    /// preceding conflicts. Body line counts come from the resolution state:
+    /// Unresolved bodies span the full marker block (<c>4 + ours + base + theirs</c> lines);
+    /// resolved bodies span the chosen side's content (with AcceptBoth
+    /// concatenating in the chosen order).
+    /// </para>
+    /// <para>
+    /// Gutter numbering: all conflict-section lines (markers AND content)
+    /// label from <see cref="ModifiedBaseRange.Ours"/>'s <c>StartLine</c>
+    /// (kept monotonic), then post-conflict context resumes at
+    /// <c>StartLine + bodyDisplayedLines</c> for resolved bodies (also
+    /// monotonic, may diverge from real ours-file lines for accepted-side
+    /// length mismatches — deliberate UX trade-off).
+    /// </para>
+    /// </remarks>
+    public MergeDisplayMap BuildDisplayMap(
+        int displayedLineCount,
+        IReadOnlyDictionary<int, ResolutionState>? rangeStates)
+    {
+        var lines = new MergeDisplayLine[displayedLineCount + 1];
+        if (displayedLineCount <= 0)
+        {
+            return new MergeDisplayMap(lines, displayedLineCount);
+        }
+
+        var conflicts = Ranges
+            .Where(r => r.IsConflicting)
+            .OrderBy(r => r.ResultMarkedRange.StartLine)
+            .ToList();
+
+        int oursPtr = 1;
+        int docLine = 1;
+        // InitialMergedText anchor — the composer copies context lines
+        // verbatim, so the gap measured in InitialMergedText equals the gap
+        // in displayed text for any inter-conflict context region.
+        int prevMarkedEndExclusive = 1;
+
+        foreach (var r in conflicts)
+        {
+            int contextLines = Math.Max(0, r.ResultMarkedRange.StartLine - prevMarkedEndExclusive);
+            for (int j = 0; j < contextLines && docLine <= displayedLineCount; j++)
+            {
+                lines[docLine] = new MergeDisplayLine(MergeLineKind.Context, -1, oursPtr);
+                docLine++;
+                oursPtr++;
+            }
+            if (docLine > displayedLineCount) break;
+
+            var state = rangeStates is not null && rangeStates.TryGetValue(r.Index, out var s)
+                ? s
+                : ResolutionState.Unresolved.Instance;
+
+            int slotStartNumber = r.Ours.StartLine > 0 ? r.Ours.StartLine : oursPtr;
+            int docLineBeforeBody = docLine;
+            EmitConflictBody(lines, ref docLine, displayedLineCount, r, state, slotStartNumber);
+            int bodyDisplayedLines = docLine - docLineBeforeBody;
+
+            // Snap ours-pointer past this range's body. Trade-off:
+            //   Unresolved → Ours.EndLineExclusive (exact ours-file anchor).
+            //   Resolved   → slotStart + emitted body lines (monotonic gutter
+            //                even when accepted side length ≠ ours.Length).
+            int snapTarget = state is ResolutionState.Unresolved
+                ? r.Ours.EndLineExclusive
+                : slotStartNumber + bodyDisplayedLines;
+            if (snapTarget > 0)
+            {
+                oursPtr = Math.Max(oursPtr, snapTarget);
+            }
+            prevMarkedEndExclusive = r.ResultMarkedRange.EndLineExclusive;
+        }
+
+        // Trailing context.
+        while (docLine <= displayedLineCount)
+        {
+            lines[docLine] = new MergeDisplayLine(MergeLineKind.Context, -1, oursPtr);
+            docLine++;
+            oursPtr++;
+        }
+
+        return new MergeDisplayMap(lines, displayedLineCount);
+    }
+
+    private static void EmitConflictBody(
+        MergeDisplayLine[] lines,
+        ref int docLine,
+        int displayedLineCount,
+        ModifiedBaseRange r,
+        ResolutionState state,
+        int slotStartNumber)
+    {
+        switch (state)
+        {
+            case ResolutionState.Unresolved:
+                if (docLine <= displayedLineCount) lines[docLine++] = new MergeDisplayLine(MergeLineKind.OpenMarker, r.Index, null);
+                for (int j = 0; j < r.Ours.Length && docLine <= displayedLineCount; j++)
+                    lines[docLine++] = new MergeDisplayLine(MergeLineKind.UnresolvedOurs, r.Index, slotStartNumber + j);
+                if (docLine <= displayedLineCount) lines[docLine++] = new MergeDisplayLine(MergeLineKind.BaseMarker, r.Index, null);
+                for (int j = 0; j < r.Base.Length && docLine <= displayedLineCount; j++)
+                    lines[docLine++] = new MergeDisplayLine(MergeLineKind.UnresolvedBase, r.Index, slotStartNumber + j);
+                if (docLine <= displayedLineCount) lines[docLine++] = new MergeDisplayLine(MergeLineKind.EqualsMarker, r.Index, null);
+                for (int j = 0; j < r.Theirs.Length && docLine <= displayedLineCount; j++)
+                    lines[docLine++] = new MergeDisplayLine(MergeLineKind.UnresolvedTheirs, r.Index, slotStartNumber + j);
+                if (docLine <= displayedLineCount) lines[docLine++] = new MergeDisplayLine(MergeLineKind.CloseMarker, r.Index, null);
+                return;
+
+            case ResolutionState.AcceptOurs:
+                for (int j = 0; j < r.Ours.Length && docLine <= displayedLineCount; j++)
+                    lines[docLine++] = new MergeDisplayLine(MergeLineKind.ResolvedOurs, r.Index, slotStartNumber + j);
+                return;
+
+            case ResolutionState.AcceptTheirs:
+                for (int j = 0; j < r.Theirs.Length && docLine <= displayedLineCount; j++)
+                    lines[docLine++] = new MergeDisplayLine(MergeLineKind.ResolvedTheirs, r.Index, slotStartNumber + j);
+                return;
+
+            case ResolutionState.AcceptBoth ab:
+                EmitAcceptBothBody(lines, ref docLine, displayedLineCount, r, ab, slotStartNumber);
+                return;
+
+            case ResolutionState.Manual manual:
+                int manualLines = CountResolutionLines(manual.Text);
+                for (int j = 0; j < manualLines && docLine <= displayedLineCount; j++)
+                    lines[docLine++] = new MergeDisplayLine(MergeLineKind.ResolvedManual, r.Index, null);
+                return;
+
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown resolution state: {state.GetType().Name}");
+        }
+    }
+
+    private static void EmitAcceptBothBody(
+        MergeDisplayLine[] lines,
+        ref int docLine,
+        int displayedLineCount,
+        ModifiedBaseRange r,
+        ResolutionState.AcceptBoth ab,
+        int slotStartNumber)
+    {
+        // Mirrors AppendCombined: empty side → use the other; else interleave
+        // ours+theirs (or theirs+ours) by FirstOurs. RangeIndex stays consistent.
+        int counter = 0;
+        if (r.OursLines.Count == 0)
+        {
+            for (int j = 0; j < r.Theirs.Length && docLine <= displayedLineCount; j++)
+                lines[docLine++] = new MergeDisplayLine(MergeLineKind.ResolvedTheirs, r.Index, slotStartNumber + counter++);
+            return;
+        }
+        if (r.TheirsLines.Count == 0)
+        {
+            for (int j = 0; j < r.Ours.Length && docLine <= displayedLineCount; j++)
+                lines[docLine++] = new MergeDisplayLine(MergeLineKind.ResolvedOurs, r.Index, slotStartNumber + counter++);
+            return;
+        }
+        if (ab.FirstOurs)
+        {
+            for (int j = 0; j < r.Ours.Length && docLine <= displayedLineCount; j++)
+                lines[docLine++] = new MergeDisplayLine(MergeLineKind.ResolvedOurs, r.Index, slotStartNumber + counter++);
+            for (int j = 0; j < r.Theirs.Length && docLine <= displayedLineCount; j++)
+                lines[docLine++] = new MergeDisplayLine(MergeLineKind.ResolvedTheirs, r.Index, slotStartNumber + counter++);
+        }
+        else
+        {
+            for (int j = 0; j < r.Theirs.Length && docLine <= displayedLineCount; j++)
+                lines[docLine++] = new MergeDisplayLine(MergeLineKind.ResolvedTheirs, r.Index, slotStartNumber + counter++);
+            for (int j = 0; j < r.Ours.Length && docLine <= displayedLineCount; j++)
+                lines[docLine++] = new MergeDisplayLine(MergeLineKind.ResolvedOurs, r.Index, slotStartNumber + counter++);
+        }
+    }
+
+    /// <summary>
+    /// Count the displayed-line span of free-form Manual-resolution text.
+    /// Mirrors <see cref="NormaliseToLf"/> + the AppendResolution emission
+    /// rules so a CR-only or CRLF-terminated paste counts the same way the
+    /// composer actually emits it.
+    /// </summary>
+    internal static int CountResolutionLines(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        int count = 1;
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (c == '\n') count++;
+            else if (c == '\r' && (i + 1 >= text.Length || text[i + 1] != '\n')) count++;
+        }
+        char last = text[text.Length - 1];
+        if (last == '\n' || last == '\r') count--;
+        return count == 0 ? 1 : count;
+    }
 }

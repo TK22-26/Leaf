@@ -19,16 +19,19 @@ namespace Leaf.Tests.Controls.Merge;
 public class MergeResultLineNumberMarginTests
 {
     [Fact]
-    public void NoMergeDocument_ReturnsSequentialMap()
+    public void EmptyRanges_AllLinesMarkedAsContextWithSequentialNumbers()
     {
-        // Fallback to natural numbering when there's nothing to walk —
-        // matches the stock LineNumberMargin so a missing document doesn't
-        // read as a bug.
-        var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: 5, mergeDoc: null, states: null);
+        // No conflicts → every line is Context, numbered sequentially from
+        // 1. Mirrors the stock LineNumberMargin behaviour for files that
+        // have nothing to merge (post-resolution snapshot, opened by
+        // accident, etc.) so a no-conflict file doesn't render blank.
+        var doc = MakeDocument(new[] { "a", "b", "c", "d", "e" });
+        var map = doc.BuildDisplayMap(5, null);
         for (int i = 1; i <= 5; i++)
         {
-            map[i].Should().Be(i);
+            var line = map.GetLine(i);
+            line.Kind.Should().Be(MergeLineKind.Context);
+            line.FileLineNumber.Should().Be(i);
         }
     }
 
@@ -39,11 +42,10 @@ public class MergeResultLineNumberMarginTests
         // (all auto-merged from the start). Should yield natural numbering
         // without forcing the host to special-case "no conflicts".
         var doc = MakeDocument(new[] { "alpha", "beta", "gamma" });
-        var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: 3, mergeDoc: doc, states: null);
-        map[1].Should().Be(1);
-        map[2].Should().Be(2);
-        map[3].Should().Be(3);
+        var map = doc.BuildDisplayMap(3, null);
+        map.GetLine(1).FileLineNumber.Should().Be(1);
+        map.GetLine(2).FileLineNumber.Should().Be(2);
+        map.GetLine(3).FileLineNumber.Should().Be(3);
     }
 
     [Fact]
@@ -98,18 +100,17 @@ public class MergeResultLineNumberMarginTests
             IsOrderRelevant: true);
         var doc = MakeDocument(lines, conflict);
 
-        var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: null);
+        var map = doc.BuildDisplayMap(lines.Length, null);
 
-        map[1].Should().Be(1, because: "ignored line is ours-line 1, auto-merged context");
-        map[2].Should().Be(2, because: "'The dog' is ours-line 2, auto-merged context");
-        map[3].Should().BeNull(because: "<<<<<<< marker line is unnumbered");
-        map[4].Should().Be(3, because: "'Jumped' is ours-line 3 inside the ours-section");
-        map[5].Should().BeNull(because: "||||||| marker line is unnumbered");
-        map[6].Should().BeNull(because: "======= marker line is unnumbered");
-        map[7].Should().Be(3, because: "'Sat' is theirs-line 3 inside the theirs-section");
-        map[8].Should().BeNull(because: ">>>>>>> marker line is unnumbered");
-        map[9].Should().Be(4, because: "'on the porch.' is ours-line 4, auto-merged context after the conflict");
+        map.GetLine(1).FileLineNumber.Should().Be(1, because: "ignored line is ours-line 1, auto-merged context");
+        map.GetLine(2).FileLineNumber.Should().Be(2, because: "'The dog' is ours-line 2, auto-merged context");
+        map.GetLine(3).FileLineNumber.Should().BeNull(because: "<<<<<<< marker line is unnumbered");
+        map.GetLine(4).FileLineNumber.Should().Be(3, because: "'Jumped' is ours-line 3 inside the ours-section");
+        map.GetLine(5).FileLineNumber.Should().BeNull(because: "||||||| marker line is unnumbered");
+        map.GetLine(6).FileLineNumber.Should().BeNull(because: "======= marker line is unnumbered");
+        map.GetLine(7).FileLineNumber.Should().Be(3, because: "'Sat' is theirs-line 3 inside the theirs-section");
+        map.GetLine(8).FileLineNumber.Should().BeNull(because: ">>>>>>> marker line is unnumbered");
+        map.GetLine(9).FileLineNumber.Should().Be(4, because: "'on the porch.' is ours-line 4, auto-merged context after the conflict");
     }
 
     [Fact]
@@ -155,18 +156,17 @@ public class MergeResultLineNumberMarginTests
             IsOrderRelevant: true);
         var doc = MakeDocument(lines, conflict);
 
-        var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: null);
+        var map = doc.BuildDisplayMap(lines.Length, null);
 
-        map[1].Should().Be(1, because: "pre-context line is ours-line 1");
-        map[2].Should().BeNull();             // <<<<<<<
-        map[3].Should().Be(2, because: "ours-A starts the conflict slot at result-line 2");
-        map[4].Should().Be(3, because: "ours-B is the second line in the conflict slot");
-        map[5].Should().BeNull();             // |||||||
-        map[6].Should().Be(2, because: "base-X shares the conflict slot — labeled from Ours.StartLine, not Base.StartLine=50");
-        map[7].Should().BeNull();             // =======
-        map[8].Should().Be(2, because: "theirs-Y also shares the conflict slot — labeled from Ours.StartLine, not Theirs.StartLine=5");
-        map[9].Should().BeNull();             // >>>>>>>
+        map.GetLine(1).FileLineNumber.Should().Be(1, because: "pre-context line is ours-line 1");
+        map.GetLine(2).FileLineNumber.Should().BeNull();             // <<<<<<<
+        map.GetLine(3).FileLineNumber.Should().Be(2, because: "ours-A starts the conflict slot at result-line 2");
+        map.GetLine(4).FileLineNumber.Should().Be(3, because: "ours-B is the second line in the conflict slot");
+        map.GetLine(5).FileLineNumber.Should().BeNull();             // |||||||
+        map.GetLine(6).FileLineNumber.Should().Be(2, because: "base-X shares the conflict slot — labeled from Ours.StartLine, not Base.StartLine=50");
+        map.GetLine(7).FileLineNumber.Should().BeNull();             // =======
+        map.GetLine(8).FileLineNumber.Should().Be(2, because: "theirs-Y also shares the conflict slot — labeled from Ours.StartLine, not Theirs.StartLine=5");
+        map.GetLine(9).FileLineNumber.Should().BeNull();             // >>>>>>>
     }
 
     [Fact]
@@ -195,13 +195,12 @@ public class MergeResultLineNumberMarginTests
             [0] = ResolutionState.AcceptOurs.Instance,
         };
 
-        var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: states);
+        var map = doc.BuildDisplayMap(lines.Length, states);
 
-        map[1].Should().Be(1, because: "header is ours-line 1, pre-conflict context");
-        map[2].Should().Be(2, because: "first accepted ours line is ours-file line 2");
-        map[3].Should().Be(3, because: "second accepted ours line is ours-file line 3");
-        map[4].Should().Be(4, because: "footer snaps back to ours-pointer = Ours.EndLineExclusive = 4");
+        map.GetLine(1).FileLineNumber.Should().Be(1, because: "header is ours-line 1, pre-conflict context");
+        map.GetLine(2).FileLineNumber.Should().Be(2, because: "first accepted ours line is ours-file line 2");
+        map.GetLine(3).FileLineNumber.Should().Be(3, because: "second accepted ours line is ours-file line 3");
+        map.GetLine(4).FileLineNumber.Should().Be(4, because: "footer snaps back to ours-pointer = Ours.EndLineExclusive = 4");
     }
 
     [Fact]
@@ -227,17 +226,16 @@ public class MergeResultLineNumberMarginTests
             [0] = ResolutionState.AcceptTheirs.Instance,
         };
 
-        var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: states);
+        var map = doc.BuildDisplayMap(lines.Length, states);
 
-        map[1].Should().Be(1);
-        map[2].Should().Be(2, because: "accepted theirs takes the conflict slot, numbered from Ours.StartLine for monotonic gutter");
+        map.GetLine(1).FileLineNumber.Should().Be(1);
+        map.GetLine(2).FileLineNumber.Should().Be(2, because: "accepted theirs takes the conflict slot, numbered from Ours.StartLine for monotonic gutter");
         // After AcceptTheirs the displayed body has theirs.Length=1 line, so
         // post-context resumes at slotStart+1=3 (NOT Ours.EndLineExclusive=4
         // which would produce a backward gutter jump from 2 to 4 skipping
         // the line in between). Snapping to the ACTUAL emitted body length
         // keeps the gutter monotonic regardless of which side is accepted.
-        map[3].Should().Be(3, because: "footer snaps to slotStart + body lines = 2 + 1 = 3 — monotonic with the theirs-content line above");
+        map.GetLine(3).FileLineNumber.Should().Be(3, because: "footer snaps to slotStart + body lines = 2 + 1 = 3 — monotonic with the theirs-content line above");
     }
 
     [Fact]
@@ -269,15 +267,14 @@ public class MergeResultLineNumberMarginTests
             [0] = new ResolutionState.AcceptBoth(FirstOurs: true, SmartCombine: false),
         };
 
-        var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: states);
+        var map = doc.BuildDisplayMap(lines.Length, states);
 
-        map[1].Should().Be(1);
-        map[2].Should().Be(2, because: "first accept-both line is at conflict slot start (Ours.StartLine=2)");
-        map[3].Should().Be(3, because: "second accept-both line is sequential from Ours.StartLine — does NOT jump to Theirs.StartLine=5");
+        map.GetLine(1).FileLineNumber.Should().Be(1);
+        map.GetLine(2).FileLineNumber.Should().Be(2, because: "first accept-both line is at conflict slot start (Ours.StartLine=2)");
+        map.GetLine(3).FileLineNumber.Should().Be(3, because: "second accept-both line is sequential from Ours.StartLine — does NOT jump to Theirs.StartLine=5");
         // AcceptBoth body emits ours.Length + theirs.Length = 1 + 1 = 2 lines.
         // Post-context resumes at slotStart + 2 = 4.
-        map[4].Should().Be(4, because: "footer = slotStart + accept-both body lines = 2 + 2 = 4 — monotonic with the two slot lines above");
+        map.GetLine(4).FileLineNumber.Should().Be(4, because: "footer = slotStart + accept-both body lines = 2 + 2 = 4 — monotonic with the two slot lines above");
     }
 
     [Fact]
@@ -306,14 +303,13 @@ public class MergeResultLineNumberMarginTests
             [0] = new ResolutionState.Manual("manual-1\nmanual-2\n"),
         };
 
-        var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: states);
+        var map = doc.BuildDisplayMap(lines.Length, states);
 
-        map[1].Should().Be(1);
-        map[2].Should().BeNull(because: "manual lines have no ours/theirs anchor");
-        map[3].Should().BeNull();
+        map.GetLine(1).FileLineNumber.Should().Be(1);
+        map.GetLine(2).FileLineNumber.Should().BeNull(because: "manual lines have no ours/theirs anchor");
+        map.GetLine(3).FileLineNumber.Should().BeNull();
         // Manual body has 2 lines. Post-context resumes at slotStart + 2 = 4.
-        map[4].Should().Be(4, because: "footer = slotStart + manual body lines = 2 + 2 = 4");
+        map.GetLine(4).FileLineNumber.Should().Be(4, because: "footer = slotStart + manual body lines = 2 + 2 = 4");
     }
 
     [Fact]
@@ -389,27 +385,26 @@ public class MergeResultLineNumberMarginTests
             IsOrderRelevant: true);
         var doc = MakeDocument(lines, conflict1, autoMerged, conflict2);
 
-        var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: null);
+        var map = doc.BuildDisplayMap(lines.Length, null);
 
         // Conflict 1: markers null, content numbered from Ours.StartLine.
-        map[1].Should().BeNull();
-        map[2].Should().Be(1, because: "ours-A is at conflict slot start (Ours.StartLine=1)");
-        map[3].Should().BeNull();
-        map[4].Should().BeNull();
-        map[5].Should().Be(1, because: "theirs-A shares the same conflict slot — labeled from Ours.StartLine=1");
-        map[6].Should().BeNull();
+        map.GetLine(1).FileLineNumber.Should().BeNull();
+        map.GetLine(2).FileLineNumber.Should().Be(1, because: "ours-A is at conflict slot start (Ours.StartLine=1)");
+        map.GetLine(3).FileLineNumber.Should().BeNull();
+        map.GetLine(4).FileLineNumber.Should().BeNull();
+        map.GetLine(5).FileLineNumber.Should().Be(1, because: "theirs-A shares the same conflict slot — labeled from Ours.StartLine=1");
+        map.GetLine(6).FileLineNumber.Should().BeNull();
 
         // Conflict 2 — the regression target. Every marker MUST be null,
         // every content line MUST get its conflict-slot number. A walker
         // that shifted by 2 here would put numbers on lines 9, 11, 12, 14
         // (the four marker rows) and nulls on 10 and 13.
-        map[9].Should().BeNull(because: "conflict 2 opener — must remain unnumbered");
-        map[10].Should().Be(2, because: "ours-B is at conflict slot start (Ours.StartLine=2)");
-        map[11].Should().BeNull(because: "conflict 2 base separator — must remain unnumbered");
-        map[12].Should().BeNull(because: "conflict 2 equals separator — must remain unnumbered");
-        map[13].Should().Be(2, because: "theirs-B shares the same conflict slot — labeled from Ours.StartLine=2");
-        map[14].Should().BeNull(because: "conflict 2 close — must remain unnumbered");
+        map.GetLine(9).FileLineNumber.Should().BeNull(because: "conflict 2 opener — must remain unnumbered");
+        map.GetLine(10).FileLineNumber.Should().Be(2, because: "ours-B is at conflict slot start (Ours.StartLine=2)");
+        map.GetLine(11).FileLineNumber.Should().BeNull(because: "conflict 2 base separator — must remain unnumbered");
+        map.GetLine(12).FileLineNumber.Should().BeNull(because: "conflict 2 equals separator — must remain unnumbered");
+        map.GetLine(13).FileLineNumber.Should().Be(2, because: "theirs-B shares the same conflict slot — labeled from Ours.StartLine=2");
+        map.GetLine(14).FileLineNumber.Should().BeNull(because: "conflict 2 close — must remain unnumbered");
     }
 
     [Fact]
@@ -434,12 +429,11 @@ public class MergeResultLineNumberMarginTests
             IsOrderRelevant: false);
         var doc = MakeDocument(lines, autoMerged);
 
-        var map = MergeResultLineNumberMargin.BuildDisplayMap(
-            docLineCount: lines.Length, mergeDoc: doc, states: null);
+        var map = doc.BuildDisplayMap(lines.Length, null);
 
-        map[1].Should().Be(1);
-        map[2].Should().Be(2);
-        map[3].Should().Be(3);
+        map.GetLine(1).FileLineNumber.Should().Be(1);
+        map.GetLine(2).FileLineNumber.Should().Be(2);
+        map.GetLine(3).FileLineNumber.Should().Be(3);
     }
 
     private static MergeDocument MakeDocument(IReadOnlyList<string> mergedLines, params ModifiedBaseRange[] ranges)
