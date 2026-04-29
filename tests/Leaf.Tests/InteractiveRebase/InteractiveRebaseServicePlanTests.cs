@@ -179,6 +179,24 @@ public class InteractiveRebaseServicePlanTests
         InteractiveRebaseService.ParseLogRecords("\n").Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData(@"C:\Users\Tim\AppData\Local\Programs\Leaf\Leaf.SequenceEditor.exe",
+                "\"C:/Users/Tim/AppData/Local/Programs/Leaf/Leaf.SequenceEditor.exe\"")]
+    [InlineData(@"C:\Program Files\Leaf\Leaf.SequenceEditor.exe",
+                "\"C:/Program Files/Leaf/Leaf.SequenceEditor.exe\"")]
+    [InlineData(@"D:\dev\Leaf\bin\Leaf.SequenceEditor.exe",
+                "\"D:/dev/Leaf/bin/Leaf.SequenceEditor.exe\"")]
+    public void ToShellEditorPath_NormalisesForGitsMsysShell(string input, string expected)
+    {
+        // Git on Windows runs GIT_SEQUENCE_EDITOR / GIT_EDITOR through the
+        // bundled MSYS shell. Backslashes get treated as escape characters
+        // there ("there was a problem with the editor" — the failure path
+        // we hit during the first end-to-end smoke test). Forward slashes
+        // pass through verbatim, and the wrapping quotes survive a path
+        // with spaces (Program Files installs).
+        InteractiveRebaseService.ToShellEditorPath(input).Should().Be(expected);
+    }
+
     private static RebaseTodoItem Item(
         string sha, string subject, RebaseTodoAction action,
         string? originalMessage = null, string? newMessage = null)

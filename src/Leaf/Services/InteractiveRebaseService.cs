@@ -119,12 +119,21 @@ public class InteractiveRebaseService : IInteractiveRebaseService
             var (todoContent, messageCount) = MaterialisePlan(plan, messagesDir);
             await File.WriteAllTextAsync(todoFile, todoContent, new UTF8Encoding(false), cancellationToken);
 
+            // Git on Windows runs the editor via a shell (MSYS bash for
+            // GIT_SEQUENCE_EDITOR / GIT_EDITOR), so a Windows path with
+            // backslashes and spaces gets mangled by the shell unless we
+            // pre-format it: forward-slash separators, double-quoted to
+            // protect spaces. (GIT_ASKPASS gets run directly without a
+            // shell, which is why the AskPass helper works as a raw
+            // backslash path — the contracts differ here.)
+            var helperForShell = ToShellEditorPath(helper);
+
             var env = new Dictionary<string, string>
             {
                 [RebaseEditorRunner.TodoSourceEnv] = todoFile,
                 [RebaseEditorRunner.MessagesDirEnv] = messagesDir,
                 [RebaseEditorRunner.MessageCursorEnv] = cursorFile,
-                ["GIT_SEQUENCE_EDITOR"] = helper,
+                ["GIT_SEQUENCE_EDITOR"] = helperForShell,
             };
 
             // Only override GIT_EDITOR when the plan actually rewrites
@@ -134,7 +143,7 @@ public class InteractiveRebaseService : IInteractiveRebaseService
             // helper, which would refuse to write a message it doesn't have.
             if (messageCount > 0)
             {
-                env["GIT_EDITOR"] = helper;
+                env["GIT_EDITOR"] = helperForShell;
             }
 
             var rebaseArgs = new[] { "rebase", "--interactive", $"{fromCommitSha}^" };
@@ -314,6 +323,19 @@ public class InteractiveRebaseService : IInteractiveRebaseService
     {
         var path = Path.Combine(dir, $"{index:0000}.msg");
         File.WriteAllText(path, content, new UTF8Encoding(false));
+    }
+
+    /// <summary>
+    /// Format an absolute Windows executable path so git's shell-based
+    /// editor invocation can run it. Forward slashes survive the MSYS
+    /// shell verbatim, and the surrounding double quotes protect against
+    /// spaces in <c>%LOCALAPPDATA%</c> or <c>Program Files</c> install
+    /// locations.
+    /// </summary>
+    internal static string ToShellEditorPath(string path)
+    {
+        var slashed = path.Replace('\\', '/');
+        return $"\"{slashed}\"";
     }
 
     private static void TryDelete(string path)
