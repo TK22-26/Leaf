@@ -453,6 +453,20 @@ public partial class GitGraphView : UserControl
         };
         menu.Items.Add(cherryPickItem);
 
+        // Interactive rebase from this commit. We don't gate visibility
+        // on detached-HEAD here — the command handler routes the user to
+        // a clear "rebase already in progress" or initialisation message
+        // when the precondition fails, which is more discoverable than
+        // a silently missing menu entry.
+        var rebaseInteractiveItem = new MenuItem
+        {
+            Header = "Rebase Interactively from Here…",
+            Command = mainViewModel.RebaseInteractivelyFromCommitCommand,
+            CommandParameter = commit,
+            Icon = new SymbolIcon { Symbol = Symbol.ArrowSwap, FontSize = 14 }
+        };
+        menu.Items.Add(rebaseInteractiveItem);
+
         menu.Items.Add(new Separator());
 
         var copyShaItem = new MenuItem
