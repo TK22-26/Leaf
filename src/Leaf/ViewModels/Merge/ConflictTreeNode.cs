@@ -1,6 +1,11 @@
 #nullable enable
+using System.ComponentModel;
+using System.Windows;
 using FluentIcons.Common;
 using Leaf.Models;
+// PropertyChangedEventManager lives in the WindowsBase WPF assembly under
+// System.Windows; the explicit using keeps the weak-event subscription call
+// readable below.
 
 namespace Leaf.ViewModels.Merge;
 
@@ -8,8 +13,14 @@ namespace Leaf.ViewModels.Merge;
 /// Node in the grouped conflict tree shown by
 /// <see cref="Leaf.Controls.Merge.ConflictFileTree"/>. Represents either a
 /// folder (grouping children) or a file (terminal leaf wrapping a
-/// <see cref="ConflictInfo"/>). Immutable — the tree is rebuilt whenever
-/// the underlying <c>Conflicts</c> collection changes.
+/// <see cref="ConflictInfo"/>). The structure (Conflict / Children /
+/// DisplayName / IconSymbol) is fixed at construction; the count fields
+/// (<see cref="TotalRegionCount"/> / <see cref="ResolvedRegionCount"/> /
+/// <see cref="UnresolvedCount"/> / <see cref="IsResolved"/>) are live —
+/// they forward / aggregate the underlying <see cref="ConflictInfo"/>'s
+/// observable counts so the file tree's accent-stripe progress fill grows
+/// in real time as the merge editor accepts regions, without a tree
+/// rebuild on every keystroke.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -20,14 +31,16 @@ namespace Leaf.ViewModels.Merge;
 /// <see cref="ConflictTreeNode"/>.
 /// </para>
 /// <para>
-/// <see cref="UnresolvedCount"/> aggregates up the tree: for a file it's 0
-/// when <see cref="ConflictInfo.IsResolved"/> is true and
-/// <see cref="ConflictInfo.ConflictCount"/> otherwise; for a folder it's the
-/// sum over all descendants. This makes the "(N)" pill next to a folder
-/// meaningful without the view having to walk children.
+/// File leaves subscribe to their <see cref="ConflictInfo"/>'s
+/// <see cref="INotifyPropertyChanged"/> via WPF's
+/// <see cref="PropertyChangedEventManager"/> (weak event) so a tree rebuild
+/// can drop the old node references without leaking subscriptions on the
+/// long-lived <see cref="ConflictInfo"/> instances. Folder nodes subscribe
+/// to their immediate children with a strong handler — children and parent
+/// have the same lifetime so there's no leak risk.
 /// </para>
 /// </remarks>
-public sealed class ConflictTreeNode
+public sealed class ConflictTreeNode : INotifyPropertyChanged
 {
     /// <summary>Path segment (file name for leaves, folder name for groups).</summary>
     public string DisplayName { get; }
@@ -47,16 +60,60 @@ public sealed class ConflictTreeNode
     public ConflictInfo? Conflict { get; }
 
     /// <summary>
-    /// Unresolved conflict count:
-    /// for a file leaf, 0 when resolved / <see cref="ConflictInfo.ConflictCount"/> otherwise;
-    /// for a folder, the sum over descendants.
+    /// Total region count for this node:
+    /// for a file leaf, the file's <see cref="ConflictInfo.ConflictCount"/>;
+    /// for a folder, the sum across descendants. Drives the denominator of
+    /// the progress-stripe fill ratio.
     /// </summary>
-    public int UnresolvedCount { get; }
+    public int TotalRegionCount
+    {
+        get
+        {
+            if (Conflict is not null) return Conflict.ConflictCount;
+            int sum = 0;
+            foreach (var c in Children) sum += c.TotalRegionCount;
+            return sum;
+        }
+    }
 
     /// <summary>
-    /// <c>true</c> iff every file underneath is resolved (i.e.
-    /// <see cref="UnresolvedCount"/> == 0). Folders never mark themselves
-    /// resolved independently of their contents.
+    /// Resolved region count for this node:
+    /// for a file leaf, forwards <see cref="ConflictInfo.ResolvedRegionCount"/>
+    /// — except when <see cref="ConflictInfo.IsResolved"/> is <c>true</c>,
+    /// in which case every region is treated as resolved regardless of
+    /// what the field holds. This keeps the file-level resolution paths
+    /// (Use Ours / Use Theirs / Mark Resolved on Selected) coherent
+    /// against object-initializer ordering and against legacy callers
+    /// that may flip <c>IsResolved</c> without touching the per-region
+    /// count. For a folder, returns the sum across descendants.
+    /// Drives the numerator of the progress-stripe fill ratio.
+    /// </summary>
+    public int ResolvedRegionCount
+    {
+        get
+        {
+            if (Conflict is not null)
+            {
+                return Conflict.IsResolved
+                    ? Conflict.ConflictCount
+                    : Conflict.ResolvedRegionCount;
+            }
+            int sum = 0;
+            foreach (var c in Children) sum += c.ResolvedRegionCount;
+            return sum;
+        }
+    }
+
+    /// <summary>
+    /// Unresolved region count = <see cref="TotalRegionCount"/> -
+    /// <see cref="ResolvedRegionCount"/>. Live aggregate that re-emits when
+    /// either count changes underneath.
+    /// </summary>
+    public int UnresolvedCount => TotalRegionCount - ResolvedRegionCount;
+
+    /// <summary>
+    /// <c>true</c> iff every region underneath is resolved. Folders never
+    /// mark themselves resolved independently of their contents.
     /// </summary>
     public bool IsResolved => UnresolvedCount == 0;
 
@@ -84,8 +141,7 @@ public sealed class ConflictTreeNode
         {
             throw new ArgumentException("Folder nodes must have at least one child.", nameof(children));
         }
-        var unresolved = children.Sum(c => c.UnresolvedCount);
-        return new ConflictTreeNode(displayName, fullPath, children, conflict: null, unresolved, Symbol.Folder);
+        return new ConflictTreeNode(displayName, fullPath, children, conflict: null, Symbol.Folder);
     }
 
     /// <summary>Constructs a file leaf node.</summary>
@@ -97,24 +153,77 @@ public sealed class ConflictTreeNode
         // reaches the VM. No clamp here — if we ever see ConflictCount == 0
         // on an unresolved file that's a bug upstream, and hiding it behind
         // a Max(..., 1) would mask the diagnostic.
-        var unresolved = conflict.IsResolved ? 0 : conflict.ConflictCount;
         var icon = FileTypeIconResolver.ResolveForFile(conflict.FilePath);
         return new ConflictTreeNode(
             displayName: System.IO.Path.GetFileName(conflict.FilePath),
             fullPath: conflict.FilePath,
             children: Array.Empty<ConflictTreeNode>(),
             conflict: conflict,
-            unresolvedCount: unresolved,
             iconSymbol: icon);
     }
 
-    private ConflictTreeNode(string displayName, string fullPath, IReadOnlyList<ConflictTreeNode> children, ConflictInfo? conflict, int unresolvedCount, Symbol iconSymbol)
+    private ConflictTreeNode(string displayName, string fullPath, IReadOnlyList<ConflictTreeNode> children, ConflictInfo? conflict, Symbol iconSymbol)
     {
         DisplayName = displayName ?? string.Empty;
         FullPath = fullPath;
         Children = children;
         Conflict = conflict;
-        UnresolvedCount = unresolvedCount;
         IconSymbol = iconSymbol;
+
+        if (conflict is not null)
+        {
+            // Weak event so a tree rebuild can drop this node without
+            // anchoring it via a strong delegate on the long-lived
+            // ConflictInfo instance.
+            PropertyChangedEventManager.AddHandler(conflict, OnConflictPropertyChanged, string.Empty);
+        }
+        else
+        {
+            // Children outlive this folder by exactly the duration of the
+            // tree they're both in — strong subscription is safe.
+            foreach (var c in children) c.PropertyChanged += OnChildPropertyChanged;
+        }
     }
+
+    private void OnConflictPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(ConflictInfo.ResolvedRegionCount):
+                EmitCountChanged();
+                break;
+            case nameof(ConflictInfo.ConflictCount):
+                OnPropertyChanged(nameof(TotalRegionCount));
+                OnPropertyChanged(nameof(UnresolvedCount));
+                break;
+            case nameof(ConflictInfo.IsResolved):
+                OnPropertyChanged(nameof(IsResolved));
+                break;
+        }
+    }
+
+    private void OnChildPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Any of the four count properties on a child invalidates this
+        // folder's aggregate. Re-emit the matching set; bindings refresh.
+        if (e.PropertyName is nameof(ResolvedRegionCount)
+                          or nameof(TotalRegionCount)
+                          or nameof(UnresolvedCount)
+                          or nameof(IsResolved))
+        {
+            EmitCountChanged();
+        }
+    }
+
+    private void EmitCountChanged()
+    {
+        OnPropertyChanged(nameof(ResolvedRegionCount));
+        OnPropertyChanged(nameof(UnresolvedCount));
+        OnPropertyChanged(nameof(IsResolved));
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged(string propertyName)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }

@@ -142,11 +142,93 @@ internal class ConflictOperations : IConflictOperations
                     catch (Exception ex) { Log.Warn("Merge", $"Failed to read HEAD version: {ex.Message}"); }
                 }
 
+                // Set the real per-file conflict-region count by counting
+                // "<<<<<<<" markers in the working-tree file. Without this the
+                // file tree's progress stripe (and any other consumer of
+                // ConflictInfo.ConflictCount) would treat every conflicted
+                // file as a single region until its merge document was built
+                // in the editor — meaning a folder of 4 files showed Total=4
+                // even when those files actually contained dozens of regions.
+                // Binary conflicts have no markers; the default of 1 is fine
+                // there because they resolve via Use Ours / Use Theirs paths
+                // that don't consult region counts. The marker scan is also
+                // robust to a partially-resolved working tree (user removed
+                // some markers manually) — it reports what's still left.
+                conflictInfo.ConflictCount = CountConflictMarkers(repoPath, trimmedPath);
+
                 conflicts.Add(conflictInfo);
             }
 
             return conflicts;
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Counts the number of conflict regions in the working-tree copy of
+    /// <paramref name="filePath"/> by scanning for lines that start with the
+    /// canonical 7-char "&lt;&lt;&lt;&lt;&lt;&lt;&lt;" begin marker. Returns 1 for binary files
+    /// (which have no markers) and for read failures (defensive: a file we
+    /// can't introspect is still at least one conflict). The scan reads the
+    /// file as bytes and walks newline-terminated chunks itself instead of
+    /// using <see cref="File.ReadAllLines(string)"/> so a giant generated
+    /// file (lock files, minified bundles) doesn't allocate one string per
+    /// line just to count markers.
+    /// </summary>
+    private static int CountConflictMarkers(string repoPath, string filePath)
+    {
+        try
+        {
+            var fullPath = Path.Combine(repoPath, filePath);
+            if (!File.Exists(fullPath)) return 1;
+            // Heuristic: skip files larger than 16 MB. A real source-code
+            // conflict file is well under that; anything bigger is most
+            // likely a generated artefact that shouldn't be merged
+            // line-by-line anyway, and the cost of scanning isn't worth
+            // the marginal accuracy on the file-tree progress stripe.
+            var info = new FileInfo(fullPath);
+            if (info.Length > 16 * 1024 * 1024) return 1;
+
+            int count = 0;
+            using var stream = File.OpenRead(fullPath);
+            // Conflict markers must start at column 0; track whether we're
+            // currently at the start of a line. Begin true so a marker at
+            // file offset 0 is counted.
+            bool atLineStart = true;
+            // 7 bytes for the marker + 1 lookahead for the trailing space
+            // git always writes after the run of '<' characters. The
+            // lookahead is what disambiguates a real conflict-begin marker
+            // from a stray run of '<' in source content (e.g. a TypeScript
+            // generic).
+            Span<byte> probe = stackalloc byte[8];
+            int b;
+            while ((b = stream.ReadByte()) >= 0)
+            {
+                if (atLineStart && b == (byte)'<')
+                {
+                    probe[0] = (byte)b;
+                    int read = stream.Read(probe[1..]);
+                    bool isMarker = read == 7
+                        && probe[1] == (byte)'<' && probe[2] == (byte)'<'
+                        && probe[3] == (byte)'<' && probe[4] == (byte)'<'
+                        && probe[5] == (byte)'<' && probe[6] == (byte)'<'
+                        && (probe[7] == (byte)' ' || probe[7] == (byte)'\r' || probe[7] == (byte)'\n');
+                    if (isMarker) count++;
+                    // Whether or not it was a marker, advance to the next
+                    // newline so we don't double-count or mis-match the
+                    // remainder of the current line.
+                    while ((b = stream.ReadByte()) >= 0 && b != (byte)'\n') { }
+                    atLineStart = true;
+                    continue;
+                }
+                atLineStart = b == (byte)'\n';
+            }
+            return Math.Max(1, count);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Merge", $"Failed to count conflict markers in {filePath}: {ex.Message}");
+            return 1;
+        }
     }
 
     /// <summary>

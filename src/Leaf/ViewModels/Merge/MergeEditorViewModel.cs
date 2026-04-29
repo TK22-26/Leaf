@@ -474,6 +474,17 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         _undoStack.Clear();
         _redoStack.Clear();
         Document = doc;
+        // Push the engine's true conflicting-range count back to the
+        // ConflictInfo so the file tree's progress-stripe denominator
+        // matches what the editor is actually showing. ConflictInfo's
+        // ConflictCount defaults to 1 from the git-plumbing path; without
+        // this sync, the stripe would fill 100 % after one accept on a
+        // file that has, say, five regions — the cause of "the bar fills
+        // up after two acceptances" before this fix.
+        if (SelectedConflict is { } syncTarget)
+        {
+            syncTarget.ConflictCount = doc.ConflictCount;
+        }
         // Point the keyboard-nav cursor at the first conflicting range so F8
         // navigates from there rather than from a stale index.
         CurrentConflictIndex = 0;
@@ -709,6 +720,15 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsFullyResolved));
         OnPropertyChanged(nameof(CanMarkResolved));
         OnPropertyChanged(nameof(ComposedText));
+        // Push the live per-region resolved count back to the active
+        // ConflictInfo so the file tree's accent stripe can grow its green
+        // progress fill in real time. Other files in the tree retain
+        // whatever count they had at their last edit (or 0 / ConflictCount
+        // for fully unresolved / fully resolved files via Use Ours/Theirs).
+        if (SelectedConflict is { } sc)
+        {
+            sc.ResolvedRegionCount = ResolvedConflictCount;
+        }
         // [RelayCommand] does not auto-re-evaluate CanExecute on property
         // changes — it needs an explicit NotifyCanExecuteChanged to refresh
         // the button's IsEnabled binding. Without this, Mark Resolved stays
