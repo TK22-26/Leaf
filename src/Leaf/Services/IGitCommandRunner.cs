@@ -49,6 +49,14 @@ public interface IGitCommandRunner
     /// the PAT never enters the git URL or command line. When null, git falls
     /// back to its default credential helpers (Git Credential Manager).
     /// </param>
+    /// <param name="extraEnvironment">
+    /// Additional environment variables merged into the child process
+    /// environment. Used for editor-driven flows (interactive rebase sets
+    /// <c>GIT_SEQUENCE_EDITOR</c> + <c>GIT_EDITOR</c> here so git invokes
+    /// <c>Leaf.SequenceEditor.exe</c>) without leaking those names into the
+    /// general <see cref="RunAsync(string, GitCommand, CancellationToken)"/>
+    /// surface.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token - will KILL git process if cancelled.</param>
     /// <returns>Command result with exit code, stdout, and stderr.</returns>
     Task<GitCommandResult> RunAsync(
@@ -56,6 +64,7 @@ public interface IGitCommandRunner
         IReadOnlyList<string> arguments,
         string? input = null,
         string? credentialKey = null,
+        IReadOnlyDictionary<string, string>? extraEnvironment = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

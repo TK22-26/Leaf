@@ -80,6 +80,9 @@
          import its assembly. The MSBuild target below copies the helper exe into
          Leaf's output so git can locate it via GIT_ASKPASS. -->
     <ProjectReference Include="..\Leaf.AskPass\Leaf.AskPass.csproj" ReferenceOutputAssembly="false" />
+    <!-- Same pattern for the interactive-rebase helper invoked via
+         GIT_SEQUENCE_EDITOR / GIT_EDITOR. -->
+    <ProjectReference Include="..\Leaf.SequenceEditor\Leaf.SequenceEditor.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- Copy Leaf.AskPass.exe (and its runtime deps) into Leaf's output directory
@@ -91,6 +94,16 @@
     </ItemGroup>
     <Copy SourceFiles="@(_LeafAskPassOutputs)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('%(Identity)')" />
     <Copy SourceFiles="@(_LeafAskPassOutputs)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' And Exists('%(Identity)')" />
+  </Target>
+
+  <!-- Same copy pattern for Leaf.SequenceEditor.exe so GIT_SEQUENCE_EDITOR
+       resolves via AppContext.BaseDirectory at runtime. -->
+  <Target Name="CopyLeafSequenceEditorToOutput" AfterTargets="Build;Publish" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_LeafSequenceEditorOutputs Include="$(MSBuildThisFileDirectory)..\Leaf.SequenceEditor\bin\$(Configuration)\$(TargetFramework)\Leaf.SequenceEditor*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LeafSequenceEditorOutputs)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('%(Identity)')" />
+    <Copy SourceFiles="@(_LeafSequenceEditorOutputs)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' And Exists('%(Identity)')" />
   </Target>
 
 </Project>
