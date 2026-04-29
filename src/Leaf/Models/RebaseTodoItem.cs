@@ -1,13 +1,16 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+
 namespace Leaf.Models;
 
 /// <summary>
 /// One row in an interactive-rebase plan. Carries enough state to be
 /// serialised to git's todo grammar and to drive the editor UI directly —
-/// no parallel display model. Mutable because the user reorders rows and
-/// edits actions / messages live; the ViewModel listens for property
-/// changes to update the plan preview.
+/// no parallel display model. <see cref="ObservableObject"/> base so WPF
+/// bindings see live updates when the user changes <see cref="Action"/>,
+/// types into <see cref="NewMessage"/>, or reorders rows (siblings refresh
+/// derived bindings like CanMoveUp/CanMoveDown).
 /// </summary>
-public sealed class RebaseTodoItem
+public partial class RebaseTodoItem : ObservableObject
 {
     /// <summary>Full SHA of the commit. Always present, even for <see cref="RebaseTodoAction.Exec"/> rows that don't reference a commit (set to empty).</summary>
     public string Sha { get; init; } = string.Empty;
@@ -27,21 +30,45 @@ public sealed class RebaseTodoItem
     /// <summary>Full commit message body (subject + body), used as the seed when the user opens reword/squash.</summary>
     public string OriginalMessage { get; init; } = string.Empty;
 
-    /// <summary>Action chosen by the user. Pre-populates as <see cref="RebaseTodoAction.Pick"/>.</summary>
-    public RebaseTodoAction Action { get; set; } = RebaseTodoAction.Pick;
+    /// <summary>Action chosen by the user. Defaults to <see cref="RebaseTodoAction.Pick"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRewordOrSquash))]
+    [NotifyPropertyChangedFor(nameof(IsExec))]
+    [NotifyPropertyChangedFor(nameof(WillRewriteCommit))]
+    [NotifyPropertyChangedFor(nameof(IsDropped))]
+    private RebaseTodoAction _action = RebaseTodoAction.Pick;
 
     /// <summary>
     /// Replacement commit message for <see cref="RebaseTodoAction.Reword"/> /
-    /// <see cref="RebaseTodoAction.Squash"/>. Null for actions that don't
-    /// rewrite a message; empty string is treated as "use original" — the
-    /// service substitutes <see cref="OriginalMessage"/> if this is null
-    /// or empty.
+    /// <see cref="RebaseTodoAction.Squash"/>. Null or empty falls back to
+    /// <see cref="OriginalMessage"/> at materialisation time.
     /// </summary>
-    public string? NewMessage { get; set; }
+    [ObservableProperty]
+    private string? _newMessage;
 
     /// <summary>Shell command for <see cref="RebaseTodoAction.Exec"/> rows.</summary>
-    public string? ExecCommand { get; set; }
+    [ObservableProperty]
+    private string? _execCommand;
 
     /// <summary>True when the user has expanded the row's reword/squash editor in the UI. Persisted on the item so reorder doesn't collapse open editors.</summary>
-    public bool IsMessageEditorOpen { get; set; }
+    [ObservableProperty]
+    private bool _isMessageEditorOpen;
+
+    /// <summary>Convenience flag for view bindings — does this row need a message editor?</summary>
+    public bool IsRewordOrSquash =>
+        Action == RebaseTodoAction.Reword || Action == RebaseTodoAction.Squash;
+
+    /// <summary>Convenience flag — does this row need a command editor?</summary>
+    public bool IsExec => Action == RebaseTodoAction.Exec;
+
+    /// <summary>True when the action mutates history (anything except a plain Pick or noop Drop). Used to drive a "you'll be rewriting commits" warning in the UI footer.</summary>
+    public bool WillRewriteCommit =>
+        Action is RebaseTodoAction.Reword
+            or RebaseTodoAction.Edit
+            or RebaseTodoAction.Squash
+            or RebaseTodoAction.Fixup
+            or RebaseTodoAction.Drop;
+
+    /// <summary>Convenience flag — is this row excluded from the rewritten history?</summary>
+    public bool IsDropped => Action == RebaseTodoAction.Drop;
 }
