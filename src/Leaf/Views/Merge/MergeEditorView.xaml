@@ -104,14 +104,19 @@
                      swap repaints automatically. AI-pending pill hides at zero
                      until C6 plugs persistent per-range AI state into the
                      count. -->
+                <!-- Aggregate across every file in Conflicts so a binary or
+                     fully-resolved selection doesn't make the pills read as
+                     "0 unresolved" while line conflicts are still pending in
+                     other files. The file-tree progress stripe still shows
+                     per-file detail. -->
                 <merge:StatusPill Margin="24,0,0,0"
                                   Label="Unresolved"
-                                  Count="{Binding UnresolvedConflictCount}"
+                                  Count="{Binding MergeUnresolvedConflictCount}"
                                   DotBrush="{DynamicResource Merge.State.Unresolved}"
                                   AutomationProperties.AutomationId="Merge.UnresolvedPill"/>
                 <merge:StatusPill Margin="16,0,0,0"
                                   Label="Resolved"
-                                  Count="{Binding ResolvedConflictCount}"
+                                  Count="{Binding MergeResolvedConflictCount}"
                                   DotBrush="{DynamicResource Merge.State.Resolved}"
                                   AutomationProperties.AutomationId="Merge.ResolvedPill"/>
                 <merge:StatusPill Margin="16,0,0,0"

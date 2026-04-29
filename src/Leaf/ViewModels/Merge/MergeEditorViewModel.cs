@@ -60,6 +60,19 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     /// </summary>
     public Dictionary<int, ResolutionState> RangeStates { get; } = new();
 
+    /// <summary>
+    /// Persisted snapshots of <see cref="RangeStates"/> per file path. The
+    /// active <see cref="RangeStates"/> dictionary always reflects the
+    /// currently-selected conflict; switching files snapshots the outgoing
+    /// file's resolutions in here and restores the incoming file's prior
+    /// snapshot if one exists. Without this, accepting a hunk in
+    /// UserService.cs and then visiting any other file would silently drop
+    /// every prior resolution as <see cref="BuildDocumentForSelectedAsync"/>
+    /// rebuilt the new document over a cleared dictionary.
+    /// </summary>
+    private readonly Dictionary<string, Dictionary<int, ResolutionState>> _perFileRangeStates =
+        new(StringComparer.OrdinalIgnoreCase);
+
     public MergeEditorViewModel(
         IGitService gitService,
         IClipboardService clipboardService,
@@ -110,6 +123,21 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     public string RepoPath => _repoPath;
 
     public event EventHandler<bool>? MergeCompleted;
+
+    /// <summary>
+    /// Fired by the host VM when the underlying repo's merge state has been
+    /// cleared by something other than this editor (most commonly an external
+    /// <c>git merge --abort</c> from a shell or another git client). Surfaces
+    /// as a <see cref="MergeCompleted"/> event with <c>success=false</c> so
+    /// the host's existing close-on-complete subscription dismisses the window
+    /// the same way the in-editor Abort button does. Without this the editor
+    /// would keep displaying stale conflict ranges against a clean working
+    /// tree, with no path to recovery short of the user closing it manually.
+    /// </summary>
+    public void NotifyMergeAbortedExternally()
+    {
+        MergeCompleted?.Invoke(this, false);
+    }
 
     /// <summary>
     /// Fires whenever <see cref="RangeStates"/> has been mutated (via an
@@ -220,6 +248,25 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         Document?.ConflictingRanges.Count(r => !IsResolved(r)) ?? 0;
 
     public int ResolvedConflictCount => ConflictCount - UnresolvedConflictCount;
+
+    /// <summary>
+    /// Whole-merge unresolved region total — sums every file's
+    /// <c>ConflictCount - ResolvedRegionCount</c>. The header pills bind to
+    /// this so the count stays meaningful when the user has a binary
+    /// conflict (or any file with no conflicting line ranges) selected.
+    /// Without this aggregation the pills would read as the per-file region
+    /// count of whatever is currently active — confusing on binaries
+    /// (zero ranges) and on already-resolved files.
+    /// </summary>
+    public int MergeUnresolvedConflictCount =>
+        Conflicts.Sum(c => System.Math.Max(0, c.ConflictCount - c.ResolvedRegionCount));
+
+    /// <summary>
+    /// Whole-merge resolved region total — sums every file's
+    /// <c>ResolvedRegionCount</c>. Mirror of <see cref="MergeUnresolvedConflictCount"/>.
+    /// </summary>
+    public int MergeResolvedConflictCount =>
+        Conflicts.Sum(c => c.ResolvedRegionCount);
 
     /// <summary>
     /// Number of conflicts with an AI resolution proposal in flight or awaiting
@@ -376,6 +423,20 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedConflictChanged(ConflictInfo? value)
     {
+        // Snapshot the outgoing file's resolutions before BuildDocument...
+        // clears RangeStates. The snapshot is keyed on the previous file
+        // path (whatever _lastBuiltFilePath captured during the prior
+        // build) so when the user navigates back to that file we restore
+        // it instead of presenting a blank state.
+        if (!string.IsNullOrEmpty(_lastBuiltFilePath))
+        {
+            // Empty snapshot is meaningful — it means "user visited and
+            // resolved nothing" — but we still record it so the restore
+            // path can distinguish "never visited" from "visited, no work
+            // done" if ever needed. Storing a copy detaches the snapshot
+            // from the live dictionary the editor mutates.
+            _perFileRangeStates[_lastBuiltFilePath] = new Dictionary<int, ResolutionState>(RangeStates);
+        }
         // Route through FireAndForget so any unexpected exception surfaces
         // through Leaf's AsyncErrorHandler (log + notification) instead of
         // silently faulting the Task and freezing the panes on stale content.
@@ -471,6 +532,16 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
 
         _lastBuiltFilePath = filePath;
         RangeStates.Clear();
+        // Restore any previously-captured resolutions for this file so a
+        // round-trip through another file (or the file tree) doesn't
+        // silently drop the user's accepts. ConflictCount is per-file so
+        // the range indices remain meaningful across visits — git's merge
+        // engine produces the same MergeDocument for the same blob trio
+        // every time, so a snapshot keyed on filePath is replay-safe.
+        if (_perFileRangeStates.TryGetValue(filePath, out var savedStates))
+        {
+            foreach (var (k, v) in savedStates) RangeStates[k] = v;
+        }
         _undoStack.Clear();
         _redoStack.Clear();
         Document = doc;
@@ -729,6 +800,11 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         {
             sc.ResolvedRegionCount = ResolvedConflictCount;
         }
+        // The whole-merge totals are derived sums — refresh them after
+        // SelectedConflict.ResolvedRegionCount has settled so the header
+        // pills tick down in lockstep with the per-file file-tree stripe.
+        OnPropertyChanged(nameof(MergeUnresolvedConflictCount));
+        OnPropertyChanged(nameof(MergeResolvedConflictCount));
         // [RelayCommand] does not auto-re-evaluate CanExecute on property
         // changes — it needs an explicit NotifyCanExecuteChanged to refresh
         // the button's IsEnabled binding. Without this, Mark Resolved stays

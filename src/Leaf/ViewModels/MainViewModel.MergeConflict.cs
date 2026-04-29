@@ -33,6 +33,17 @@ public partial class MainViewModel
         // same OnNavigateToCommitRequested handler the CommitDetail panel
         // uses for its own commit-hash hyperlinks.
         conflictWindow.CommitJumpRequested += OnMergeEditorCommitJumpRequested;
+        // Auto-close on merge completion or external abort. Both cases come
+        // through MergeCompleted: in-editor Abort/CompleteMerge button, or
+        // RefreshMergeConflictResolutionAsync calling
+        // NotifyMergeAbortedExternally when the file watcher detects
+        // MERGE_HEAD vanished. ShowDialogAsync just calls ShowDialog(), so
+        // without this the window only closes when the user clicks X.
+        EventHandler<bool> closeOnComplete = (_, _) =>
+        {
+            if (conflictWindow.IsLoaded) conflictWindow.Close();
+        };
+        MergeConflictResolutionViewModel.MergeCompleted += closeOnComplete;
         try
         {
             await _dialogService.ShowDialogAsync(conflictWindow);
@@ -40,6 +51,12 @@ public partial class MainViewModel
         finally
         {
             conflictWindow.CommitJumpRequested -= OnMergeEditorCommitJumpRequested;
+            // VM may already be null if RefreshMergeConflictResolutionAsync
+            // tore it down (external abort path); guard the unsubscribe.
+            if (conflictWindow.DataContext is ViewModels.Merge.MergeEditorViewModel vm)
+            {
+                vm.MergeCompleted -= closeOnComplete;
+            }
         }
     }
 
@@ -311,6 +328,14 @@ public partial class MainViewModel
                 DataContext = MergeConflictResolutionViewModel
             };
             conflictWindow.CommitJumpRequested += OnMergeEditorCommitJumpRequested;
+            // Mirror ContinueMergeAsync: auto-close on MergeCompleted (in-
+            // editor Abort/CompleteMerge or external abort detected by the
+            // file watcher).
+            EventHandler<bool> closeOnComplete = (_, _) =>
+            {
+                if (conflictWindow.IsLoaded) conflictWindow.Close();
+            };
+            MergeConflictResolutionViewModel.MergeCompleted += closeOnComplete;
             try
             {
                 IsBusy = false;
@@ -320,6 +345,10 @@ public partial class MainViewModel
             finally
             {
                 conflictWindow.CommitJumpRequested -= OnMergeEditorCommitJumpRequested;
+                if (conflictWindow.DataContext is ViewModels.Merge.MergeEditorViewModel vm)
+                {
+                    vm.MergeCompleted -= closeOnComplete;
+                }
             }
         }
         finally
@@ -351,6 +380,12 @@ public partial class MainViewModel
         {
             if (MergeConflictResolutionViewModel != null)
             {
+                // Tell any open editor window the merge state vanished beneath
+                // it (external `git merge --abort`, another client wrote
+                // MERGE_HEAD away, etc.) before we drop our reference to the
+                // VM. Surfaces as MergeCompleted(false), which the host's
+                // editor-open subscription handles by closing the window.
+                MergeConflictResolutionViewModel.NotifyMergeAbortedExternally();
                 MergeConflictResolutionViewModel.MergeCompleted -= OnMergeConflictResolutionCompleted;
             }
 
