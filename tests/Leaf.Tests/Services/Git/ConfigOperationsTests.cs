@@ -88,6 +88,8 @@ public class ConfigOperationsTests
 
         public IReadOnlyList<string> LastArgs { get; private set; } = [];
 
+        public event EventHandler<GitCommandEventArgs>? CommandExecuted;
+
         public Task<GitCommandResult> RunAsync(
             string workingDirectory,
             IReadOnlyList<string> arguments,
@@ -96,7 +98,11 @@ public class ConfigOperationsTests
             CancellationToken cancellationToken = default)
         {
             LastArgs = arguments;
-            return Task.FromResult(_respond(arguments));
+            var result = _respond(arguments);
+            CommandExecuted?.Invoke(this, new GitCommandEventArgs(
+                workingDirectory, string.Join(" ", arguments),
+                result.ExitCode, result.StandardOutput, result.StandardError));
+            return Task.FromResult(result);
         }
 
         public Task<GitCommandResult> RunAsync(

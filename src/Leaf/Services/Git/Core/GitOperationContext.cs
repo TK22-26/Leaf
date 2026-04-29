@@ -11,7 +11,11 @@ internal class GitOperationContext : IGitOperationContext
     public IGitErrorMapper ErrorMapper { get; }
 
     /// <summary>
-    /// Event raised when a git command is executed for logging/debugging.
+    /// Forwarded directly from <see cref="IGitCommandRunner.CommandExecuted"/>
+    /// — every git CLI invocation flows through the runner, so subscribing
+    /// there gives this context (and ultimately <see cref="IGitService"/>)
+    /// complete coverage without each operation class having to manually
+    /// emit a notification after its own RunAsync call.
     /// </summary>
     public event EventHandler<GitCommandEventArgs>? GitCommandExecuted;
 
@@ -20,13 +24,9 @@ internal class GitOperationContext : IGitOperationContext
         CommandRunner = commandRunner;
         OutputParser = new GitOutputParser();
         ErrorMapper = new GitErrorMapper();
+        CommandRunner.CommandExecuted += OnRunnerCommandExecuted;
     }
 
-    /// <summary>
-    /// Raises the GitCommandExecuted event.
-    /// </summary>
-    internal void OnGitCommandExecuted(string workingDirectory, string arguments, int exitCode, string output, string error)
-    {
-        GitCommandExecuted?.Invoke(this, new GitCommandEventArgs(workingDirectory, arguments, exitCode, output, error));
-    }
+    private void OnRunnerCommandExecuted(object? sender, GitCommandEventArgs e)
+        => GitCommandExecuted?.Invoke(this, e);
 }

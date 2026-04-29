@@ -53,30 +53,45 @@
                 Background="{DynamicResource Merge.Surface.1}"
                 BorderBrush="{DynamicResource Merge.Border.Subtle}"
                 BorderThickness="0,1,0,0"
+                MinHeight="36"
                 MaxHeight="180">
-            <ListBox x:Name="EntriesList"
-                     BorderThickness="0"
-                     Background="Transparent"
-                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.AutomationId="Merge.GitCommandLog.Entries">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding ExitIndicator}"
-                                       FontFamily="{DynamicResource Merge.FontFamily.Code}"
-                                       FontSize="{DynamicResource Merge.Type.Caption.Size}"
-                                       Foreground="{Binding ExitBrush}"
-                                       Width="24"/>
-                            <TextBlock Text="{Binding CommandText}"
-                                       FontFamily="{DynamicResource Merge.FontFamily.Code}"
-                                       FontSize="{DynamicResource Merge.Type.Caption.Size}"
-                                       Foreground="{DynamicResource Merge.Text.Primary}"
-                                       TextTrimming="CharacterEllipsis"/>
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+            <Grid>
+                <!-- Empty-state placeholder. Visible only while the entry
+                     list has zero items so the expanded panel always has
+                     something to read instead of collapsing to a 1 px
+                     hairline. Hidden as soon as the first command flows
+                     through IGitCommandRunner.CommandExecuted. -->
+                <TextBlock x:Name="EmptyStateText"
+                           Text="No git commands yet — actions will appear here as you resolve conflicts."
+                           Margin="12,8"
+                           FontSize="{DynamicResource Merge.Type.Caption.Size}"
+                           Foreground="{DynamicResource Merge.Text.Tertiary}"
+                           TextWrapping="Wrap"
+                           AutomationProperties.AutomationId="Merge.GitCommandLog.Empty"/>
+                <ListBox x:Name="EntriesList"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         AutomationProperties.AutomationId="Merge.GitCommandLog.Entries">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding ExitIndicator}"
+                                           FontFamily="{DynamicResource Merge.FontFamily.Code}"
+                                           FontSize="{DynamicResource Merge.Type.Caption.Size}"
+                                           Foreground="{Binding ExitBrush}"
+                                           Width="24"/>
+                                <TextBlock Text="{Binding CommandText}"
+                                           FontFamily="{DynamicResource Merge.FontFamily.Code}"
+                                           FontSize="{DynamicResource Merge.Type.Caption.Size}"
+                                           Foreground="{DynamicResource Merge.Text.Primary}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

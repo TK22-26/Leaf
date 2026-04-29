@@ -173,13 +173,27 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasDocument))]
+    [NotifyPropertyChangedFor(nameof(IsTextMergeView))]
     private bool _isEngineError;
 
     [ObservableProperty]
     private string _engineErrorMessage = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTextMergeView))]
     private bool _isBinaryConflict;
+
+    /// <summary>
+    /// True when the editor should render the three text panes (Ours / Theirs /
+    /// Result). False when the binary-image pane or the engine-error card has
+    /// taken over the content area. Used by <c>MergeEditorView.xaml</c> to
+    /// drive a structural mutual-exclusion between the three presentations
+    /// instead of relying on z-order overlays — overlays let translucent
+    /// chrome on the foreground pane bleed the still-rendered text panes
+    /// through, which used to be visible in the binary pane's mode-picker
+    /// strip and any partly-transparent image content.
+    /// </summary>
+    public bool IsTextMergeView => !IsBinaryConflict && !IsEngineError;
 
     /// <summary>
     /// Loaded ours/theirs/base bytes for the currently-selected conflict when it

@@ -39,7 +39,15 @@ public partial class GitCommandLog : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         _entries.CollectionChanged += (_, _) =>
+        {
             CountBadge.Text = _entries.Count > 0 ? _entries.Count.ToString() : string.Empty;
+            // Keep the empty-state placeholder and the entry list mutually
+            // exclusive — both share the same Grid cell so showing one means
+            // collapsing the other (Visibility, not Opacity, so the listbox
+            // doesn't reserve layout while empty).
+            EmptyStateText.Visibility = _entries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            EntriesList.Visibility = _entries.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        };
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

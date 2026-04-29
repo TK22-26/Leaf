@@ -33,6 +33,9 @@ public class GitCommandRunner : IGitCommandRunner
     });
 
     /// <inheritdoc />
+    public event EventHandler<GitCommandEventArgs>? CommandExecuted;
+
+    /// <inheritdoc />
     public Task<GitCommandResult> RunAsync(
         string workingDirectory,
         GitCommand command,
@@ -159,6 +162,29 @@ public class GitCommandRunner : IGitCommandRunner
         if (!result.Success && !string.IsNullOrWhiteSpace(result.StandardError))
         {
             Log.Error("Git", $"Command failed (exit code {result.ExitCode}): {result.StandardError}");
+        }
+
+        // Notify observers (merge editor's command log, terminal pane) AFTER
+        // the result is fully assembled so handlers see consistent state.
+        // Cancellation paths threw above and never reach here, which is the
+        // intended behaviour — cancelled commands have no result to report.
+        // Subscribers run synchronously on this thread; UI-touching handlers
+        // dispatcher-hop themselves (see IGitCommandRunner.CommandExecuted docs).
+        try
+        {
+            CommandExecuted?.Invoke(this, new GitCommandEventArgs(
+                workingDirectory,
+                string.Join(" ", arguments),
+                result.ExitCode,
+                result.StandardOutput,
+                result.StandardError));
+        }
+        catch (Exception ex)
+        {
+            // A faulty observer must not break the git call's return path.
+            // The result is what the caller actually awaited; an event-side
+            // exception is purely diagnostic.
+            Log.Warn("Git", $"CommandExecuted observer threw: {ex.GetType().Name}: {ex.Message}");
         }
 
         return result;

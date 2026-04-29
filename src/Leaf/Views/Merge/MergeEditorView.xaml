@@ -145,11 +145,31 @@
                       Background="Transparent"
                       AutomationProperties.AutomationId="Merge.FileListSplitter"/>
 
-        <!-- Main pane area. Top row holds the two input panes separated by
-             a dedicated middle column for the connection canvas so the
-             bezier curves don't overlap pane content or minimaps. Bottom
-             row is the single result pane spanning all three columns. -->
+        <!-- Main pane area. The three states (text-merge / binary image /
+             engine error) are structurally mutually exclusive siblings —
+             not z-order overlays — so any translucent chrome on the
+             foreground state cannot bleed the other states' content
+             through. Each state shares the same 4,4,8,4 PaneCard
+             outer-margin pattern as the rest of the editor's cards so
+             the right edge always lines up with the header / footer. -->
         <Grid Grid.Row="1" Grid.Column="2">
+
+            <!-- Text-merge presentation: Ours / Theirs / Result panes plus
+                 the two GridSplitters. The row/column geometry that used
+                 to live on the parent moves here so the splitters and
+                 cards continue to lay out exactly as before.
+
+                 Grid.IsSharedSizeScope=True lets the four cards' title-bar
+                 rows participate in a shared "MergePaneTitleBar" group:
+                 OURS / THEIRS title bars and the connection canvas's
+                 spacer-row all auto-size to the same height. Replaces
+                 the previous hardcoded 30-px spacer on the canvas card,
+                 which underestimated the real title bar height (Padding
+                 12,6 + 1 px bottom border + ~17 px SemiBold 12 pt text
+                 ≈ 30–32 px) and pushed the bezier curves a few pixels
+                 above their corresponding pane lines on every render. -->
+            <Grid Grid.IsSharedSizeScope="True"
+                  Visibility="{Binding IsTextMergeView, Converter={StaticResource BoolToVisibilityConverter}}">
             <Grid.RowDefinitions>
                 <RowDefinition x:Name="PanesRow" Height="*"/>
                 <RowDefinition Height="5"/>
@@ -185,7 +205,7 @@
                     Margin="4,4,2,4">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto" SharedSizeGroup="MergePaneTitleBar"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
@@ -276,21 +296,25 @@
                     Margin="2,4,2,4">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="30"/>
+                    <!-- Auto + SharedSizeGroup ties this empty spacer row to
+                         the OURS / THEIRS title-bar rows so the canvas
+                         content always begins at exactly the same Y as the
+                         pane text content — no hardcoded 30-px guess.
+                         The previous fixed Height="30" was a few pixels short
+                         of the title bar's actual rendered height (Padding +
+                         text + 1 px bottom border ≈ 30–32) which lifted every
+                         bezier curve above its corresponding pane line. -->
+                    <RowDefinition Height="Auto" SharedSizeGroup="MergePaneTitleBar"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <!-- Row 0 is a fixed-height spacer so the canvas content below
-                     starts at the same Y as the Ours / Theirs pane content
-                     (whose cards put a CaptionStrong title bar in their Row 0
-                     at ~30 px). Keeping the spacer explicit prevents the
-                     curves from visually drifting above or below the first
-                     content line when the title bar typography changes. -->
                 <merge:PaneConnectionCanvas Grid.Row="1"
                                             x:Name="ConnectionCanvas"
                                             AutomationProperties.AutomationId="Merge.ConnectionCanvas"
                                             Layout="{Binding Layout}"
                                             Regions="{Binding Document.Ranges}"
-                                            RangeStates="{Binding RangeStates}"/>
+                                            RangeStates="{Binding RangeStates}"
+                                            OursStickyOffset="{Binding ElementName=OursSticky, Path=ActualHeight, Mode=OneWay}"
+                                            TheirsStickyOffset="{Binding ElementName=TheirsSticky, Path=ActualHeight, Mode=OneWay}"/>
             </Grid>
             </Border>
 
@@ -303,7 +327,7 @@
                     Margin="2,4,8,4">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto" SharedSizeGroup="MergePaneTitleBar"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
@@ -443,19 +467,26 @@
                 </Grid>
             </Border>
 
-            <!-- Engine-error overlay -->
-            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4" Grid.RowSpan="3"
-                    Visibility="{Binding IsEngineError, Converter={StaticResource BoolToVisibilityConverter}}"
-                    Background="{DynamicResource ControlFillColorDefaultBrush}">
+            </Grid> <!-- /text-merge presentation -->
+
+            <!-- Engine-error presentation. Wrapped in the same Merge.PaneCard
+                 style + 4,4,8,4 outer margin as the merge cards so this
+                 state visually replaces the panes (right edge aligns with
+                 the header / footer cards). Surface.2 is opaque, so no
+                 transparency bleed. -->
+            <Border Style="{StaticResource Merge.PaneCard}"
+                    Margin="4,4,8,4"
+                    Visibility="{Binding IsEngineError, Converter={StaticResource BoolToVisibilityConverter}}">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="600">
                     <ic:SymbolIcon Symbol="ErrorCircle" FontSize="48"
                                    Foreground="{DynamicResource SystemFillColorCautionBrush}"
                                    HorizontalAlignment="Center"/>
                     <TextBlock Text="Merge engine could not process this file"
                                FontSize="16" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Merge.Text.Primary}"
                                HorizontalAlignment="Center" Margin="0,16,0,8"/>
                     <TextBlock Text="{Binding EngineErrorMessage}"
-                               FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               FontSize="12" Foreground="{DynamicResource Merge.Text.Secondary}"
                                HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
                                Margin="0,0,0,20"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -469,57 +500,67 @@
                 </StackPanel>
             </Border>
 
-            <!-- Binary-file overlay — Phase 6 replaces the pre-Phase-6 "choose a
-                 version" stack with an ImageConflictPane when the bytes decode
-                 as a recognised image format. The pane handles all five modes
-                 internally (SideBySide / OnionSkin / Swipe / Difference /
-                 Overlay). Use Ours / Use Theirs remain on the footer, usable
-                 from either the image pane or the text-merge flow. -->
-            <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4" Grid.RowSpan="3"
-                  Visibility="{Binding IsBinaryConflict, Converter={StaticResource BoolToVisibilityConverter}}"
-                  Background="{DynamicResource ControlFillColorDefaultBrush}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+            <!-- Binary-image presentation — Phase 6 replaces the pre-Phase-6
+                 "choose a version" stack with an ImageConflictPane when the
+                 bytes decode as a recognised image format. Wrapped in
+                 Merge.PaneCard with the same 4,4,8,4 outer margin so the
+                 right edge aligns with the header / footer / merge cards;
+                 the mode-picker bar uses Merge.Surface.3 + Merge.Border.Subtle
+                 to read as a section title bar matching OURS/THEIRS/RESULT.
+                 The pane handles all five modes internally (SideBySide /
+                 OnionSkin / Swipe / Difference / Overlay). Use Ours /
+                 Use Theirs remain on the footer. -->
+            <Border Style="{StaticResource Merge.PaneCard}"
+                    Margin="4,4,8,4"
+                    Visibility="{Binding IsBinaryConflict, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-                <!-- Mode picker + swipe/onion-skin sliders -->
-                <Border Grid.Row="0"
-                        Padding="12,8"
-                        BorderThickness="0,0,0,1"
-                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Mode:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <ComboBox MinWidth="160"
-                                  SelectedValue="{Binding ImageViewport.Mode, Mode=TwoWay}"
-                                  SelectedValuePath="Tag">
-                            <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.SideBySide}" Content="Side by side"/>
-                            <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.OnionSkin}" Content="Onion skin"/>
-                            <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.Swipe}" Content="Swipe"/>
-                            <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.Difference}" Content="Difference"/>
-                            <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.Overlay}" Content="Overlay"/>
-                        </ComboBox>
-                        <TextBlock Text="Swipe:" VerticalAlignment="Center" Margin="24,0,6,0"/>
-                        <Slider Width="120"
-                                Minimum="0" Maximum="1" TickFrequency="0.01"
-                                Value="{Binding ImageViewport.SwipeRatio, Mode=TwoWay}"
-                                VerticalAlignment="Center"/>
-                        <TextBlock Text="Onion:" VerticalAlignment="Center" Margin="24,0,6,0"/>
-                        <Slider Width="120"
-                                Minimum="0" Maximum="1" TickFrequency="0.01"
-                                Value="{Binding ImageViewport.OnionSkinOpacity, Mode=TwoWay}"
-                                VerticalAlignment="Center"/>
-                        <Button Margin="24,0,0,0" Padding="10,4"
-                                Click="OnResetImageView_Click"
-                                ToolTip="Reset zoom and pan"
-                                Content="Reset View"/>
-                    </StackPanel>
-                </Border>
+                    <!-- Mode picker + swipe/onion-skin sliders -->
+                    <Border Grid.Row="0"
+                            Padding="12,6"
+                            Background="{DynamicResource Merge.Surface.3}"
+                            BorderThickness="0,0,0,1"
+                            BorderBrush="{DynamicResource Merge.Border.Subtle}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Mode:" VerticalAlignment="Center" Margin="0,0,6,0"
+                                       Foreground="{DynamicResource Merge.Text.Primary}"/>
+                            <ComboBox MinWidth="160"
+                                      SelectedValue="{Binding ImageViewport.Mode, Mode=TwoWay}"
+                                      SelectedValuePath="Tag">
+                                <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.SideBySide}" Content="Side by side"/>
+                                <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.OnionSkin}" Content="Onion skin"/>
+                                <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.Swipe}" Content="Swipe"/>
+                                <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.Difference}" Content="Difference"/>
+                                <ComboBoxItem Tag="{x:Static merge:ImageMergeMode.Overlay}" Content="Overlay"/>
+                            </ComboBox>
+                            <TextBlock Text="Swipe:" VerticalAlignment="Center" Margin="24,0,6,0"
+                                       Foreground="{DynamicResource Merge.Text.Primary}"/>
+                            <Slider Width="120"
+                                    Minimum="0" Maximum="1" TickFrequency="0.01"
+                                    Value="{Binding ImageViewport.SwipeRatio, Mode=TwoWay}"
+                                    VerticalAlignment="Center"/>
+                            <TextBlock Text="Onion:" VerticalAlignment="Center" Margin="24,0,6,0"
+                                       Foreground="{DynamicResource Merge.Text.Primary}"/>
+                            <Slider Width="120"
+                                    Minimum="0" Maximum="1" TickFrequency="0.01"
+                                    Value="{Binding ImageViewport.OnionSkinOpacity, Mode=TwoWay}"
+                                    VerticalAlignment="Center"/>
+                            <Button Margin="24,0,0,0" Padding="10,4"
+                                    Click="OnResetImageView_Click"
+                                    ToolTip="Reset zoom and pan"
+                                    Content="Reset View"/>
+                        </StackPanel>
+                    </Border>
 
-                <merge:ImageConflictPane Grid.Row="1"
-                                         Payload="{Binding ImagePayload}"
-                                         Viewport="{Binding ImageViewport}"/>
-            </Grid>
+                    <merge:ImageConflictPane Grid.Row="1"
+                                             Payload="{Binding ImagePayload}"
+                                             Viewport="{Binding ImageViewport}"/>
+                </Grid>
+            </Border>
         </Grid>
 
         <!-- Footer card. Same Merge.PaneCard style as the header so the editor

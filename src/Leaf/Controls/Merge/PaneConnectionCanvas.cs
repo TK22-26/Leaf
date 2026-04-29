@@ -52,6 +52,29 @@ public sealed class PaneConnectionCanvas : FrameworkElement
         nameof(TheirsVerticalOffset), typeof(double), typeof(PaneConnectionCanvas),
         new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    /// <summary>
+    /// Height of the OURS pane's <see cref="StickyConflictHeader"/> when it
+    /// is visible (0 when collapsed). The sticky sits between the title bar
+    /// and the ScrollViewer in the OURS card, so when it activates the
+    /// pane's text content shifts down by exactly this many pixels relative
+    /// to the canvas's Y origin (which is anchored to the shared title-bar
+    /// row). Without this compensation, every bezier endpoint floats above
+    /// its corresponding pane line by the sticky height — the shift is
+    /// invisible inside multi-line ranges (the curve still lands somewhere
+    /// in the block) but glaringly obvious for 1–2 line ranges where the
+    /// curve ends up entirely above the line. Bind to
+    /// <c>OursSticky.ActualHeight</c> so the offset tracks Visibility
+    /// changes automatically.
+    /// </summary>
+    public static readonly DependencyProperty OursStickyOffsetProperty = DependencyProperty.Register(
+        nameof(OursStickyOffset), typeof(double), typeof(PaneConnectionCanvas),
+        new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    /// <summary>Theirs-side counterpart to <see cref="OursStickyOffsetProperty"/>.</summary>
+    public static readonly DependencyProperty TheirsStickyOffsetProperty = DependencyProperty.Register(
+        nameof(TheirsStickyOffset), typeof(double), typeof(PaneConnectionCanvas),
+        new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
+
     public MergePaneGlyphLayout? Layout
     {
         get => (MergePaneGlyphLayout?)GetValue(LayoutProperty);
@@ -91,6 +114,18 @@ public sealed class PaneConnectionCanvas : FrameworkElement
     {
         get => (double)GetValue(TheirsVerticalOffsetProperty);
         set => SetValue(TheirsVerticalOffsetProperty, value);
+    }
+
+    public double OursStickyOffset
+    {
+        get => (double)GetValue(OursStickyOffsetProperty);
+        set => SetValue(OursStickyOffsetProperty, value);
+    }
+
+    public double TheirsStickyOffset
+    {
+        get => (double)GetValue(TheirsStickyOffsetProperty);
+        set => SetValue(TheirsStickyOffsetProperty, value);
     }
 
     // Matches the CornerRadius of Merge.PaneCard (MergeCardStyles.xaml).
@@ -278,11 +313,15 @@ public sealed class PaneConnectionCanvas : FrameworkElement
         {
             if (!range.IsConflicting) continue;
 
-            // Y-coordinates on each side, accounting for pane scroll offsets.
-            // The curve goes from the centre of the ours region to the centre of
-            // the theirs region on the left/right edges of this canvas.
-            var yOurs = ComputeEndpointY(range.Ours, lineHeight, OursVerticalOffset);
-            var yTheirs = ComputeEndpointY(range.Theirs, lineHeight, TheirsVerticalOffset);
+            // Y-coordinates on each side, accounting for pane scroll offsets
+            // AND each side's sticky-conflict-header offset. The canvas's Y
+            // origin sits at the title-bar bottom (shared via SharedSizeGroup);
+            // when a sticky header is visible, the pane's text content sits
+            // <stickyOffset> pixels lower than that origin, so the same offset
+            // must be added to the curve endpoint for it to land on the
+            // matching line.
+            var yOurs = ComputeEndpointY(range.Ours, lineHeight, OursVerticalOffset, OursStickyOffset);
+            var yTheirs = ComputeEndpointY(range.Theirs, lineHeight, TheirsVerticalOffset, TheirsStickyOffset);
 
             // Skip entirely off-screen curves (both endpoints outside the canvas).
             if (IsEntirelyOffScreen(yOurs, yTheirs, h, lineHeight)) continue;
@@ -469,14 +508,28 @@ public sealed class PaneConnectionCanvas : FrameworkElement
     /// Compute the Y-coordinate (in canvas space) of a bezier endpoint for
     /// a given side of a <see cref="ModifiedBaseRange"/>. Exposes the pixel
     /// math used by <see cref="OnRender"/> so it can be tested independently.
+    /// Overload kept for tests that pre-date the sticky-offset DP — forwards
+    /// to the four-arg form with stickyOffset = 0.
     /// </summary>
     internal static double ComputeEndpointY(LineRange side, double lineHeight, double paneVerticalOffset)
+        => ComputeEndpointY(side, lineHeight, paneVerticalOffset, stickyOffset: 0);
+
+    /// <summary>
+    /// Compute the Y-coordinate (in canvas space) of a bezier endpoint for
+    /// a given side of a <see cref="ModifiedBaseRange"/>, taking the side's
+    /// sticky-conflict-header offset into account. <paramref name="stickyOffset"/>
+    /// is the visible height of <see cref="StickyConflictHeader"/> on this
+    /// side (0 when collapsed, ~30 when active); it shifts the pane's text
+    /// content down inside the card relative to the canvas's title-bar-aligned
+    /// Y origin, so the same shift must apply to every curve endpoint.
+    /// </summary>
+    internal static double ComputeEndpointY(LineRange side, double lineHeight, double paneVerticalOffset, double stickyOffset)
     {
         // The bezier anchors on the centre of the side's line range, then
         // shifts to the centre of that midline. 1-based lines: StartLine==1
         // means "first line", so the geometric centre offset is (StartLine-1)*lineHeight.
         var midLine = (side.StartLine + side.EndLineExclusive) / 2.0 - 0.5;
-        return (midLine - 1) * lineHeight - paneVerticalOffset + lineHeight / 2;
+        return (midLine - 1) * lineHeight - paneVerticalOffset + stickyOffset + lineHeight / 2;
     }
 
     /// <summary>

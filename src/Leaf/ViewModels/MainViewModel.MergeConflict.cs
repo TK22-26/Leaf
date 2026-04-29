@@ -287,23 +287,44 @@ public partial class MainViewModel
     {
         if (SelectedRepository == null || conflict == null) return;
 
-        await RefreshMergeConflictResolutionAsync();
-        if (MergeConflictResolutionViewModel == null) return;
-
-        MergeConflictResolutionViewModel.SelectedConflict = conflict;
-
-        var conflictWindow = new Views.Merge.MergeEditorView
-        {
-            DataContext = MergeConflictResolutionViewModel
-        };
-        conflictWindow.CommitJumpRequested += OnMergeEditorCommitJumpRequested;
+        // The path between double-click and the merge editor appearing runs
+        // RefreshMergeConflictResolutionAsync (git calls), constructs the
+        // editor view, expands its (large) template, and waits for the
+        // dialog service to actually show the window. On a cold open this
+        // can be one-to-several seconds during which the main window
+        // appears frozen. Flip IsBusy so the indeterminate progress bar
+        // ticks immediately, then clear it just before handing off to
+        // ShowDialogAsync — once the modal is up the editor's own
+        // IsLoading state owns the user's attention and a still-running
+        // main-window progress bar would be misleading.
+        var fileName = System.IO.Path.GetFileName(conflict.FilePath);
+        await BeginBusyAsync($"Opening {fileName} in merge editor…");
         try
         {
-            await _dialogService.ShowDialogAsync(conflictWindow);
+            await RefreshMergeConflictResolutionAsync();
+            if (MergeConflictResolutionViewModel == null) return;
+
+            MergeConflictResolutionViewModel.SelectedConflict = conflict;
+
+            var conflictWindow = new Views.Merge.MergeEditorView
+            {
+                DataContext = MergeConflictResolutionViewModel
+            };
+            conflictWindow.CommitJumpRequested += OnMergeEditorCommitJumpRequested;
+            try
+            {
+                IsBusy = false;
+                StatusMessage = $"Resolving conflicts in {fileName}";
+                await _dialogService.ShowDialogAsync(conflictWindow);
+            }
+            finally
+            {
+                conflictWindow.CommitJumpRequested -= OnMergeEditorCommitJumpRequested;
+            }
         }
         finally
         {
-            conflictWindow.CommitJumpRequested -= OnMergeEditorCommitJumpRequested;
+            IsBusy = false;
         }
     }
 

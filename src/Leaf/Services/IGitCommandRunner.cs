@@ -20,6 +20,24 @@ public record GitCommandResult(
 public interface IGitCommandRunner
 {
     /// <summary>
+    /// Raised after every git subprocess invocation that ran to completion
+    /// (success or non-zero exit). Cancellations and pre-start failures are
+    /// not reported because they have no <see cref="GitCommandResult"/> to
+    /// describe. The runner is the single point all git CLI traffic flows
+    /// through, so this event is the canonical "git command was executed"
+    /// signal for the rest of the app: <see cref="Git.Core.GitOperationContext"/>
+    /// forwards it onto <see cref="IGitService.GitCommandExecuted"/>, which
+    /// the merge editor's command log and the terminal pane both consume.
+    /// </summary>
+    /// <remarks>
+    /// Fires on whatever thread invoked <see cref="RunAsync(string, IReadOnlyList{string}, string?, string?, CancellationToken)"/>
+    /// — typically a worker thread under <c>ConfigureAwait(false)</c>.
+    /// Subscribers that touch WPF state must dispatcher-hop themselves;
+    /// the runner deliberately stays UI-agnostic.
+    /// </remarks>
+    event EventHandler<GitCommandEventArgs>? CommandExecuted;
+
+    /// <summary>
     /// Runs a git command with the specified arguments.
     /// </summary>
     /// <param name="workingDirectory">Working directory for git command.</param>
