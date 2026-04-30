@@ -10,6 +10,18 @@ namespace Leaf.Services;
 /// purely through <see cref="IGitCommandRunner"/> + the
 /// <c>Leaf.SequenceEditor.exe</c> helper — no LibGit2Sharp, no shell.
 /// </summary>
+/// <remarks>
+/// <para><b>Continue / skip / abort</b> after a paused rebase are handled
+/// by the existing <see cref="IRebaseService"/> on top of LibGit2Sharp's
+/// <c>repo.Rebase.Continue</c>. LibGit2Sharp's API does not invoke
+/// <c>GIT_EDITOR</c> for <c>reword</c> / <c>squash</c> entries that
+/// follow the conflict point, which means a custom <c>NewMessage</c> on
+/// such rows would not be applied if the user resolves a conflict and
+/// continues through Leaf's merge-editor flow. Rewording / squashing
+/// commits that come <i>before</i> the first conflict works as
+/// expected, since the original <c>git rebase --interactive</c>
+/// invocation drives those through our helper before pausing.</para>
+/// </remarks>
 public class InteractiveRebaseService : IInteractiveRebaseService
 {
     private const string SequenceEditorExecutable = "Leaf.SequenceEditor.exe";
@@ -142,10 +154,16 @@ public class InteractiveRebaseService : IInteractiveRebaseService
             var messagesDir = Path.Combine(temp.FullName, "messages");
             var cursorFile = Path.Combine(temp.FullName, "cursor");
             Directory.CreateDirectory(messagesDir);
-            await File.WriteAllTextAsync(cursorFile, "0", cancellationToken);
+            // All three artefacts use UTF-8 without BOM, matching git's
+            // own preference for these files. Mixing BOM/no-BOM here
+            // would not break correctness today (the helper's int.Parse
+            // tolerates BOM-less reads via auto-detection) but is the
+            // kind of inconsistency that bites later.
+            var noBomUtf8 = new UTF8Encoding(false);
+            await File.WriteAllTextAsync(cursorFile, "0", noBomUtf8, cancellationToken);
 
             var (todoContent, messageCount) = MaterialisePlan(plan, messagesDir);
-            await File.WriteAllTextAsync(todoFile, todoContent, new UTF8Encoding(false), cancellationToken);
+            await File.WriteAllTextAsync(todoFile, todoContent, noBomUtf8, cancellationToken);
 
             // Git on Windows runs the editor via a shell (MSYS bash for
             // GIT_SEQUENCE_EDITOR / GIT_EDITOR), so a Windows path with

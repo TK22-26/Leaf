@@ -40,8 +40,11 @@ public partial class RebaseTodoItem : ObservableObject
 
     /// <summary>
     /// Replacement commit message for <see cref="RebaseTodoAction.Reword"/> /
-    /// <see cref="RebaseTodoAction.Squash"/>. Null or empty falls back to
-    /// <see cref="OriginalMessage"/> at materialisation time.
+    /// <see cref="RebaseTodoAction.Squash"/>. Null or empty has different
+    /// semantics per action: Reword falls back to <see cref="OriginalMessage"/>
+    /// (the user toggled reword without typing a replacement), while Squash
+    /// queues an empty pass-through file so git's combined-message default
+    /// for the squash buffer survives.
     /// </summary>
     [ObservableProperty]
     private string? _newMessage;
@@ -52,8 +55,8 @@ public partial class RebaseTodoItem : ObservableObject
 
     /// <summary>
     /// Tooltip shown on the row in the editor — surfaces the author and
-    /// authored date that <see cref="LoadPlanAsync"/> captured. Empty for
-    /// synthetic Exec rows that don't reference a commit.
+    /// authored date captured at plan load. Empty for synthetic Exec rows
+    /// that don't reference a commit.
     /// </summary>
     public string AuthorTooltip
     {
@@ -73,7 +76,7 @@ public partial class RebaseTodoItem : ObservableObject
     /// <summary>Convenience flag — does this row need a command editor?</summary>
     public bool IsExec => Action == RebaseTodoAction.Exec;
 
-    /// <summary>True when the action mutates history (anything except a plain Pick or noop Drop). Used to drive a "you'll be rewriting commits" warning in the UI footer.</summary>
+    /// <summary>True when the action mutates history (everything except <see cref="RebaseTodoAction.Pick"/> and <see cref="RebaseTodoAction.Exec"/>). Used to drive a "you'll be rewriting commits" warning in the UI footer.</summary>
     public bool WillRewriteCommit =>
         Action is RebaseTodoAction.Reword
             or RebaseTodoAction.Edit

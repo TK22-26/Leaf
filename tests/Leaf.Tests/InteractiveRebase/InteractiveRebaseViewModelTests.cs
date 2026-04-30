@@ -172,6 +172,38 @@ public class InteractiveRebaseViewModelTests
     }
 
     [Fact]
+    public async Task IsRebasing_DisablesMutationCommands()
+    {
+        // Plan-mutation commands must drop CanExecute when a rebase is in
+        // flight — the buttons would otherwise stay clickable while git
+        // is running, and clicking Move/Insert/Remove on a stale plan
+        // would diverge it from what git is processing.
+        var sut = await NewLoadedVm(Item("aaa", "a"), Item("bbb", "b"));
+
+        sut.MoveItemUpCommand.CanExecute(sut.Plan[1]).Should().BeTrue();
+        sut.InsertExecAfterCommand.CanExecute(sut.Plan[0]).Should().BeTrue();
+
+        // Use reflection / direct property write — IsRebasing is private
+        // setter via the source generator; the public surface does not
+        // expose a way to set it without driving Start, so we verify by
+        // running Start with a service that blocks indefinitely.
+        var blocking = new TaskCompletionSource<Leaf.Models.MergeResult>();
+        var service = new BlockingFakeRebaseService(blocking.Task);
+        var blocked = NewVm(service);
+        blocked.Plan.Add(Item("aaa", "a"));
+        var startTask = blocked.StartCommand.ExecuteAsync(null);
+
+        blocked.IsRebasing.Should().BeTrue();
+        blocked.MoveItemUpCommand.CanExecute(blocked.Plan[0]).Should().BeFalse();
+        blocked.InsertExecAfterCommand.CanExecute(blocked.Plan[0]).Should().BeFalse();
+        blocked.RemoveItemCommand.CanExecute(blocked.Plan[0]).Should().BeFalse();
+
+        // Unblock so the test process doesn't hang.
+        blocking.SetResult(new Leaf.Models.MergeResult { Success = true });
+        await startTask;
+    }
+
+    [Fact]
     public async Task HeaderSummary_ReflectsNonExecCount()
     {
         var sut = await NewLoadedVm(Item("aaa", "a"), Item("bbb", "b"));
@@ -205,6 +237,18 @@ public class InteractiveRebaseViewModelTests
             OriginalMessage = subject,
             Action = RebaseTodoAction.Pick,
         };
+    }
+
+    private sealed class BlockingFakeRebaseService : IInteractiveRebaseService
+    {
+        private readonly Task<Leaf.Models.MergeResult> _start;
+        public BlockingFakeRebaseService(Task<Leaf.Models.MergeResult> start) => _start = start;
+        public Task<IReadOnlyList<RebaseTodoItem>> LoadPlanAsync(
+            IRepositorySession session, string fromCommitSha, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<RebaseTodoItem>>([]);
+        public Task<Leaf.Models.MergeResult> StartAsync(
+            IRepositorySession session, string fromCommitSha,
+            IReadOnlyList<RebaseTodoItem> plan, CancellationToken cancellationToken = default) => _start;
     }
 
     private sealed class FakeRebaseService : IInteractiveRebaseService

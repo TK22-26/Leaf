@@ -10,9 +10,12 @@ namespace Leaf.ViewModels;
 /// <summary>
 /// Backs the interactive-rebase editor window. Exposes the live plan as
 /// an <see cref="ObservableCollection{T}"/>, the row-level commands the
-/// view binds to (action change, move up/down, insert exec, reset to
-/// pick), and the terminal Start/Cancel commands that drive
-/// <see cref="IInteractiveRebaseService"/>.
+/// view binds to (move up/down, insert exec, remove synthetic exec), and
+/// the terminal Start/Cancel commands that drive
+/// <see cref="IInteractiveRebaseService"/>. Action changes are driven by
+/// the ComboBox's two-way binding on <see cref="RebaseTodoItem.Action"/>;
+/// the VM listens via per-item <c>PropertyChanged</c> to refresh its
+/// derived header / status text.
 /// </summary>
 /// <remarks>
 /// The view-model is intentionally repository-aware (holds a path + a
@@ -78,6 +81,10 @@ public partial class InteractiveRebaseViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText))]
     [NotifyCanExecuteChangedFor(nameof(StartCommand))]
+    [NotifyCanExecuteChangedFor(nameof(MoveItemUpCommand))]
+    [NotifyCanExecuteChangedFor(nameof(MoveItemDownCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InsertExecAfterCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RemoveItemCommand))]
     private bool _isRebasing;
 
     [ObservableProperty]
@@ -238,9 +245,9 @@ public partial class InteractiveRebaseViewModel : ObservableObject
         OnPropertyChanged(nameof(HeaderSummary));
         OnPropertyChanged(nameof(StatusText));
         StartCommand.NotifyCanExecuteChanged();
-        // Wire/unwire ItemPropertyChanged so derived header text updates
-        // when the user toggles individual row actions without going
-        // through SetActionCommand (e.g. ComboBox direct two-way binding).
+        // Wire/unwire ItemPropertyChanged so the header summary + status
+        // text refresh when the user flips a row's Action via the
+        // ComboBox's two-way binding.
         if (e.NewItems != null)
         {
             foreach (RebaseTodoItem item in e.NewItems)

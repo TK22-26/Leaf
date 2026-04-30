@@ -69,9 +69,9 @@ public partial class MainViewModel
             commit.Sha,
             subject);
 
-        // Result is captured here so the post-dialog branch can route
+        // Capture the result here so the post-dialog branch can route
         // conflicts through the existing merge editor without reaching
-        // back into the (now-disposed) view-model.
+        // back through the closed window's DataContext.
         MergeResult? terminalResult = null;
         EventHandler<MergeResult> onCompleted = (_, r) => terminalResult = r;
         vm.RebaseCompleted += onCompleted;
