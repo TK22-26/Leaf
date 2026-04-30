@@ -29,13 +29,27 @@ public class BisectServiceTests
     }
 
     [Fact]
-    public void ParseFirstBadSha_ShortSha_AlsoMatches()
+    public void ParseFirstBadSha_ShortSha_DoesNotMatch()
     {
-        // Some git versions print short shas in the terminating line.
-        // We accept any 7-40 hex run so the parser doesn't drift the
-        // moment git's output formatting changes.
+        // We require the canonical 40-char SHA form git actually emits.
+        // Accepting 7+ would let stray short SHAs in commit subjects
+        // ("a1b2c3d is the first bad commit" referencing a previous
+        // bisect result, for example) false-positive a fresh bisect
+        // into early termination.
         BisectService.ParseFirstBadSha("abc1234 is the first bad commit\n")
-            .Should().Be("abc1234");
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public void ParseFirstBadSha_TextOnlyContainsPhrase_DoesNotMatch()
+    {
+        // A commit whose subject literally contains "is the first bad
+        // commit" must not be mistaken for the converging-line marker.
+        // We anchor end-of-line and require the SHA at column 0.
+        const string output =
+            "Bisecting: 4 revisions left to test after this (roughly 2 steps)\n" +
+            "[abcdef1234567890abcdef1234567890abcdef12] commit message about how this is the first bad commit fix\n";
+        BisectService.ParseFirstBadSha(output).Should().BeNull();
     }
 
     [Fact]
@@ -69,5 +83,26 @@ public class BisectServiceTests
         // because git is still working out the search range.
         BisectService.ParseStepsRemaining("Bisecting: midpoint\n").Should().BeNull();
         BisectService.ParseStepsRemaining(string.Empty).Should().BeNull();
+    }
+
+    [Fact]
+    public void IsAllSkippedTerminator_RealTerminator_ReturnsTrue()
+    {
+        // Git's actual terminator string when every remaining candidate
+        // was skipped — the bisect is effectively done but not converged.
+        const string output =
+            "There are only 'skip'ped commits left to test.\n" +
+            "The first bad commit could be any of:\n" +
+            "abcdef1234567890abcdef1234567890abcdef12\n";
+        BisectService.IsAllSkippedTerminator(output).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsAllSkippedTerminator_RegularBisect_ReturnsFalse()
+    {
+        BisectService.IsAllSkippedTerminator(
+            "Bisecting: 4 revisions left to test after this (roughly 2 steps)\n")
+            .Should().BeFalse();
+        BisectService.IsAllSkippedTerminator(string.Empty).Should().BeFalse();
     }
 }

@@ -54,11 +54,17 @@
                                TextTrimming="CharacterEllipsis"
                                MaxWidth="380"
                                Text="{Binding CurrentBisectState.CurrentSubject}" />
+                    <!-- Parenthetical is bound to a nullable int? — when
+                         git's "Bisecting:" line didn't carry a "(roughly K
+                         steps)" hint (first step, cold open, untranslated
+                         locale), we hide the whole text rather than show a
+                         misleading "(0 steps left)". -->
                     <TextBlock Foreground="#A89868"
                                Margin="12,0,0,0"
                                FontSize="11"
-                               VerticalAlignment="Center">
-                        <Run Text="(" /><Run Text="{Binding CurrentBisectState.StepsRemaining, Mode=OneWay}" /><Run Text=" steps left)" />
+                               VerticalAlignment="Center"
+                               Visibility="{Binding CurrentBisectState.StepsRemaining, Converter={StaticResource NullToVisibilityConverter}}">
+                        <Run Text="(" /><Run Text="{Binding CurrentBisectState.StepsRemaining, Mode=OneWay, FallbackValue=''}" /><Run Text=" steps left)" />
                     </TextBlock>
                 </StackPanel>
 

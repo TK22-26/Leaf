@@ -41,10 +41,10 @@ public partial class MainViewModel
     {
         if (SelectedRepository == null || _currentSession == null) return;
 
-        // If a bisect is already running, opening the start dialog would
-        // get the user a confusing "git bisect: not in bisect mode" or
-        // overwrite-the-state result. Route them to the in-progress
-        // banner instead.
+        // Bisect-already-running is the most likely conflict; check it
+        // through the session-aware service (worktree-correct) rather than
+        // via SelectedRepository.OperationType — the latter resolves
+        // gitdir as <repo>/.git, which is wrong for linked worktrees.
         if (await _bisectService.IsBisectInProgressAsync(_currentSession, CurrentRepositoryToken))
         {
             await RefreshBisectStateAsync();
@@ -54,8 +54,11 @@ public partial class MainViewModel
             return;
         }
 
-        // Refuse if any other long-running op is paused — bisect mutates
-        // HEAD and would either fail or compound state.
+        // Other long-running ops (merge, rebase, am, etc.) — bisect mutates
+        // HEAD and would compound state. We use OperationType here even
+        // though it has the same worktree limitation — the alternative is
+        // adding session-based probes for every op, which is broader scope
+        // than this feature and tracked in project_worktree_gitdir_resolution.
         var opType = SelectedRepository.OperationType;
         if (opType is not GitOperationType.None and not GitOperationType.Bisect)
         {
@@ -63,6 +66,18 @@ public partial class MainViewModel
             await _dialogService.ShowMessageAsync(
                 $"A {opType.ToString().ToLowerInvariant()} is currently in progress. " +
                 "Finish or abort it before starting a bisect.",
+                "Start Bisect", MessageBoxButton.OK);
+            return;
+        }
+
+        // Pre-flight: refuse on a dirty working tree. The dialog hint
+        // mentions this but git's own error after the dialog closes is
+        // late and ugly. RepositoryInfo.IsDirty is already populated by
+        // SelectRepositoryAsync; we just consult it.
+        if (SelectedRepository.IsDirty)
+        {
+            await _dialogService.ShowMessageAsync(
+                "Working tree has uncommitted changes. Stash, commit, or discard them before starting a bisect — git checks out commits as it works and won't proceed with dirty state.",
                 "Start Bisect", MessageBoxButton.OK);
             return;
         }
@@ -114,6 +129,14 @@ public partial class MainViewModel
     private async Task MarkBisectAsync(BisectVerdict verdict)
     {
         if (_currentSession == null) return;
+        // Banner buttons should only fire while CurrentBisectState != null,
+        // but we double-check here so a stale shortcut / scripted invocation
+        // doesn't surface git's verbose "We are not bisecting." stderr.
+        if (CurrentBisectState == null)
+        {
+            Log.Info("Bisect", $"Mark {verdict} ignored: no bisect in progress.");
+            return;
+        }
 
         try
         {
@@ -135,19 +158,23 @@ public partial class MainViewModel
             {
                 Log.Info("Bisect", $"Converged: first bad commit = {result.FirstBadSha}");
                 StatusMessage = $"Bisect converged: {Shorten(result.FirstBadSha)} is the first bad commit.";
-                // Jump the graph to the found commit so the user can
-                // inspect it without manual hunt — they're going to want
-                // to read the diff next.
-                if (!string.IsNullOrEmpty(result.FirstBadSha))
-                {
-                    GitGraphViewModel?.SelectCommitBySha(result.FirstBadSha);
-                }
             }
             else
             {
-                StatusMessage = $"Testing {result.State?.CurrentShortSha} ({result.State?.StepsRemaining} steps remaining).";
+                var stepsText = result.State?.StepsRemaining is int s ? $" ({s} steps remaining)" : "";
+                StatusMessage = $"Testing {result.State?.CurrentShortSha}{stepsText}.";
             }
+
+            // Refresh first so the graph repopulates with current branch /
+            // commit data, THEN select. Prior order had Select first and
+            // the subsequent refresh would wipe the highlight. RefreshAsync
+            // is async-resilient — it doesn't tear down the selection by
+            // itself, but the graph rebuild that runs underneath does.
             await RefreshAsync();
+            if (result.IsTerminating && !string.IsNullOrEmpty(result.FirstBadSha))
+            {
+                GitGraphViewModel?.SelectCommitBySha(result.FirstBadSha);
+            }
         }
         catch (Exception ex)
         {
@@ -209,10 +236,12 @@ public partial class MainViewModel
         {
             var state = await _bisectService.GetStateAsync(_currentSession, CurrentRepositoryToken);
             CurrentBisectState = state.IsActive ? state : null;
-            // We don't reconstitute BisectFoundSha here — that's only
-            // known when a Mark call observed git's terminating output.
-            // After a refresh we treat the bisect as "in progress" and
-            // let the next verdict reveal the converging step.
+            // GetStateAsync also reads BISECT_LOG for the converged-but-
+            // not-reset case (user closed Leaf mid-bisect after the
+            // converging step). Lifting state.FirstBadSha into the VM
+            // flips the banner into "found it" mode on cold open instead
+            // of misleadingly showing "Testing X" with no steps left.
+            BisectFoundSha = state.FirstBadSha;
         }
         catch (Exception ex)
         {

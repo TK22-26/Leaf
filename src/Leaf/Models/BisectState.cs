@@ -20,11 +20,17 @@ public sealed class BisectState
     public string CurrentSubject { get; init; } = string.Empty;
 
     /// <summary>
-    /// Approximate number of commits left to test. Mirrors the
-    /// <c>~N steps</c> hint git itself prints. <c>0</c> when the bisect
-    /// has converged and <see cref="FirstBadSha"/> is set.
+    /// Approximate number of commits left to test, as parsed from the
+    /// "(roughly K steps)" hint git emits in its <c>Bisecting:</c> line.
+    /// <c>null</c> when no hint is available — for example on the first
+    /// step (git omits it while it works out the search range), on a
+    /// cold open of an in-progress bisect (we read state from disk, not
+    /// from a prior command's stdout), or when git's output is in a
+    /// locale our regex doesn't recognise. The banner hides the
+    /// parenthetical entirely when this is <c>null</c>; showing
+    /// <c>(0 steps left)</c> would be misleading.
     /// </summary>
-    public int StepsRemaining { get; init; }
+    public int? StepsRemaining { get; init; }
 
     /// <summary>
     /// Full SHA of the first bad commit when bisect has converged, else null.
