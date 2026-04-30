@@ -50,9 +50,21 @@ public partial class RebaseTodoItem : ObservableObject
     [ObservableProperty]
     private string? _execCommand;
 
-    /// <summary>True when the user has expanded the row's reword/squash editor in the UI. Persisted on the item so reorder doesn't collapse open editors.</summary>
-    [ObservableProperty]
-    private bool _isMessageEditorOpen;
+    /// <summary>
+    /// Tooltip shown on the row in the editor — surfaces the author and
+    /// authored date that <see cref="LoadPlanAsync"/> captured. Empty for
+    /// synthetic Exec rows that don't reference a commit.
+    /// </summary>
+    public string AuthorTooltip
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(Sha)) return string.Empty;
+            return AuthoredWhen == default
+                ? Author
+                : $"{Author} · {AuthoredWhen.LocalDateTime:yyyy-MM-dd HH:mm}";
+        }
+    }
 
     /// <summary>Convenience flag for view bindings — does this row need a message editor?</summary>
     public bool IsRewordOrSquash =>

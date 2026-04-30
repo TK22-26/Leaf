@@ -23,6 +23,12 @@ public class InteractiveRebaseService : IInteractiveRebaseService
     private const char FieldSep = (char)0x1F;
     private const char RecordSep = (char)0x1E;
 
+    /// <summary>Prefix for temp directories the service spools per rebase. Surfaced for the housekeeping pass that cleans up dirs left over from paused rebases that the user later aborted outside Leaf.</summary>
+    internal const string TempDirPrefix = "leaf-rebase-";
+
+    /// <summary>Stale-temp threshold for the housekeeping sweep. Any prefix-matched dir older than this gets reaped on the next StartAsync call.</summary>
+    internal static readonly TimeSpan StaleTempThreshold = TimeSpan.FromHours(24);
+
     private readonly IGitCommandRunner _commandRunner;
     private readonly IRepositoryEventHub _eventHub;
 
@@ -52,6 +58,7 @@ public class InteractiveRebaseService : IInteractiveRebaseService
         string fromCommitSha,
         CancellationToken cancellationToken = default)
     {
+        if (session == null) throw new ArgumentNullException(nameof(session));
         if (string.IsNullOrWhiteSpace(fromCommitSha))
             throw new ArgumentException("fromCommitSha is required.", nameof(fromCommitSha));
 
@@ -89,6 +96,9 @@ public class InteractiveRebaseService : IInteractiveRebaseService
         IReadOnlyList<RebaseTodoItem> plan,
         CancellationToken cancellationToken = default)
     {
+        if (session == null) throw new ArgumentNullException(nameof(session));
+        if (string.IsNullOrWhiteSpace(fromCommitSha))
+            throw new ArgumentException("fromCommitSha is required.", nameof(fromCommitSha));
         if (plan == null || plan.Count == 0)
             throw new ArgumentException("Plan must contain at least one item.", nameof(plan));
 
@@ -104,10 +114,21 @@ public class InteractiveRebaseService : IInteractiveRebaseService
             };
         }
 
+        // Reap any leaked temp dirs from prior paused rebases the user
+        // aborted outside Leaf. Cheap and bounded — Path.GetTempPath()
+        // typically holds a handful of entries and the prefix filter
+        // narrows it further.
+        SweepStaleTempDirs();
+
         // Spool the plan + reword/squash messages onto disk before launching
-        // git. The temp directory is per-rebase and cleaned up after the
-        // helper has finished consuming it.
-        var temp = Directory.CreateTempSubdirectory("leaf-rebase-");
+        // git. We deliberately do NOT clean the temp dir on a paused rebase:
+        // git re-invokes our helper for any reword/squash rows that come
+        // after the conflict point, and those invocations need the messages
+        // and cursor still on disk. Cleanup happens on success or on hard
+        // failure, plus the housekeeping sweep above for the abort-outside-
+        // Leaf case.
+        var temp = Directory.CreateTempSubdirectory(TempDirPrefix);
+        var paused = false;
         try
         {
             var todoFile = Path.Combine(temp.FullName, "git-rebase-todo");
@@ -167,11 +188,14 @@ public class InteractiveRebaseService : IInteractiveRebaseService
 
             // git rebase signals "stopped at <sha>" via stderr/stdout when
             // it hits a conflict, an `edit` instruction, or anything else
-            // that needs the user. The presence of .git/rebase-merge tells
-            // us the rebase is paused rather than failed outright.
-            var rebaseDir = Path.Combine(session.RepositoryPath, ".git", "rebase-merge");
-            var paused = Directory.Exists(rebaseDir) ||
-                         Directory.Exists(Path.Combine(session.RepositoryPath, ".git", "rebase-apply"));
+            // that needs the user. The presence of rebase-merge / rebase-apply
+            // under .git tells us the rebase is paused rather than failed
+            // outright. Worktrees route their git directory through
+            // session.GitDirectory, not RepositoryPath/.git, so we use
+            // that — the bare RepositoryPath/.git assumption would miss
+            // paused rebases inside linked worktrees.
+            paused = Directory.Exists(Path.Combine(session.GitDirectory, "rebase-merge")) ||
+                     Directory.Exists(Path.Combine(session.GitDirectory, "rebase-apply"));
 
             if (paused)
             {
@@ -196,12 +220,45 @@ public class InteractiveRebaseService : IInteractiveRebaseService
         }
         finally
         {
-            // Best-effort cleanup. The helper exe may still be writing the
-            // cursor file when we get here on a paused rebase, so we don't
-            // delete during a successful start that left a paused state —
-            // git reuses the helper across continue/skip. The temp dir is
-            // just files; OS will GC on next reboot if we leak.
-            TryDelete(temp.FullName);
+            // Only delete the temp dir when the rebase is fully done. On a
+            // paused rebase git will re-invoke our helper later (after the
+            // user runs continue/skip) and needs the messages + cursor
+            // files still on disk; the next StartAsync's housekeeping
+            // sweep cleans these up if the user abandons the rebase.
+            if (!paused)
+            {
+                TryDelete(temp.FullName);
+            }
+        }
+    }
+
+    private static void SweepStaleTempDirs()
+    {
+        try
+        {
+            var tempRoot = Path.GetTempPath();
+            var cutoff = DateTime.UtcNow - StaleTempThreshold;
+            foreach (var dir in Directory.EnumerateDirectories(tempRoot, $"{TempDirPrefix}*"))
+            {
+                try
+                {
+                    if (Directory.GetLastWriteTimeUtc(dir) < cutoff)
+                    {
+                        Directory.Delete(dir, recursive: true);
+                        Log.Info("Rebase", $"Reaped stale temp dir '{dir}'.");
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Log.Info("Rebase", $"Stale temp '{dir}' could not be reaped: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort housekeeping — never fail StartAsync because the
+            // sweep tripped on filesystem permissions.
+            Log.Info("Rebase", $"Stale temp sweep failed: {ex.Message}");
         }
     }
 
@@ -227,7 +284,21 @@ public class InteractiveRebaseService : IInteractiveRebaseService
             var sha = fields[0];
             var shortSha = fields[1];
             var author = fields[2];
-            var date = DateTimeOffset.TryParse(fields[3], out var d) ? d : DateTimeOffset.MinValue;
+            DateTimeOffset date;
+            if (DateTimeOffset.TryParse(fields[3], out var parsedDate))
+            {
+                date = parsedDate;
+            }
+            else
+            {
+                // %aI emits strict ISO-8601 — a parse failure here implies
+                // corrupt git output or a locale we haven't seen. The row
+                // still loads (date is display-only, missing it doesn't
+                // break the rebase plan) but we log so the regression is
+                // visible.
+                date = DateTimeOffset.MinValue;
+                Log.Warn("Rebase", $"Could not parse author date '{fields[3]}' for {shortSha}; tooltip date will be blank.");
+            }
             var fullMessage = fields[4].TrimEnd('\n');
             var subject = ExtractSubject(fullMessage);
 
@@ -284,15 +355,16 @@ public class InteractiveRebaseService : IInteractiveRebaseService
                 case RebaseTodoAction.Squash:
                     sb.Append("squash ").Append(item.Sha).Append(' ').Append(item.Subject).Append('\n');
                     messageIndex++;
-                    // Git pre-populates the editor buffer with the previous
-                    // commit's message + this commit's message joined. If
-                    // the user supplied an explicit replacement we honour
-                    // it; otherwise we fall through and let git's default
-                    // (combined messages) reach the helper, which leaves
-                    // the buffer untouched when no message file is queued
-                    // for that index.
+                    // Git pre-populates COMMIT_EDITMSG with the combined
+                    // messages of the squashed commits. When the user
+                    // supplied an explicit replacement we honour it;
+                    // otherwise we queue an EMPTY file as the helper's
+                    // pass-through signal so git's combined default
+                    // survives. Writing the squashed commit's own
+                    // OriginalMessage here would silently delete the
+                    // preceding commit's message from the merged result.
                     WriteMessage(messagesDir, messageIndex,
-                        string.IsNullOrEmpty(item.NewMessage) ? item.OriginalMessage : item.NewMessage);
+                        string.IsNullOrEmpty(item.NewMessage) ? string.Empty : item.NewMessage);
                     break;
                 case RebaseTodoAction.Fixup:
                     sb.Append("fixup ").Append(item.Sha).Append(' ').Append(item.Subject).Append('\n');

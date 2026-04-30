@@ -101,6 +101,55 @@ public class RebaseEditorRunnerTests
     }
 
     [Fact]
+    public void Run_CommitMessage_EmptyQueueFile_LeavesGitsPreloadedBuffer()
+    {
+        // Empty queue file is the explicit pass-through signal for
+        // Squash-without-NewMessage: git pre-fills COMMIT_EDITMSG with
+        // its combined default, the helper must not overwrite it.
+        // Cursor still increments so later messages stay aligned.
+        var fs = new InMemoryFileSystem();
+        var env = new InMemoryEnvironment();
+        const string dir = @"C:\temp\messages";
+        const string cursor = @"C:\temp\cursor";
+        const string preloaded = "# Combined message preloaded by git\n\nfirst\n\nsecond";
+        fs.SetFile(System.IO.Path.Combine(dir, "0001.msg"), string.Empty);
+        fs.SetFile(cursor, "0");
+        fs.SetFile(@"C:\repo\.git\COMMIT_EDITMSG", preloaded);
+        env.Set(RebaseEditorRunner.MessagesDirEnv, dir);
+        env.Set(RebaseEditorRunner.MessageCursorEnv, cursor);
+
+        var outcome = RebaseEditorRunner.Run(
+            [@"C:\repo\.git\COMMIT_EDITMSG"], fs, env, out _);
+
+        outcome.Should().Be(RebaseEditorRunner.Outcome.Success);
+        fs.ReadAllText(@"C:\repo\.git\COMMIT_EDITMSG")
+            .Should().Be(preloaded, because: "empty queue file means leave git's buffer untouched");
+        fs.ReadAllText(cursor).Should().Be("1", because: "cursor still increments so later messages stay aligned");
+    }
+
+    [Fact]
+    public void Run_CommitMessage_CorruptCursorFile_FailsLoudly()
+    {
+        // Silently resetting to 0 would re-pop the first message and
+        // apply it to whichever commit git is currently rewording.
+        // Engineering Software Policy: surface the corruption.
+        var fs = new InMemoryFileSystem();
+        var env = new InMemoryEnvironment();
+        const string dir = @"C:\temp\messages";
+        const string cursor = @"C:\temp\cursor";
+        fs.SetFile(System.IO.Path.Combine(dir, "0001.msg"), "first reword");
+        fs.SetFile(cursor, "garbled-not-an-int");
+        env.Set(RebaseEditorRunner.MessagesDirEnv, dir);
+        env.Set(RebaseEditorRunner.MessageCursorEnv, cursor);
+
+        var outcome = RebaseEditorRunner.Run(
+            [@"C:\repo\.git\COMMIT_EDITMSG"], fs, env, out var diagnostic);
+
+        outcome.Should().Be(RebaseEditorRunner.Outcome.CursorCorrupted);
+        diagnostic.Should().Contain("garbled-not-an-int");
+    }
+
+    [Fact]
     public void Run_CommitMessage_QueueExhausted_FailsLoudly()
     {
         var fs = new InMemoryFileSystem();

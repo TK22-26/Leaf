@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
@@ -72,7 +71,6 @@ public partial class InteractiveRebaseViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(StartCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveItemUpCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveItemDownCommand))]
-    [NotifyCanExecuteChangedFor(nameof(SetActionCommand))]
     [NotifyCanExecuteChangedFor(nameof(InsertExecAfterCommand))]
     [NotifyCanExecuteChangedFor(nameof(RemoveItemCommand))]
     private bool _isLoading;
@@ -152,26 +150,6 @@ public partial class InteractiveRebaseViewModel : ObservableObject
         Plan.Move(index, index + 1);
     }
 
-    /// <summary>
-    /// Used by the action dropdown's binding. Wraps a (item, action) tuple
-    /// so the XAML can pass both via a converter or a multi-binding —
-    /// CommunityToolkit's <c>[RelayCommand]</c> only accepts a single
-    /// parameter, so we reuse the row's <see cref="RebaseTodoItem.Action"/>
-    /// setter directly when the parameter is a bare action enum, and treat
-    /// a <see cref="RebaseActionChange"/> as the explicit (item, action)
-    /// form.
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanMutatePlan))]
-    private void SetAction(RebaseActionChange? change)
-    {
-        if (change?.Item == null) return;
-        change.Item.Action = change.Action;
-        // Action change can flip WillRewriteCommit / row counts — refresh
-        // the header derivations.
-        OnPropertyChanged(nameof(StatusText));
-        OnPropertyChanged(nameof(HeaderSummary));
-    }
-
     [RelayCommand(CanExecute = nameof(CanMutatePlan))]
     private void InsertExecAfter(RebaseTodoItem? item)
     {
@@ -186,7 +164,6 @@ public partial class InteractiveRebaseViewModel : ObservableObject
             OriginalMessage = string.Empty,
             Action = RebaseTodoAction.Exec,
             ExecCommand = "echo replace this command",
-            IsMessageEditorOpen = true,
         });
     }
 
@@ -268,11 +245,3 @@ public partial class InteractiveRebaseViewModel : ObservableObject
         }
     }
 }
-
-/// <summary>
-/// Small DTO used by <see cref="InteractiveRebaseViewModel.SetActionCommand"/>
-/// so XAML can pass both the row and the new action through a single
-/// command parameter (an array converter or multi-binding can produce
-/// this).
-/// </summary>
-public sealed record RebaseActionChange(RebaseTodoItem Item, RebaseTodoAction Action);

@@ -72,13 +72,16 @@ public class InteractiveRebaseViewModelTests
     }
 
     [Fact]
-    public async Task SetAction_FlipsRowAndRefreshesStatus()
+    public async Task ItemActionChange_RefreshesDerivedStatus()
     {
+        // The XAML drives action change via two-way binding on the row's
+        // Action property; we exercise that path here. The VM listens to
+        // per-item PropertyChanged and refreshes the header / status text.
         var sut = await NewLoadedVm(Item("aaa", "a"), Item("bbb", "b"));
         var statusChanges = 0;
         sut.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(sut.StatusText)) statusChanges++; };
 
-        sut.SetActionCommand.Execute(new RebaseActionChange(sut.Plan[0], RebaseTodoAction.Reword));
+        sut.Plan[0].Action = RebaseTodoAction.Reword;
 
         sut.Plan[0].Action.Should().Be(RebaseTodoAction.Reword);
         sut.StatusText.Should().Contain("History will be rewritten");
@@ -120,7 +123,7 @@ public class InteractiveRebaseViewModelTests
         var service = new FakeRebaseService([Item("aaa", "a"), Item("bbb", "b")]);
         var sut = NewVm(service, fromSha: "aaa");
         await sut.LoadAsync();
-        sut.SetActionCommand.Execute(new RebaseActionChange(sut.Plan[1], RebaseTodoAction.Drop));
+        sut.Plan[1].Action = RebaseTodoAction.Drop;
 
         Leaf.Models.MergeResult? completed = null;
         sut.RebaseCompleted += (_, r) => completed = r;

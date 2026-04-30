@@ -47,7 +47,7 @@ public static class RebaseEditorRunner
         TodoSourceMissing = 65,
         MessagesDirMissing = 66,
         CursorOutOfRange = 67,
-        UnrecognisedFile = 68,
+        CursorCorrupted = 68,
     }
 
     /// <summary>
@@ -143,7 +143,12 @@ public static class RebaseEditorRunner
         // Atomic-ish increment: read, bump, write back. Git serialises todo
         // execution (a single commit at a time), so we never see concurrent
         // helper invocations against the same cursor.
-        var index = ReadCursor(fs, cursorFile) + 1;
+        if (!TryReadCursor(fs, cursorFile, out var previous, out diagnostic))
+        {
+            return Outcome.CursorCorrupted;
+        }
+
+        var index = previous + 1;
         var messageFile = Path.Combine(dir, $"{index:0000}.msg");
         if (!fs.FileExists(messageFile))
         {
@@ -152,21 +157,50 @@ public static class RebaseEditorRunner
         }
 
         var content = fs.ReadAllText(messageFile);
+
+        // Empty message file is the explicit "pass through" signal Leaf
+        // uses for Squash actions where the user did not type a custom
+        // message. Git pre-populates COMMIT_EDITMSG with the combined
+        // messages of the squashed commits — leaving that buffer untouched
+        // is the correct behaviour, and any rewrite (even to the
+        // squashed commit's own original message) would lose the
+        // preceding commit's text. The cursor still increments so later
+        // messages line up with the right todo entries.
+        if (content.Length == 0)
+        {
+            WriteCursor(fs, cursorFile, index);
+            Trace(env, fs, $"commit-msg #{index} pass-through (empty queue file '{messageFile}')");
+            return Outcome.Success;
+        }
+
         fs.WriteAllText(targetPath, content);
         WriteCursor(fs, cursorFile, index);
         Trace(env, fs, $"commit-msg #{index} replaced from '{messageFile}' ({content.Length} chars)");
         return Outcome.Success;
     }
 
-    private static int ReadCursor(IFileSystem fs, string path)
+    /// <summary>
+    /// Read the cursor file. Returns false (and a diagnostic) when the
+    /// file is present but its contents aren't a valid integer — silently
+    /// resetting to 0 would re-apply the first queued message to the wrong
+    /// commit, which is the kind of failure Leaf's Engineering Software
+    /// Policy explicitly demands we surface rather than mask.
+    /// </summary>
+    private static bool TryReadCursor(IFileSystem fs, string path, out int value, out string diagnostic)
     {
+        diagnostic = string.Empty;
         if (!fs.FileExists(path))
         {
-            return 0;
+            value = 0;
+            return true;
         }
 
         var raw = fs.ReadAllText(path).Trim();
-        return int.TryParse(raw, out var value) ? value : 0;
+        if (int.TryParse(raw, out value)) return true;
+
+        diagnostic = $"Leaf.SequenceEditor: cursor file '{path}' contains '{raw}', expected an integer.";
+        value = 0;
+        return false;
     }
 
     private static void WriteCursor(IFileSystem fs, string path, int value)

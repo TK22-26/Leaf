@@ -100,6 +100,28 @@ public class InteractiveRebaseServicePlanTests
     }
 
     [Fact]
+    public void MaterialisePlan_SquashWithoutNewMessage_QueuesEmptyPassthrough()
+    {
+        // The helper treats an empty queue file as "leave git's
+        // pre-loaded combined message in COMMIT_EDITMSG alone." Writing
+        // the squashed commit's OriginalMessage here would silently
+        // delete the preceding commit's text from the merged result —
+        // the bug this regression test pins.
+        var dir = NewMessagesDir();
+        var (todo, count) = InteractiveRebaseService.MaterialisePlan(
+            [
+                Item("a", "first", RebaseTodoAction.Pick),
+                Item("b", "tweaked", RebaseTodoAction.Squash,
+                    originalMessage: "tweaked\n\nshould NOT replace combined default"),
+            ],
+            dir);
+
+        todo.Should().Be("pick a first\nsquash b tweaked\n");
+        count.Should().Be(1);
+        File.ReadAllText(Path.Combine(dir, "0001.msg")).Should().BeEmpty();
+    }
+
+    [Fact]
     public void MaterialisePlan_Edit_DoesNotQueueMessage()
     {
         // `edit` stops the rebase so the user can amend manually. Git only
