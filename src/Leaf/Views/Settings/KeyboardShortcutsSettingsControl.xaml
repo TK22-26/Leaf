@@ -1,0 +1,192 @@
+<UserControl
+    x:Class="Leaf.Views.Settings.KeyboardShortcutsSettingsControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf">
+
+    <UserControl.Resources>
+        <!-- One row per shortcut. Layout: Label | gesture display + capture |
+             Reset button. The gesture display flips into a capture
+             TextBox when the user clicks "Edit". -->
+        <Style x:Key="ShortcutRowCard" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="Padding" Value="14,10"/>
+        </Style>
+
+        <Style x:Key="GesturePill" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource ControlAltFillColorSecondaryBrush}"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel>
+        <TextBlock Text="Keyboard Shortcuts"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                   Margin="0,0,0,4"/>
+        <TextBlock Text="Customise the gestures bound to Leaf's commands. Click Edit on a row, press your new combination, and press Enter to save."
+                   FontSize="12"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,12"/>
+
+        <!-- Toolbar: search filter + reset all -->
+        <Grid Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid Grid.Column="0">
+                <TextBox x:Name="SearchBox"
+                         Padding="28,6,8,6"
+                         TextChanged="SearchBox_TextChanged"/>
+                <ic:SymbolIcon Symbol="Search"
+                               FontSize="14"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Left"
+                               VerticalAlignment="Center"
+                               Margin="8,0,0,0"
+                               IsHitTestVisible="False"/>
+                <TextBlock Text="Search shortcuts…"
+                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                           VerticalAlignment="Center"
+                           Margin="30,0,0,0"
+                           IsHitTestVisible="False">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+
+            <Button Grid.Column="1"
+                    Content="Reset all to defaults"
+                    Margin="10,0,0,0"
+                    Padding="14,6"
+                    Click="ResetAll_Click"/>
+        </Grid>
+
+        <!-- Shortcut list. Categories surface as group headers; each row
+             carries Label + current gesture display + Edit + Reset. -->
+        <ItemsControl x:Name="ShortcutsList">
+            <ItemsControl.GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.HeaderTemplate>
+                        <DataTemplate>
+                            <Border Background="{DynamicResource SubtleFillColorTertiaryBrush}"
+                                    Padding="14,8" Margin="0,8,0,0">
+                                <TextBlock Text="{Binding Name}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            </Border>
+                        </DataTemplate>
+                    </GroupStyle.HeaderTemplate>
+                </GroupStyle>
+            </ItemsControl.GroupStyle>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource ShortcutRowCard}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Label}"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <TextBlock Text="{Binding Id}"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           FontFamily="Consolas"/>
+                            </StackPanel>
+
+                            <!-- Gesture display when not editing -->
+                            <Border Grid.Column="1"
+                                    Style="{StaticResource GesturePill}"
+                                    Margin="8,0"
+                                    Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                <TextBlock Text="{Binding GestureDisplay}"
+                                           FontSize="12"
+                                           FontFamily="Consolas"
+                                           Foreground="{Binding GestureForeground}"/>
+                            </Border>
+
+                            <!-- Capture box when editing -->
+                            <Border Grid.Column="1"
+                                    Margin="8,0"
+                                    MinWidth="160"
+                                    Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                    BorderBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Padding="8,2"
+                                    Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding CaptureDisplay}"
+                                               FontSize="12"
+                                               FontFamily="Consolas"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                               KeyDown="Capture_KeyDown"
+                                               PreviewKeyDown="Capture_PreviewKeyDown"
+                                               Focusable="True"
+                                               Tag="{Binding}"/>
+                                    <TextBlock Text="{Binding ConflictMessage}"
+                                               FontSize="11"
+                                               Foreground="#F59E0B"
+                                               Margin="0,2,0,0"
+                                               Visibility="{Binding HasConflict, Converter={StaticResource BoolToVisibilityConverter}}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Button Grid.Column="2"
+                                    Padding="10,4"
+                                    Margin="0,0,4,0"
+                                    Click="EditOrSave_Click"
+                                    Tag="{Binding}">
+                                <TextBlock>
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="Edit"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                                                    <Setter Property="Text" Value="Save"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Button>
+
+                            <Button Grid.Column="3"
+                                    Padding="10,4"
+                                    Click="Reset_Click"
+                                    Tag="{Binding}"
+                                    ToolTip="Reset this shortcut to its default">
+                                <ic:SymbolIcon Symbol="ArrowReset" FontSize="14"/>
+                            </Button>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

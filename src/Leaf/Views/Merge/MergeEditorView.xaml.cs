@@ -1,9 +1,11 @@
 #nullable enable
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Leaf.Controls.Merge;
 using Leaf.Models.Merge;
 using Leaf.Services;
+using Leaf.Services.Shortcuts;
 using Leaf.ViewModels.Merge;
 
 namespace Leaf.Views.Merge;
@@ -32,6 +34,18 @@ public partial class MergeEditorView : Window
             new CommunityToolkit.Mvvm.Input.RelayCommand(ShowBlamePeekForCurrentConflict);
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+
+        // §5.9: drive InputBindings through IShortcutService so user
+        // overrides take effect. ApplyShortcuts runs once the DataContext
+        // (the VM) is set — without it, the command bindings have no
+        // target. We re-apply on GestureChanged so a Settings rebind
+        // takes effect even while the editor is open.
+        _shortcutService = ResolveShortcutService();
+        if (_shortcutService is not null)
+        {
+            _shortcutService.GestureChanged += OnShortcutGestureChanged;
+        }
+
         // N1: detach the RangeStatesChanged subscription when the window
         // closes so a re-opened editor doesn't accumulate a fresh handler
         // each time. The VM outlives the window (owned by MainViewModel
@@ -43,6 +57,10 @@ public partial class MergeEditorView : Window
             _subscribedVm = null;
             _blameHover?.Dispose();
             _blameHover = null;
+            if (_shortcutService is not null)
+            {
+                _shortcutService.GestureChanged -= OnShortcutGestureChanged;
+            }
             // C6: mirror the VM-detach pattern for the pane-event subscriptions
             // set up in WireNoteEditor. Panes are owned by this window so GC
             // would reclaim them either way, but explicit detach keeps the
@@ -63,6 +81,64 @@ public partial class MergeEditorView : Window
         // save the final values on close. Settings persist per user.
         Loaded += OnMergeEditorLoaded;
         Closing += OnMergeEditorClosing;
+    }
+
+    private readonly IShortcutService? _shortcutService;
+
+    private static IShortcutService? ResolveShortcutService()
+    {
+        // Same service-locator pattern other parts of MergeEditorView
+        // use (ResolveSettingsService etc.). Returns null at design-time
+        // when App.Services isn't built — the editor still functions,
+        // just without runtime-customisable shortcuts.
+        if (Leaf.App.Services is null) return null;
+        return Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetService<IShortcutService>(Leaf.App.Services);
+    }
+
+    private void OnShortcutGestureChanged(object? sender, string? commandId) => ApplyShortcuts();
+
+    private void ApplyShortcuts()
+    {
+        if (_shortcutService is null) return;
+        if (DataContext is not MergeEditorViewModel vm) return;
+
+        // Preserve the single hardcoded alias declared in XAML
+        // (Ctrl+Shift+Z = Redo). Strip everything else and rebuild from
+        // the registry so a Settings rebind is visible immediately.
+        for (var i = InputBindings.Count - 1; i >= 0; i--)
+        {
+            if (InputBindings[i] is KeyBinding kb &&
+                kb.Key == Key.Z && kb.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+            {
+                continue;
+            }
+            InputBindings.RemoveAt(i);
+        }
+
+        BindMerge(ShortcutCommandId.Merge.AcceptOurs, vm.AcceptCurrentConflictOursCommand);
+        BindMerge(ShortcutCommandId.Merge.AcceptTheirs, vm.AcceptCurrentConflictTheirsCommand);
+        BindMerge(ShortcutCommandId.Merge.AcceptBoth, vm.AcceptCurrentConflictBothCommand);
+        BindMerge(ShortcutCommandId.Merge.NextConflict, vm.NextConflictCommand);
+        BindMerge(ShortcutCommandId.Merge.PreviousConflict, vm.PreviousConflictCommand);
+        BindMerge(ShortcutCommandId.Merge.NextChangeSpan, vm.NextChangeSpanCommand);
+        BindMerge(ShortcutCommandId.Merge.PreviousChangeSpan, vm.PreviousChangeSpanCommand);
+        BindMerge(ShortcutCommandId.Merge.NextAutoMergedRegion, vm.NextAutoMergedRegionCommand);
+        BindMerge(ShortcutCommandId.Merge.PreviousAutoMergedRegion, vm.PreviousAutoMergedRegionCommand);
+        BindMerge(ShortcutCommandId.Merge.OpenPalette, vm.OpenPaletteCommand);
+        BindMerge(ShortcutCommandId.Merge.MarkResolved, vm.MarkResolvedCommand);
+        BindMerge(ShortcutCommandId.Merge.Undo, vm.UndoCommand);
+        BindMerge(ShortcutCommandId.Merge.Redo, vm.RedoCommand);
+        BindMerge(ShortcutCommandId.Merge.RequestAiResolution, vm.RequestAiResolutionCommand);
+        BindMerge(ShortcutCommandId.Merge.ShowBlamePeek, ShowBlamePeekForCurrentConflictCommand);
+    }
+
+    private void BindMerge(string commandId, ICommand command)
+    {
+        if (_shortcutService is null) return;
+        var gesture = _shortcutService.GetGesture(commandId);
+        if (gesture is null) return;
+        InputBindings.Add(new KeyBinding(command, gesture));
     }
 
     /// <summary>
@@ -369,6 +445,10 @@ public partial class MergeEditorView : Window
         _subscribedVm = Vm;
         if (_subscribedVm is not null)
         {
+            // §5.9: bindings need the VM in place to resolve their
+            // commands, so we apply them here rather than in the
+            // constructor.
+            ApplyShortcuts();
             _subscribedVm.RangeStatesChanged += OnRangeStatesChanged;
             _subscribedVm.AiConsentRequested += OnAiConsentRequested;
             _subscribedVm.AiResolutionReceived += OnAiResolutionReceived;

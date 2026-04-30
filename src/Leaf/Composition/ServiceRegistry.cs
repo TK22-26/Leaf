@@ -83,6 +83,7 @@ public static class ServiceRegistry
         services.AddSingleton<IExternalToolConfigService, ExternalToolConfigService>();
         services.AddSingleton<IExternalToolLauncherService, ExternalToolLauncherService>();
         services.AddSingleton<IInteractiveRebaseService, InteractiveRebaseService>();
+        services.AddSingleton<Leaf.Services.Shortcuts.IShortcutService, Leaf.Services.Shortcuts.ShortcutService>();
 
         // CLI --auto-commit path. Same provider, same lifetime rules.
         services.AddSingleton<AutoCommitService>();

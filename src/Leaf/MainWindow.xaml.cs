@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using Leaf.Services;
+using Leaf.Services.Shortcuts;
 using Leaf.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -20,6 +21,7 @@ public partial class MainWindow : Window
     private readonly TaskCompletionSource<object?> _firstRenderTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly IGitService _gitService;
     private readonly IRepositoryManagementService _repositoryService;
+    private readonly IShortcutService _shortcutService;
     private readonly MainViewModel _viewModel;
     private Task? _startupInitializationTask;
 
@@ -31,6 +33,7 @@ public partial class MainWindow : Window
         _viewModel = services.GetRequiredService<MainViewModel>();
         _gitService = services.GetRequiredService<IGitService>();
         _repositoryService = services.GetRequiredService<IRepositoryManagementService>();
+        _shortcutService = services.GetRequiredService<IShortcutService>();
 
         DataContext = _viewModel;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
@@ -38,10 +41,62 @@ public partial class MainWindow : Window
 
         NotificationHostControl.NotificationService = services.GetRequiredService<INotificationService>();
 
+        // §5.9 Phase 1: shortcuts are owned by IShortcutService and
+        // applied to InputBindings here so the user's overrides take
+        // effect immediately. Re-applies whenever a binding changes.
+        ApplyShortcuts();
+        _shortcutService.GestureChanged += OnShortcutGestureChanged;
+
         ContentRendered += OnContentRendered;
         // Without this, MainViewModel.Dispose is never called — every
         // unsubscribe added for plan §1.6 would be dead code.
         Closed += OnWindowClosed;
+    }
+
+    private void OnShortcutGestureChanged(object? sender, string? commandId)
+    {
+        // The service can fire with a specific id (single rebind) or
+        // null (ResetAll). Either way the cheapest correct response is
+        // to rebuild every App-scope binding — there are only a handful
+        // and no per-row state to preserve.
+        ApplyShortcuts();
+    }
+
+    private void ApplyShortcuts()
+    {
+        InputBindings.Clear();
+
+        // View / window-chrome
+        Bind(ShortcutCommandId.View.ToggleTerminal, _viewModel.ToggleTerminalCommand);
+        Bind(ShortcutCommandId.View.ToggleCommandPalette, _viewModel.ToggleCommandPaletteCommand);
+        Bind(ShortcutCommandId.View.ReportIssue, _viewModel.ReportIssueCommand);
+
+        // Repository operations. Fetch defaults to the all-remotes
+        // command — matches the toolbar's "Fetch" button. Refresh is a
+        // distinct id with no default gesture; user assigns from
+        // Settings if they want a separate keystroke from F5/Fetch.
+        Bind(ShortcutCommandId.Repository.Fetch, _viewModel.FetchAllCommand);
+        Bind(ShortcutCommandId.Repository.Pull, _viewModel.PullCommand);
+        Bind(ShortcutCommandId.Repository.Push, _viewModel.PushCommand);
+        Bind(ShortcutCommandId.Repository.Refresh, _viewModel.RefreshCommand);
+
+        // Branch
+        Bind(ShortcutCommandId.Branch.Create, _viewModel.CreateBranchCommand);
+
+        // Commit / stash. The Commit shortcut is intentionally not
+        // wired here — the commit input box's own Ctrl+Enter binding
+        // already handles it scoped to that control, and adding a
+        // Window-level binding would steal Ctrl+Enter from any text
+        // box that wants to insert a newline.
+        Bind(ShortcutCommandId.Commit.Stash, _viewModel.StashCommand);
+        Bind(ShortcutCommandId.Commit.PopStash, _viewModel.PopStashCommand);
+    }
+
+    private void Bind(string commandId, ICommand command)
+    {
+        var gesture = _shortcutService.GetGesture(commandId);
+        if (gesture == null) return; // user has unbound this shortcut
+        InputBindings.Add(new KeyBinding(command, gesture));
     }
 
     private void OnWindowClosed(object? sender, EventArgs e)
@@ -50,6 +105,7 @@ public partial class MainWindow : Window
         // root the VM after close.
         _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
         _viewModel.RequestGitFlowActionMenu -= ViewModel_RequestGitFlowActionMenu;
+        _shortcutService.GestureChanged -= OnShortcutGestureChanged;
         ContentRendered -= OnContentRendered;
         Closed -= OnWindowClosed;
 

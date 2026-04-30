@@ -9,12 +9,16 @@ namespace Leaf.Services;
 /// </summary>
 public class SettingsService
 {
-    private static readonly string AppDataFolder = Path.Combine(
+    private static readonly string DefaultAppDataFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Leaf");
 
-    private static readonly string SettingsFile = Path.Combine(AppDataFolder, "settings.json");
-    private static readonly string RepositoriesFile = Path.Combine(AppDataFolder, "repositories.json");
+    // Instance paths (rather than static) so tests can route a fresh
+    // service at a temp folder. Production callers use the parameterless
+    // ctor and get the default %APPDATA%\Leaf location.
+    private readonly string AppDataFolder;
+    private readonly string SettingsFile;
+    private readonly string RepositoriesFile;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -23,9 +27,19 @@ public class SettingsService
         IgnoreReadOnlyProperties = true
     };
 
-    public SettingsService()
+    public SettingsService() : this(DefaultAppDataFolder) { }
+
+    /// <summary>
+    /// Override constructor used by tests to point the service at a
+    /// throwaway folder. <c>internal</c> so it never shows up in the
+    /// shipped public surface but stays accessible to <c>Leaf.Tests</c>
+    /// via the existing <c>InternalsVisibleTo</c>.
+    /// </summary>
+    internal SettingsService(string appDataFolder)
     {
-        // Ensure app data folder exists
+        AppDataFolder = appDataFolder;
+        SettingsFile = Path.Combine(AppDataFolder, "settings.json");
+        RepositoriesFile = Path.Combine(AppDataFolder, "repositories.json");
         Directory.CreateDirectory(AppDataFolder);
     }
 
@@ -248,6 +262,13 @@ public class AppSettings
     public double MergeOursPaneRatio { get; set; } = 1.0;
     public double MergeTheirsPaneRatio { get; set; } = 1.0;
     public double MergeResultRowRatio { get; set; } = 1.0;
+
+    // §5.9 customisable shortcuts. Keyed by the stable string id from
+    // ShortcutCommandId; value is the gesture string (e.g. "Ctrl+Shift+P")
+    // or empty when the user has explicitly unbound a shortcut. Only
+    // entries that diverge from the registered default get persisted —
+    // ShortcutService prunes the default-equal cases when it writes.
+    public Dictionary<string, string> ShortcutOverrides { get; set; } = [];
 }
 
 /// <summary>
