@@ -32,7 +32,12 @@ internal static class ShortcutDefaults
             ShortcutScope.Application,
             CategoryView,
             "Toggle command palette",
-            new KeyGesture(Key.Space, ModifierKeys.Alt)));
+            // Ctrl+Shift+P matches VS Code's command-palette convention
+            // and is robust against Windows' system-menu interception of
+            // Alt+Space. Leaf also keeps a separate double-tap-Space
+            // gesture wired through MainWindow.PreviewKeyDown for users
+            // who prefer the chord-less version.
+            new KeyGesture(Key.P, ModifierKeys.Control | ModifierKeys.Shift)));
 
         registry.Register(new ShortcutDefinition(
             ShortcutCommandId.View.ReportIssue,
@@ -64,7 +69,10 @@ internal static class ShortcutDefaults
             ShortcutScope.Application,
             CategoryRepository,
             "Push to remote",
-            new KeyGesture(Key.P, ModifierKeys.Control | ModifierKeys.Shift)));
+            // Ctrl+Shift+P moved to the command palette (VS Code
+            // convention). Push picks Ctrl+Shift+K, which is free
+            // across the App-scope shortcut set.
+            new KeyGesture(Key.K, ModifierKeys.Control | ModifierKeys.Shift)));
 
         registry.Register(new ShortcutDefinition(
             ShortcutCommandId.Repository.Refresh,
