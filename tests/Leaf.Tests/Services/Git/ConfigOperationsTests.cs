@@ -95,6 +95,7 @@ public class ConfigOperationsTests
             IReadOnlyList<string> arguments,
             string? input = null,
             string? credentialKey = null,
+            IReadOnlyDictionary<string, string>? extraEnvironment = null,
             CancellationToken cancellationToken = default)
         {
             LastArgs = arguments;

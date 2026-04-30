@@ -44,6 +44,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly Services.Merge.IWordDiffService _wordDiffService;
     private readonly Services.Merge.IImageMergeService? _imageMergeService;
     private readonly Services.Merge.IMergeBlameService _mergeBlameService;
+    private readonly IInteractiveRebaseService _interactiveRebaseService;
 
     // The per-repo DI scope. Owns the current IRepositorySession (scoped)
     // and — in future phases — the per-repo ViewModels. Disposed on repo
@@ -378,6 +379,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Services.Merge.IMergeEngine mergeEngine,
         Services.Merge.IWordDiffService wordDiffService,
         Services.Merge.IMergeBlameService mergeBlameService,
+        IInteractiveRebaseService interactiveRebaseService,
         INotificationService? notificationService = null,
         Services.Merge.IAiMergeAssistant? aiMergeAssistant = null,
         Services.Merge.IImageMergeService? imageMergeService = null)
@@ -388,6 +390,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _aiMergeAssistant = aiMergeAssistant;
         _imageMergeService = imageMergeService;
         _mergeBlameService = mergeBlameService;
+        _interactiveRebaseService = interactiveRebaseService ?? throw new ArgumentNullException(nameof(interactiveRebaseService));
         _gitFlowService = gitFlowService;
         _credentialService = credentialService;
         _settingsService = settingsService;

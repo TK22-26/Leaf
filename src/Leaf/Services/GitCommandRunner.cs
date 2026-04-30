@@ -41,7 +41,7 @@ public class GitCommandRunner : IGitCommandRunner
         GitCommand command,
         CancellationToken cancellationToken = default)
     {
-        return RunAsync(workingDirectory, command.ToArguments(), null, null, cancellationToken);
+        return RunAsync(workingDirectory, command.ToArguments(), null, null, null, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -50,6 +50,7 @@ public class GitCommandRunner : IGitCommandRunner
         IReadOnlyList<string> arguments,
         string? input = null,
         string? credentialKey = null,
+        IReadOnlyDictionary<string, string>? extraEnvironment = null,
         CancellationToken cancellationToken = default)
     {
         var startInfo = new ProcessStartInfo
@@ -79,6 +80,19 @@ public class GitCommandRunner : IGitCommandRunner
             {
                 startInfo.Environment["GIT_ASKPASS"] = askPass;
                 startInfo.Environment["LEAF_CREDENTIAL_KEY"] = credentialKey;
+            }
+        }
+
+        // Caller-supplied environment overrides take precedence so the
+        // interactive-rebase plumbing can plant GIT_SEQUENCE_EDITOR /
+        // GIT_EDITOR alongside the LEAF_REBASE_* contract that the helper
+        // exe reads. Previously-set keys (GIT_TERMINAL_PROMPT, GIT_ASKPASS)
+        // are intentionally overridable — caller is closer to the use case.
+        if (extraEnvironment != null)
+        {
+            foreach (var kvp in extraEnvironment)
+            {
+                startInfo.Environment[kvp.Key] = kvp.Value;
             }
         }
 

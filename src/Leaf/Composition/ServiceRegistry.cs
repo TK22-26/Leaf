@@ -82,6 +82,7 @@ public static class ServiceRegistry
         services.AddSingleton<IExternalToolDetectorService, ExternalToolDetectorService>();
         services.AddSingleton<IExternalToolConfigService, ExternalToolConfigService>();
         services.AddSingleton<IExternalToolLauncherService, ExternalToolLauncherService>();
+        services.AddSingleton<IInteractiveRebaseService, InteractiveRebaseService>();
 
         // CLI --auto-commit path. Same provider, same lifetime rules.
         services.AddSingleton<AutoCommitService>();
