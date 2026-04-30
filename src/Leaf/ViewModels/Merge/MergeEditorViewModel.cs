@@ -937,14 +937,54 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         IsResolving = true;
         try
         {
-            // C6: if any range carries a Note, surface them in the commit
-            // body under a "Conflict notes:" heading so code reviewers can
-            // see the user's reasoning for non-trivial resolutions. Empty
-            // notes collection → empty body → git uses its default merge
-            // message (same pre-C6 behavior, never regressed).
-            var commitMessage = BuildMergeCommitMessageFromNotes();
-            await _gitService.CompleteMergeAsync(_repoPath, commitMessage, SessionToken)
+            // Rebase pauses leave a multi-step state machine behind that
+            // a plain `repo.Commit` doesn't advance — the conflicting
+            // commit gets recorded but the rebase's remaining todo
+            // entries (more picks, rewords, squashes) are never
+            // applied. Routing through `git rebase --continue` instead
+            // makes the rebase machinery do the right thing: it commits
+            // the resolution AND processes any remaining todo entries.
+            // The continue path also re-establishes the
+            // Leaf.SequenceEditor helper env from a marker file so
+            // post-conflict reword / squash messages still get applied.
+            //
+            // Cherry-pick / revert clear their HEAD via the next commit
+            // automatically, so they remain on the merge path.
+            var rebaseInProgress = await _gitService.IsRebaseInProgressAsync(_repoPath, SessionToken)
                 .ConfigureAwait(true);
+
+            if (rebaseInProgress)
+            {
+                var result = await _gitService.ContinueRebaseAsync(_repoPath, SessionToken)
+                    .ConfigureAwait(true);
+
+                if (!result.Success)
+                {
+                    if (!result.HasConflicts && !string.IsNullOrEmpty(result.ErrorMessage))
+                    {
+                        // Hard failure (not another conflict). Surface it
+                        // to the host so the user gets the git error
+                        // verbatim instead of a silent "Merge completed".
+                        throw new InvalidOperationException(result.ErrorMessage);
+                    }
+                    // Another conflict — fire MergeCompleted so the
+                    // window closes; the host's RefreshAsync will pick
+                    // up the new conflict state and the user can re-open
+                    // the merge editor on the next conflict.
+                }
+            }
+            else
+            {
+                // C6: if any range carries a Note, surface them in the
+                // commit body under a "Conflict notes:" heading so code
+                // reviewers can see the user's reasoning for non-trivial
+                // resolutions. Empty notes collection → empty body → git
+                // uses its default merge-commit message (same pre-C6
+                // behavior, never regressed).
+                var commitMessage = BuildMergeCommitMessageFromNotes();
+                await _gitService.CompleteMergeAsync(_repoPath, commitMessage, SessionToken)
+                    .ConfigureAwait(true);
+            }
             MergeCompleted?.Invoke(this, true);
         }
         finally { IsResolving = false; }

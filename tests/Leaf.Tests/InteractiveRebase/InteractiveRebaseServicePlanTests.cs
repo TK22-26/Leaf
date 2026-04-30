@@ -216,7 +216,7 @@ public class InteractiveRebaseServicePlanTests
         // we hit during the first end-to-end smoke test). Forward slashes
         // pass through verbatim, and the wrapping quotes survive a path
         // with spaces (Program Files installs).
-        InteractiveRebaseService.ToShellEditorPath(input).Should().Be(expected);
+        Leaf.Services.RebaseHelperResolver.ToShellEditorPath(input).Should().Be(expected);
     }
 
     private static RebaseTodoItem Item(

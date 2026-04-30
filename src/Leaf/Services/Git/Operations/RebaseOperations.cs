@@ -10,8 +10,11 @@ namespace Leaf.Services.Git.Operations;
 /// </summary>
 internal class RebaseOperations
 {
+    private readonly IGitOperationContext _context;
+
     public RebaseOperations(IGitOperationContext context)
     {
+        _context = context ?? throw new ArgumentNullException(nameof(context));
     }
 
     /// <summary>
@@ -65,30 +68,81 @@ internal class RebaseOperations
     }
 
     /// <summary>
-    /// Continue a rebase after resolving conflicts.
+    /// Continue a rebase after the user has resolved conflicts.
     /// </summary>
-    public Task<Models.MergeResult> ContinueRebaseAsync(string repoPath, CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// Routes through <c>git rebase --continue</c> (CLI) rather than
+    /// LibGit2Sharp's <c>repo.Rebase.Continue</c>. Two reasons:
+    /// <list type="bullet">
+    ///   <item>LibGit2Sharp does not invoke <c>GIT_EDITOR</c> for
+    ///         <c>reword</c> / <c>squash</c> entries, so any custom
+    ///         message Leaf had queued for a row after the conflict
+    ///         point would silently be replaced with the original
+    ///         commit message.</item>
+    ///   <item>The CLI matches what every other Leaf rebase verb
+    ///         (skip, abort) already uses — a single execution model
+    ///         is easier to reason about than a mixed LibGit2Sharp /
+    ///         CLI split.</item>
+    /// </list>
+    /// When a Leaf-driven interactive rebase is in progress (marker file
+    /// present in <c>.git/rebase-merge/</c>), <see cref="RebaseHelperResolver.BuildContinuationEnvironment"/>
+    /// re-establishes the helper env so the editor invocations on the
+    /// CLI side reach our <c>Leaf.SequenceEditor.exe</c>.
+    /// </remarks>
+    public async Task<Models.MergeResult> ContinueRebaseAsync(string repoPath, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() =>
+        Log.Info("Rebase", "ContinueRebase: running git rebase --continue");
+        MergeDebugHelper.LogMergeState("BeforeContinueRebase", repoPath);
+
+        var gitDir = Path.Combine(repoPath, ".git");
+        var env = RebaseHelperResolver.BuildContinuationEnvironment(gitDir);
+        if (env != null)
         {
-            Log.Info("Rebase", "ContinueRebase");
-            MergeDebugHelper.LogMergeState("BeforeContinueRebase", repoPath);
-            using var repo = new Repository(repoPath);
-            var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
-            var options = new RebaseOptions();
+            Log.Info("Rebase", "ContinueRebase: leaf marker present, re-establishing helper env");
+        }
 
-            var result = repo.Rebase.Continue(new Identity(signature.Name, signature.Email), options);
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath,
+            ["rebase", "--continue"],
+            input: null,
+            credentialKey: null,
+            extraEnvironment: env,
+            cancellationToken: cancellationToken);
 
-            Log.Info("Rebase", $"ContinueRebase: status={result.Status}");
-            MergeDebugHelper.LogMergeState("AfterContinueRebase", repoPath);
+        Log.Info("Rebase", $"ContinueRebase: exit={result.ExitCode}");
+        MergeDebugHelper.LogMergeState("AfterContinueRebase", repoPath);
 
-            return result.Status switch
+        if (result.Success)
+        {
+            return new Models.MergeResult { Success = true };
+        }
+
+        // Rebase paused again — another conflict or an `edit` stop. Same
+        // probe that InteractiveRebaseService.StartAsync uses.
+        var paused = Directory.Exists(Path.Combine(gitDir, "rebase-merge")) ||
+                     Directory.Exists(Path.Combine(gitDir, "rebase-apply"));
+
+        if (paused)
+        {
+            Log.Info("Rebase", $"ContinueRebase: paused again (exit {result.ExitCode}); user action required.");
+            return new Models.MergeResult
             {
-                RebaseStatus.Complete => new Models.MergeResult { Success = true },
-                RebaseStatus.Conflicts => new Models.MergeResult { Success = false, HasConflicts = true },
-                _ => new Models.MergeResult { Success = false, ErrorMessage = $"Rebase status: {result.Status}" }
+                Success = false,
+                HasConflicts = true,
+                ErrorMessage = string.IsNullOrWhiteSpace(result.StandardError)
+                    ? result.StandardOutput.Trim()
+                    : result.StandardError.Trim(),
             };
-        }, cancellationToken);
+        }
+
+        Log.Error("Rebase", $"ContinueRebase: failed (exit {result.ExitCode}): {result.StandardError.Trim()}");
+        return new Models.MergeResult
+        {
+            Success = false,
+            ErrorMessage = string.IsNullOrWhiteSpace(result.StandardError)
+                ? $"git rebase --continue exited with code {result.ExitCode}."
+                : result.StandardError.Trim(),
+        };
     }
 
     /// <summary>

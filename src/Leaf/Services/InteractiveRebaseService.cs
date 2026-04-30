@@ -11,21 +11,17 @@ namespace Leaf.Services;
 /// <c>Leaf.SequenceEditor.exe</c> helper — no LibGit2Sharp, no shell.
 /// </summary>
 /// <remarks>
-/// <para><b>Continue / skip / abort</b> after a paused rebase are handled
-/// by the existing <see cref="IRebaseService"/> on top of LibGit2Sharp's
-/// <c>repo.Rebase.Continue</c>. LibGit2Sharp's API does not invoke
-/// <c>GIT_EDITOR</c> for <c>reword</c> / <c>squash</c> entries that
-/// follow the conflict point, which means a custom <c>NewMessage</c> on
-/// such rows would not be applied if the user resolves a conflict and
-/// continues through Leaf's merge-editor flow. Rewording / squashing
-/// commits that come <i>before</i> the first conflict works as
-/// expected, since the original <c>git rebase --interactive</c>
-/// invocation drives those through our helper before pausing.</para>
+/// <para>When a rebase pauses on a conflict, the service writes a marker
+/// file at <c>.git/rebase-merge/leaf-rebase-temp</c> pointing at the
+/// per-rebase temp dir. <see cref="Git.Operations.RebaseOperations.ContinueRebaseAsync"/>
+/// reads that marker on the subsequent <c>git rebase --continue</c> and
+/// re-establishes the helper env so reword / squash entries that follow
+/// the conflict point still get their custom messages applied. The
+/// continue path uses the git CLI (not LibGit2Sharp) so the editor
+/// invocation actually fires.</para>
 /// </remarks>
 public class InteractiveRebaseService : IInteractiveRebaseService
 {
-    private const string SequenceEditorExecutable = "Leaf.SequenceEditor.exe";
-
     // Git's plumbing log format: hash, short hash, "name <email>", strict
     // ISO-8601 author date, full message body, then the record terminator.
     // %x1F separates fields, %x1E separates records — both ASCII control
@@ -43,20 +39,6 @@ public class InteractiveRebaseService : IInteractiveRebaseService
 
     private readonly IGitCommandRunner _commandRunner;
     private readonly IRepositoryEventHub _eventHub;
-
-    /// <summary>
-    /// Cached path to <c>Leaf.SequenceEditor.exe</c>. Same pattern as
-    /// <see cref="GitCommandRunner"/>'s AskPass resolution: evaluated once,
-    /// returns null when the helper is missing so we can fail loudly with a
-    /// clean error rather than producing a half-driven rebase.
-    /// </summary>
-    private static readonly Lazy<string?> _sequenceEditorPath = new(() =>
-    {
-        var candidate = Path.Combine(AppContext.BaseDirectory, SequenceEditorExecutable);
-        if (File.Exists(candidate)) return candidate;
-        Log.Warn("Rebase", $"{SequenceEditorExecutable} not found at {candidate}; interactive rebase will not run.");
-        return null;
-    });
 
     public InteractiveRebaseService(IGitCommandRunner commandRunner, IRepositoryEventHub eventHub)
     {
@@ -120,15 +102,15 @@ public class InteractiveRebaseService : IInteractiveRebaseService
         if (plan == null || plan.Count == 0)
             throw new ArgumentException("Plan must contain at least one item.", nameof(plan));
 
-        var helper = _sequenceEditorPath.Value;
+        var helper = RebaseHelperResolver.FindHelperPath();
         if (string.IsNullOrEmpty(helper))
         {
-            Log.Error("Rebase", $"Start refused: {SequenceEditorExecutable} not on disk; helper exe is required.");
+            Log.Error("Rebase", $"Start refused: {RebaseHelperResolver.SequenceEditorExecutable} not on disk; helper exe is required.");
             return new MergeResult
             {
                 Success = false,
                 ErrorMessage =
-                    $"{SequenceEditorExecutable} is missing from the install directory; " +
+                    $"{RebaseHelperResolver.SequenceEditorExecutable} is missing from the install directory; " +
                     "interactive rebase requires the helper exe.",
             };
         }
@@ -165,32 +147,15 @@ public class InteractiveRebaseService : IInteractiveRebaseService
             var (todoContent, messageCount) = MaterialisePlan(plan, messagesDir);
             await File.WriteAllTextAsync(todoFile, todoContent, noBomUtf8, cancellationToken);
 
-            // Git on Windows runs the editor via a shell (MSYS bash for
-            // GIT_SEQUENCE_EDITOR / GIT_EDITOR), so a Windows path with
-            // backslashes and spaces gets mangled by the shell unless we
-            // pre-format it: forward-slash separators, double-quoted to
-            // protect spaces. (GIT_ASKPASS gets run directly without a
-            // shell, which is why the AskPass helper works as a raw
-            // backslash path — the contracts differ here.)
-            var helperForShell = ToShellEditorPath(helper);
-
-            var env = new Dictionary<string, string>
-            {
-                [RebaseEditorRunner.TodoSourceEnv] = todoFile,
-                [RebaseEditorRunner.MessagesDirEnv] = messagesDir,
-                [RebaseEditorRunner.MessageCursorEnv] = cursorFile,
-                ["GIT_SEQUENCE_EDITOR"] = helperForShell,
-            };
-
-            // Only override GIT_EDITOR when the plan actually rewrites
-            // commit messages. Otherwise let git fall back to its default
-            // editor path so unexpected editor invocations (rare, but e.g.
-            // when a hook bumps something) hit Notepad rather than our
-            // helper, which would refuse to write a message it doesn't have.
-            if (messageCount > 0)
-            {
-                env["GIT_EDITOR"] = helperForShell;
-            }
+            // GIT_EDITOR is overridden only when the plan rewrites commit
+            // messages. For pure pick/drop/exec plans we leave git's
+            // default editor untouched so an unexpected editor invocation
+            // (a hook firing during exec, etc.) hits Notepad rather than
+            // our helper — which would refuse to write a message it
+            // doesn't have queued.
+            var env = RebaseHelperResolver.BuildLaunchEnvironment(
+                helper, todoFile, messagesDir, cursorFile,
+                overrideGitEditor: messageCount > 0);
 
             var rebaseArgs = new[] { "rebase", "--interactive", $"{fromCommitSha}^" };
             Log.Info("Rebase", $"Starting interactive rebase: {string.Join(" ", rebaseArgs)} (plan items={plan.Count}, messages={messageCount})");
@@ -225,6 +190,14 @@ public class InteractiveRebaseService : IInteractiveRebaseService
 
             if (paused)
             {
+                // Drop a marker file inside .git/rebase-merge so the
+                // shared ContinueRebaseAsync path can re-establish the
+                // helper env when the user resolves the conflict and the
+                // merge editor calls continue. Without this, reword /
+                // squash entries that follow the conflict point would
+                // commit with their original messages.
+                await WritePauseMarkerAsync(session.GitDirectory, temp.FullName, cancellationToken);
+
                 Log.Info("Rebase", $"Start: rebase paused (exit {result.ExitCode}); conflict or edit-stop requires user action.");
                 _eventHub.NotifyConflictStateChanged();
                 return new MergeResult
@@ -257,6 +230,23 @@ public class InteractiveRebaseService : IInteractiveRebaseService
             {
                 TryDelete(temp.FullName);
             }
+        }
+    }
+
+    private static async Task WritePauseMarkerAsync(string gitDirectory, string tempDir, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var marker = RebaseHelperResolver.LeafTempMarkerPath(gitDirectory);
+            await File.WriteAllTextAsync(marker, tempDir, new UTF8Encoding(false), cancellationToken);
+            Log.Info("Rebase", $"Pause marker written: {marker} -> {tempDir}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort. The continue path will fall through to
+            // running git without the helper env if the marker is
+            // missing — same outcome as a non-Leaf rebase pause.
+            Log.Warn("Rebase", $"Failed to write pause marker: {ex.Message}");
         }
     }
 
@@ -423,19 +413,6 @@ public class InteractiveRebaseService : IInteractiveRebaseService
     {
         var path = Path.Combine(dir, $"{index:0000}.msg");
         File.WriteAllText(path, content, new UTF8Encoding(false));
-    }
-
-    /// <summary>
-    /// Format an absolute Windows executable path so git's shell-based
-    /// editor invocation can run it. Forward slashes survive the MSYS
-    /// shell verbatim, and the surrounding double quotes protect against
-    /// spaces in <c>%LOCALAPPDATA%</c> or <c>Program Files</c> install
-    /// locations.
-    /// </summary>
-    internal static string ToShellEditorPath(string path)
-    {
-        var slashed = path.Replace('\\', '/');
-        return $"\"{slashed}\"";
     }
 
     private static void TryDelete(string path)
