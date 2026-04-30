@@ -45,17 +45,10 @@
         </Style>
     </Window.Resources>
 
-    <Window.InputBindings>
-        <KeyBinding
-            Key="Oem3"
-            Command="{Binding ToggleTerminalCommand}"
-            Modifiers="Control" />
-        <KeyBinding Key="F1" Command="{Binding ReportIssueCommand}" />
-        <KeyBinding
-            Key="Space"
-            Command="{Binding ToggleCommandPaletteCommand}"
-            Modifiers="Alt" />
-    </Window.InputBindings>
+    <!-- Window.InputBindings are populated at runtime by
+         MainWindow.ApplyShortcuts() so the user's customisations from
+         IShortcutService take effect (and live-update on rebind). -->
+
 
     <Grid>
         <Grid.RowDefinitions>
