@@ -1,0 +1,634 @@
+<UserControl
+    x:Class="Leaf.Views.BisectDetailView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="clr-namespace:Leaf.Controls"
+    xmlns:converters="clr-namespace:Leaf.Converters"
+    xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+    xmlns:models="clr-namespace:Leaf.Models">
+    <UserControl.Resources>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+        <converters:NullToVisibilityInverseConverter x:Key="NullToVisibilityInverseConverter" />
+        <converters:EmptyToVisibilityConverter x:Key="EmptyToVisibilityConverter" />
+        <converters:BoolToSectionRowHeightConverter x:Key="BoolToSectionRowHeightConverter" />
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+
+        <!--  Chevron toggle style for the collapsible section headers in the
+              right rail. Reused for both "Changes in this commit" and
+              "Verdict log" so they read identically to the staged/unstaged
+              and resolved/unresolved sections elsewhere in the app.  -->
+        <Style x:Key="SectionChevronToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <!--  Outer Grid: top action card row (Auto), body row (*).
+          Background stays transparent so we don't double-paint the
+          ApplicationBackgroundBrush behind every card; cards carry
+          their own backgrounds.  -->
+    <Grid Background="Transparent" Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ════════════════════════════════════════════════════════
+             TOP ACTION CARD: full-width row carrying the commit
+             summary on the left, the verdict buttons in the center,
+             and End Bisect on the right. Three internal layouts swap
+             based on bisect state (testing / converged / all-skipped).
+             ════════════════════════════════════════════════════════ -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16,12"
+                Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ── LEFT: commit summary (sha + subject + author/date + body) ── -->
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <!-- Mode title — flips between testing / converged / all-skipped -->
+                    <TextBlock FontSize="11" FontWeight="SemiBold" Opacity="0.7">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="TESTING THIS COMMIT" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding BisectFoundSha, Converter={StaticResource NullToVisibilityConverter}}" Value="Visible">
+                                        <Setter Property="Text" Value="FIRST BAD COMMIT FOUND" />
+                                        <Setter Property="Foreground" Value="#E89F9F" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding CurrentBisectState.AllSkippedTerminator, FallbackValue=False}" Value="True">
+                                        <Setter Property="Text" Value="BISECT ENDED — ALL CANDIDATES SKIPPED" />
+                                        <Setter Property="Foreground" Value="#F5C842" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <!-- Sha + subject row. The sha is a Hyperlink-style
+                         button that copies the full sha to clipboard on
+                         click — users frequently want to share or paste
+                         the SHA into a bug report mid-bisect.  -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Command="{Binding CopyBisectShaCommand}"
+                                ToolTip="Copy full SHA to clipboard">
+                            <TextBlock FontFamily="Consolas"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                       Text="{Binding CurrentBisectState.CurrentShortSha, FallbackValue=''}" />
+                        </Button>
+                        <TextBlock FontSize="14"
+                                   Margin="12,0,0,0"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Text="{Binding CurrentBisectState.CurrentSubject, FallbackValue=''}" />
+                    </StackPanel>
+
+                    <!-- Author · date · step number · steps remaining.
+                         Author tooltip surfaces the email address. The
+                         step counter is computed from BisectLog.Count,
+                         which is always available even when git omits
+                         the "(roughly K steps)" hint.  -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <TextBlock FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Text="{Binding CurrentBisectCommitInfo.Author, FallbackValue=''}"
+                                   ToolTip="{Binding CurrentBisectCommitInfo.AuthorEmail, FallbackValue=''}" />
+                        <TextBlock FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   Text=" · "
+                                   Visibility="{Binding CurrentBisectCommitInfo.Author, Converter={StaticResource EmptyToVisibilityConverter}, FallbackValue=Collapsed}" />
+                        <TextBlock FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Text="{Binding CurrentBisectCommitInfo.Date, StringFormat='{}{0:yyyy-MM-dd HH:mm}', FallbackValue=''}"
+                                   ToolTip="{Binding CurrentBisectCommitInfo.DateDisplay, FallbackValue=''}" />
+                        <TextBlock FontSize="12"
+                                   Margin="16,0,0,0"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   ToolTip="Number of verdicts (good/bad/skip) issued so far in this bisect">
+                            <Run Text="Step " /><Run Text="{Binding BisectLog.Count, Mode=OneWay, FallbackValue=0}" />
+                        </TextBlock>
+                        <TextBlock FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   Margin="8,0,0,0"
+                                   Visibility="{Binding CurrentBisectState.StepsRemaining, Converter={StaticResource NullToVisibilityConverter}}">
+                            <Run Text=" · ~" /><Run Text="{Binding CurrentBisectState.StepsRemaining, Mode=OneWay, FallbackValue=''}" /><Run Text=" remaining" />
+                        </TextBlock>
+                    </StackPanel>
+
+                    <!-- All-skipped explanation (only shows in that state) -->
+                    <TextBlock TextWrapping="Wrap"
+                               Margin="0,8,0,0"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Text="Every commit in the search range was marked Skip. End the bisect, then start a new one with a different known-good or known-bad ref to widen the range.">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentBisectState.AllSkippedTerminator, FallbackValue=False}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- ── CENTER: verdict dropdown (only in testing state).
+                     A single button opens a popup with the three verdict
+                     options, each retaining the green / red / gray
+                     palette from the previous side-by-side layout. The
+                     dropdown form keeps the top bar tight and lets us
+                     promote bookend / step info into the freed space.
+                     ── -->
+                <Grid Grid.Column="1"
+                      VerticalAlignment="Center"
+                      Margin="0,0,16,0">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding BisectFoundSha, Converter={StaticResource NullToVisibilityConverter}}" Value="Visible">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding CurrentBisectState.AllSkippedTerminator, FallbackValue=False}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Button x:Name="VerdictDropdownButton"
+                            Padding="20,10"
+                            Background="{DynamicResource AccentFillColorDefaultBrush}"
+                            BorderBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                            BorderThickness="1"
+                            Foreground="White"
+                            Click="VerdictDropdown_Click"
+                            ToolTip="Mark this commit (git bisect good / bad / skip)">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="TaskListSquareLtr" FontSize="14" Margin="0,0,8,0" />
+                            <TextBlock Text="Mark commit…" FontWeight="SemiBold" />
+                            <ic:SymbolIcon Symbol="ChevronDown" FontSize="11" Margin="8,0,0,0" />
+                        </StackPanel>
+                    </Button>
+                    <Popup x:Name="VerdictPopup"
+                           PlacementTarget="{Binding ElementName=VerdictDropdownButton}"
+                           Placement="Bottom"
+                           StaysOpen="False"
+                           AllowsTransparency="True">
+                        <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="6"
+                                Margin="0,4,0,0"
+                                MinWidth="280">
+                            <StackPanel>
+                                <Button Padding="12,10"
+                                        HorizontalContentAlignment="Stretch"
+                                        Background="#1E3A1E"
+                                        BorderBrush="#3D7A3D"
+                                        BorderThickness="1"
+                                        Foreground="#9FE89F"
+                                        Command="{Binding MarkBisectGoodCommand}"
+                                        Click="VerdictItem_Click"
+                                        ToolTip="Regression NOT present in this commit (git bisect good)">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ic:SymbolIcon Grid.Column="0" Symbol="Checkmark" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="Good" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="Regression NOT present here"
+                                                   FontSize="11"
+                                                   Margin="12,0,0,0"
+                                                   Opacity="0.8"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                                <Button Padding="12,10"
+                                        Margin="0,4,0,0"
+                                        HorizontalContentAlignment="Stretch"
+                                        Background="#3A1E1E"
+                                        BorderBrush="#7A3D3D"
+                                        BorderThickness="1"
+                                        Foreground="#E89F9F"
+                                        Command="{Binding MarkBisectBadCommand}"
+                                        Click="VerdictItem_Click"
+                                        ToolTip="Regression IS present in this commit (git bisect bad)">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ic:SymbolIcon Grid.Column="0" Symbol="Dismiss" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="Bad" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="Regression IS present here"
+                                                   FontSize="11"
+                                                   Margin="12,0,0,0"
+                                                   Opacity="0.8"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                                <Button Padding="12,10"
+                                        Margin="0,4,0,0"
+                                        HorizontalContentAlignment="Stretch"
+                                        Background="#2A2A3A"
+                                        BorderBrush="#4A4A5A"
+                                        BorderThickness="1"
+                                        Foreground="#C0C0E0"
+                                        Command="{Binding MarkBisectSkipCommand}"
+                                        Click="VerdictItem_Click"
+                                        ToolTip="Cannot test this commit — let git pick another (git bisect skip)">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ic:SymbolIcon Grid.Column="0" Symbol="ArrowForward" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="Skip" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="Cannot test — pick another"
+                                                   FontSize="11"
+                                                   Margin="12,0,0,0"
+                                                   Opacity="0.8"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+                </Grid>
+
+                <!-- ── RIGHT: End Bisect (always visible during a bisect) ── -->
+                <Button Grid.Column="2"
+                        Padding="16,10"
+                        VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        Command="{Binding ResetBisectCommand}"
+                        ToolTip="End bisect and restore HEAD (git bisect reset)">
+                    <StackPanel Orientation="Horizontal">
+                        <ic:SymbolIcon Symbol="ArrowReset" FontSize="14" Margin="0,0,8,0" />
+                        <TextBlock Text="End Bisect" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- ════════════════════════════════════════════════════════
+             BODY: 2/3 diff viewer + 1/3 right rail.
+             ════════════════════════════════════════════════════════ -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+
+            <!--  LEFT: Diff viewer card. Reuses the same AvalonEdit-
+                  backed control the rest of the app uses, with its
+                  own DiffViewerViewModel instance so the bisect's
+                  embedded diff doesn't fight the global IsDiffViewerVisible
+                  takeover state.  -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Margin="0,0,12,0">
+                <controls:DiffViewerControl DataContext="{Binding BisectDiffViewerViewModel}" />
+            </Border>
+
+            <!--  RIGHT: vertical rail with two collapsible sections —
+                  Changes in this commit (top, scrollable file list) and
+                  Verdict log (bottom, scrollable history). Mirrors the
+                  staged/unstaged + resolved/unresolved patterns; row
+                  heights collapse to Auto when a section is closed.  -->
+            <Border Grid.Column="1"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="{Binding IsBisectChangesExpanded, Converter={StaticResource BoolToSectionRowHeightConverter}}" />
+                        <RowDefinition Height="{Binding IsBisectVerdictLogExpanded, Converter={StaticResource BoolToSectionRowHeightConverter}}" />
+                    </Grid.RowDefinitions>
+
+                    <!--  ──── Section 1: Changes in this commit ────  -->
+                    <Grid Grid.Row="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <ToggleButton Grid.Row="0"
+                                      Style="{StaticResource SectionChevronToggleStyle}"
+                                      IsChecked="{Binding IsBisectChangesExpanded, Mode=TwoWay}"
+                                      Padding="12,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ic:SymbolIcon Grid.Column="0"
+                                               Symbol="ChevronDown"
+                                               FontSize="12"
+                                               Margin="0,0,8,0"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                    <ic:SymbolIcon.Style>
+                                        <Style TargetType="{x:Type ic:SymbolIcon}">
+                                            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+                                            <Setter Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <RotateTransform Angle="0" />
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsBisectChangesExpanded}" Value="False">
+                                                    <Setter Property="RenderTransform">
+                                                        <Setter.Value>
+                                                            <RotateTransform Angle="-90" />
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ic:SymbolIcon.Style>
+                                </ic:SymbolIcon>
+                                <TextBlock Grid.Column="1"
+                                           Text="Changes in this commit"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                <TextBlock Grid.Column="2"
+                                           FontSize="11"
+                                           VerticalAlignment="Center"
+                                           Margin="8,0,0,0"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                    <Run Text="(" /><Run Text="{Binding CurrentBisectChanges.Count, Mode=OneWay}" /><Run Text=")" />
+                                </TextBlock>
+                            </Grid>
+                        </ToggleButton>
+
+                        <ListView Grid.Row="1"
+                                  ItemsSource="{Binding CurrentBisectChanges}"
+                                  SelectedItem="{Binding SelectedBisectFile, Mode=TwoWay}"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  Visibility="{Binding IsBisectChangesExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ListView.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:FileChangeInfo}">
+                                    <Grid Margin="4,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Path}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="12"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                        <TextBlock Grid.Column="1"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Margin="8,0,0,0"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                            <Run Text="+" Foreground="#7BC97B" /><Run Text="{Binding LinesAdded, Mode=OneWay}" />
+                                            <Run Text="  -" Foreground="#E89F9F" /><Run Text="{Binding LinesDeleted, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+
+                    <!--  Hairline divider between the two sections.  -->
+                    <Border Grid.Row="0"
+                            VerticalAlignment="Bottom"
+                            Height="1"
+                            Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
+
+                    <!--  ──── Section 2: Verdict log ────  -->
+                    <Grid Grid.Row="1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <ToggleButton Grid.Row="0"
+                                      Style="{StaticResource SectionChevronToggleStyle}"
+                                      IsChecked="{Binding IsBisectVerdictLogExpanded, Mode=TwoWay}"
+                                      Padding="12,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ic:SymbolIcon Grid.Column="0"
+                                               Symbol="ChevronDown"
+                                               FontSize="12"
+                                               Margin="0,0,8,0"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                    <ic:SymbolIcon.Style>
+                                        <Style TargetType="{x:Type ic:SymbolIcon}">
+                                            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+                                            <Setter Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <RotateTransform Angle="0" />
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsBisectVerdictLogExpanded}" Value="False">
+                                                    <Setter Property="RenderTransform">
+                                                        <Setter.Value>
+                                                            <RotateTransform Angle="-90" />
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ic:SymbolIcon.Style>
+                                </ic:SymbolIcon>
+                                <TextBlock Grid.Column="1"
+                                           Text="Verdict log"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                <TextBlock Grid.Column="2"
+                                           FontSize="11"
+                                           VerticalAlignment="Center"
+                                           Margin="8,0,0,0"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                    <Run Text="(" /><Run Text="{Binding BisectLog.Count, Mode=OneWay}" /><Run Text=")" />
+                                </TextBlock>
+                                <Button Grid.Column="3"
+                                        Padding="6,2"
+                                        Margin="8,0,0,0"
+                                        FontSize="11"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Command="{Binding UndoLastBisectVerdictCommand}"
+                                        Visibility="{Binding BisectLog.Count, Converter={StaticResource EmptyToVisibilityConverter}}"
+                                        ToolTip="Undo most recent verdict">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ic:SymbolIcon Symbol="ArrowUndo" FontSize="11" Margin="0,0,4,0" />
+                                        <TextBlock Text="Undo" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </ToggleButton>
+
+                        <Grid Grid.Row="1"
+                              Visibility="{Binding IsBisectVerdictLogExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <!-- Empty state -->
+                            <TextBlock TextWrapping="Wrap"
+                                       Margin="12,8,12,12"
+                                       FontSize="12"
+                                       FontStyle="Italic"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       Text="No verdicts yet — click Good or Bad to start narrowing the search."
+                                       Visibility="{Binding BisectLog.Count, Converter={StaticResource NullToVisibilityInverseConverter}, FallbackValue=Visible}" />
+
+                            <!-- Populated list -->
+                            <ScrollViewer Visibility="{Binding BisectLog.Count, Converter={StaticResource EmptyToVisibilityConverter}}"
+                                          VerticalScrollBarVisibility="Auto"
+                                          Padding="4,0">
+                                <ItemsControl ItemsSource="{Binding BisectLog}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type models:BisectLogEntry}">
+                                            <Grid Margin="8,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Grid.Column="0"
+                                                        Width="18" Height="18"
+                                                        CornerRadius="9"
+                                                        VerticalAlignment="Center"
+                                                        Margin="0,0,8,0">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Verdict}" Value="Good">
+                                                                    <Setter Property="Background" Value="#1E3A1E" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Verdict}" Value="Bad">
+                                                                    <Setter Property="Background" Value="#3A1E1E" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Verdict}" Value="Skip">
+                                                                    <Setter Property="Background" Value="#2A2A3A" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <Grid>
+                                                        <ic:SymbolIcon Symbol="Checkmark" FontSize="11" Foreground="#9FE89F"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                            <ic:SymbolIcon.Style>
+                                                                <Style TargetType="{x:Type ic:SymbolIcon}">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Verdict}" Value="Good">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </ic:SymbolIcon.Style>
+                                                        </ic:SymbolIcon>
+                                                        <ic:SymbolIcon Symbol="Dismiss" FontSize="11" Foreground="#E89F9F"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                            <ic:SymbolIcon.Style>
+                                                                <Style TargetType="{x:Type ic:SymbolIcon}">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Verdict}" Value="Bad">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </ic:SymbolIcon.Style>
+                                                        </ic:SymbolIcon>
+                                                        <ic:SymbolIcon Symbol="ArrowForward" FontSize="11" Foreground="#C0C0E0"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                            <ic:SymbolIcon.Style>
+                                                                <Style TargetType="{x:Type ic:SymbolIcon}">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Verdict}" Value="Skip">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </ic:SymbolIcon.Style>
+                                                        </ic:SymbolIcon>
+                                                    </Grid>
+                                                </Border>
+                                                <TextBlock Grid.Column="1"
+                                                           FontFamily="Consolas"
+                                                           FontSize="12"
+                                                           VerticalAlignment="Center"
+                                                           Margin="0,0,10,0"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                           Text="{Binding ShortSha}" />
+                                                <TextBlock Grid.Column="2"
+                                                           FontSize="12"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                           Text="{Binding Subject}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -77,6 +77,16 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isLoading;
 
+    /// <summary>
+    /// Whether the X close button on the diff viewer's header is shown.
+    /// Default true (matches the historical behaviour the standalone
+    /// IsDiffViewerVisible takeover relies on). Embedded callers — like
+    /// the bisect detail pane — set this to false because the diff
+    /// viewer is part of a larger view, not a closeable overlay.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isCloseable = true;
+
     [ObservableProperty]
     private ObservableCollection<FileBlameLine> _blameLines = [];
 

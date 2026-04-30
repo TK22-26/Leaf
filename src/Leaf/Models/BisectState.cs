@@ -36,4 +36,14 @@ public sealed class BisectState
     /// Full SHA of the first bad commit when bisect has converged, else null.
     /// </summary>
     public string? FirstBadSha { get; init; }
+
+    /// <summary>
+    /// True when the bisect terminated because every untested candidate
+    /// was skipped — git emits "There are only 'skip'ped commits left
+    /// to test" and the search can't be narrowed further. The UI shows
+    /// a distinct dead-end card in this state ("End Bisect to retry
+    /// with a different range"), separate from the success-converged
+    /// case where <see cref="FirstBadSha"/> identifies the regression.
+    /// </summary>
+    public bool AllSkippedTerminator { get; init; }
 }

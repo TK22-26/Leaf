@@ -470,6 +470,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _diffViewerViewModel = new DiffViewerViewModel(gitService) { GetSessionToken = tokenGetter };
         _diffViewerViewModel.CloseRequested += OnDiffViewerCloseRequested;
         _diffViewerViewModel.HunkReverted += OnDiffViewerHunkReverted;
+
+        // Dedicated VM for the bisect detail's embedded diff. Separate
+        // instance from the global _diffViewerViewModel so the bisect
+        // pane's diff doesn't fight the IsDiffViewerVisible takeover
+        // mode the rest of the app uses for full-screen diffs.
+        // IsCloseable=false hides the X in the diff viewer's header —
+        // the bisect detail view embeds the diff inline, so there's
+        // nothing for "close" to mean here.
+        BisectDiffViewerViewModel = new DiffViewerViewModel(gitService)
+        {
+            GetSessionToken = tokenGetter,
+            IsCloseable = false,
+        };
         _terminalViewModel = new TerminalViewModel(gitService, settingsService) { GetSessionToken = tokenGetter };
         _terminalViewModel.CommandExecuted += OnTerminalCommandExecuted;
 

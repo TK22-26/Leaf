@@ -154,6 +154,101 @@ public class BisectService : IBisectService
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<BisectLogEntry>> GetLogAsync(
+        IRepositorySession session, CancellationToken cancellationToken = default)
+    {
+        if (session == null) throw new ArgumentNullException(nameof(session));
+        if (!await IsBisectInProgressAsync(session, cancellationToken))
+        {
+            return Array.Empty<BisectLogEntry>();
+        }
+
+        var probe = await _commandRunner.RunAsync(
+            session.RepositoryPath, ["bisect", "log"], cancellationToken: cancellationToken);
+        if (!probe.Success)
+        {
+            Log.Info("Bisect", $"GetLog: bisect log failed (exit {probe.ExitCode}); returning empty.");
+            return Array.Empty<BisectLogEntry>();
+        }
+        return ParseLog(probe.StandardOutput);
+    }
+
+    /// <inheritdoc />
+    public async Task<BisectResult> UndoLastVerdictAsync(
+        IRepositorySession session, CancellationToken cancellationToken = default)
+    {
+        if (session == null) throw new ArgumentNullException(nameof(session));
+        if (!await IsBisectInProgressAsync(session, cancellationToken))
+        {
+            return new BisectResult
+            {
+                Success = false,
+                ErrorMessage = "No bisect is in progress.",
+            };
+        }
+
+        // Step 1: capture current log.
+        var logProbe = await _commandRunner.RunAsync(
+            session.RepositoryPath, ["bisect", "log"], cancellationToken: cancellationToken);
+        if (!logProbe.Success)
+        {
+            return new BisectResult
+            {
+                Success = false,
+                ErrorMessage = "Could not read bisect log; refusing to undo.",
+            };
+        }
+
+        // Step 2: drop the last `git bisect good|bad|skip` command line.
+        // Comment lines (starting with #) are descriptive and don't affect
+        // replay state — only the bare `git bisect <verb> <sha>` lines do.
+        var truncated = TruncateLastVerdict(logProbe.StandardOutput);
+        if (truncated == null)
+        {
+            return new BisectResult
+            {
+                Success = false,
+                ErrorMessage = "Nothing to undo — no verdicts have been issued in this bisect yet.",
+            };
+        }
+
+        // Step 3: write the truncated log to a temp file, reset the
+        // bisect, replay. Atomic from the user's perspective even
+        // though it's three commands underneath.
+        var tempPath = Path.Combine(Path.GetTempPath(),
+            $"leaf-bisect-replay-{Guid.NewGuid():N}.log");
+        try
+        {
+            await File.WriteAllTextAsync(tempPath, truncated, cancellationToken);
+
+            var resetResult = await _commandRunner.RunAsync(
+                session.RepositoryPath, ["bisect", "reset"], cancellationToken: cancellationToken);
+            if (!resetResult.Success)
+            {
+                Log.Error("Bisect", $"Undo: reset failed (exit {resetResult.ExitCode}): {resetResult.StandardError.Trim()}");
+                return new BisectResult
+                {
+                    Success = false,
+                    ErrorMessage = "Could not reset bisect during undo. The bisect state may be in a partial state — try aborting and starting fresh.",
+                };
+            }
+
+            var replayResult = await _commandRunner.RunAsync(
+                session.RepositoryPath, ["bisect", "replay", tempPath], cancellationToken: cancellationToken);
+
+            // BuildResultAsync also fires event-hub notifications and
+            // parses the standard "first bad commit" / "Bisecting:" lines.
+            return await BuildResultAsync(session, replayResult, cancellationToken);
+        }
+        finally
+        {
+            try { File.Delete(tempPath); }
+            catch (IOException) { /* best-effort */ }
+            catch (UnauthorizedAccessException) { /* best-effort */ }
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<BisectState> GetStateAsync(IRepositorySession session, CancellationToken cancellationToken = default)
     {
         if (session == null) throw new ArgumentNullException(nameof(session));
@@ -169,7 +264,12 @@ public class BisectService : IBisectService
         // when bisect has nothing left to do. We read the log file
         // best-effort; failure falls through to the regular probe.
         var converged = TryReadConvergedShaFromLog(session.GitDirectory);
-        return await ReadStateAsync(session, stepsHint: null, firstBadHint: converged, cancellationToken);
+        // Cold-open path: a converged SHA in BISECT_LOG implies a normal
+        // termination, not the all-skipped variant; the latter has no
+        // first-bad SHA to record so the log wouldn't carry one anyway.
+        return await ReadStateAsync(
+            session, stepsHint: null, firstBadHint: converged,
+            allSkippedHint: false, cancellationToken);
     }
 
     /// <summary>
@@ -248,7 +348,9 @@ public class BisectService : IBisectService
         // surfaces the situation and stops asking for verdicts.
         var isAllSkipped = firstBadSha == null && IsAllSkippedTerminator(combined);
 
-        var state = await ReadStateAsync(session, stepsHint, firstBadSha, cancellationToken);
+        var state = await ReadStateAsync(
+            session, stepsHint, firstBadSha,
+            allSkippedHint: isAllSkipped, cancellationToken);
 
         return new BisectResult
         {
@@ -270,7 +372,7 @@ public class BisectService : IBisectService
     /// what's on disk now, not what we hoped a few milliseconds ago.
     /// </summary>
     private async Task<BisectState> ReadStateAsync(
-        IRepositorySession session, int? stepsHint, string? firstBadHint, CancellationToken cancellationToken)
+        IRepositorySession session, int? stepsHint, string? firstBadHint, bool allSkippedHint, CancellationToken cancellationToken)
     {
         var headProbe = await _commandRunner.RunAsync(
             session.RepositoryPath,
@@ -317,6 +419,7 @@ public class BisectService : IBisectService
             CurrentSubject = subject,
             StepsRemaining = stepsHint,
             FirstBadSha = firstBadHint,
+            AllSkippedTerminator = allSkippedHint,
         };
     }
 
@@ -355,5 +458,140 @@ public class BisectService : IBisectService
     {
         if (string.IsNullOrEmpty(output)) return false;
         return AllSkippedRegex.IsMatch(output);
+    }
+
+    /// <summary>
+    /// Parse <c>git bisect log</c> output into the user-driven verdict
+    /// list, most-recent first. The format is well-defined: each verdict
+    /// is a comment line of the form <c># good: [&lt;sha&gt;] &lt;subject&gt;</c>
+    /// (or <c>bad</c> / <c>skip</c>) followed by the actual command line
+    /// <c>git bisect &lt;verb&gt; &lt;sha&gt;</c>. We pair each comment with its
+    /// command so we have the full SHA + subject in one record.
+    /// </summary>
+    /// <remarks>
+    /// The first two comment lines (the bookend <c># bad:</c> and
+    /// <c># good:</c> from <c>git bisect start</c>) describe the search
+    /// range, not user verdicts — they're skipped here because the
+    /// banner already shows that information separately and a "log"
+    /// of two pre-loaded items would just be noise.
+    /// </remarks>
+    internal static IReadOnlyList<BisectLogEntry> ParseLog(string output)
+    {
+        if (string.IsNullOrEmpty(output)) return Array.Empty<BisectLogEntry>();
+
+        var lines = output.Split('\n');
+        var entries = new List<BisectLogEntry>();
+        bool seenStart = false;
+        BisectVerdict? pendingVerdict = null;
+        string pendingSha = string.Empty;
+        string pendingSubject = string.Empty;
+
+        foreach (var raw in lines)
+        {
+            var line = raw.TrimEnd('\r', ' ', '\t');
+            if (line.Length == 0) continue;
+
+            // The "git bisect start" command marks the boundary between
+            // the bookend descriptors and the verdict history. Anything
+            // before it is just the range we set up; anything after is
+            // user-driven.
+            if (line.StartsWith("git bisect start", StringComparison.Ordinal))
+            {
+                seenStart = true;
+                continue;
+            }
+            if (!seenStart) continue;
+
+            if (line.StartsWith("# good: [", StringComparison.Ordinal))
+            {
+                pendingVerdict = BisectVerdict.Good;
+                (pendingSha, pendingSubject) = ParseLogCommentBody(line, "# good: ");
+            }
+            else if (line.StartsWith("# bad: [", StringComparison.Ordinal))
+            {
+                pendingVerdict = BisectVerdict.Bad;
+                (pendingSha, pendingSubject) = ParseLogCommentBody(line, "# bad: ");
+            }
+            else if (line.StartsWith("# skip: [", StringComparison.Ordinal))
+            {
+                pendingVerdict = BisectVerdict.Skip;
+                (pendingSha, pendingSubject) = ParseLogCommentBody(line, "# skip: ");
+            }
+            else if (line.StartsWith("git bisect good ", StringComparison.Ordinal)
+                  || line.StartsWith("git bisect bad ", StringComparison.Ordinal)
+                  || line.StartsWith("git bisect skip ", StringComparison.Ordinal))
+            {
+                // The command line confirms the verdict. We pair it with
+                // the preceding comment (which gave us the subject); if
+                // a comment was missing for some reason (newer git
+                // versions, custom log) we still record the verdict
+                // with a blank subject rather than dropping it.
+                if (pendingVerdict.HasValue && !string.IsNullOrEmpty(pendingSha))
+                {
+                    var shortSha = pendingSha.Length >= 7 ? pendingSha[..7] : pendingSha;
+                    entries.Add(new BisectLogEntry(pendingVerdict.Value, pendingSha, shortSha, pendingSubject));
+                }
+                pendingVerdict = null;
+                pendingSha = string.Empty;
+                pendingSubject = string.Empty;
+            }
+        }
+
+        // Most-recent first matches the visual idiom (Undo applies to the
+        // top row); git emits them oldest-first.
+        entries.Reverse();
+        return entries;
+    }
+
+    /// <summary>
+    /// Pull the SHA and subject out of a <c># good: [&lt;sha&gt;] &lt;subject&gt;</c>
+    /// log comment. Returns empty fields on a malformed line rather than
+    /// throwing — we'd rather drop the row than blow up the whole log.
+    /// </summary>
+    private static (string sha, string subject) ParseLogCommentBody(string line, string prefix)
+    {
+        // After the prefix we expect "[<sha>] <subject>".
+        var rest = line[prefix.Length..];
+        var open = rest.IndexOf('[');
+        var close = rest.IndexOf(']');
+        if (open != 0 || close <= 0) return (string.Empty, string.Empty);
+        var sha = rest[1..close];
+        var subject = close + 1 < rest.Length ? rest[(close + 1)..].TrimStart() : string.Empty;
+        return (sha, subject);
+    }
+
+    /// <summary>
+    /// Drop the last <c>git bisect good/bad/skip</c> command from a
+    /// <c>git bisect log</c> output, returning the truncated log
+    /// suitable for <c>git bisect replay</c>. Returns null when no
+    /// verdict commands are present (bookends only) — the caller
+    /// surfaces that as "nothing to undo." Comment lines and the
+    /// <c>git bisect start</c> command are preserved.
+    /// </summary>
+    internal static string? TruncateLastVerdict(string log)
+    {
+        if (string.IsNullOrEmpty(log)) return null;
+
+        // We retain every line up to (but not including) the LAST
+        // `git bisect <verb> <sha>` line, plus everything else that
+        // came after that line that isn't itself a verdict command.
+        // Practically that just means dropping the last `git bisect
+        // good/bad/skip <sha>` line; preceding lines are unchanged.
+        var lines = log.Split('\n').ToList();
+        int lastVerdictIdx = -1;
+        for (int i = lines.Count - 1; i >= 0; i--)
+        {
+            var trimmed = lines[i].TrimEnd('\r', ' ', '\t');
+            if (trimmed.StartsWith("git bisect good ", StringComparison.Ordinal)
+             || trimmed.StartsWith("git bisect bad ", StringComparison.Ordinal)
+             || trimmed.StartsWith("git bisect skip ", StringComparison.Ordinal))
+            {
+                lastVerdictIdx = i;
+                break;
+            }
+        }
+        if (lastVerdictIdx < 0) return null;
+        lines.RemoveAt(lastVerdictIdx);
+        return string.Join("\n", lines);
     }
 }

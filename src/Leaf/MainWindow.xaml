@@ -672,15 +672,13 @@
                     <views:BranchListView DataContext="{Binding}" />
                 </Border>
 
-                <!--  Center panel: Git graph / PR detail / PR create  -->
-                <DockPanel Grid.Column="2" LastChildFill="True">
-                    <!--  Bisect banner: docks above the graph during a bisect.
-                         Visibility tracks CurrentBisectState — null hides the
-                         whole bar, no layout cost when no bisect is active.  -->
-                    <views:BisectBanner DockPanel.Dock="Top"
-                                        DataContext="{Binding}"
-                                        Visibility="{Binding CurrentBisectState, Converter={StaticResource NullToVisibilityConverter}}" />
-                <Grid>
+                <!--  Center panel: Git graph / PR detail / PR create /
+                      Bisect detail. The bisect banner used to live above
+                      this Grid as a separate strip but the BisectDetailView
+                      header now carries the same information (mode,
+                      current sha, steps, End Bisect), so the banner was
+                      removed as redundant.  -->
+                <Grid Grid.Column="2">
                     <!--  Git graph: visible when in Graph mode and diff viewer not active  -->
                     <views:GitGraphView DataContext="{Binding GitGraphViewModel}">
                         <views:GitGraphView.Style>
@@ -691,6 +689,12 @@
                                         <Setter Property="Visibility" Value="Collapsed" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding DataContext.IsGraphMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <!--  Bisect mode replaces the graph entirely with
+                                          the bisect detail view (full content takeover,
+                                          like PR mode).  -->
+                                    <DataTrigger Binding="{Binding DataContext.IsBisectMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
                                         <Setter Property="Visibility" Value="Collapsed" />
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -725,8 +729,25 @@
                             </Style>
                         </views:CreatePullRequestView.Style>
                     </views:CreatePullRequestView>
+
+                    <!--  Bisect detail view: takes over the full center
+                          column when CurrentBisectState is non-null. The
+                          right pane hides too, so the bisect view has
+                          the full content area for verdict UI + diff —
+                          mirrors how PR detail/create mode work.  -->
+                    <views:BisectDetailView DataContext="{Binding}">
+                        <views:BisectDetailView.Style>
+                            <Style TargetType="views:BisectDetailView">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding DataContext.IsBisectMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </views:BisectDetailView.Style>
+                    </views:BisectDetailView>
                 </Grid>
-                </DockPanel>
 
                 <!--  Right panel: Commit details / Working changes / Merge Status (hidden in PR mode)  -->
                 <Border
@@ -737,6 +758,11 @@
                         <Style TargetType="Border">
                             <Setter Property="Visibility" Value="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
                             <Style.Triggers>
+                                <!--  IsGraphMode is false for PR detail / PR create
+                                      / Bisect — all three take over the center
+                                      column. The right pane hides for the same
+                                      reason in each: the takeover view uses the
+                                      full content area.  -->
                                 <DataTrigger Binding="{Binding IsGraphMode}" Value="False">
                                     <Setter Property="Visibility" Value="Collapsed" />
                                 </DataTrigger>
@@ -744,7 +770,10 @@
                         </Style>
                     </Border.Style>
                     <Grid>
-                        <!--  Priority 1: Merge Status View  -->
+                        <!--  Priority 1: Merge Status View. The whole right
+                              pane hides during bisect (parent Border's
+                              IsGraphMode trigger), so no per-view bisect
+                              suppression needed here.  -->
                         <views:MergeStatusView DataContext="{Binding}">
                             <views:MergeStatusView.Style>
                                 <Style TargetType="views:MergeStatusView">
