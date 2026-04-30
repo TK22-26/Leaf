@@ -54,4 +54,25 @@ public interface IBisectService
     Task<BisectState> GetStateAsync(
         IRepositorySession session,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Read the user-driven verdict history (<c>git bisect log</c>),
+    /// most-recent first. Empty list when no bisect is active or no
+    /// verdicts have been issued yet (just past the bookends).
+    /// </summary>
+    Task<IReadOnlyList<BisectLogEntry>> GetLogAsync(
+        IRepositorySession session,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Roll back the most recent verdict. Implementation: capture the
+    /// current bisect log, drop the last <c>git bisect good/bad/skip</c>
+    /// command line, <c>git bisect reset</c>, then <c>git bisect replay</c>
+    /// the truncated log. The bisect emerges in the state it was in
+    /// just before that verdict — same checked-out commit as right
+    /// before the click, ready for a different verdict.
+    /// </summary>
+    Task<BisectResult> UndoLastVerdictAsync(
+        IRepositorySession session,
+        CancellationToken cancellationToken = default);
 }

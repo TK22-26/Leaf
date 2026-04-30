@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -23,10 +24,33 @@ public partial class MainViewModel
 {
     /// <summary>
     /// Live snapshot of the current bisect session. Bound by the bisect
-    /// banner — null when no bisect is in progress (banner hidden).
+    /// banner + detail view — null when no bisect is in progress.
+    /// Setting / clearing this property also flips
+    /// <see cref="ContentMode"/> so the center column takes over with
+    /// the full bisect detail view (and the right pane hides), mirroring
+    /// how PR mode works.
     /// </summary>
     [ObservableProperty]
     private BisectState? _currentBisectState;
+
+    partial void OnCurrentBisectStateChanged(BisectState? value)
+    {
+        // Mode swap: bisect active → take over the center column;
+        // bisect ended → restore the standard graph layout. We avoid
+        // clobbering PR modes by only swapping when the current mode
+        // is something we own (Graph ↔ Bisect). If the user opens a
+        // PR while a bisect is running we leave PR mode in charge —
+        // the bisect can resume on PR close because the underlying
+        // git state survives, and CurrentBisectState stays non-null.
+        if (value != null && ContentMode == ContentMode.Graph)
+        {
+            ContentMode = ContentMode.Bisect;
+        }
+        else if (value == null && ContentMode == ContentMode.Bisect)
+        {
+            ContentMode = ContentMode.Graph;
+        }
+    }
 
     /// <summary>
     /// Set to the converging "first bad commit" SHA on the terminating
@@ -35,6 +59,66 @@ public partial class MainViewModel
     /// </summary>
     [ObservableProperty]
     private string? _bisectFoundSha;
+
+    /// <summary>
+    /// Files changed by the currently-tested commit (or by the converging
+    /// "first bad commit" once <see cref="BisectFoundSha"/> is set). Bound
+    /// by the bisect detail pane so the user can review the diff alongside
+    /// the verdict buttons — every other Git GUI we surveyed forces the
+    /// user to switch to an external editor between checkout and verdict;
+    /// this is the killer feature of the in-app bisect UX.
+    /// </summary>
+    public ObservableCollection<FileChangeInfo> CurrentBisectChanges { get; } = new();
+
+    /// <summary>
+    /// User-driven verdict history (most-recent first). Bound by the
+    /// bisect detail pane's "Verdict log" section; the head row gets an
+    /// Undo affordance via <see cref="UndoLastBisectVerdictCommand"/>.
+    /// </summary>
+    public ObservableCollection<BisectLogEntry> BisectLog { get; } = new();
+
+    /// <summary>
+    /// Full commit info (author, date, message body) for the currently-
+    /// tested commit or the converged "first bad commit". Bound by the
+    /// bisect detail header so the user has the full context — author
+    /// + relative date + body — to read alongside the diff before
+    /// clicking a verdict.
+    /// </summary>
+    [ObservableProperty]
+    private CommitInfo? _currentBisectCommitInfo;
+
+    /// <summary>
+    /// Currently-selected file in the bisect detail's change list. The
+    /// embedded diff viewer (<see cref="BisectDiffViewerViewModel"/>)
+    /// loads this file's diff so the user can read the actual code
+    /// alongside the verdict buttons.
+    /// </summary>
+    [ObservableProperty]
+    private FileChangeInfo? _selectedBisectFile;
+
+    /// <summary>
+    /// Dedicated DiffViewerViewModel for the bisect detail pane —
+    /// separate from the main <c>DiffViewerViewModel</c> so the
+    /// bisect's embedded diff doesn't fight with the global
+    /// IsDiffViewerVisible takeover state. Set by
+    /// <see cref="MainViewModel"/>'s ctor.
+    /// </summary>
+    public DiffViewerViewModel? BisectDiffViewerViewModel { get; set; }
+
+    /// <summary>
+    /// Whether the "Changes in this commit" panel in the bisect right
+    /// rail is expanded. Mirrors the staged/unstaged collapsible
+    /// sections in <c>WorkingChangesView</c>.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isBisectChangesExpanded = true;
+
+    /// <summary>
+    /// Whether the "Verdict log" panel in the bisect right rail is
+    /// expanded.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isBisectVerdictLogExpanded = true;
 
     [RelayCommand]
     public async Task StartBisectFromCommitAsync(CommitInfo? commit)
@@ -102,6 +186,7 @@ public partial class MainViewModel
 
             CurrentBisectState = result.State;
             BisectFoundSha = result.FirstBadSha;
+            await ReloadBisectDetailAsync();
             // Mid-bisect banner already shows "Testing X (K steps left)";
             // no toast for that state. Convergence on the start step is
             // vanishingly rare (it requires bad == good, i.e. a one-commit
@@ -165,6 +250,7 @@ public partial class MainViewModel
 
             CurrentBisectState = result.State;
             BisectFoundSha = result.FirstBadSha;
+            await ReloadBisectDetailAsync();
 
             if (result.IsTerminating)
             {
@@ -174,9 +260,9 @@ public partial class MainViewModel
                     : "Bisect ended (every remaining candidate was skipped).";
                 NotifySuccess("Bisect converged", summary);
             }
-            // Mid-bisect testing state has no toast — the banner shows
-            // "Testing <sha> (K steps left)" continuously, which is the
-            // canonical UI for that state.
+            // Mid-bisect testing state has no toast — the banner + right
+            // pane show "Testing <sha> (K steps left)" + the diff
+            // continuously, which is the canonical UI for that state.
 
             // Refresh first so the graph repopulates with current branch /
             // commit data, THEN select. Prior order had Select first and
@@ -219,6 +305,8 @@ public partial class MainViewModel
 
             CurrentBisectState = null;
             BisectFoundSha = null;
+            CurrentBisectChanges.Clear();
+            BisectLog.Clear();
             NotifyInfo("Bisect ended", "HEAD has been restored.");
             await RefreshAsync();
         }
@@ -242,6 +330,8 @@ public partial class MainViewModel
         {
             CurrentBisectState = null;
             BisectFoundSha = null;
+            CurrentBisectChanges.Clear();
+            BisectLog.Clear();
             return;
         }
 
@@ -255,6 +345,7 @@ public partial class MainViewModel
             // flips the banner into "found it" mode on cold open instead
             // of misleadingly showing "Testing X" with no steps left.
             BisectFoundSha = state.FirstBadSha;
+            await ReloadBisectDetailAsync();
         }
         catch (Exception ex)
         {
@@ -265,4 +356,187 @@ public partial class MainViewModel
 
     private static string Shorten(string? sha) =>
         string.IsNullOrEmpty(sha) ? "?" : sha.Length >= 7 ? sha[..7] : sha;
+
+    /// <summary>
+    /// Re-populate <see cref="CurrentBisectChanges"/> and <see cref="BisectLog"/>
+    /// from git. Called after every Start / Mark / Undo / refresh so the
+    /// right-pane bisect detail view stays in lockstep with on-disk state.
+    /// Loads the diff of the currently-tested commit (or the converged
+    /// "first bad commit" when present) so the user can review what
+    /// changed before clicking a verdict.
+    /// </summary>
+    private async Task ReloadBisectDetailAsync()
+    {
+        if (_currentSession == null || CurrentBisectState == null)
+        {
+            CurrentBisectChanges.Clear();
+            BisectLog.Clear();
+            CurrentBisectCommitInfo = null;
+            SelectedBisectFile = null;
+            BisectDiffViewerViewModel?.Clear();
+            return;
+        }
+
+        // Diff target: the converged "first bad commit" if we've reached
+        // termination, otherwise the commit git just checked out for
+        // testing. Either way, what the user wants to see is "what
+        // changes does this commit introduce?" — i.e., the diff vs its
+        // parent.
+        var diffSha = !string.IsNullOrEmpty(BisectFoundSha)
+            ? BisectFoundSha
+            : CurrentBisectState.CurrentSha;
+
+        try
+        {
+            // Full commit info for the testing/converged card header
+            // (author, full date, message body). The state record gives
+            // us subject + short-sha but not the rest.
+            CurrentBisectCommitInfo = !string.IsNullOrEmpty(diffSha)
+                ? await _gitService.GetCommitAsync(SelectedRepository!.Path, diffSha, CurrentRepositoryToken)
+                : null;
+
+            CurrentBisectChanges.Clear();
+            if (!string.IsNullOrEmpty(diffSha))
+            {
+                var changes = await _gitService.GetCommitChangesAsync(
+                    SelectedRepository!.Path, diffSha, CurrentRepositoryToken);
+                foreach (var c in changes) CurrentBisectChanges.Add(c);
+            }
+
+            BisectLog.Clear();
+            var entries = await _bisectService.GetLogAsync(_currentSession, CurrentRepositoryToken);
+            foreach (var e in entries) BisectLog.Add(e);
+
+            // Auto-select the first changed file so the diff pane isn't
+            // empty on a fresh step. The user can pick a different file
+            // from the list to inspect; selection drives the embedded
+            // DiffViewerControl.
+            if (CurrentBisectChanges.Count > 0)
+            {
+                SelectedBisectFile = CurrentBisectChanges[0];
+            }
+            else
+            {
+                SelectedBisectFile = null;
+                BisectDiffViewerViewModel?.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Best-effort — a transient git error shouldn't blow up the
+            // bisect flow. Log; the user can refresh.
+            Log.Info("Bisect", $"ReloadBisectDetail: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Load the diff for <paramref name="file"/> (resolved against the
+    /// currently-tested or converged bisect commit) into the embedded
+    /// bisect diff viewer. Wired to the file-list selection in
+    /// <see cref="BisectDetailView"/> so picking a row updates the
+    /// right-side diff pane.
+    /// </summary>
+    partial void OnSelectedBisectFileChanged(FileChangeInfo? value)
+    {
+        if (value == null || BisectDiffViewerViewModel == null || _currentSession == null) return;
+        var diffSha = !string.IsNullOrEmpty(BisectFoundSha)
+            ? BisectFoundSha
+            : CurrentBisectState?.CurrentSha;
+        if (string.IsNullOrEmpty(diffSha)) return;
+
+        // Fire-and-forget so the property setter doesn't block. The diff
+        // service itself is async-resilient — multiple in-flight loads
+        // for the same VM are serialised by the VM's own sequence id.
+        _ = LoadBisectDiffAsync(value, diffSha);
+    }
+
+    private async Task LoadBisectDiffAsync(FileChangeInfo file, string commitSha)
+    {
+        if (BisectDiffViewerViewModel == null || SelectedRepository == null) return;
+        try
+        {
+            BisectDiffViewerViewModel.IsLoading = true;
+            BisectDiffViewerViewModel.RepositoryPath = SelectedRepository.Path;
+            var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
+                SelectedRepository.Path, commitSha, file.Path, cancellationToken: CurrentRepositoryToken);
+            var result = _diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
+            BisectDiffViewerViewModel.LoadDiff(result);
+        }
+        catch (Exception ex)
+        {
+            Log.Info("Bisect", $"LoadBisectDiff for '{file.Path}': {ex.Message}");
+        }
+        finally
+        {
+            BisectDiffViewerViewModel.IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Roll back the most recent verdict via the
+    /// <see cref="IBisectService.UndoLastVerdictAsync"/> replay-based
+    /// flow. The bisect emerges in the state it was in just before the
+    /// click; the user can then issue a different verdict or End Bisect
+    /// outright.
+    /// </summary>
+    /// <summary>
+    /// Copy the full SHA of the currently-tested (or converged) bisect
+    /// commit to the clipboard. Bound by the bisect detail header's
+    /// SHA button so users can paste the sha into bug reports / chat
+    /// without leaving the bisect flow.
+    /// </summary>
+    [RelayCommand]
+    public void CopyBisectSha()
+    {
+        var sha = !string.IsNullOrEmpty(BisectFoundSha)
+            ? BisectFoundSha
+            : CurrentBisectState?.CurrentSha;
+        if (string.IsNullOrEmpty(sha)) return;
+        _clipboardService.SetText(sha);
+        NotifyInfo("Copied", $"SHA {Shorten(sha)} copied to clipboard.");
+    }
+
+    [RelayCommand]
+    public async Task UndoLastBisectVerdictAsync()
+    {
+        if (_currentSession == null || CurrentBisectState == null) return;
+        if (BisectLog.Count == 0)
+        {
+            NotifyInfo("Nothing to undo", "No verdicts have been issued in this bisect yet.");
+            return;
+        }
+
+        try
+        {
+            await BeginBusyAsync("Undoing last verdict...");
+            var result = await _bisectService.UndoLastVerdictAsync(_currentSession, CurrentRepositoryToken);
+
+            if (!result.Success)
+            {
+                await ReportOperationFailureAsync("Undo verdict", result.ErrorMessage ?? "Could not undo last verdict.");
+                return;
+            }
+
+            CurrentBisectState = result.State;
+            // Replay can re-converge to the same first-bad commit if the
+            // user undoes a verdict that doesn't change the search range
+            // (rare — they'd be undoing the converging step). Honour
+            // whatever git tells us.
+            BisectFoundSha = result.FirstBadSha;
+            await ReloadBisectDetailAsync();
+            NotifyInfo("Verdict undone",
+                CurrentBisectState != null
+                    ? $"Re-testing {CurrentBisectState.CurrentShortSha}."
+                    : "Bisect state restored.");
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            await ReportOperationFailureAsync("Undo verdict", ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }

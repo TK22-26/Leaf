@@ -36,11 +36,21 @@ public partial class MainViewModel
     /// </summary>
     public bool IsPullRequestCreateMode => ContentMode == ContentMode.PullRequestCreate;
 
+    /// <summary>
+    /// True when a <c>git bisect</c> session is active and the center
+    /// column has been taken over by the bisect detail view. Right
+    /// pane hides so the bisect diff has the full content area to
+    /// breathe — the diff is the primary information the user needs to
+    /// decide a verdict.
+    /// </summary>
+    public bool IsBisectMode => ContentMode == ContentMode.Bisect;
+
     partial void OnContentModeChanged(ContentMode value)
     {
         OnPropertyChanged(nameof(IsGraphMode));
         OnPropertyChanged(nameof(IsPullRequestDetailMode));
         OnPropertyChanged(nameof(IsPullRequestCreateMode));
+        OnPropertyChanged(nameof(IsBisectMode));
     }
 
     private bool HasActivePullRequestScreen() =>

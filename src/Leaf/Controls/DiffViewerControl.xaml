@@ -117,7 +117,10 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Close button -->
+                <!-- Close button — hidden when IsCloseable is false
+                     (e.g. the diff viewer is embedded inside another
+                     view, like the bisect detail pane, where there's
+                     nothing to "close" to).  -->
                 <Button Grid.Row="0" Grid.Column="1"
                         Width="35"
                         Height="35"
@@ -128,6 +131,7 @@
                         BorderThickness="0"
                         Command="{Binding CloseCommand}"
                         Cursor="Hand"
+                        Visibility="{Binding IsCloseable, Converter={StaticResource BoolToVisibilityConverter}}"
                         ToolTip="Close (Esc)">
                     <TextBlock FontFamily="Segoe Fluent Icons"
                                FontSize="14"

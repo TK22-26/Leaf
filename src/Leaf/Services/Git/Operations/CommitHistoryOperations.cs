@@ -228,6 +228,33 @@ internal class CommitHistoryOperations
             var diff = repo.Diff.Compare<TreeChanges>(parentTree, tree,
                 new LibGit2Sharp.CompareOptions { Similarity = SimilarityOptions.Renames });
 
+            // Compute per-file line stats via Diff.Compare<Patch>. The
+            // TreeChanges projection above gives us the file metadata
+            // (path, status, rename detection, submodule mode) but NOT
+            // the line counts — those live on PatchEntryChange. Without
+            // this, every consumer (bisect detail view, commit detail
+            // view, etc.) sees +0/-0 even on files with real changes.
+            // Indexed by Path so we can pair each tree change with its
+            // patch stats below.
+            var lineStats = new Dictionary<string, (int added, int deleted, bool binary)>(StringComparer.Ordinal);
+            try
+            {
+                var patch = repo.Diff.Compare<Patch>(parentTree, tree,
+                    new LibGit2Sharp.CompareOptions { Similarity = SimilarityOptions.Renames });
+                foreach (var entry in patch)
+                {
+                    lineStats[entry.Path] = (entry.LinesAdded, entry.LinesDeleted, entry.IsBinaryComparison);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Patch generation can fail on huge / pathological diffs;
+                // we'd rather lose the line counts than the whole change
+                // list, so we swallow and fall through to zeros. Logged
+                // for diagnosability.
+                Log.Info("CommitHistory", $"Patch line-count probe failed for {sha}: {ex.Message}");
+            }
+
             foreach (var change in diff)
             {
                 // libgit2sharp reports submodule pointers as tree entries
@@ -250,14 +277,15 @@ internal class CommitHistoryOperations
                     if (newSha == new string('0', 40)) newSha = string.Empty;
                 }
 
+                lineStats.TryGetValue(change.Path, out var stats);
                 changes.Add(new FileChangeInfo
                 {
                     Path = change.Path,
                     OldPath = change.OldPath != change.Path ? change.OldPath : null,
                     Status = MapChangeStatus(change.Status),
-                    LinesAdded = 0,
-                    LinesDeleted = 0,
-                    IsBinary = false,
+                    LinesAdded = stats.added,
+                    LinesDeleted = stats.deleted,
+                    IsBinary = stats.binary,
                     IsSubmodule = isSubmodule,
                     SubmoduleOldSha = oldSha,
                     SubmoduleNewSha = newSha,
