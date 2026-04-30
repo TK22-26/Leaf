@@ -62,6 +62,8 @@ public class InteractiveRebaseService : IInteractiveRebaseService
         if (string.IsNullOrWhiteSpace(fromCommitSha))
             throw new ArgumentException("fromCommitSha is required.", nameof(fromCommitSha));
 
+        Log.Info("Rebase", $"LoadPlan: from={fromCommitSha}");
+
         // Validate the commit exists and has a parent (root commits would
         // require --root; v1 doesn't expose that path).
         var parentProbe = await _commandRunner.RunAsync(
@@ -70,6 +72,7 @@ public class InteractiveRebaseService : IInteractiveRebaseService
             cancellationToken: cancellationToken);
         if (!parentProbe.Success)
         {
+            Log.Warn("Rebase", $"LoadPlan refused: {fromCommitSha} is the root commit or doesn't exist.");
             throw new InvalidOperationException(
                 $"Cannot rebase from {fromCommitSha}: it has no parent (root commit) or doesn't exist. " +
                 "Interactive rebase from the root commit isn't supported in this version.");
@@ -82,11 +85,14 @@ public class InteractiveRebaseService : IInteractiveRebaseService
             cancellationToken: cancellationToken);
         if (!log.Success)
         {
+            Log.Error("Rebase", $"LoadPlan: git log {range} failed: {log.StandardError.Trim()}");
             throw new InvalidOperationException(
                 $"git log {range} failed: {log.StandardError.Trim()}");
         }
 
-        return ParseLogRecords(log.StandardOutput);
+        var items = ParseLogRecords(log.StandardOutput);
+        Log.Info("Rebase", $"LoadPlan: parsed {items.Count} commit(s) from {range}");
+        return items;
     }
 
     /// <inheritdoc />
@@ -105,6 +111,7 @@ public class InteractiveRebaseService : IInteractiveRebaseService
         var helper = _sequenceEditorPath.Value;
         if (string.IsNullOrEmpty(helper))
         {
+            Log.Error("Rebase", $"Start refused: {SequenceEditorExecutable} not on disk; helper exe is required.");
             return new MergeResult
             {
                 Success = false,
@@ -183,6 +190,7 @@ public class InteractiveRebaseService : IInteractiveRebaseService
 
             if (result.Success)
             {
+                Log.Info("Rebase", "Start: rebase completed cleanly.");
                 return new MergeResult { Success = true };
             }
 
@@ -199,6 +207,7 @@ public class InteractiveRebaseService : IInteractiveRebaseService
 
             if (paused)
             {
+                Log.Info("Rebase", $"Start: rebase paused (exit {result.ExitCode}); conflict or edit-stop requires user action.");
                 _eventHub.NotifyConflictStateChanged();
                 return new MergeResult
                 {
@@ -210,6 +219,7 @@ public class InteractiveRebaseService : IInteractiveRebaseService
                 };
             }
 
+            Log.Error("Rebase", $"Start: rebase failed (exit {result.ExitCode}): {result.StandardError.Trim()}");
             return new MergeResult
             {
                 Success = false,

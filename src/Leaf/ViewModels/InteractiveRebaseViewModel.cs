@@ -111,6 +111,7 @@ public partial class InteractiveRebaseViewModel : ObservableObject
         if (IsLoading) return;
         IsLoading = true;
         ErrorMessage = null;
+        Log.Info("InteractiveRebase", $"LoadAsync: from={FromCommitSha}");
         try
         {
             var items = await _rebaseService.LoadPlanAsync(_session, FromCommitSha, cancellationToken);
@@ -119,6 +120,7 @@ public partial class InteractiveRebaseViewModel : ObservableObject
             {
                 Plan.Add(item);
             }
+            Log.Info("InteractiveRebase", $"LoadAsync: populated {Plan.Count} row(s)");
         }
         catch (Exception ex) when (ex is InvalidOperationException or OperationCanceledException)
         {
@@ -183,13 +185,28 @@ public partial class InteractiveRebaseViewModel : ObservableObject
         if (Plan.Count == 0) return;
         IsRebasing = true;
         ErrorMessage = null;
+        // Summarise the plan at INFO so a leaf.log captured during a
+        // failed user session has enough state to reconstruct intent
+        // without dumping each row's content.
+        var summary = string.Join(",",
+            Plan.GroupBy(p => p.Action).Select(g => $"{g.Key}={g.Count()}"));
+        Log.Info("InteractiveRebase", $"StartAsync: from={FromCommitSha} plan=[{summary}] rows={Plan.Count}");
         try
         {
             var result = await _rebaseService.StartAsync(
                 _session, FromCommitSha, [.. Plan], _session.CancellationToken);
 
-            if (!result.Success && !result.HasConflicts)
+            if (result.Success)
             {
+                Log.Info("InteractiveRebase", "StartAsync: completed cleanly.");
+            }
+            else if (result.HasConflicts)
+            {
+                Log.Info("InteractiveRebase", "StartAsync: paused on conflict — handing off to merge editor.");
+            }
+            else
+            {
+                Log.Warn("InteractiveRebase", $"StartAsync: failed — {result.ErrorMessage}");
                 ErrorMessage = result.ErrorMessage;
             }
             RebaseCompleted?.Invoke(this, result);
@@ -207,7 +224,11 @@ public partial class InteractiveRebaseViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Cancel() => Cancelled?.Invoke(this, EventArgs.Empty);
+    private void Cancel()
+    {
+        Log.Info("InteractiveRebase", "User cancelled the rebase plan before Start.");
+        Cancelled?.Invoke(this, EventArgs.Empty);
+    }
 
     private bool CanMutatePlan() => !IsLoading && !IsRebasing;
     private bool CanStart() => !IsLoading && !IsRebasing && Plan.Count > 0;
