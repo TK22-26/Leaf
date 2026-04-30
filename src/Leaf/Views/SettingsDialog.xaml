@@ -256,6 +256,16 @@
                             </StackPanel>
                         </TreeViewItem.Header>
                     </TreeViewItem>
+
+                    <!-- Keyboard Shortcuts (§5.9) -->
+                    <TreeViewItem x:Name="NavKeyboardShortcuts" Tag="KeyboardShortcuts">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="Keyboard" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Keyboard Shortcuts" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
                 </TreeView>
             </Grid>
         </Border>
@@ -683,6 +693,9 @@
 
                     <!-- External Tools Content -->
                     <settings:ExternalToolsSettingsControl x:Name="ExternalToolsSettings" Visibility="Collapsed" />
+
+                    <!-- Keyboard Shortcuts Content (§5.9) -->
+                    <settings:KeyboardShortcutsSettingsControl x:Name="KeyboardShortcutsSettings" Visibility="Collapsed" />
 
                     <!-- Search Results (shown when searching) -->
                     <StackPanel x:Name="ContentSearchResults" Visibility="Collapsed">

@@ -15,6 +15,7 @@ internal static class ShortcutDefaults
     private const string CategoryRepository = "Repository";
     private const string CategoryBranch = "Branch";
     private const string CategoryCommit = "Commit";
+    private const string CategoryMerge = "Merge editor";
 
     public static void RegisterAll(ShortcutService registry)
     {
@@ -113,5 +114,105 @@ internal static class ShortcutDefaults
             CategoryCommit,
             "Pop latest stash",
             DefaultGesture: null));
+
+        // ----- Merge editor (replaces the hardcoded XAML KeyBindings) ----
+        // VS Code's Alt+1 / Alt+2 / Alt+3 layout is the de-facto pattern;
+        // F8 / Shift+F8 matches build-error navigation many users know.
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.AcceptOurs,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Accept current — Ours",
+            new KeyGesture(Key.D1, ModifierKeys.Alt)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.AcceptTheirs,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Accept current — Theirs",
+            new KeyGesture(Key.D2, ModifierKeys.Alt)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.AcceptBoth,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Accept current — Both",
+            new KeyGesture(Key.D3, ModifierKeys.Alt)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.NextConflict,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Next conflict",
+            new KeyGesture(Key.F8)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.PreviousConflict,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Previous conflict",
+            new KeyGesture(Key.F8, ModifierKeys.Shift)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.NextChangeSpan,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Next change span (within conflict)",
+            new KeyGesture(Key.Right, ModifierKeys.Alt)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.PreviousChangeSpan,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Previous change span (within conflict)",
+            new KeyGesture(Key.Left, ModifierKeys.Alt)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.NextAutoMergedRegion,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Next auto-merged region",
+            new KeyGesture(Key.Down, ModifierKeys.Alt)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.PreviousAutoMergedRegion,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Previous auto-merged region",
+            new KeyGesture(Key.Up, ModifierKeys.Alt)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.OpenPalette,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Open merge command palette",
+            new KeyGesture(Key.K, ModifierKeys.Control)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.MarkResolved,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Mark current file resolved",
+            new KeyGesture(Key.Enter, ModifierKeys.Control)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.Undo,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Undo",
+            new KeyGesture(Key.Z, ModifierKeys.Control)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.Redo,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Redo",
+            new KeyGesture(Key.Y, ModifierKeys.Control)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.RequestAiResolution,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Ask AI for a resolution",
+            new KeyGesture(Key.A, ModifierKeys.Alt)));
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Merge.ShowBlamePeek,
+            ShortcutScope.MergeEditor,
+            CategoryMerge,
+            "Show blame peek",
+            new KeyGesture(Key.B, ModifierKeys.Alt)));
+        // Note: Ctrl+Shift+Z (Redo alternative) is intentionally not in
+        // the registry — it stays as a hardcoded alias inside the merge
+        // editor view because the registry's one-id-one-gesture model
+        // doesn't model dual-keybindings cleanly. If a user rebinds
+        // Redo elsewhere, this alias stays bound to Redo for muscle
+        // memory. Future: registry could grow an "alias" concept.
     }
 }

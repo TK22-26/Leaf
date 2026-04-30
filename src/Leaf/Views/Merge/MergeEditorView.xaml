@@ -24,42 +24,15 @@
          Background; this view used to override it for historical reasons.
          All visible chrome (panes, header, footer) lives inside opaque
          Merge.PaneCard borders that sit ON TOP of the Mica backdrop. -->
+    <!-- Window.InputBindings populated at runtime by
+         MergeEditorView.ApplyShortcuts() so user customisations from
+         IShortcutService take effect. The single hardcoded alias kept
+         here (Ctrl+Shift+Z = Redo) doesn't go through the registry on
+         purpose — the registry's one-id-one-gesture model doesn't
+         model dual-keybindings cleanly, and Ctrl+Shift+Z is muscle
+         memory that should never disappear if the user rebinds Redo. -->
     <Window.InputBindings>
-        <!-- Keyboard shortcuts for the merge editor. The Alt+1 / Alt+2 / Alt+3
-             pattern matches VS Code's merge editor; F8 / Shift+F8 matches the
-             build-error navigation many power users already know. -->
-        <KeyBinding Modifiers="Alt" Key="D1" Command="{Binding AcceptCurrentConflictOursCommand}"/>
-        <KeyBinding Modifiers="Alt" Key="D2" Command="{Binding AcceptCurrentConflictTheirsCommand}"/>
-        <KeyBinding Modifiers="Alt" Key="D3" Command="{Binding AcceptCurrentConflictBothCommand}"/>
-        <KeyBinding Key="F8" Command="{Binding NextConflictCommand}"/>
-        <KeyBinding Modifiers="Shift" Key="F8" Command="{Binding PreviousConflictCommand}"/>
-        <!-- C2 WinMerge-style intra-conflict navigation. Alt+Left/Right steps
-             through change spans inside the current conflict; Alt+Up/Down
-             steps through non-conflicting auto-merged regions. -->
-        <KeyBinding Modifiers="Alt" Key="Right" Command="{Binding NextChangeSpanCommand}"/>
-        <KeyBinding Modifiers="Alt" Key="Left" Command="{Binding PreviousChangeSpanCommand}"/>
-        <KeyBinding Modifiers="Alt" Key="Down" Command="{Binding NextAutoMergedRegionCommand}"/>
-        <KeyBinding Modifiers="Alt" Key="Up" Command="{Binding PreviousAutoMergedRegionCommand}"/>
-        <!-- C3: Ctrl+K opens a merge-scoped command palette listing every
-             VM command with its keybinding. Reuses the existing
-             CommandPaletteView from the main window. -->
-        <KeyBinding Modifiers="Control" Key="K" Command="{Binding OpenPaletteCommand}"/>
-        <KeyBinding Modifiers="Control" Key="Enter" Command="{Binding MarkResolvedCommand}"/>
-        <KeyBinding Modifiers="Control" Key="Z" Command="{Binding UndoCommand}"/>
-        <KeyBinding Modifiers="Control" Key="Y" Command="{Binding RedoCommand}"/>
         <KeyBinding Modifiers="Control+Shift" Key="Z" Command="{Binding RedoCommand}"/>
-        <!-- Alt+A — Ask the AI for a resolution for the current conflict. Only
-             does anything if the AI merge feature is enabled in settings and
-             an MCP server is configured; otherwise the command is a silent no-op. -->
-        <KeyBinding Modifiers="Alt" Key="A" Command="{Binding RequestAiResolutionCommand}"/>
-        <!-- Alt+B — Keyboard trigger for C5 blame peek. Shows the popover for
-             the start line of the currently-active conflict in whichever
-             read-only pane has focus (Ours by default). Focus transfers
-             into the sha Hyperlink so Enter jumps to the commit graph,
-             Escape dismisses. Complements the mouse-hover path for
-             keyboard-only users and AT clients. -->
-        <KeyBinding Modifiers="Alt" Key="B" Command="{Binding ShowBlamePeekForCurrentConflictCommand,
-                                                          RelativeSource={RelativeSource AncestorType=Window}}"/>
     </Window.InputBindings>
     <!-- Outer Grid has no Background — Mica fills behind. The dark "merge
          editor surface" appearance comes entirely from the opaque

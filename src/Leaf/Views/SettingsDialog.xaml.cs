@@ -145,6 +145,7 @@ public partial class SettingsDialog : Window
         AiSettings.Visibility = Visibility.Collapsed;
         GitFlowSettings.Visibility = Visibility.Collapsed;
         ExternalToolsSettings.Visibility = Visibility.Collapsed;
+        KeyboardShortcutsSettings.Visibility = Visibility.Collapsed;
         ContentSearchResults.Visibility = Visibility.Collapsed;
 
         // Show the selected content
@@ -207,6 +208,9 @@ public partial class SettingsDialog : Window
                 ExternalToolsSettings.Visibility = Visibility.Visible;
                 BindExternalToolsIfNeededAsync()
                     .FireAndForget(nameof(BindExternalToolsIfNeededAsync), isUserAction: true);
+                break;
+            case "KeyboardShortcuts":
+                KeyboardShortcutsSettings.Visibility = Visibility.Visible;
                 break;
         }
     }

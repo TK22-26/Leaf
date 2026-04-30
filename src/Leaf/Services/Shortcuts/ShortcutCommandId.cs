@@ -58,5 +58,7 @@ public static class ShortcutCommandId
         public const string OpenPalette = "merge.openPalette";
         public const string Undo = "merge.undo";
         public const string Redo = "merge.redo";
+        public const string RequestAiResolution = "merge.requestAiResolution";
+        public const string ShowBlamePeek = "merge.showBlamePeek";
     }
 }

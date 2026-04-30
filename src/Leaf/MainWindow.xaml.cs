@@ -65,9 +65,31 @@ public partial class MainWindow : Window
     private void ApplyShortcuts()
     {
         InputBindings.Clear();
+
+        // View / window-chrome
         Bind(ShortcutCommandId.View.ToggleTerminal, _viewModel.ToggleTerminalCommand);
         Bind(ShortcutCommandId.View.ToggleCommandPalette, _viewModel.ToggleCommandPaletteCommand);
         Bind(ShortcutCommandId.View.ReportIssue, _viewModel.ReportIssueCommand);
+
+        // Repository operations. Fetch defaults to the all-remotes
+        // command — matches the toolbar's "Fetch" button. Refresh is a
+        // distinct id with no default gesture; user assigns from
+        // Settings if they want a separate keystroke from F5/Fetch.
+        Bind(ShortcutCommandId.Repository.Fetch, _viewModel.FetchAllCommand);
+        Bind(ShortcutCommandId.Repository.Pull, _viewModel.PullCommand);
+        Bind(ShortcutCommandId.Repository.Push, _viewModel.PushCommand);
+        Bind(ShortcutCommandId.Repository.Refresh, _viewModel.RefreshCommand);
+
+        // Branch
+        Bind(ShortcutCommandId.Branch.Create, _viewModel.CreateBranchCommand);
+
+        // Commit / stash. The Commit shortcut is intentionally not
+        // wired here — the commit input box's own Ctrl+Enter binding
+        // already handles it scoped to that control, and adding a
+        // Window-level binding would steal Ctrl+Enter from any text
+        // box that wants to insert a newline.
+        Bind(ShortcutCommandId.Commit.Stash, _viewModel.StashCommand);
+        Bind(ShortcutCommandId.Commit.PopStash, _viewModel.PopStashCommand);
     }
 
     private void Bind(string commandId, ICommand command)
