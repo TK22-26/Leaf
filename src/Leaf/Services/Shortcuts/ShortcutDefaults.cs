@@ -3,12 +3,18 @@ using System.Windows.Input;
 namespace Leaf.Services.Shortcuts;
 
 /// <summary>
-/// Single registration point for every shortcut Leaf ships with. Phase 1
-/// covers the App-scope shortcuts that live on <see cref="MainWindow"/>
-/// today. Phase 2 expands to the full operation set called out in the
-/// audit plan §5.9; Phase 3 wires the merge editor's existing
-/// <c>InputBindings</c> through the registry too.
+/// Single registration point for every shortcut Leaf ships with —
+/// App-scope (MainWindow) and MergeEditor-scope (the merge editor
+/// window). Each call to <see cref="ShortcutService.Register"/> tells
+/// the registry "this id exists, defaults to this gesture, lives in
+/// this category, shows up under that label in Settings."
 /// </summary>
+/// <remarks>
+/// Adding a new shortcut to Leaf is a two-step change: declare the id
+/// in <see cref="ShortcutCommandId"/>, register it here, then bind it
+/// to a real <see cref="System.Windows.Input.ICommand"/> in the host
+/// window's <c>ApplyShortcuts</c> method.
+/// </remarks>
 internal static class ShortcutDefaults
 {
     private const string CategoryView = "View";
@@ -46,10 +52,9 @@ internal static class ShortcutDefaults
             "Report an issue",
             new KeyGesture(Key.F1)));
 
-        // ----- Repository operations (Phase 2 will wire the commands) -
-        // Defaults match the audit plan §5.9 list. Definitions are
-        // registered now so Phase 3's Settings UI has the rows to render
-        // even before the corresponding ICommand wiring lands.
+        // ----- Repository operations -----------------------------------
+        // Defaults match the audit plan §5.9 list. Wired to MainViewModel
+        // commands in MainWindow.ApplyShortcuts.
         registry.Register(new ShortcutDefinition(
             ShortcutCommandId.Repository.Fetch,
             ShortcutScope.Application,
@@ -79,11 +84,10 @@ internal static class ShortcutDefaults
             ShortcutScope.Application,
             CategoryRepository,
             "Refresh repository view",
-            // F5 is already used for Fetch — Refresh shares it on the
-            // theory that "fetch + refresh" is what users mean by F5
-            // anyway. The Phase 2 wiring will wire Refresh to a single
-            // command that performs both. Distinct ids let users
-            // unbind one if they prefer.
+            // No default — F5 already triggers FetchAll which refreshes
+            // as a side-effect, so a separate Refresh chord would be
+            // redundant out of the box. Users can assign one in Settings
+            // if they prefer a refresh-without-fetch keystroke.
             DefaultGesture: null));
 
         registry.Register(new ShortcutDefinition(
@@ -98,8 +102,8 @@ internal static class ShortcutDefaults
             ShortcutScope.Application,
             CategoryBranch,
             "Checkout branch…",
-            // Ctrl+K is the merge palette; we'd shadow it here. Default
-            // unbound — user assigns from Settings.
+            // No obvious-good default that doesn't collide with the
+            // common gestures across editors. User assigns from Settings.
             DefaultGesture: null));
 
         registry.Register(new ShortcutDefinition(

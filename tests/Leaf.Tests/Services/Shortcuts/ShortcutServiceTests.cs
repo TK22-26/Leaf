@@ -9,10 +9,9 @@ namespace Leaf.Tests.Services.Shortcuts;
 
 /// <summary>
 /// Pins the contract of the §5.9 shortcut registry. Each test isolates
-/// its persisted state by swapping <see cref="SettingsService"/>'s static
-/// settings-file path before constructing the service — the alternative
-/// (DI + a fake settings service) needs more scaffolding for the same
-/// coverage.
+/// its persisted state by routing <see cref="SettingsService"/> through
+/// its internal app-data-folder ctor (added for testability) so a fresh
+/// throwaway directory backs every test instance.
 /// </summary>
 public class ShortcutServiceTests : IDisposable
 {
@@ -160,6 +159,90 @@ public class ShortcutServiceTests : IDisposable
         var conflict = sut.FindConflict(defaultGesture!, ShortcutScope.MergeEditor);
 
         conflict.Should().BeNull();
+    }
+
+    [Fact]
+    public void Loader_CorruptGesture_FallsThroughToDefault()
+    {
+        // settings.json with a bogus gesture string for a known id.
+        // Service must NOT store the override (which would silently
+        // unbind the row); the row should stay on its registered
+        // default.
+        File.WriteAllText(Path.Combine(_tempDir, "settings.json"), """
+            {
+              "shortcutOverrides": {
+                "view.toggleTerminal": "definitely-not-a-keygesture"
+              }
+            }
+            """);
+
+        var sut = new ShortcutService(_settings);
+        var def = sut.Definitions.First(d => d.Id == ShortcutCommandId.View.ToggleTerminal);
+
+        sut.GetGesture(ShortcutCommandId.View.ToggleTerminal).Should().Be(def.DefaultGesture,
+            because: "corrupt persisted gesture should fall through to default, not unbind the row");
+    }
+
+    [Fact]
+    public void Loader_EmptyStringGesture_PreservesUnboundState()
+    {
+        // Empty string in JSON means "user explicitly unbound this
+        // shortcut" -- the row stays unbound after load.
+        File.WriteAllText(Path.Combine(_tempDir, "settings.json"), """
+            {
+              "shortcutOverrides": {
+                "view.toggleTerminal": ""
+              }
+            }
+            """);
+
+        var sut = new ShortcutService(_settings);
+
+        sut.GetGesture(ShortcutCommandId.View.ToggleTerminal).Should().BeNull(
+            because: "empty string is the explicit-unbind sentinel");
+    }
+
+    [Fact]
+    public void SetGesture_Conflict_UnbindsOtherRow()
+    {
+        // The Settings UI promises the user that saving a conflicting
+        // gesture will unbind the row that previously held it. Pin
+        // that contract so we don't regress to the old "both rows hold
+        // the same gesture, only the first-registered wins at runtime"
+        // behaviour.
+        var sut = new ShortcutService(_settings);
+        var ctrlT = new KeyGesture(Key.T, ModifierKeys.Control);
+        sut.SetGesture(ShortcutCommandId.View.ToggleTerminal, ctrlT);
+
+        var changedIds = new List<string?>();
+        sut.GestureChanged += (_, id) => changedIds.Add(id);
+
+        // Reassign Ctrl+T to a different row in the same scope.
+        sut.SetGesture(ShortcutCommandId.Repository.Pull, ctrlT);
+
+        sut.GetGesture(ShortcutCommandId.Repository.Pull).Should().Match<KeyGesture>(g =>
+            g.Key == Key.T && g.Modifiers == ModifierKeys.Control);
+        sut.GetGesture(ShortcutCommandId.View.ToggleTerminal).Should().BeNull(
+            because: "the previous holder of Ctrl+T should be unbound by the reassignment");
+        changedIds.Should().Contain(ShortcutCommandId.View.ToggleTerminal,
+            because: "the unbind needs its own GestureChanged so hosts rebuild bindings");
+        changedIds.Should().Contain(ShortcutCommandId.Repository.Pull);
+    }
+
+    [Fact]
+    public void SetGesture_ConflictAcrossScopes_DoesNotReassign()
+    {
+        // Different scopes don't share a binding table at runtime --
+        // App-scope's Ctrl+T and MergeEditor-scope's Ctrl+T target
+        // different windows. Reassignment must respect that.
+        var sut = new ShortcutService(_settings);
+        var ctrlT = new KeyGesture(Key.T, ModifierKeys.Control);
+        sut.SetGesture(ShortcutCommandId.View.ToggleTerminal, ctrlT);
+        sut.SetGesture(ShortcutCommandId.Merge.AcceptOurs, ctrlT);
+
+        sut.GetGesture(ShortcutCommandId.View.ToggleTerminal).Should().NotBeNull(
+            because: "different scope = no conflict, the App-scope binding survives");
+        sut.GetGesture(ShortcutCommandId.Merge.AcceptOurs).Should().NotBeNull();
     }
 
     [Fact]

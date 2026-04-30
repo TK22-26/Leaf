@@ -112,9 +112,11 @@ public partial class KeyboardShortcutsSettingsControl : UserControl
         if (e.Key is Key.Escape or Key.Enter) return;
 
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        // Suppress modifier-only presses (Ctrl, Shift, Alt by themselves)
-        // — they show in the live preview via Keyboard.Modifiers but
-        // don't form a complete gesture on their own.
+        // Modifier-only presses (Ctrl/Shift/Alt by themselves) don't
+        // form a valid gesture and KeyGesture would throw on them.
+        // Wait for the user to press a real key while holding the
+        // modifier; the placeholder "Press a key combination..." stays
+        // up until then.
         if (IsModifierKey(key)) return;
 
         row.SetCapture(key, Keyboard.Modifiers);
@@ -179,10 +181,18 @@ public partial class KeyboardShortcutsSettingsControl : UserControl
             }
         }
 
-        /// <summary>Foreground brush colour key — falls to tertiary text when the shortcut is unbound so the row reads as "no binding" without being scary red.</summary>
-        public Brush GestureForeground => _service.GetGesture(_definition.Id) is null
-            ? (Brush)Application.Current.FindResource("TextFillColorTertiaryBrush")
-            : (Brush)Application.Current.FindResource("TextFillColorPrimaryBrush");
+        /// <summary>Foreground brush — tertiary text when unbound (less prominent), primary otherwise. <see cref="FrameworkElement.TryFindResource(object)"/> rather than <c>FindResource</c> so a missing theme key doesn't crash the Settings dialog.</summary>
+        public Brush GestureForeground
+        {
+            get
+            {
+                var key = _service.GetGesture(_definition.Id) is null
+                    ? "TextFillColorTertiaryBrush"
+                    : "TextFillColorPrimaryBrush";
+                return Application.Current.TryFindResource(key) as Brush
+                    ?? SystemColors.ControlTextBrush;
+            }
+        }
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(CaptureDisplay))]
@@ -213,7 +223,10 @@ public partial class KeyboardShortcutsSettingsControl : UserControl
                 if (Captured is null) return string.Empty;
                 var conflict = _service.FindConflict(Captured, _definition.Scope);
                 if (conflict is null || conflict == _definition.Id) return string.Empty;
-                return $"Already used by '{conflict}'. Saving will reassign.";
+                // The service auto-unbinds the conflicting row when the
+                // user saves -- this message tells them what's about to
+                // happen so the change isn't a surprise.
+                return $"Already used by '{conflict}'. Saving will unbind it.";
             }
         }
 

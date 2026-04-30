@@ -278,48 +278,11 @@ function Run-AllTests {
         }
     }
 
-    Write-Host "`n=== MANUAL CHECKLIST (run with hands on the keyboard) ===" -ForegroundColor Yellow
-    Write-Host @'
-
-Launch Leaf:  src/Leaf/bin/Debug/net10.0-windows/Leaf.exe --repo <any repo>
-
-App-scope shortcuts:
-  [ ] Ctrl+`     toggles the integrated terminal
-  [ ] Alt+Space  opens the command palette
-  [ ] F1         opens "Report an Issue" dialog
-  [ ] F5         fetches all (status bar shows activity)
-  [ ] Ctrl+B     opens the new-branch popup
-  [ ] Ctrl+Shift+P, Ctrl+Shift+L  fire push / pull (no-op on local-only)
-
-Settings -> Keyboard Shortcuts panel:
-  [ ] File menu > Settings opens the dialog
-  [ ] "Keyboard Shortcuts" tree node is present (Keyboard icon)
-  [ ] Clicking it shows a list grouped by:
-        View / Repository / Branch / Commit / Merge editor
-  [ ] Search box narrows the list as you type
-  [ ] Each row shows: Label, command id (small monospace), gesture pill,
-      Edit button, Reset button
-  [ ] Click Edit on "Toggle integrated terminal" -> capture box appears
-  [ ] Press Ctrl+Shift+T -> "Ctrl+Shift+T" appears in the capture
-  [ ] Press Esc -> edit cancels, default returns
-  [ ] Click Edit again, press Ctrl+`, press Enter -> saves, pill updates
-  [ ] Click Reset -> reverts to default
-  [ ] Re-edit, press Alt+1 -> conflict warning appears
-        ("Already used by 'merge.acceptOurs'.")
-  [ ] Reset all to defaults -> every override clears
-  [ ] Close + relaunch Leaf -> overrides persist
-
-Merge editor (open a repo with a conflict):
-  [ ] Alt+1 / Alt+2 / Alt+3 accept Ours / Theirs / Both
-  [ ] F8 / Shift+F8 navigate next / previous conflict
-  [ ] Alt+Right / Alt+Left navigate within a conflict
-  [ ] Alt+Down / Alt+Up jump auto-merged regions
-  [ ] Ctrl+Z / Ctrl+Y undo / redo
-  [ ] Ctrl+Enter marks file resolved
-  [ ] Ctrl+K opens the merge command palette
-  [ ] Alt+B shows the blame peek popover
-  [ ] Ctrl+Shift+Z still works as an alt-Redo (hardcoded alias)
-'@ -ForegroundColor White
+    Write-Host "`n=== MANUAL CHECKLIST ===" -ForegroundColor Yellow
+    Write-Host "See tests/Manual/SEC5_9_TEST_LIST.md for the full" -ForegroundColor White
+    Write-Host "interactive walkthrough -- shortcut chords, Settings UI" -ForegroundColor White
+    Write-Host "edit/save/reset/conflict flow, merge editor regression," -ForegroundColor White
+    Write-Host "and edge cases. ~20 minutes to walk through." -ForegroundColor White
 
     if ($failed -gt 0) { exit 1 } else { exit 0 }
 }

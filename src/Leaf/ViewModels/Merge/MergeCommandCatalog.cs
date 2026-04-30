@@ -33,9 +33,13 @@ public static class MergeCommandCatalog
     {
         ArgumentNullException.ThrowIfNull(vm);
         // Resolve via the static service-locator pattern other merge-
-        // editor views use; null at design-time, in which case all
-        // gesture strings fall back to their defaults below.
-        var shortcuts = Leaf.App.Services?.GetService<IShortcutService>();
+        // editor views use. Leaf.App.Services THROWS when the provider
+        // isn't built (e.g. unit tests instantiating the catalog
+        // directly), so the try/catch keeps that surface friendly --
+        // shortcuts == null falls back to the hardcoded defaults below.
+        IShortcutService? shortcuts = null;
+        try { shortcuts = Leaf.App.Services.GetService<IShortcutService>(); }
+        catch (InvalidOperationException) { /* provider not built; fine */ }
         return new CommandPaletteItem[]
         {
             // Navigation

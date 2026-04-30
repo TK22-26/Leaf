@@ -32,10 +32,22 @@ public interface IShortcutService
     KeyGesture? GetGesture(string commandId);
 
     /// <summary>
-    /// Override the default gesture for <paramref name="commandId"/>.
-    /// Pass <c>null</c> to clear an override (the command reverts to its
-    /// <see cref="ShortcutDefinition.DefaultGesture"/>). Persists the
-    /// change and fires <see cref="GestureChanged"/>.
+    /// Set the active gesture for <paramref name="commandId"/>:
+    /// <list type="bullet">
+    ///   <item>Pass a <see cref="KeyGesture"/> equal to the registered
+    ///         default → the override entry is removed (settings file
+    ///         stays minimal).</item>
+    ///   <item>Pass any other <see cref="KeyGesture"/> → it becomes the
+    ///         active gesture for this command.</item>
+    ///   <item>Pass <c>null</c> → the command is explicitly unbound.
+    ///         <see cref="GetGesture"/> returns null for it. To revert
+    ///         to the default, pass the value of
+    ///         <see cref="ShortcutDefinition.DefaultGesture"/>.</item>
+    /// </list>
+    /// If the new gesture conflicts with another shortcut in the same
+    /// scope, the conflicting shortcut is unbound (its gesture moves to
+    /// this command). Persists the change and fires
+    /// <see cref="GestureChanged"/> for every affected id.
     /// </summary>
     void SetGesture(string commandId, KeyGesture? gesture);
 

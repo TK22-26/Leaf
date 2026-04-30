@@ -47,8 +47,6 @@ public static class ShortcutCommandId
         public const string AcceptTheirs = "merge.acceptTheirs";
         public const string AcceptBoth = "merge.acceptBoth";
         public const string MarkResolved = "merge.markResolved";
-        public const string CompleteMerge = "merge.completeMerge";
-        public const string AbortMerge = "merge.abortMerge";
         public const string NextConflict = "merge.nextConflict";
         public const string PreviousConflict = "merge.previousConflict";
         public const string NextChangeSpan = "merge.nextChangeSpan";
@@ -60,5 +58,9 @@ public static class ShortcutCommandId
         public const string Redo = "merge.redo";
         public const string RequestAiResolution = "merge.requestAiResolution";
         public const string ShowBlamePeek = "merge.showBlamePeek";
+        // Note: CompleteMerge / AbortMerge are intentionally NOT in the
+        // registry. They live on the merge editor's footer buttons and
+        // run via mouse, not keyboard. Adding them here would create
+        // unbound rows in Settings that confuse more than they help.
     }
 }

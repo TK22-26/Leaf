@@ -63,6 +63,35 @@ public class ShortcutService : IShortcutService
                 nameof(commandId));
         }
 
+        // If the new gesture conflicts with another shortcut in the
+        // same scope, unbind that other shortcut. Without this, both
+        // rows would end up with the same gesture and only the
+        // first-registered one would fire at runtime — confusing for
+        // the user. The Settings UI surfaces an amber warning before
+        // the user clicks Save, so the reassignment is opt-in.
+        var changedIds = new List<string>();
+        if (gesture != null)
+        {
+            var thisDef = _definitions[commandId];
+            foreach (var def in _definitionList)
+            {
+                if (def.Id == commandId) continue;
+                if (def.Scope != thisDef.Scope) continue;
+                var other = GetGesture(def.Id);
+                if (GesturesEqual(other, gesture))
+                {
+                    // Unbind the conflicting row by storing an explicit
+                    // null override. Setting null on a row whose default
+                    // is null is a no-op, but storing it explicitly
+                    // ensures the override survives a future
+                    // SetGesture(default-equal) check.
+                    _overrides[def.Id] = null;
+                    changedIds.Add(def.Id);
+                    Log.Info("Shortcuts", $"SetGesture({commandId}) unbinds conflicting '{def.Id}' (was {Format(other)}).");
+                }
+            }
+        }
+
         var defaultGesture = _definitions[commandId].DefaultGesture;
         var clearsOverride = GesturesEqual(gesture, defaultGesture);
 
@@ -79,6 +108,9 @@ public class ShortcutService : IShortcutService
 
         Persist();
         Log.Info("Shortcuts", $"SetGesture({commandId}) = {Format(gesture)} (default={Format(defaultGesture)})");
+        // Fire for the primary id last so a host that rebuilds bindings
+        // on each event sees the unbinds first, then the assignment.
+        foreach (var id in changedIds) GestureChanged?.Invoke(this, id);
         GestureChanged?.Invoke(this, commandId);
     }
 
@@ -136,10 +168,28 @@ public class ShortcutService : IShortcutService
                 continue;
             }
 
+            // Distinguish three cases on disk:
+            //   1. Empty string  -> user explicitly unbound the shortcut
+            //                       (store null in _overrides)
+            //   2. Valid gesture -> user override (store the gesture)
+            //   3. Garbage       -> corrupt entry; SKIP storing so the
+            //                       row falls through to its registered
+            //                       default. This matches what the user
+            //                       expects from a "reset to default"
+            //                       outcome and avoids silently leaving
+            //                       the row unbound.
+            if (string.IsNullOrEmpty(gestureString))
+            {
+                _overrides[id] = null;
+                continue;
+            }
             var parsed = ParseGesture(gestureString);
-            // Empty / null gesture string = "user explicitly unbound this
-            // shortcut" — preserved as a null entry in the override map.
-            _overrides[id] = parsed;
+            if (parsed != null)
+            {
+                _overrides[id] = parsed;
+            }
+            // parsed == null + non-empty input means corrupt -> falls
+            // through to default. ParseGesture already logged a warning.
         }
 
         Log.Info("Shortcuts", $"Loaded {_overrides.Count} shortcut override(s).");
@@ -153,6 +203,11 @@ public class ShortcutService : IShortcutService
         _settings.SaveSettings(settings);
     }
 
+    /// <summary>
+    /// Parse a persisted gesture string. Returns null on parse failure;
+    /// the caller (LoadOverrides) treats null as "skip this entry, use
+    /// default", so a corrupt user file doesn't silently unbind anything.
+    /// </summary>
     private static KeyGesture? ParseGesture(string? value)
     {
         if (string.IsNullOrEmpty(value)) return null;
@@ -162,10 +217,6 @@ public class ShortcutService : IShortcutService
         }
         catch (Exception ex) when (ex is NotSupportedException or FormatException or ArgumentException)
         {
-            // Corrupt entry from a hand-edited settings file. Falling
-            // back to the default beats throwing during startup; we log
-            // so the user sees the reason their custom binding didn't
-            // come back.
             Log.Warn("Shortcuts", $"Could not parse gesture '{value}': {ex.Message}. Falling back to default.");
             return null;
         }
