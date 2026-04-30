@@ -21,6 +21,7 @@ public class GitService : IGitService
     private readonly ConflictOperations _conflictOps;
     private readonly MergeOperations _mergeOps;
     private readonly RebaseOperations _rebaseOps;
+    private readonly AmOperations _amOps;
     private readonly StashOperations _stashOps;
     private readonly TagOperations _tagOps;
     private readonly HunkOperations _hunkOps;
@@ -51,6 +52,7 @@ public class GitService : IGitService
         _conflictOps = new ConflictOperations(_context);
         _mergeOps = new MergeOperations(_context);
         _rebaseOps = new RebaseOperations(_context);
+        _amOps = new AmOperations(_context);
         _stashOps = new StashOperations(_context, _conflictOps);
         _tagOps = new TagOperations(_context);
         _hunkOps = new HunkOperations(_context);
@@ -343,6 +345,18 @@ public class GitService : IGitService
 
     public Task<bool> IsRebaseInProgressAsync(string repoPath, CancellationToken cancellationToken = default)
         => _rebaseOps.IsRebaseInProgressAsync(repoPath, cancellationToken);
+
+    public Task<bool> IsAmInProgressAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _amOps.IsAmInProgressAsync(repoPath, cancellationToken);
+
+    public Task<MergeResult> ContinueAmAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _amOps.ContinueAmAsync(repoPath, cancellationToken);
+
+    public Task<MergeResult> SkipAmAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _amOps.SkipAmAsync(repoPath, cancellationToken);
+
+    public Task AbortAmAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _amOps.AbortAmAsync(repoPath, cancellationToken);
 
     #endregion
 

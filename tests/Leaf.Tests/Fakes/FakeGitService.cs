@@ -143,6 +143,10 @@ public class FakeGitService : IGitService
     public Task<MergeResult> ContinueRebaseAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
     public Task<MergeResult> SkipRebaseCommitAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
     public Task<bool> IsRebaseInProgressAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(false);
+    public Task<bool> IsAmInProgressAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(false);
+    public Task<MergeResult> ContinueAmAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
+    public Task<MergeResult> SkipAmAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
+    public Task AbortAmAsync(string repoPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<MergeResult> SquashMergeAsync(string repoPath, string branchName, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
     public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null, CancellationToken cancellationToken = default) => Task.FromResult(new List<CommitInfo>());
     public virtual Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default) => Task.FromResult(new List<FileBlameLine>());

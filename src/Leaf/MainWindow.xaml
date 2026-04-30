@@ -73,6 +73,12 @@
                         <MenuItem Command="{Binding AddRepositoryCommand}" Header="_Add Repository..." />
                         <MenuItem Command="{Binding AddAllReposInFolderCommand}" Header="Add All Repos in _Folder..." />
                         <Separator />
+                        <MenuItem Command="{Binding ApplyPatchCommand}" Header="Apply _Patch...">
+                            <MenuItem.Icon>
+                                <ic:SymbolIcon FontSize="14" Symbol="ArrowImport" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <Separator />
                         <MenuItem Command="{Binding OpenSettingsCommand}" Header="_Settings" />
                     </MenuItem>
                     <MenuItem Header="_Repository">

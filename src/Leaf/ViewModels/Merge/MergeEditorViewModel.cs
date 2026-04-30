@@ -950,10 +950,29 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
             //
             // Cherry-pick / revert clear their HEAD via the next commit
             // automatically, so they remain on the merge path.
-            var rebaseInProgress = await _gitService.IsRebaseInProgressAsync(_repoPath, SessionToken)
+            // git am also leaves rebase-apply state behind; the
+            // `applying` marker disambiguates it from a real rebase. We
+            // probe am first because IsRebaseInProgressAsync's directory
+            // check would also return true for a paused am (both backends
+            // share rebase-apply), and dispatching to `git rebase
+            // --continue` against an am state would fail with
+            // "It looks like 'git am' is in progress."
+            var amInProgress = await _gitService.IsAmInProgressAsync(_repoPath, SessionToken)
                 .ConfigureAwait(true);
+            var rebaseInProgress = !amInProgress &&
+                await _gitService.IsRebaseInProgressAsync(_repoPath, SessionToken)
+                    .ConfigureAwait(true);
 
-            if (rebaseInProgress)
+            if (amInProgress)
+            {
+                var result = await _gitService.ContinueAmAsync(_repoPath, SessionToken)
+                    .ConfigureAwait(true);
+                if (!result.Success && !result.HasConflicts && !string.IsNullOrEmpty(result.ErrorMessage))
+                {
+                    throw new InvalidOperationException(result.ErrorMessage);
+                }
+            }
+            else if (rebaseInProgress)
             {
                 var result = await _gitService.ContinueRebaseAsync(_repoPath, SessionToken)
                     .ConfigureAwait(true);

@@ -43,11 +43,12 @@ public partial class MainViewModel
         // Refuse to launch a second rebase on top of an in-progress one;
         // git would just bail with "rebase in progress" and the user would
         // get a less actionable message than this one.
-        if (SelectedRepository.OperationType == GitOperationType.Rebase)
+        if (SelectedRepository.OperationType is GitOperationType.Rebase or GitOperationType.Am)
         {
-            Log.Warn("InteractiveRebase", "Refused: rebase already in progress.");
+            Log.Warn("InteractiveRebase", $"Refused: {SelectedRepository.OperationType} already in progress.");
             await _dialogService.ShowMessageAsync(
-                "A rebase is already in progress. Continue, skip, or abort it before starting a new one.",
+                "Another git operation (rebase or patch apply) is already in progress. " +
+                "Continue, skip, or abort it before starting a new one.",
                 "Interactive Rebase",
                 MessageBoxButton.OK);
             return;

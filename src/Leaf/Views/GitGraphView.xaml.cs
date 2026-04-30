@@ -467,6 +467,28 @@ public partial class GitGraphView : UserControl
         };
         menu.Items.Add(rebaseInteractiveItem);
 
+        // Patch creation entries. These sit just under the rebase entry
+        // because both are "rewrite this commit's worth of work" tools —
+        // mentally they group together. Quick-clipboard sits next to the
+        // file-write variant for muscle-memory.
+        var createPatchItem = new MenuItem
+        {
+            Header = "Create Patch File…",
+            Command = mainViewModel.CreatePatchFromCommitCommand,
+            CommandParameter = commit,
+            Icon = new SymbolIcon { Symbol = Symbol.Save, FontSize = 14 }
+        };
+        menu.Items.Add(createPatchItem);
+
+        var copyPatchItem = new MenuItem
+        {
+            Header = "Copy as Patch",
+            Command = mainViewModel.CopyCommitAsPatchCommand,
+            CommandParameter = commit,
+            Icon = new SymbolIcon { Symbol = Symbol.Copy, FontSize = 14 }
+        };
+        menu.Items.Add(copyPatchItem);
+
         menu.Items.Add(new Separator());
 
         var copyShaItem = new MenuItem
