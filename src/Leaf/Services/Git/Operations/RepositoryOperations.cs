@@ -276,6 +276,13 @@ internal class RepositoryOperations
         {
             return (Models.GitOperationType.Revert, "revert");
         }
+        if (File.Exists(Path.Combine(gitDir, "BISECT_START")))
+        {
+            // BISECT_START is the canonical bisect-in-progress marker
+            // (BISECT_LOG can linger after a crashed bisect; START is
+            // written on `git bisect start` and removed on `reset`).
+            return (Models.GitOperationType.Bisect, "bisect");
+        }
         return (Models.GitOperationType.None, string.Empty);
     }
 }

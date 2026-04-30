@@ -35,5 +35,12 @@ public enum GitOperationType
     /// Distinct from <see cref="Rebase"/> because the control verbs are
     /// different (<c>git am --continue/--skip/--abort</c> vs the rebase set).
     /// </summary>
-    Am
+    Am,
+
+    /// <summary>
+    /// A <c>git bisect</c> is in progress (.git/BISECT_START exists).
+    /// The user is walking the binary search and the verdict buttons
+    /// drive <c>git bisect good/bad/skip</c>; <c>reset</c> terminates.
+    /// </summary>
+    Bisect
 }

@@ -430,6 +430,12 @@ public partial class MainViewModel
             await RefreshMergeConflictResolutionAsync();
             Log.Perf("SelectRepo", "RefreshMergeConflictResolutionAsync", stepSw.ElapsedMilliseconds);
 
+            // Pick up bisect state from disk so the bisect banner reflects
+            // an in-progress session even after a repo switch / cold open.
+            stepSw.Restart();
+            await RefreshBisectStateAsync();
+            Log.Perf("SelectRepo", "RefreshBisectStateAsync", stepSw.ElapsedMilliseconds);
+
               UpdateRepositoryStatusMessage(repository);
 
             if (fetchInBackground)

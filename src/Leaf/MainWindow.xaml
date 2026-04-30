@@ -673,7 +673,14 @@
                 </Border>
 
                 <!--  Center panel: Git graph / PR detail / PR create  -->
-                <Grid Grid.Column="2">
+                <DockPanel Grid.Column="2" LastChildFill="True">
+                    <!--  Bisect banner: docks above the graph during a bisect.
+                         Visibility tracks CurrentBisectState — null hides the
+                         whole bar, no layout cost when no bisect is active.  -->
+                    <views:BisectBanner DockPanel.Dock="Top"
+                                        DataContext="{Binding}"
+                                        Visibility="{Binding CurrentBisectState, Converter={StaticResource NullToVisibilityConverter}}" />
+                <Grid>
                     <!--  Git graph: visible when in Graph mode and diff viewer not active  -->
                     <views:GitGraphView DataContext="{Binding GitGraphViewModel}">
                         <views:GitGraphView.Style>
@@ -719,6 +726,7 @@
                         </views:CreatePullRequestView.Style>
                     </views:CreatePullRequestView>
                 </Grid>
+                </DockPanel>
 
                 <!--  Right panel: Commit details / Working changes / Merge Status (hidden in PR mode)  -->
                 <Border

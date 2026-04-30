@@ -522,6 +522,7 @@ public class GitOperationTypeToStringConverter : IValueConverter
                 Models.GitOperationType.Revert => "Revert in Progress",
                 Models.GitOperationType.Rebase => "Rebase in Progress",
                 Models.GitOperationType.Am => "Patch Apply in Progress",
+                Models.GitOperationType.Bisect => "Bisect in Progress",
                 _ => "Operation in Progress"
             },
             "Verb" => opType switch
@@ -531,6 +532,7 @@ public class GitOperationTypeToStringConverter : IValueConverter
                 Models.GitOperationType.Revert => "Reverting",
                 Models.GitOperationType.Rebase => "Rebasing",
                 Models.GitOperationType.Am => "Applying patches",
+                Models.GitOperationType.Bisect => "Bisecting",
                 _ => "Processing"
             },
             "Preposition" => opType switch
@@ -540,6 +542,7 @@ public class GitOperationTypeToStringConverter : IValueConverter
                 Models.GitOperationType.Revert => "on",
                 Models.GitOperationType.Rebase => "onto",
                 Models.GitOperationType.Am => "into",
+                Models.GitOperationType.Bisect => "in",
                 _ => "on"
             },
             _ => opType.ToString()
