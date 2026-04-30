@@ -102,9 +102,21 @@ public partial class MainViewModel
 
             CurrentBisectState = result.State;
             BisectFoundSha = result.FirstBadSha;
-            StatusMessage = result.IsTerminating
-                ? $"Bisect converged immediately: {Shorten(result.FirstBadSha)}"
-                : $"Bisect started — testing {result.State?.CurrentShortSha} ({result.State?.StepsRemaining} steps remaining).";
+            // Mid-bisect banner already shows "Testing X (K steps left)";
+            // no toast for that state. Convergence on the start step is
+            // vanishingly rare (it requires bad == good, i.e. a one-commit
+            // range) but real, so we fire a success toast there.
+            // The all-skipped terminator can't fire at start (no verdicts
+            // yet means nothing has been skipped), so the FirstBadSha is
+            // always present on a terminating start; the null-branch is a
+            // belt-and-suspenders fallback for any future edge.
+            if (result.IsTerminating)
+            {
+                var converged = result.FirstBadSha != null
+                    ? $"{Shorten(result.FirstBadSha)} is the first bad commit."
+                    : "Bisect ended immediately.";
+                NotifySuccess("Bisect converged", converged);
+            }
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -157,13 +169,14 @@ public partial class MainViewModel
             if (result.IsTerminating)
             {
                 Log.Info("Bisect", $"Converged: first bad commit = {result.FirstBadSha}");
-                StatusMessage = $"Bisect converged: {Shorten(result.FirstBadSha)} is the first bad commit.";
+                var summary = result.FirstBadSha != null
+                    ? $"{Shorten(result.FirstBadSha)} is the first bad commit."
+                    : "Bisect ended (every remaining candidate was skipped).";
+                NotifySuccess("Bisect converged", summary);
             }
-            else
-            {
-                var stepsText = result.State?.StepsRemaining is int s ? $" ({s} steps remaining)" : "";
-                StatusMessage = $"Testing {result.State?.CurrentShortSha}{stepsText}.";
-            }
+            // Mid-bisect testing state has no toast — the banner shows
+            // "Testing <sha> (K steps left)" continuously, which is the
+            // canonical UI for that state.
 
             // Refresh first so the graph repopulates with current branch /
             // commit data, THEN select. Prior order had Select first and
@@ -206,7 +219,7 @@ public partial class MainViewModel
 
             CurrentBisectState = null;
             BisectFoundSha = null;
-            StatusMessage = "Bisect ended; HEAD restored.";
+            NotifyInfo("Bisect ended", "HEAD has been restored.");
             await RefreshAsync();
         }
         catch (Exception ex)

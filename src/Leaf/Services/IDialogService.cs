@@ -10,17 +10,16 @@ namespace Leaf.Services;
 /// <para>All methods marshal to the UI thread via IDispatcherService.
 /// Safe to call from any thread.</para>
 ///
-/// <para><b>Error-feedback policy (plan §3.4):</b></para>
+/// <para><b>Feedback policy:</b></para>
 /// <list type="bullet">
-/// <item><description><b>Status bar</b> (<c>StatusMessage</c> on the
-/// ViewModel, not this service) — progress and completion for a
-/// user-initiated operation that is clearly in flight: "Pushing...",
-/// "Push complete", "Pushed to 3 of 3 remotes".</description></item>
-/// <item><description><b>Toast</b> (<see cref="ShowErrorToastAsync"/>,
-/// or <see cref="INotificationService.Show"/> directly from VMs that
-/// hold it) — recoverable failures and background-operation errors
-/// that don't need immediate acknowledgement: "Push failed: network
-/// timeout", "Auto-fetch skipped — host unreachable".</description></item>
+/// <item><description><b>Toast</b> (<see cref="ShowErrorToastAsync"/>
+/// for failures, <see cref="INotificationService.Show"/> with
+/// <see cref="NotificationType.Success"/>/<see cref="NotificationType.Information"/>/<see cref="NotificationType.Warning"/>
+/// for everything else) — terminal feedback for user-initiated and
+/// background operations alike. Successful completions, recoverable
+/// failures, and informational outcomes all surface as toasts so they
+/// don't get lost. The <c>IsBusy</c> spinner covers in-flight
+/// progress; toasts cover terminal state.</description></item>
 /// <item><description><b>Modal</b> (<see cref="ShowMessageAsync"/>
 /// with <see cref="MessageBoxButton.OK"/>, or
 /// <see cref="ShowConfirmationAsync"/> for yes/no) — errors or prompts

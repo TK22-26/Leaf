@@ -43,7 +43,7 @@ public partial class MainViewModel
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            StatusMessage = $"Added remote '{dialog.RemoteName}'";
+            NotifySuccess("Remote added", $"Added '{dialog.RemoteName}' ({dialog.FetchUrl}).");
         }
         catch (Exception ex)
         {
@@ -71,7 +71,7 @@ public partial class MainViewModel
 
             if (remoteInfo == null)
             {
-                StatusMessage = $"Remote '{remote.Name}' not found";
+                NotifyWarning("Remote not found", $"Remote '{remote.Name}' no longer exists in this repository.");
                 return;
             }
 
@@ -101,7 +101,7 @@ public partial class MainViewModel
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            StatusMessage = $"Updated remote '{currentRemoteName}'";
+            NotifySuccess("Remote updated", $"Updated remote '{currentRemoteName}'.");
         }
         catch (Exception ex)
         {
@@ -137,7 +137,7 @@ public partial class MainViewModel
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            StatusMessage = $"Removed remote '{remoteName}'";
+            NotifySuccess("Remote removed", $"Removed remote '{remoteName}'.");
         }
         catch (Exception ex)
         {
@@ -165,7 +165,7 @@ public partial class MainViewModel
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            StatusMessage = $"Set '{remoteName}' as default remote";
+            NotifySuccess("Default remote set", $"'{remoteName}' is now the default remote for push.");
         }
         catch (Exception ex)
         {
@@ -184,7 +184,7 @@ public partial class MainViewModel
         try
         {
             Clipboard.SetText(url);
-            StatusMessage = "Copied URL to clipboard";
+            NotifyInfo("URL copied", "Remote URL copied to clipboard.");
         }
         catch (System.Runtime.InteropServices.COMException ex)
         {
@@ -214,8 +214,6 @@ public partial class MainViewModel
             var successCount = 0;
             foreach (var remote in remotes)
             {
-                StatusMessage = $"Fetching {remote.Name}...";
-
                 // Resolve credential key only when Leaf has a stored PAT;
                 // otherwise git uses its default helpers (GCM).
                 var credentialKey = _credentialService.ResolveActiveCredentialKey(remote.Url);
@@ -232,7 +230,7 @@ public partial class MainViewModel
                 }
             }
 
-            StatusMessage = $"Fetched from {successCount} of {remotes.Count} remotes";
+            NotifySuccess("Fetch complete", $"Fetched from {successCount} of {remotes.Count} remotes.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -277,8 +275,6 @@ public partial class MainViewModel
 
             foreach (var remoteName in selectedRemotes)
             {
-                StatusMessage = $"Pushing to {remoteName}...";
-
                 // Resolve credential key from the remote URL only when a PAT
                 // is stored; otherwise rely on GCM fallback.
                 var remoteInfo = remotes.FirstOrDefault(r => r.Name == remoteName);
@@ -299,7 +295,6 @@ public partial class MainViewModel
             }
 
             // Fetch from all pushed remotes to update remote refs in the UI
-            StatusMessage = "Updating remote refs...";
             foreach (var (remote, credentialKey) in pushedRemotes)
             {
                 try
@@ -315,15 +310,16 @@ public partial class MainViewModel
                 }
             }
 
-            StatusMessage = $"Pushed to {pushedRemotes.Count} remotes";
-
             if (failedMessages.Count > 0)
             {
-                StatusMessage = $"Pushed to {pushedRemotes.Count} of {selectedRemotes.Count} remotes";
                 var errorDetail = string.Join("\n", failedMessages);
                 await _dialogService.ShowErrorToastAsync(
                     $"Push failed for {failedMessages.Count} remote(s):\n\n{errorDetail}",
                     "Push Failed");
+            }
+            else
+            {
+                NotifySuccess("Push complete", $"Pushed to {pushedRemotes.Count} remote{(pushedRemotes.Count == 1 ? "" : "s")}.");
             }
 
             await RefreshAsync();

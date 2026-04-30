@@ -11,6 +11,28 @@
         ShowInTaskbar="False"
         Background="{DynamicResource ApplicationBackgroundBrush}"
         ResizeMode="NoResize">
+    <Window.Resources>
+        <!--  Accent CTA button. WPF's default Button style ignores the
+              Background/Foreground we set when IsEnabled flips, so a
+              hardcoded Background+Foreground+IsEnabled="False" combo
+              renders as full-saturation accent with white text — the
+              button looks enabled but isn't. The triggers below swap
+              both brushes to the Fluent disabled tokens so the visual
+              state matches the actual interaction state.  -->
+        <Style x:Key="AccentCtaButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="{DynamicResource AccentFillColorDisabledBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorDisabledBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDisabledBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -23,14 +45,22 @@
                            FontSize="20"
                            FontWeight="SemiBold"
                            Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                <!-- StackPanel children default to VerticalAlignment=Stretch
+                     and measure with their own font metrics. The SemiBold
+                     Consolas commit text has a different ascent than the
+                     regular "Commit:" label, so without an explicit anchor
+                     they don't share a baseline. Bottom on both pins the
+                     descent line so they read as a single sentence. -->
                 <StackPanel Orientation="Horizontal" Margin="0,4,0,16">
                     <TextBlock Text="Commit: "
                                FontSize="13"
+                               VerticalAlignment="Bottom"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     <TextBlock x:Name="CommitText"
                                FontSize="13"
                                FontWeight="SemiBold"
                                FontFamily="Consolas"
+                               VerticalAlignment="Bottom"
                                TextTrimming="CharacterEllipsis"
                                MaxWidth="380"
                                Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -130,8 +160,7 @@
                         Padding="24,10"
                         Click="Create_Click"
                         IsEnabled="False"
-                        Background="{DynamicResource AccentFillColorDefaultBrush}"
-                        Foreground="White">
+                        Style="{StaticResource AccentCtaButtonStyle}">
                     <StackPanel Orientation="Horizontal">
                         <ic:SymbolIcon Symbol="Save" FontSize="14" Margin="0,0,8,0" />
                         <TextBlock Text="Create" />

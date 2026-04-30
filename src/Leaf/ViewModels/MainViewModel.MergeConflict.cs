@@ -86,8 +86,6 @@ public partial class MainViewModel
             if (isOrphaned)
             {
                 // Show dialog to let user choose how to recover
-                StatusMessage = "Detected orphaned conflict state...";
-
                 var result = await _dialogService.ShowMessageAsync(
                     "The repository has conflicts but no merge is in progress.\n" +
                     "This can happen after a failed checkout or other operation.\n\n" +
@@ -100,7 +98,7 @@ public partial class MainViewModel
 
                 if (result == MessageBoxResult.Cancel)
                 {
-                    StatusMessage = "Recovery cancelled";
+                    NotifyInfo("Recovery cancelled", "Repository state unchanged.");
                     return;
                 }
 
@@ -116,14 +114,10 @@ public partial class MainViewModel
 
                     if (!confirmed)
                     {
-                        StatusMessage = "Recovery cancelled";
+                        NotifyInfo("Recovery cancelled", "Repository state unchanged.");
                         return;
                     }
                 }
-
-                StatusMessage = discardChanges
-                    ? "Resetting index and restoring files..."
-                    : "Resetting index...";
 
                 await _gitService.ResetOrphanedConflictsAsync(SelectedRepository.Path, discardChanges, cancellationToken: CurrentRepositoryToken);
 
@@ -140,9 +134,9 @@ public partial class MainViewModel
                     Log.Info("Merge", $"Clear stored merge conflicts failed: {clearEx.Message}");
                 }
 
-                StatusMessage = discardChanges
-                    ? "Index reset and files restored"
-                    : "Index reset (working directory preserved)";
+                NotifySuccess("Index reset", discardChanges
+                    ? "Index reset and files restored."
+                    : "Index reset (working directory preserved).");
             }
             else
             {
@@ -153,33 +147,28 @@ public partial class MainViewModel
                 switch (opType)
                 {
                     case Models.GitOperationType.CherryPick:
-                        StatusMessage = "Aborting cherry-pick...";
                         await _gitService.AbortCherryPickAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                        StatusMessage = "Cherry-pick aborted";
+                        NotifySuccess("Cherry-pick aborted", "Working tree restored to pre-cherry-pick state.");
                         break;
 
                     case Models.GitOperationType.Revert:
-                        StatusMessage = "Aborting revert...";
                         await _gitService.AbortRevertAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                        StatusMessage = "Revert aborted";
+                        NotifySuccess("Revert aborted", "Working tree restored to pre-revert state.");
                         break;
 
                     case Models.GitOperationType.Rebase:
-                        StatusMessage = "Aborting rebase...";
                         await _gitService.AbortRebaseAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                        StatusMessage = "Rebase aborted";
+                        NotifySuccess("Rebase aborted", "Working tree restored to pre-rebase state.");
                         break;
 
                     case Models.GitOperationType.Am:
-                        StatusMessage = "Aborting patch apply...";
                         await _gitService.AbortAmAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                        StatusMessage = "Patch apply aborted";
+                        NotifySuccess("Patch apply aborted", "Working tree restored to pre-apply state.");
                         break;
 
                     default:
-                        StatusMessage = "Aborting merge...";
                         await _gitService.AbortMergeAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                        StatusMessage = "Merge aborted";
+                        NotifySuccess("Merge aborted", "Working tree restored to pre-merge state.");
                         break;
                 }
 
@@ -233,7 +222,7 @@ public partial class MainViewModel
             // gets picked up by the re-fetch below. If they close without
             // Apply, no tool is saved — explicit user choice, we honour
             // it by returning early.
-            StatusMessage = "Configure an external merge tool to resolve conflicts in it.";
+            NotifyInfo("Merge tool needed", "Configure an external merge tool to resolve conflicts in it.");
             await OpenSettingsAsync("ExternalTools");
             // OpenSettingsAsync calls RefreshExternalMergeToolAvailabilityAsync
             // on close, which updates HasExternalMergeTool — no need to
@@ -243,7 +232,7 @@ public partial class MainViewModel
                 SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
             if (mergeTool == null)
             {
-                StatusMessage = "No external merge tool configured.";
+                NotifyWarning("No merge tool", "No external merge tool configured.");
                 return;
             }
         }
@@ -260,12 +249,17 @@ public partial class MainViewModel
 
             await RefreshAsync();
 
-            // Mirror the status feedback users get from per-conflict
+            // Mirror the feedback users get from per-conflict
             // resolution in Leaf's own merge view — without it a failed
             // external merge silently returns as if nothing happened.
-            StatusMessage = staged
-                ? $"{conflict.FilePath} resolved in {mergeTool.DisplayName}."
-                : $"{mergeTool.DisplayName} did not produce a staged result for {conflict.FilePath}.";
+            if (staged)
+            {
+                NotifySuccess("Conflict resolved", $"{conflict.FilePath} resolved in {mergeTool.DisplayName}.");
+            }
+            else
+            {
+                NotifyWarning("Merge tool exited", $"{mergeTool.DisplayName} did not produce a staged result for {conflict.FilePath}.");
+            }
         }
         catch (Exception ex)
         {
@@ -345,7 +339,6 @@ public partial class MainViewModel
             try
             {
                 IsBusy = false;
-                StatusMessage = $"Resolving conflicts in {fileName}";
                 await _dialogService.ShowDialogAsync(conflictWindow);
             }
             finally
@@ -397,6 +390,13 @@ public partial class MainViewModel
 
             MergeConflictResolutionViewModel = null;
             _mergeConflictRepoPath = null;
+            // Symmetry: clear the snapshot too so a future refactor that
+            // ever reads it without an intervening surface re-capture
+            // can't leak the previous operation's verb. Today the field
+            // is always re-captured before the next read, but the cost
+            // of zeroing it here is one assignment vs. a class of latent
+            // bugs.
+            _activeResolutionOperationType = Models.GitOperationType.None;
             _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken)
                 .FireAndForget(nameof(_gitService.ClearStoredMergeConflictFilesAsync), isUserAction: false);
             return;
@@ -435,6 +435,14 @@ public partial class MainViewModel
             return;
         }
 
+        // Snapshot the operation type EVERY time we surface the editor,
+        // not only on new-VM creation. Same-repo sequential operations
+        // (cherry-pick → revert → rebase, etc.) reuse the VM, so a
+        // capture limited to isNewViewModel would leave the previous
+        // operation's type cached and `OnMergeConflictResolutionCompleted`
+        // would label the new outcome with the old verb.
+        _activeResolutionOperationType = SelectedRepository.OperationType;
+
         MergeConflictResolutionViewModel.SourceBranch = !string.IsNullOrEmpty(SelectedRepository.MergingBranch)
             ? SelectedRepository.MergingBranch
             : "Incoming";
@@ -451,7 +459,29 @@ public partial class MainViewModel
         try
         {
             Log.Info("Merge", $"OnMergeConflictResolutionCompleted: success={success}");
-            StatusMessage = success ? "Merge completed successfully" : "Merge aborted";
+
+            // The merge editor handles cherry-pick / revert / rebase / am
+            // conflicts too; "Merge complete/aborted" would lie for those
+            // cases. Read the snapshot taken when the editor opened, NOT
+            // SelectedRepository.OperationType — by the time this fires,
+            // git has already cleared the sentinel files and a file-watcher
+            // refresh may have set OperationType=None, which would route
+            // every cherry-pick / revert / rebase / am result to the
+            // generic "Merge" branch.
+            var (verb, what) = _activeResolutionOperationType switch
+            {
+                Models.GitOperationType.CherryPick => ("Cherry-pick", "Cherry-pick"),
+                Models.GitOperationType.Revert => ("Revert", "Revert"),
+                Models.GitOperationType.Rebase => ("Rebase", "Rebase"),
+                Models.GitOperationType.Am => ("Patch apply", "Patch apply"),
+                _ => ("Merge", "Merge"),
+            };
+
+            if (success)
+                NotifySuccess($"{verb} complete", $"{what} completed successfully.");
+            else
+                NotifyInfo($"{verb} aborted", "Working tree restored.");
+
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -459,4 +489,15 @@ public partial class MainViewModel
             AsyncErrorHandler.Handle(ex, nameof(OnMergeConflictResolutionCompleted), isUserAction: true);
         }
     }
+
+    /// <summary>
+    /// Snapshot of <see cref="RepositoryInfo.OperationType"/> taken when
+    /// the merge-editor session was opened. Read by
+    /// <see cref="OnMergeConflictResolutionCompleted"/> so the success
+    /// toast labels the right verb (cherry-pick / revert / rebase / am
+    /// vs plain merge). Reading the live value is racy — by the time
+    /// the editor closes, git has cleared the sentinel files and a file
+    /// watcher refresh may have already set OperationType=None.
+    /// </summary>
+    private Models.GitOperationType _activeResolutionOperationType = Models.GitOperationType.None;
 }

@@ -57,7 +57,7 @@ public partial class MainViewModel
         // We deliberately do not block on a dirty working tree here — git
         // itself will fail the rebase with a clear message ("cannot rebase:
         // You have unstaged changes…") and the failure path surfaces it
-        // via StatusMessage. That keeps the entry-point cheap and avoids
+        // via the failure-reporting path. That keeps the entry-point cheap and avoids
         // a precheck that might disagree with git's own staging rules.
 
         var subject = string.IsNullOrEmpty(commit.MessageShort)
@@ -103,20 +103,20 @@ public partial class MainViewModel
         {
             // Hand off to the existing rebase-conflict pathway. The merge
             // editor opens against OperationType.Rebase and exposes
-            // continue/skip/abort via its own toolbar.
+            // continue/skip/abort via its own toolbar — no toast, the
+            // modal carries the cue.
             Log.Info("InteractiveRebase", "Routing paused-conflict state to merge editor.");
-            StatusMessage = "Rebase paused on conflict — resolve and continue.";
             await ContinueMergeAsync();
         }
         else if (terminalResult?.Success == true)
         {
             Log.Info("InteractiveRebase", "Rebase completed cleanly; refreshing repository view.");
-            StatusMessage = "Interactive rebase completed.";
+            NotifySuccess("Interactive rebase complete", "Your commits have been rewritten.");
         }
         else if (terminalResult is { Success: false, HasConflicts: false } && !string.IsNullOrEmpty(terminalResult.ErrorMessage))
         {
             Log.Warn("InteractiveRebase", $"Rebase ended with error: {terminalResult.ErrorMessage}");
-            StatusMessage = $"Rebase failed: {terminalResult.ErrorMessage}";
+            await ReportOperationFailureAsync("Interactive rebase", terminalResult.ErrorMessage);
         }
         else if (terminalResult == null)
         {

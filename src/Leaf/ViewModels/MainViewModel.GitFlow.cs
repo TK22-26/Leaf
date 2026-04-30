@@ -1,5 +1,5 @@
 using System;
-using System.IO;
+using System.IO; // for IOException in branch-finalize catch
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Services;
@@ -44,7 +44,7 @@ public partial class MainViewModel
         var dialog = new Views.GitFlowInitDialog(_gitFlowService, _settingsService, SelectedRepository.Path);
         if (await _dialogService.ShowDialogAsync(dialog) && dialog.Result != null)
         {
-            StatusMessage = "GitFlow initialized successfully";
+            NotifySuccess("GitFlow initialized", "Branch prefixes and base branches configured.");
             SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
@@ -81,7 +81,7 @@ public partial class MainViewModel
         var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository!.Path, branchType);
         if (await _dialogService.ShowDialogAsync(dialog))
         {
-            StatusMessage = $"Started {statusNoun} {dialog.BranchName}";
+            NotifySuccess($"{char.ToUpper(statusNoun[0]) + statusNoun[1..]} started", $"Created and checked out {dialog.BranchName}.");
             SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
@@ -148,7 +148,11 @@ public partial class MainViewModel
 
         if (finished)
         {
-            StatusMessage = $"Finished {branchType.ToString().ToLower()} {flowName}";
+            // Use sentence-cased branch type in description ("Feature
+            // my-thing merged…") so the line reads naturally instead of
+            // starting mid-sentence with a lowercase noun.
+            var typeName = branchType.ToString();
+            NotifySuccess($"{typeName} finished", $"{typeName} {flowName} merged and cleaned up.");
         }
     }
 
@@ -184,7 +188,7 @@ public partial class MainViewModel
         {
             await BeginBusyAsync($"Publishing {branchType.ToString().ToLower()} {flowName}...");
 
-            var progress = new Progress<string>(msg => StatusMessage = msg);
+            var progress = new Progress<string>(msg => Log.Info("GitFlow", msg));
 
             switch (branchType)
             {
@@ -199,7 +203,12 @@ public partial class MainViewModel
                     break;
             }
 
-            StatusMessage = $"Published {branchType.ToString().ToLower()} {flowName}";
+            // Capitalize the branch type in the description so the line
+            // reads naturally instead of starting with lowercase
+            // ("Feature my-thing pushed…" not "feature my-thing pushed…").
+            // Mirrors the GitFlow-finish capitalization fix.
+            var typeName = branchType.ToString();
+            NotifySuccess($"{typeName} published", $"{typeName} {flowName} pushed to remote.");
             SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
@@ -273,21 +282,21 @@ public partial class MainViewModel
         if (!isInitialized)
             throw new InvalidOperationException("GitFlow is not initialized in this repository.");
 
-        var progress = new Progress<string>(msg => StatusMessage = msg);
+        var progress = new Progress<string>(msg => Log.Info("GitFlow", msg));
 
         switch (branchType)
         {
             case GitFlowBranchType.Feature:
                 await _gitFlowService.StartFeatureAsync(SelectedRepository.Path, name, progress);
-                StatusMessage = $"Started feature '{name}'";
+                NotifySuccess("Feature started", $"Created and checked out feature '{name}'.");
                 break;
             case GitFlowBranchType.Release:
                 await _gitFlowService.StartReleaseAsync(SelectedRepository.Path, name, progress);
-                StatusMessage = $"Started release '{name}'";
+                NotifySuccess("Release started", $"Created and checked out release '{name}'.");
                 break;
             case GitFlowBranchType.Hotfix:
                 await _gitFlowService.StartHotfixAsync(SelectedRepository.Path, name, progress);
-                StatusMessage = $"Started hotfix '{name}'";
+                NotifySuccess("Hotfix started", $"Created and checked out hotfix '{name}'.");
                 break;
             default:
                 throw new ArgumentException($"Unsupported branch type: {branchType}");

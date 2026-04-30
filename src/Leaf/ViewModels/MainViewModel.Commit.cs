@@ -45,7 +45,7 @@ public partial class MainViewModel
 
                 await _gitService.RevertMergeCommitAsync(SelectedRepository.Path, commit.Sha, parentIndex, cancellationToken: CurrentRepositoryToken);
 
-                StatusMessage = $"Reverted {commit.ShortSha}";
+                NotifySuccess("Commit reverted", $"Reverted merge commit {commit.ShortSha} (parent {parentIndex}).");
                 await RefreshAsync();
             }
             catch (Exception ex)
@@ -68,7 +68,7 @@ public partial class MainViewModel
             await _gitService.RevertCommitAsync(SelectedRepository.Path, commit.Sha, cancellationToken: CurrentRepositoryToken);
 
             Log.Info("Merge", $"RevertCommit: success sha={commit.ShortSha}");
-            StatusMessage = $"Reverted {commit.ShortSha}";
+            NotifySuccess("Commit reverted", $"Reverted {commit.ShortSha}.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -92,7 +92,7 @@ public partial class MainViewModel
 
         if (string.IsNullOrWhiteSpace(branchName) || SelectedRepository.IsDetachedHead)
         {
-            StatusMessage = "Cannot reset: no branch is checked out";
+            NotifyWarning("Cannot reset", "No branch is checked out.");
             return;
         }
 
@@ -121,7 +121,7 @@ public partial class MainViewModel
             await _gitService.ResetCurrentBranchToCommitAsync(
                 SelectedRepository.Path, request.Commit.Sha, request.Mode, cancellationToken: CurrentRepositoryToken);
 
-            StatusMessage = $"Reset {branchName} to {request.Commit.ShortSha} ({modeLabel})";
+            NotifySuccess("Branch reset", $"Reset {branchName} to {request.Commit.ShortSha} ({modeLabel}).");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -152,7 +152,7 @@ public partial class MainViewModel
             SelectedRepository.IsDetachedHead = info.IsDetachedHead;
             SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
 
-            StatusMessage = $"Checked out commit {commit.ShortSha} (detached HEAD)";
+            NotifySuccess("Commit checked out", $"Now at {commit.ShortSha} (detached HEAD).");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -172,7 +172,7 @@ public partial class MainViewModel
             return;
 
         _clipboardService.SetText(commit.Sha);
-        StatusMessage = $"Copied {commit.ShortSha} to clipboard";
+        NotifyInfo("SHA copied", $"Copied {commit.ShortSha} to clipboard.");
     }
 
     [RelayCommand]
@@ -190,14 +190,19 @@ public partial class MainViewModel
             if (result.Success)
             {
                 Log.Info("Merge", "CherryPickCommit: success");
-                StatusMessage = $"Cherry-picked {commit.ShortSha}";
+                NotifySuccess("Cherry-picked", $"Applied {commit.ShortSha} to current branch.");
                 await RefreshAsync();
             }
             else if (result.HasConflicts)
             {
                 Log.Warn("Merge", "CherryPickCommit: conflicts detected");
-                StatusMessage = $"Cherry-pick has conflicts: {commit.ShortSha}";
+                // Refresh first so MergeStatusView populates in the right
+                // pane, then warn — without the toast the user sees the
+                // command "do nothing" and has to guess where to look.
                 await RefreshAsync();
+                NotifyWarning(
+                    "Cherry-pick has conflicts",
+                    $"{commit.ShortSha} could not apply cleanly. Resolve the conflicts in the merge panel.");
             }
             else
             {
@@ -230,7 +235,7 @@ public partial class MainViewModel
             var diffText = await _gitService.GetCommitToWorkingTreeDiffAsync(SelectedRepository.Path, commit.Sha, cancellationToken: CurrentRepositoryToken);
             if (string.IsNullOrWhiteSpace(diffText))
             {
-                StatusMessage = "No differences between commit and working directory";
+                NotifyInfo("No differences", "Commit and working directory are identical.");
                 IsDiffViewerVisible = false;
                 return;
             }
@@ -264,7 +269,7 @@ public partial class MainViewModel
         {
             await BeginBusyAsync($"Creating tag '{dialog.TagName}'...");
             await _gitService.CreateTagAsync(SelectedRepository.Path, dialog.TagName, dialog.TagMessage, commit.Sha, cancellationToken: CurrentRepositoryToken);
-            StatusMessage = $"Created tag '{dialog.TagName}'";
+            NotifySuccess("Tag created", $"Tagged {commit.ShortSha} as '{dialog.TagName}'.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -292,12 +297,12 @@ public partial class MainViewModel
             var success = await _gitService.UndoCommitAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             if (success)
             {
-                StatusMessage = "Commit undone (changes preserved in working directory)";
+                NotifySuccess("Commit undone", "Changes preserved in working directory.");
                 await RefreshAsync();
             }
             else
             {
-                StatusMessage = "Cannot undo: commit already pushed or no parent commit";
+                NotifyWarning("Cannot undo", "Commit already pushed or no parent commit.");
             }
         }
         catch (Exception ex)
@@ -325,12 +330,12 @@ public partial class MainViewModel
             var success = await _gitService.RedoCommitAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             if (success)
             {
-                StatusMessage = "Commit redone";
+                NotifySuccess("Commit redone", "Restored last undone commit.");
                 await RefreshAsync();
             }
             else
             {
-                StatusMessage = "Nothing to redo";
+                NotifyInfo("Nothing to redo", "No undone commit to restore.");
             }
         }
         catch (Exception ex)

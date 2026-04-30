@@ -163,47 +163,55 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private double _terminalHeight = 220;
 
     [ObservableProperty]
-    private string _statusMessage = "Ready";
-
-    [ObservableProperty]
     private bool _isBusy;
 
     /// <summary>
-    /// Sets IsBusy and yields to the UI thread so the progress bar can render.
+    /// Sets <see cref="IsBusy"/> and yields to the WPF dispatcher so the
+    /// progress indicator gets a render pass before the long-running work
+    /// kicks off. The string parameter is purely advisory — it is logged
+    /// for diagnostics but no longer surfaced to a status bar (that UI
+    /// element was removed because it was never bound). Operations that
+    /// need user-visible feedback should fire a toast via
+    /// <see cref="NotifySuccess"/> / <see cref="NotifyInfo"/> on
+    /// completion, not before.
     /// </summary>
-    private async Task BeginBusyAsync(string statusMessage)
+    private async Task BeginBusyAsync(string operationDescription)
     {
         IsBusy = true;
-        StatusMessage = statusMessage;
+        Log.Info("Op", operationDescription);
         // Force WPF to complete a render pass before continuing, so the progress bar appears
         await Application.Current.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
     }
 
     /// <summary>
-    /// Canonical failure feedback for a user-initiated operation, per plan
-    /// §3.4 policy: update the status bar as the operation's terminal
-    /// status AND fire an error toast. Both channels are used because the
-    /// status bar alone gets overwritten by the next operation and is
-    /// easy to miss. Use this in every <c>catch</c> block that handles a
+    /// Canonical failure feedback for a user-initiated operation: fire an
+    /// error toast. Use this in every <c>catch</c> block that handles a
     /// recoverable git/IO failure inside a RelayCommand.
     /// </summary>
-    /// <param name="operation">
-    /// Human-readable operation label, capitalized for a title and used
-    /// as the subject in both the status bar and the toast (e.g. "Push",
-    /// "Delete branch", "Create worktree").
-    /// </param>
-    /// <param name="detail">
-    /// The underlying failure message — usually <c>ex.Message</c>, but
-    /// string overload exists for result-based failures whose detail
-    /// doesn't come from an exception.
-    /// </param>
+    /// <param name="operation">Operation label, e.g. "Push", "Delete branch".</param>
+    /// <param name="detail">Failure message — usually <c>ex.Message</c>.</param>
     private Task ReportOperationFailureAsync(string operation, string detail)
     {
-        StatusMessage = $"{operation} failed: {detail}";
         return _dialogService.ShowErrorToastAsync(
             $"{operation} failed:\n\n{detail}",
             $"{operation} failed");
     }
+
+    /// <summary>
+    /// Fire a success toast. Helper around <see cref="INotificationService.Show"/>
+    /// so call sites stay readable. Safe when <see cref="_notificationService"/>
+    /// is null (test context, headless runs).
+    /// </summary>
+    private void NotifySuccess(string title, string description) =>
+        _notificationService?.Show(title, description, NotificationType.Success);
+
+    /// <summary>Fire an informational toast.</summary>
+    private void NotifyInfo(string title, string description) =>
+        _notificationService?.Show(title, description, NotificationType.Information);
+
+    /// <summary>Fire a warning toast.</summary>
+    private void NotifyWarning(string title, string description) =>
+        _notificationService?.Show(title, description, NotificationType.Warning);
 
     /// <summary>
     /// Convenience overload that pulls the detail string from an exception.
@@ -621,7 +629,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             IsWorkingChangesSelected = false;
             IsDiffViewerVisible = false;
             ResetPullRequestViewState();
-            StatusMessage = "Select a repository";
         }
     }
 

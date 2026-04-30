@@ -320,7 +320,7 @@ public partial class MainViewModel
 
         try
         {
-            StatusMessage = "Searching for pull request...";
+            await BeginBusyAsync("Searching for pull request...");
 
             var pr = await _pullRequestService.FindPullRequestForCommitAsync(
                 SelectedRepository.Path, commit.Sha);
@@ -333,24 +333,20 @@ public partial class MainViewModel
 
             if (pr == null)
             {
-                _notificationService?.Show(
-                    "No pull request found",
-                    $"No pull request is associated with commit {commit.ShortSha}.",
-                    NotificationType.Information);
-                StatusMessage = "Ready";
+                NotifyInfo("No pull request found",
+                    $"No pull request is associated with commit {commit.ShortSha}.");
                 return;
             }
 
-            StatusMessage = "Ready";
             await SelectPullRequestAsync(pr);
         }
         catch (Exception ex)
         {
-            StatusMessage = "Ready";
-            _notificationService?.Show(
-                "Error",
-                $"Failed to find pull request: {ex.Message}",
-                NotificationType.Error);
+            await ReportOperationFailureAsync("Find pull request", ex);
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 

@@ -109,9 +109,8 @@ public partial class MainViewModel
 
         try
         {
-            // Initial placeholder — each branch below sets its own specific
-            // StatusMessage; BeginBusyAsync is used up-front to get the
-            // progress bar rendering before the git call starts.
+            // BeginBusyAsync is used up-front to get the progress bar
+            // rendering before the git call starts.
             await BeginBusyAsync("Saving branch...");
             if (_isRenameBranchInput && !string.IsNullOrWhiteSpace(_pendingRenameBranchName))
             {
@@ -120,30 +119,28 @@ public partial class MainViewModel
                     return;
                 }
 
-                StatusMessage = $"Renaming branch '{_pendingRenameBranchName}'...";
                 await _gitService.RenameBranchAsync(SelectedRepository.Path, _pendingRenameBranchName, branchName, cancellationToken: CurrentRepositoryToken);
-                StatusMessage = $"Renamed branch to '{branchName}'";
-                SelectedRepository.BranchesLoaded = false;
-                await RefreshAsync();
+                NotifySuccess("Branch renamed", $"Renamed to '{branchName}'.");
             }
             else if (!string.IsNullOrWhiteSpace(_pendingBranchBaseSha))
             {
-                StatusMessage = $"Creating branch '{branchName}' at {_pendingBranchBaseSha[..7]}...";
                 await _gitService.CreateBranchAtCommitAsync(SelectedRepository.Path, branchName, _pendingBranchBaseSha, cancellationToken: CurrentRepositoryToken);
-                StatusMessage = $"Created and checked out branch '{branchName}'";
+                NotifySuccess("Branch created", $"Created and checked out '{branchName}'.");
             }
             else
             {
-                StatusMessage = $"Creating branch '{branchName}'...";
                 await _gitService.CreateBranchAsync(SelectedRepository.Path, branchName, cancellationToken: CurrentRepositoryToken);
-                StatusMessage = $"Created and checked out branch '{branchName}'";
+                NotifySuccess("Branch created", $"Created and checked out '{branchName}'.");
             }
+            // Single refresh covers all three paths. The rename branch
+            // previously triggered an inline refresh and then fell through
+            // to this one, double-loading the graph.
             SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = _isRenameBranchInput ? $"Rename branch failed: {ex.Message}" : $"Create branch failed: {ex.Message}";
+            await ReportOperationFailureAsync(_isRenameBranchInput ? "Rename branch" : "Create branch", ex);
         }
         finally
         {
@@ -205,7 +202,6 @@ public partial class MainViewModel
                     var switchTarget = await GetBranchToSwitchToAsync(branch.Name);
                     if (switchTarget != null)
                     {
-                        StatusMessage = $"Switching to {switchTarget}...";
                         await _gitService.CheckoutAsync(SelectedRepository.Path, switchTarget, cancellationToken: CurrentRepositoryToken);
                     }
                 }
@@ -213,7 +209,7 @@ public partial class MainViewModel
                 await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: false, cancellationToken: CurrentRepositoryToken);
             }
 
-            StatusMessage = $"Deleted branch {branch.Name}";
+            NotifySuccess("Branch deleted", $"Deleted branch {branch.Name}.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -223,7 +219,7 @@ public partial class MainViewModel
                 try
                 {
                     await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: true, cancellationToken: CurrentRepositoryToken);
-                    StatusMessage = $"Force deleted branch {branch.Name}";
+                    NotifySuccess("Branch force deleted", $"Force deleted branch {branch.Name}.");
                     await RefreshAsync();
                     return;
                 }
@@ -267,7 +263,7 @@ public partial class MainViewModel
                     branch.Name,
                     isCurrentBranch: false, cancellationToken: CurrentRepositoryToken);
 
-                StatusMessage = $"Created local {localName} from {branch.Name}";
+                NotifySuccess("Branch created", $"Created local {localName} from {branch.Name}.");
                 await RefreshAsync();
                 return;
             }
@@ -280,7 +276,7 @@ public partial class MainViewModel
                 remoteBranchName,
                 branch.IsCurrent, cancellationToken: CurrentRepositoryToken);
 
-            StatusMessage = $"Pulled {branch.Name}";
+            NotifySuccess("Branch pulled", $"Fast-forwarded {branch.Name}.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -311,7 +307,7 @@ public partial class MainViewModel
                 remoteBranchName,
                 branch.IsCurrent, cancellationToken: CurrentRepositoryToken);
 
-            StatusMessage = $"Pushed {branch.Name}";
+            NotifySuccess("Branch pushed", $"Pushed {branch.Name} to {remoteName}.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -340,7 +336,7 @@ public partial class MainViewModel
             var (remoteName, remoteBranchName) = await ResolveRemoteTargetAsync(branch);
             await _gitService.SetUpstreamAsync(SelectedRepository.Path, branch.Name, remoteName, remoteBranchName, cancellationToken: CurrentRepositoryToken);
 
-            StatusMessage = $"Upstream set for {branch.Name}";
+            NotifySuccess("Upstream set", $"Upstream set for {branch.Name}.");
             SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
@@ -435,7 +431,6 @@ public partial class MainViewModel
             {
                 try
                 {
-                    StatusMessage = $"Pulling {branchName}...";
                     await _gitService.PullBranchFastForwardAsync(
                         SelectedRepository.Path,
                         branchName,
@@ -490,12 +485,12 @@ public partial class MainViewModel
                     SelectedRepository.MergingBranch = branchName;
                 }
 
-                StatusMessage = "Checkout has conflicts - resolve to complete";
+                NotifyWarning("Checkout conflicts", "Checkout has conflicts — resolve to complete.");
                 await RefreshMergeConflictResolutionAsync();
             }
             else
             {
-                StatusMessage = $"Checked out {branchName}";
+                NotifySuccess("Branch checked out", $"Now on {branchName}.");
             }
         }
         catch (Exception ex)
@@ -539,7 +534,7 @@ public partial class MainViewModel
             SelectedRepository.MergingBranch = info.MergingBranch;
             SelectedRepository.ConflictCount = info.ConflictCount;
 
-            StatusMessage = $"Checked out tag {tag.Name} (detached HEAD)";
+            NotifySuccess("Tag checked out", $"Now at tag {tag.Name} (detached HEAD).");
         }
         catch (Exception ex)
         {
@@ -575,7 +570,6 @@ public partial class MainViewModel
             // Also delete from remote origin (ignore errors if tag doesn't exist on remote)
             try
             {
-                StatusMessage = $"Deleting tag {tag.Name} from remote...";
                 await _gitService.DeleteRemoteTagAsync(SelectedRepository.Path, tag.Name, "origin", cancellationToken: CurrentRepositoryToken);
             }
             catch (InvalidOperationException ex)
@@ -587,7 +581,7 @@ public partial class MainViewModel
                 Log.Info("Tag", $"Remote tag delete skipped for {tag.Name}: {ex.Message}");
             }
 
-            StatusMessage = $"Deleted tag {tag.Name}";
+            NotifySuccess("Tag deleted", $"Deleted tag {tag.Name} locally and on origin.");
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
         }
         catch (Exception ex)

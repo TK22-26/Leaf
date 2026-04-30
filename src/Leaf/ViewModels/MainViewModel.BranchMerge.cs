@@ -47,26 +47,21 @@ public partial class MainViewModel
         // Execute the appropriate merge based on selected type
         try
         {
-            // Initial placeholder — each case below sets its own specific
-            // StatusMessage; BeginBusyAsync renders the progress bar before
-            // the git call starts.
+            // BeginBusyAsync renders the progress bar before the git call starts.
             await BeginBusyAsync($"Merging {branch.Name}...");
 
             MergeResult result;
             switch (dialogViewModel.SelectedMergeType)
             {
                 case MergeType.Squash:
-                    StatusMessage = $"Squash merging {branch.Name} into {SelectedRepository.CurrentBranch}...";
                     result = await _gitService.SquashMergeAsync(SelectedRepository.Path, branch.Name, cancellationToken: CurrentRepositoryToken);
                     break;
 
                 case MergeType.FastForwardOnly:
-                    StatusMessage = $"Fast-forwarding to {branch.Name}...";
                     result = await _gitService.FastForwardAsync(SelectedRepository.Path, branch.Name, cancellationToken: CurrentRepositoryToken);
                     break;
 
                 default: // MergeType.Normal
-                    StatusMessage = $"Merging {branch.Name} into {SelectedRepository.CurrentBranch}...";
                     result = await ExecuteNormalMergeAsync(branch.Name);
                     break;
             }
@@ -104,7 +99,6 @@ public partial class MainViewModel
             }
 
             // Retry with flag
-            StatusMessage = $"Merging {branchName} (allowing unrelated histories)...";
             result = await _gitService.MergeBranchAsync(SelectedRepository.Path, branchName, allowUnrelatedHistories: true, cancellationToken: CurrentRepositoryToken);
             Log.Info("Merge", $"NormalMerge (retry unrelated): Success={result.Success}, Conflicts={result.HasConflicts}");
         }
@@ -116,13 +110,17 @@ public partial class MainViewModel
     {
         if (result.Success)
         {
-            var typeDesc = mergeType switch
+            // Title is the operation noun; description carries the
+            // branch. Earlier "Fast-forwarded to" + "Fast-forwarded to
+            // main" produced a fragment as title and a duplicate as
+            // description.
+            var (title, action) = mergeType switch
             {
-                MergeType.Squash => "Squash merged",
-                MergeType.FastForwardOnly => "Fast-forwarded to",
-                _ => "Successfully merged"
+                MergeType.Squash => ("Squash merge complete", "Squash-merged"),
+                MergeType.FastForwardOnly => ("Fast-forward complete", "Fast-forwarded to"),
+                _ => ("Merge complete", "Merged"),
             };
-            StatusMessage = $"{typeDesc} {branchName}";
+            NotifySuccess(title, $"{action} {branchName}.");
 
             // Refresh git graph
             if (GitGraphViewModel != null)
@@ -132,7 +130,7 @@ public partial class MainViewModel
         }
         else if (result.HasConflicts)
         {
-            StatusMessage = "Merge has conflicts - resolve to complete";
+            NotifyWarning("Merge conflicts", "Merge has conflicts — resolve to complete.");
 
             // Refresh repo info to update merge banner and conflicts immediately
             var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository!.Path, cancellationToken: CurrentRepositoryToken);
@@ -207,12 +205,12 @@ public partial class MainViewModel
 
             if (result.Success)
             {
-                StatusMessage = $"Fast-forwarded to {targetName}";
+                NotifySuccess("Fast-forwarded", $"Fast-forwarded to {targetName}.");
                 await RefreshAsync();
             }
             else
             {
-                StatusMessage = result.ErrorMessage ?? "Fast-forward failed";
+                await ReportOperationFailureAsync("Fast-forward", result.ErrorMessage ?? "Fast-forward failed");
             }
         }
         catch (Exception ex)

@@ -11,6 +11,23 @@
         ShowInTaskbar="False"
         Background="{DynamicResource ApplicationBackgroundBrush}"
         ResizeMode="NoResize">
+    <Window.Resources>
+        <!--  Accent CTA button — keeps the disabled state visually
+              distinct (see CreatePatchDialog for the rationale).  -->
+        <Style x:Key="AccentCtaButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="{DynamicResource AccentFillColorDisabledBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorDisabledBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDisabledBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -121,8 +138,7 @@
                         Padding="24,10"
                         Click="Start_Click"
                         IsEnabled="False"
-                        Background="{DynamicResource AccentFillColorDefaultBrush}"
-                        Foreground="White">
+                        Style="{StaticResource AccentCtaButtonStyle}">
                     <StackPanel Orientation="Horizontal">
                         <ic:SymbolIcon Symbol="Search" FontSize="14" Margin="0,0,8,0" />
                         <TextBlock Text="Start Bisect" />

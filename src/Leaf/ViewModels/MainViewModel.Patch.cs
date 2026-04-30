@@ -69,9 +69,17 @@ public partial class MainViewModel
                 return;
             }
 
-            StatusMessage = result.Files.Count == 1
-                ? $"Patch saved: {Path.GetFileName(result.Files[0])}"
-                : $"Saved {result.Files.Count} patch files to {result.OutputDirectory}";
+            // Title carries the verb. Body: file name (single-patch case)
+            // plus folder path. The multi-file path used to duplicate the
+            // directory by including it in both a summary and the body;
+            // now body is the directory and the lead line is the file
+            // count. ("description" is shadowed by an outer local that
+            // holds the commit summary fed to the dialog — hence the
+            // distinct local name.)
+            var toastBody = result.Files.Count == 1
+                ? $"{Path.GetFileName(result.Files[0])}\n{result.OutputDirectory}"
+                : $"Saved {result.Files.Count} patch files to:\n{result.OutputDirectory}";
+            NotifySuccess("Patch created", toastBody);
         }
         catch (Exception ex)
         {
@@ -112,7 +120,9 @@ public partial class MainViewModel
                 return;
             }
             _clipboardService.SetText(text);
-            StatusMessage = $"Patch for {commit.ShortSha} copied to clipboard.";
+            NotifySuccess(
+                "Patch copied",
+                $"Patch for {commit.ShortSha} is on your clipboard ({text.Length:N0} chars).");
         }
         catch (Exception ex)
         {
@@ -163,10 +173,9 @@ public partial class MainViewModel
         var opType = SelectedRepository.OperationType;
         if (opType == GitOperationType.Am)
         {
-            // Skip the StatusMessage toast: ContinueMergeAsync opens a
-            // modal next, and a transient "still in progress" line in
-            // the status bar simultaneously reads as an error followed
-            // by an unrelated dialog.
+            // ContinueMergeAsync opens the merge editor modal next, so we
+            // don't fire a separate toast — that would just be noise the
+            // user has to dismiss before they can resolve the conflict.
             Log.Info("Patch", "ApplyPatch: am-in-progress — routing to merge editor.");
             await ContinueMergeAsync();
             return;
@@ -233,9 +242,10 @@ public partial class MainViewModel
 
             if (result.Success)
             {
-                StatusMessage = dialog.Strategy == ApplyPatchStrategy.Am
+                var summary = dialog.Strategy == ApplyPatchStrategy.Am
                     ? $"Applied {dialog.PatchFiles.Count} patch(es) as new commits."
                     : "Patch applied to working tree.";
+                NotifySuccess("Patch applied", summary);
                 await RefreshAsync();
                 return;
             }
@@ -243,7 +253,8 @@ public partial class MainViewModel
             if (result.HasConflicts)
             {
                 Log.Info("Patch", $"am paused on conflict (sha={result.ConflictAtSha}); routing to merge editor.");
-                StatusMessage = "Patch paused on conflict — resolve and continue.";
+                // No toast — the merge editor opens immediately and the
+                // banner there carries the same "paused on conflict" cue.
                 await RefreshAsync();
                 await ContinueMergeAsync();
                 return;

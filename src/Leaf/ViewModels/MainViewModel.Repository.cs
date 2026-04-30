@@ -100,7 +100,7 @@ public partial class MainViewModel
             // the user's add-repo action mid-flight.
             if (!await _gitService.IsValidRepositoryAsync(path))
             {
-                StatusMessage = "Selected folder is not a valid Git repository";
+                NotifyWarning("Not a Git repository", "Selected folder is not a valid Git repository.");
                 return;
             }
 
@@ -155,13 +155,14 @@ public partial class MainViewModel
                 }
 
                 Log.Info("Repository", $"Folder scan complete: added {addedCount} of {gitDirs.Length} found");
-                StatusMessage = addedCount > 0
-                    ? $"Added {addedCount} repositor{(addedCount == 1 ? "y" : "ies")}"
-                    : "No new repositories found";
+                if (addedCount > 0)
+                    NotifySuccess("Repositories added", $"Added {addedCount} repositor{(addedCount == 1 ? "y" : "ies")}.");
+                else
+                    NotifyInfo("Scan complete", "No new repositories found.");
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Error scanning: {ex.Message}";
+                await ReportOperationFailureAsync("Scan folder", ex);
             }
             finally
             {
@@ -268,7 +269,7 @@ public partial class MainViewModel
             var repoInfo = await _gitService.GetRepositoryInfoFastAsync(dialog.ClonedRepositoryPath);
             _repositoryService.AddRepository(repoInfo);
             await SelectRepositoryAsync(repoInfo);
-            StatusMessage = $"Cloned {repoInfo.Name} successfully";
+            NotifySuccess("Repository cloned", $"Cloned {repoInfo.Name} successfully.");
         }
     }
 
@@ -436,8 +437,6 @@ public partial class MainViewModel
             await RefreshBisectStateAsync();
             Log.Perf("SelectRepo", "RefreshBisectStateAsync", stepSw.ElapsedMilliseconds);
 
-              UpdateRepositoryStatusMessage(repository);
-
             if (fetchInBackground)
                 _autoFetchService.FetchAsync(repository.Path)
                     .FireAndForget(nameof(_autoFetchService.FetchAsync), isUserAction: false);
@@ -452,8 +451,8 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Error: {ex.Message}";
             Log.Error("SelectRepo", $"FAILED after {totalSw.ElapsedMilliseconds}ms", ex);
+            await ReportOperationFailureAsync("Select repository", ex);
         }
         finally
         {
@@ -500,7 +499,6 @@ public partial class MainViewModel
                 }
 
                 ApplyRepositoryInfo(repository, info);
-                UpdateRepositoryStatusMessage(repository);
             });
         }
         catch (Exception ex)
@@ -523,14 +521,6 @@ public partial class MainViewModel
         repository.IsDirty = workingChanges.HasChanges;
         repository.IsDetachedHead = workingChanges.IsDetachedHead;
         repository.DetachedHeadSha = workingChanges.DetachedHeadSha;
-    }
-
-    private void UpdateRepositoryStatusMessage(RepositoryInfo repository)
-    {
-        StatusMessage = $"{repository.Name} | {repository.CurrentBranch}" +
-                       (repository.IsDirty ? " | Modified" : "") +
-                       (repository.AheadBy > 0 ? $" | {repository.AheadBy}" : "") +
-                       (repository.BehindBy > 0 ? $" | {repository.BehindBy}" : "");
     }
 
     [RelayCommand]
@@ -615,7 +605,7 @@ public partial class MainViewModel
         }
 
         group.IsWatched = true;
-        StatusMessage = $"Now watching {group.Name} for new repositories";
+        NotifySuccess("Watching folder", $"Now watching {group.Name} for new repositories.");
     }
 
     /// <summary>
@@ -643,6 +633,6 @@ public partial class MainViewModel
         _folderWatcherService.RemoveWatchedFolder(folderPath);
 
         group.IsWatched = false;
-        StatusMessage = $"Stopped watching {group.Name}";
+        NotifyInfo("Watch stopped", $"Stopped watching {group.Name}.");
     }
 }
