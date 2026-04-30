@@ -489,6 +489,17 @@ public partial class GitGraphView : UserControl
         };
         menu.Items.Add(copyPatchItem);
 
+        // Bisect: pre-fill the right-clicked commit as the known-good
+        // ancestor so the user only has to confirm/adjust the bad ref.
+        var startBisectItem = new MenuItem
+        {
+            Header = "Start Bisect (this commit is good)…",
+            Command = mainViewModel.StartBisectFromCommitCommand,
+            CommandParameter = commit,
+            Icon = new SymbolIcon { Symbol = Symbol.Search, FontSize = 14 }
+        };
+        menu.Items.Add(startBisectItem);
+
         menu.Items.Add(new Separator());
 
         var copyShaItem = new MenuItem

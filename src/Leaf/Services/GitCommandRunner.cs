@@ -70,6 +70,15 @@ public class GitCommandRunner : IGitCommandRunner
         startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
         startInfo.Environment["GCM_INTERACTIVE"] = "never";  // Git Credential Manager
 
+        // Force English/POSIX locale so any callers that parse git's
+        // human-readable output ("Bisecting: N revisions left … (roughly K
+        // steps)", "<sha> is the first bad commit", "Your branch is ahead
+        // of …") aren't fooled by translated strings on a French / Japanese
+        // / etc. machine. Matches what GitCliHelpers already does for its
+        // synchronous spawns. Caller can override via extraEnvironment if
+        // they specifically need the user's locale.
+        startInfo.Environment["LC_ALL"] = "C";
+
         // When a credential key is supplied, route git through Leaf.AskPass.exe
         // instead of embedding the PAT in the URL or relying on GCM. Only the
         // key (not the PAT) is exposed via environment variables.
