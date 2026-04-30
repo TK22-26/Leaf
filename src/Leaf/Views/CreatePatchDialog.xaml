@@ -11,28 +11,6 @@
         ShowInTaskbar="False"
         Background="{DynamicResource ApplicationBackgroundBrush}"
         ResizeMode="NoResize">
-    <Window.Resources>
-        <!--  Accent CTA button. WPF's default Button style ignores the
-              Background/Foreground we set when IsEnabled flips, so a
-              hardcoded Background+Foreground+IsEnabled="False" combo
-              renders as full-saturation accent with white text — the
-              button looks enabled but isn't. The triggers below swap
-              both brushes to the Fluent disabled tokens so the visual
-              state matches the actual interaction state.  -->
-        <Style x:Key="AccentCtaButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-            <Style.Triggers>
-                <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Background" Value="{DynamicResource AccentFillColorDisabledBrush}" />
-                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorDisabledBrush}" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDisabledBrush}" />
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-    </Window.Resources>
-
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -160,7 +138,7 @@
                         Padding="24,10"
                         Click="Create_Click"
                         IsEnabled="False"
-                        Style="{StaticResource AccentCtaButtonStyle}">
+                        Style="{StaticResource AccentButtonStyle}">
                     <StackPanel Orientation="Horizontal">
                         <ic:SymbolIcon Symbol="Save" FontSize="14" Margin="0,0,8,0" />
                         <TextBlock Text="Create" />

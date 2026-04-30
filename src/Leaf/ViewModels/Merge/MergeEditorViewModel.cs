@@ -1078,7 +1078,39 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         IsResolving = true;
         try
         {
-            await _gitService.AbortMergeAsync(_repoPath, SessionToken).ConfigureAwait(true);
+            // The merge editor handles cherry-pick / revert / rebase / am
+            // conflicts too — each has a different abort verb. Probe the
+            // on-disk state and dispatch accordingly. Running plain
+            // `git merge --abort` against e.g. a paused `git am` errors
+            // out as "There is no merge to abort" or no-ops, leaving the
+            // am state behind; the editor still closes and the host
+            // fires the success-style toast, so the user is told the
+            // operation aborted when the state is actually still stuck.
+            // Probe am first because both am and rebase share the
+            // .git/rebase-apply directory; the `applying` marker
+            // disambiguates.
+            var amInProgress = await _gitService.IsAmInProgressAsync(_repoPath, SessionToken).ConfigureAwait(true);
+            var rebaseInProgress = !amInProgress
+                && await _gitService.IsRebaseInProgressAsync(_repoPath, SessionToken).ConfigureAwait(true);
+
+            if (amInProgress)
+            {
+                await _gitService.AbortAmAsync(_repoPath, SessionToken).ConfigureAwait(true);
+            }
+            else if (rebaseInProgress)
+            {
+                await _gitService.AbortRebaseAsync(_repoPath, SessionToken).ConfigureAwait(true);
+            }
+            else
+            {
+                // Plain merge / cherry-pick / revert all share `git merge
+                // --abort` semantics (cherry-pick and revert use their
+                // own verbs, but the underlying state lives in MERGE_HEAD
+                // for cherry-pick/revert too once a conflict exists, so
+                // merge --abort cleans them up; AbortMergeAsync at the
+                // service layer already routes appropriately).
+                await _gitService.AbortMergeAsync(_repoPath, SessionToken).ConfigureAwait(true);
+            }
             MergeCompleted?.Invoke(this, false);
         }
         finally { IsResolving = false; }

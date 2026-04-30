@@ -22,8 +22,97 @@
 
             <BitmapImage x:Key="AppIcon" UriSource="pack://application:,,,/Assets/Leaf.ico" />
 
-            <!--  Override accent color to green  -->
-            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#28A745" />
+            <!--  Override accent color to Leaf green throughout the app.
+
+                  Background: Fluent's accent-derived brushes resolve
+                  `Color="{StaticResource SystemAccentColorLight2}"` at
+                  load time, capturing the *Windows* accent. Overriding
+                  the brushes one-by-one here is the only way to swing
+                  every control in lockstep — AccentFillColorDefaultBrush
+                  alone covers the catch-all path but leaves the
+                  control-specific token families (AccentButtonXxx,
+                  CheckBoxXxx, RadioButtonXxx, TextControlXxx, …)
+                  pointing at the system accent.
+
+                  We define the green once as LeafAccentColor and have
+                  every Brush reference it so future tweaks stay DRY.
+                  PointerOver / Pressed variants intentionally reuse
+                  the same color and rely on the templates' per-trigger
+                  Opacity setters for the visual delta — matches
+                  Fluent's own pattern.  -->
+            <Color x:Key="LeafAccentColor">#28A745</Color>
+
+            <!--  Catch-all (most controls).  -->
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{StaticResource LeafAccentColor}" />
+
+            <!--  Accent button family.  -->
+            <SolidColorBrush x:Key="AccentButtonBackground" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Opacity="0.8" Color="{StaticResource LeafAccentColor}" />
+            <!--  Fluent's default AccentButtonBorderBrush is a gradient
+                  (white-overlay top stop, accent bottom). Flatten to a
+                  solid so the border tracks the green fill without the
+                  system-accent leak in the gradient stops.  -->
+            <SolidColorBrush x:Key="AccentButtonBorderBrush" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="AccentButtonBorderBrushPointerOver" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="AccentButtonBorderBrushPressed" Opacity="0.8" Color="{StaticResource LeafAccentColor}" />
+
+            <!--  RadioButton (checked outer ellipse fill + stroke).  -->
+            <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFill" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStroke" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStrokePointerOver" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="RadioButtonCheckOuterEllipseCheckedStrokePressed" Opacity="0.8" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="RadioButtonCheckOuterEllipseCheckedFillPointerOver" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="RadioButtonCheckOuterEllipseCheckedFillPressed" Opacity="0.8" Color="{StaticResource LeafAccentColor}" />
+
+            <!--  CheckBox (checked / indeterminate background + stroke).  -->
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Opacity="0.8" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Opacity="0.8" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminate" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminatePointerOver" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminatePressed" Opacity="0.8" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminate" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminatePointerOver" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminatePressed" Opacity="0.8" Color="{StaticResource LeafAccentColor}" />
+
+            <!--  TextBox / DatePicker / ComboBox focused border.  -->
+            <SolidColorBrush x:Key="TextControlFocusedBorderBrush" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="DatePickerBorderBrushFocused" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="ComboBoxBorderBrushFocused" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="ComboBoxItemPillFillBrush" Color="{StaticResource LeafAccentColor}" />
+
+            <!--  Text rendered ON accent surfaces. Fluent's dark.xaml
+                  sets TextOnAccentFillColorPrimary to #000000 — fine on
+                  Microsoft's bright blue accent but unreadable on our
+                  darker green. We override to white so the Apply /
+                  Create / Start Bisect button labels (and any other
+                  text drawn over an accent fill) read clearly.
+                  AccentButtonForeground / PointerOver / Pressed all
+                  resolve to this token by default; overriding the root
+                  one cascades, but we re-key the button-specific
+                  brushes too so the AccentButtonStyle's per-trigger
+                  foreground swaps stay coherent.  -->
+            <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="White" />
+            <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="White" />
+            <SolidColorBrush x:Key="AccentButtonForeground" Color="White" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="White" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="White" />
+
+            <!--  ListBox / ListView selected-item highlights. Fluent
+                  binds these to SystemAccentColor (raw, no opacity
+                  blend), so the patch list / repo list selection still
+                  rendered in Windows blue even after the catch-all
+                  override. Reuse LeafAccentColor with the same opacity
+                  scheme Fluent uses for hover/pressed.  -->
+            <SolidColorBrush x:Key="ListBoxItemSelectedBackgroundThemeBrush" Opacity="0.6" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="ListBoxItemSelectedBackgroundPointerOverThemeBrush" Opacity="0.8" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="ListBoxItemSelectedBackgroundPressedThemeBrush" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="ListBoxItemBackgroundSelectedPressedThemeBrush" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="ListViewItemPillFillBrush" Color="{StaticResource LeafAccentColor}" />
 
             <!--  Leaf Green Accent Variations (subtle opacity levels)  -->
             <SolidColorBrush x:Key="LeafAccentSubtleBrush" Color="#1A28A745" />

@@ -164,7 +164,19 @@ public class PatchService : IPatchService
         }
 
         var verb = strategy == ApplyPatchStrategy.Am ? "am" : "apply";
-        var args = new List<string> { verb };
+        // --3way: when a hunk doesn't match exactly, git falls back to a
+        // 3-way merge using the blob OIDs format-patch embedded in the
+        // mail headers ("index <old>..<new>" line). Without this, the
+        // patch is refused on any context drift and the merge editor
+        // opens with zero conflicts and no file content — git never
+        // wrote conflict markers because there was nothing to mark up.
+        // With --3way the patch produces standard
+        // <<<<<<< / ======= / >>>>>>> markers in the working tree that
+        // the merge editor can render and the user can resolve. Both
+        // `git am` and `git apply` accept the flag with identical
+        // semantics; if the relevant blobs aren't reachable git falls
+        // back to the normal "patch does not apply" error.
+        var args = new List<string> { verb, "--3way" };
         args.AddRange(patchFiles);
 
         Log.Info("Patch", $"{verb}: {patchFiles.Count} patch(es)");
@@ -187,9 +199,46 @@ public class PatchService : IPatchService
         if (strategy == ApplyPatchStrategy.Am &&
             await IsAmInProgressAsync(session, cancellationToken))
         {
+            // Distinguish "real conflict" from "patches don't apply at
+            // all" (e.g. user picked patches generated against an
+            // unrelated repo, so 3-way had nothing to merge against).
+            // Real conflicts leave unmerged entries in the index that
+            // `git diff --name-only --diff-filter=U` reports; an empty
+            // list means git paused but there's nothing for the user
+            // to resolve — the merge editor would render empty.
+            var unmergedCount = await CountUnmergedPathsAsync(session, cancellationToken);
+            if (unmergedCount == 0)
+            {
+                // Auto-abort so the repo isn't left in a paused state
+                // the user has no UI path out of (the merge editor
+                // would open with 0 files; clicking Abort there worked
+                // post-fix, but a hard failure with a clear message is
+                // better UX than the dance through the empty editor).
+                Log.Warn("Patch",
+                    "am paused with 0 unmerged paths — patches likely don't match this repo. Auto-aborting.");
+                try
+                {
+                    await _gitService.AbortAmAsync(session.RepositoryPath, cancellationToken);
+                }
+                catch (Exception abortEx)
+                {
+                    Log.Error("Patch", $"auto-abort failed: {abortEx.Message}");
+                }
+                _eventHub.NotifyConflictStateChanged();
+                return new ApplyPatchResult
+                {
+                    Success = false,
+                    HasConflicts = false,
+                    ErrorMessage =
+                        "These patches don't apply to this repository. They may have been generated " +
+                        "against a different repo, or the file paths and blob OIDs they reference " +
+                        "don't exist here. The patch attempt was rolled back.",
+                };
+            }
+
             var conflictSha = TryReadConflictingSha(session.GitDirectory);
             Log.Info("Patch",
-                $"am paused on conflict (sha={conflictSha ?? "?"}); user must resolve through the merge editor.");
+                $"am paused on conflict ({unmergedCount} unmerged path(s), sha={conflictSha ?? "?"}); user must resolve through the merge editor.");
             _eventHub.NotifyConflictStateChanged();
             return new ApplyPatchResult
             {
@@ -285,6 +334,28 @@ public class PatchService : IPatchService
             Success = false,
             ErrorMessage = result.ErrorMessage,
         };
+    }
+
+    /// <summary>
+    /// Count files with unmerged index entries (i.e., real conflicts that
+    /// produced <c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c> markers in the working tree). Used
+    /// after a paused <c>git am</c> to distinguish a real conflict from a
+    /// "patches don't apply at all" stuck state — the latter has 0
+    /// unmerged paths because git never wrote any merge result. Falls
+    /// back to 0 on a probe failure; the caller treats that as
+    /// "no conflicts" too, which is the safe default (auto-abort path).
+    /// </summary>
+    private async Task<int> CountUnmergedPathsAsync(
+        IRepositorySession session, CancellationToken cancellationToken)
+    {
+        var probe = await _commandRunner.RunAsync(
+            session.RepositoryPath,
+            ["diff", "--name-only", "--diff-filter=U"],
+            cancellationToken: cancellationToken);
+        if (!probe.Success) return 0;
+        return probe.StandardOutput
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Count(line => line.Trim().Length > 0);
     }
 
     /// <summary>
