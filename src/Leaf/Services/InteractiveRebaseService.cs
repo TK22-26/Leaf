@@ -137,10 +137,10 @@ public class InteractiveRebaseService : IInteractiveRebaseService
             var cursorFile = Path.Combine(temp.FullName, "cursor");
             Directory.CreateDirectory(messagesDir);
             // All three artefacts use UTF-8 without BOM, matching git's
-            // own preference for these files. Mixing BOM/no-BOM here
-            // would not break correctness today (the helper's int.Parse
-            // tolerates BOM-less reads via auto-detection) but is the
-            // kind of inconsistency that bites later.
+            // own preference for these files. File.ReadAllText
+            // auto-detects and strips a BOM if present, so the cursor
+            // file would survive a BOM-prefixed write — but writing
+            // consistently keeps the on-disk format predictable.
             var noBomUtf8 = new UTF8Encoding(false);
             await File.WriteAllTextAsync(cursorFile, "0", noBomUtf8, cancellationToken);
 
