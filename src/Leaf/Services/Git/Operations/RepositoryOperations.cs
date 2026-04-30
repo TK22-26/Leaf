@@ -74,50 +74,10 @@ internal class RepositoryOperations
                 : (repo.Head?.FriendlyName ?? "HEAD");
             var tracking = repo.Head?.TrackingDetails;
 
-            // Detect operation type from .git/ sentinel files
-            var operationType = Models.GitOperationType.None;
-            string mergingBranch = string.Empty;
+            // Detect operation type via the shared sentinel ladder.
+            (var operationType, var mergingBranch) =
+                DetectInProgressOperation(Path.Combine(repoPath, ".git"));
             int conflictCount = 0;
-
-            var gitDir = Path.Combine(repoPath, ".git");
-            if (File.Exists(Path.Combine(gitDir, "MERGE_HEAD")))
-            {
-                operationType = Models.GitOperationType.Merge;
-                mergingBranch = "Incoming";
-
-                var mergeMsgPath = Path.Combine(gitDir, "MERGE_MSG");
-                if (File.Exists(mergeMsgPath))
-                {
-                    try
-                    {
-                        var msg = File.ReadAllText(mergeMsgPath);
-                        mergingBranch = _context.OutputParser.ParseMergingBranch(msg);
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        // MERGE_MSG may be locked or removed by a concurrent git
-                        // operation — we fall back to the generic "merge" label.
-                        // Narrowed + logged per plan §2.2.
-                        Log.Info("Repository", $"Skipped MERGE_MSG read at {mergeMsgPath}: {ex.Message}");
-                    }
-                }
-            }
-            else if (Directory.Exists(Path.Combine(gitDir, "rebase-merge"))
-                     || Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
-            {
-                operationType = Models.GitOperationType.Rebase;
-                mergingBranch = "rebase";
-            }
-            else if (File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")))
-            {
-                operationType = Models.GitOperationType.CherryPick;
-                mergingBranch = "cherry-pick";
-            }
-            else if (File.Exists(Path.Combine(gitDir, "REVERT_HEAD")))
-            {
-                operationType = Models.GitOperationType.Revert;
-                mergingBranch = "revert";
-            }
 
             bool isMergeInProgress = operationType != Models.GitOperationType.None;
 
@@ -222,51 +182,10 @@ internal class RepositoryOperations
             // Check dirty state via fast porcelain status
             bool isDirty = GitCliHelpers.HasUncommittedChanges(repoPath);
 
-            // Detect operation type from .git/ sentinel files (already fast — file existence checks)
-            var operationType = Models.GitOperationType.None;
-            string mergingBranch = string.Empty;
+            // Detect operation type via the shared sentinel ladder.
+            (var operationType, var mergingBranch) =
+                DetectInProgressOperation(Path.Combine(repoPath, ".git"));
             int conflictCount = 0;
-
-            var gitDir = Path.Combine(repoPath, ".git");
-            if (File.Exists(Path.Combine(gitDir, "MERGE_HEAD")))
-            {
-                operationType = Models.GitOperationType.Merge;
-                mergingBranch = "Incoming";
-
-                var mergeMsgPath = Path.Combine(gitDir, "MERGE_MSG");
-                if (File.Exists(mergeMsgPath))
-                {
-                    try
-                    {
-                        var msg = File.ReadAllText(mergeMsgPath);
-                        mergingBranch = _context.OutputParser.ParseMergingBranch(msg);
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        // MERGE_MSG may be locked or removed by a concurrent git
-                        // operation — we fall back to the generic "merge" label.
-                        // Narrowed + logged per plan §2.2.
-                        Log.Info("Repository", $"Skipped MERGE_MSG read at {mergeMsgPath}: {ex.Message}");
-                    }
-                }
-            }
-            else if (Directory.Exists(Path.Combine(gitDir, "rebase-merge"))
-                     || Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
-            {
-                operationType = Models.GitOperationType.Rebase;
-                mergingBranch = "rebase";
-            }
-            else if (File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")))
-            {
-                operationType = Models.GitOperationType.CherryPick;
-                mergingBranch = "cherry-pick";
-            }
-            else if (File.Exists(Path.Combine(gitDir, "REVERT_HEAD")))
-            {
-                operationType = Models.GitOperationType.Revert;
-                mergingBranch = "revert";
-            }
-
             bool isMergeInProgress = operationType != Models.GitOperationType.None;
 
             // Count conflicts via git CLI (only when a merge-like operation is in progress)
@@ -294,5 +213,69 @@ internal class RepositoryOperations
                 DetachedHeadSha = isDetached ? headSha : null
             };
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Walk the standard <c>.git</c> sentinel files / directories to figure
+    /// out which long-running git operation (if any) is paused on this
+    /// repo. Shared by <see cref="GetRepositoryInfoAsync"/> and
+    /// <see cref="GetRepositoryInfoFastAsync"/> so the detection ladder
+    /// lives in one place — keeps the am-vs-rebase disambiguator in lockstep
+    /// with the rest of the rules. Returns the operation type and the label
+    /// the UI uses for the "[verb] [preposition] [label]" banner; merge
+    /// reads <c>MERGE_MSG</c> for a richer label, others fall back to a
+    /// generic word.
+    /// </summary>
+    /// <param name="gitDir">
+    /// The repo's resolved git directory. The current callers pass
+    /// <c>Path.Combine(repoPath, ".git")</c> — fine for non-worktree repos;
+    /// linked worktrees would need the actual gitdir from
+    /// <c>git rev-parse --absolute-git-dir</c>, which is a pre-existing
+    /// limitation tracked outside this feature.
+    /// </param>
+    private (Models.GitOperationType Type, string Label) DetectInProgressOperation(string gitDir)
+    {
+        if (File.Exists(Path.Combine(gitDir, "MERGE_HEAD")))
+        {
+            var label = "Incoming";
+            var mergeMsgPath = Path.Combine(gitDir, "MERGE_MSG");
+            if (File.Exists(mergeMsgPath))
+            {
+                try
+                {
+                    var msg = File.ReadAllText(mergeMsgPath);
+                    label = _context.OutputParser.ParseMergingBranch(msg);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // MERGE_MSG may be locked or removed by a concurrent git
+                    // operation — fall back to the generic label.
+                    Log.Info("Repository", $"Skipped MERGE_MSG read at {mergeMsgPath}: {ex.Message}");
+                }
+            }
+            return (Models.GitOperationType.Merge, label);
+        }
+        if (File.Exists(Path.Combine(gitDir, "rebase-apply", "applying")))
+        {
+            // git am shares rebase-apply/ with the rebase-apply rebase
+            // backend; the `applying` file is the am-only marker. Routing
+            // to Am here is what lets the merge editor / abort path call
+            // `git am --continue/--abort` instead of the rebase verbs.
+            return (Models.GitOperationType.Am, "patch apply");
+        }
+        if (Directory.Exists(Path.Combine(gitDir, "rebase-merge"))
+            || Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
+        {
+            return (Models.GitOperationType.Rebase, "rebase");
+        }
+        if (File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")))
+        {
+            return (Models.GitOperationType.CherryPick, "cherry-pick");
+        }
+        if (File.Exists(Path.Combine(gitDir, "REVERT_HEAD")))
+        {
+            return (Models.GitOperationType.Revert, "revert");
+        }
+        return (Models.GitOperationType.None, string.Empty);
     }
 }

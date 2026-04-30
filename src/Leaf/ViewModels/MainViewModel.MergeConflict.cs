@@ -170,6 +170,12 @@ public partial class MainViewModel
                         StatusMessage = "Rebase aborted";
                         break;
 
+                    case Models.GitOperationType.Am:
+                        StatusMessage = "Aborting patch apply...";
+                        await _gitService.AbortAmAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
+                        StatusMessage = "Patch apply aborted";
+                        break;
+
                     default:
                         StatusMessage = "Aborting merge...";
                         await _gitService.AbortMergeAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);

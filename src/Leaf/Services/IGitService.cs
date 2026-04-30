@@ -532,6 +532,23 @@ public interface IGitService
     /// </summary>
     Task<bool> IsRebaseInProgressAsync(string repoPath, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// True when <c>.git/rebase-apply/applying</c> exists — the marker
+    /// git writes to distinguish a paused <c>git am</c> from a paused
+    /// rebase (both use <c>.git/rebase-apply/</c>, so the bare directory
+    /// check is ambiguous).
+    /// </summary>
+    Task<bool> IsAmInProgressAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    /// <summary>Continue an in-progress <c>git am</c> after the user resolved conflicts.</summary>
+    Task<Models.MergeResult> ContinueAmAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    /// <summary>Skip the current patch in an in-progress <c>git am</c>.</summary>
+    Task<Models.MergeResult> SkipAmAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    /// <summary>Abort an in-progress <c>git am</c> and restore the pre-apply HEAD.</summary>
+    Task AbortAmAsync(string repoPath, CancellationToken cancellationToken = default);
+
     #endregion
 
     #region Squash Merge

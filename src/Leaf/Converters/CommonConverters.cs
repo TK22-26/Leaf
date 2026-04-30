@@ -521,6 +521,7 @@ public class GitOperationTypeToStringConverter : IValueConverter
                 Models.GitOperationType.CherryPick => "Cherry-pick in Progress",
                 Models.GitOperationType.Revert => "Revert in Progress",
                 Models.GitOperationType.Rebase => "Rebase in Progress",
+                Models.GitOperationType.Am => "Patch Apply in Progress",
                 _ => "Operation in Progress"
             },
             "Verb" => opType switch
@@ -529,6 +530,7 @@ public class GitOperationTypeToStringConverter : IValueConverter
                 Models.GitOperationType.CherryPick => "Cherry-picking",
                 Models.GitOperationType.Revert => "Reverting",
                 Models.GitOperationType.Rebase => "Rebasing",
+                Models.GitOperationType.Am => "Applying patches",
                 _ => "Processing"
             },
             "Preposition" => opType switch
@@ -537,6 +539,7 @@ public class GitOperationTypeToStringConverter : IValueConverter
                 Models.GitOperationType.CherryPick => "onto",
                 Models.GitOperationType.Revert => "on",
                 Models.GitOperationType.Rebase => "onto",
+                Models.GitOperationType.Am => "into",
                 _ => "on"
             },
             _ => opType.ToString()
