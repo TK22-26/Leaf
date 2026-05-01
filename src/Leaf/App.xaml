@@ -18,6 +18,7 @@
                 <ResourceDictionary Source="Resources/Styles.xaml" />
                 <ResourceDictionary Source="Resources/Icons.xaml" />
                 <ResourceDictionary Source="Resources/Merge/Merge.xaml" />
+                <ResourceDictionary Source="Controls/DropdownButton.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <BitmapImage x:Key="AppIcon" UriSource="pack://application:,,,/Assets/Leaf.ico" />
@@ -113,6 +114,17 @@
             <SolidColorBrush x:Key="ListBoxItemSelectedBackgroundPressedThemeBrush" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
             <SolidColorBrush x:Key="ListBoxItemBackgroundSelectedPressedThemeBrush" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
             <SolidColorBrush x:Key="ListViewItemPillFillBrush" Color="{StaticResource LeafAccentColor}" />
+
+            <!--  ToggleButton checked-state family. Fluent's dark theme
+                  binds these directly to SystemAccentColorLight2 instead
+                  of going through AccentFillColorDefaultBrush, so the
+                  catch-all override doesn't reach them. Without these
+                  re-keys, any IsChecked=true ToggleButton (notably the
+                  trigger inside our DropdownButton) renders Windows-blue
+                  even with a green-themed app.  -->
+            <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Opacity="0.9" Color="{StaticResource LeafAccentColor}" />
+            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Opacity="0.8" Color="{StaticResource LeafAccentColor}" />
 
             <!--  Leaf Green Accent Variations (subtle opacity levels)  -->
             <SolidColorBrush x:Key="LeafAccentSubtleBrush" Color="#1A28A745" />

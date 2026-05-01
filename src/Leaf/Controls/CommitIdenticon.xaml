@@ -1,0 +1,23 @@
+<UserControl x:Class="Leaf.Controls.CommitIdenticon"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Name="Root">
+    <!--  Round identicon avatar — Border + clipped Image. The Border
+          carries a thin stroke so the avatar reads on the page background
+          even when the identicon palette happens to match the surrounding
+          fill. Size is controlled via the Size DP on this UserControl;
+          the Image inset (Size - 2) preserves a 1px ring of border.  -->
+    <Border BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            Width="{Binding Size, ElementName=Root}"
+            Height="{Binding Size, ElementName=Root}"
+            CornerRadius="{Binding Radius, ElementName=Root}">
+        <Image Width="{Binding ImageSize, ElementName=Root}"
+               Height="{Binding ImageSize, ElementName=Root}"
+               Source="{Binding AvatarSource, ElementName=Root}"
+               Clip="{Binding ImageClip, ElementName=Root}" />
+    </Border>
+</UserControl>

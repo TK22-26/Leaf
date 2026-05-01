@@ -177,7 +177,8 @@ internal class CommitHistoryOperations
             if (commit == null) return null;
 
             var headSha = repo.Head?.Tip?.Sha;
-            return ToCommitInfo(commit, headSha);
+            var (branchTips, tagTips) = BuildRefTipMaps(repo);
+            return ToCommitInfo(commit, headSha, branchTips, tagTips);
         }, cancellationToken);
     }
 
@@ -192,11 +193,55 @@ internal class CommitHistoryOperations
             using var repo = new Repository(repoPath);
             var tip = repo.Head?.Tip;
             if (tip == null) return null;
-            return ToCommitInfo(tip, tip.Sha);
+            var (branchTips, tagTips) = BuildRefTipMaps(repo);
+            return ToCommitInfo(tip, tip.Sha, branchTips, tagTips);
         }, cancellationToken);
     }
 
-    private static CommitInfo ToCommitInfo(Commit commit, string? headSha) => new()
+    /// <summary>
+    /// Pre-compute SHA → branch-names and SHA → tag-names lookup tables
+    /// for the repository. Mirrors the bulk maps the graph builder
+    /// constructs (lines 53-60) — extracted so single-commit callers
+    /// (<see cref="GetCommitAsync"/>, <see cref="GetHeadCommitAsync"/>)
+    /// don't each re-implement the ref-walking logic. Future batch
+    /// callers can lift the call out of a loop and pay the O(refs)
+    /// cost once.
+    /// </summary>
+    /// <remarks>
+    /// Local-only branches: <see cref="CommitInfo.BranchNames"/> is
+    /// rendered as branch chips on commit cards; remote branches show
+    /// up via the graph's <see cref="CommitInfo.BranchLabels"/> path,
+    /// not as chips. Filtering to <c>!IsRemote</c> here matches the
+    /// graph builder's <c>allBranchTips</c> dict (line 53).
+    /// </remarks>
+    private static (Dictionary<string, List<string>> BranchTips, Dictionary<string, List<string>> TagTips) BuildRefTipMaps(Repository repo)
+    {
+        var branchTips = repo.Branches
+            .Where(b => !b.IsRemote && b.Tip != null)
+            .GroupBy(b => b.Tip!.Sha)
+            .ToDictionary(g => g.Key, g => g.Select(b => b.FriendlyName).ToList());
+
+        var tagTips = repo.Tags
+            .Where(t => t.Target != null)
+            .GroupBy(t => t.Target!.Sha)
+            .ToDictionary(g => g.Key, g => g.Select(t => t.FriendlyName).ToList());
+
+        return (branchTips, tagTips);
+    }
+
+    /// <summary>
+    /// Build a <see cref="CommitInfo"/> from a libgit2 commit using
+    /// pre-computed ref-tip maps. Single-commit callers build the
+    /// maps inline via <see cref="BuildRefTipMaps"/>; batch callers
+    /// can build once and reuse. Without the BranchNames/TagNames
+    /// the bisect header's branch/tag chips render empty even when
+    /// refs do point at the commit.
+    /// </summary>
+    private static CommitInfo ToCommitInfo(
+        Commit commit,
+        string? headSha,
+        Dictionary<string, List<string>> branchTips,
+        Dictionary<string, List<string>> tagTips) => new()
     {
         Sha = commit.Sha,
         Message = commit.Message,
@@ -205,7 +250,9 @@ internal class CommitHistoryOperations
         AuthorEmail = commit.Author.Email,
         Date = commit.Author.When,
         ParentShas = commit.Parents.Select(p => p.Sha).ToList(),
-        IsHead = commit.Sha == headSha
+        BranchNames = branchTips.TryGetValue(commit.Sha, out var branches) ? branches : [],
+        TagNames = tagTips.TryGetValue(commit.Sha, out var tags) ? tags : [],
+        IsHead = commit.Sha == headSha,
     };
 
     /// <summary>

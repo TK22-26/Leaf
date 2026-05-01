@@ -346,25 +346,10 @@
                         Grid.Column="0"
                         VerticalAlignment="Center"
                         Orientation="Horizontal">
-                        <Border
-                            Width="20"
-                            Height="20"
+                        <controls:CommitIdenticon
+                            Size="20"
                             Margin="0,0,8,0"
-                            BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="10">
-                            <Image
-                                Width="18"
-                                Height="18"
-                                Source="{Binding Commit.AvatarKey, Converter={StaticResource IdenticonConverter}, ConverterParameter=18}">
-                                <Image.Clip>
-                                    <EllipseGeometry
-                                        Center="9,9"
-                                        RadiusX="9"
-                                        RadiusY="9" />
-                                </Image.Clip>
-                            </Image>
-                        </Border>
+                            AvatarKey="{Binding Commit.AvatarKey}" />
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
@@ -429,19 +414,11 @@
                                                     <StackPanel
                                                         Margin="0,2"
                                                         Orientation="Horizontal">
-                                                        <Image
-                                                            Width="14"
-                                                            Height="14"
+                                                        <controls:CommitIdenticon
+                                                            Size="14"
                                                             Margin="0,0,6,0"
                                                             VerticalAlignment="Center"
-                                                            Source="{Binding AvatarKey, Converter={StaticResource IdenticonConverter}, ConverterParameter=14}">
-                                                            <Image.Clip>
-                                                                <EllipseGeometry
-                                                                    Center="7,7"
-                                                                    RadiusX="7"
-                                                                    RadiusY="7" />
-                                                            </Image.Clip>
-                                                        </Image>
+                                                            AvatarKey="{Binding AvatarKey}" />
                                                         <TextBlock
                                                             VerticalAlignment="Center"
                                                             FontSize="11"
@@ -467,27 +444,17 @@
                                 <StackPanel Orientation="Horizontal" />
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
+                        <!--  Inline overlapping co-author avatars (negative
+                              margin produces the stack-of-cards look). The
+                              CommitIdenticon control owns the Border + clip;
+                              the negative left margin lives here because
+                              it's a layout choice, not part of the chip.  -->
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border
-                                    Width="20"
-                                    Height="20"
+                                <controls:CommitIdenticon
+                                    Size="20"
                                     Margin="-4,0,0,0"
-                                    BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="10">
-                                    <Image
-                                        Width="18"
-                                        Height="18"
-                                        Source="{Binding AvatarKey, Converter={StaticResource IdenticonConverter}, ConverterParameter=18}">
-                                        <Image.Clip>
-                                            <EllipseGeometry
-                                                Center="9,9"
-                                                RadiusX="9"
-                                                RadiusY="9" />
-                                        </Image.Clip>
-                                    </Image>
-                                </Border>
+                                    AvatarKey="{Binding AvatarKey}" />
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

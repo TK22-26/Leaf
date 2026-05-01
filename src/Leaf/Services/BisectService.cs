@@ -264,12 +264,52 @@ public class BisectService : IBisectService
         // when bisect has nothing left to do. We read the log file
         // best-effort; failure falls through to the regular probe.
         var converged = TryReadConvergedShaFromLog(session.GitDirectory);
-        // Cold-open path: a converged SHA in BISECT_LOG implies a normal
-        // termination, not the all-skipped variant; the latter has no
-        // first-bad SHA to record so the log wouldn't carry one anyway.
+
+        // All-skipped detection on cold open. Git doesn't persist that
+        // terminator anywhere on disk — it's only emitted to stdout
+        // when a user-driven verdict triggers it. We infer the state
+        // by asking `git bisect view --pretty=format:%H` for the list
+        // of untested candidates: when bisect's view set is empty and
+        // we haven't converged, every untested commit must have been
+        // skipped. The probe is read-only — git-bisect routes the
+        // arguments through `git log` when any flag-form argument is
+        // present, so it never tries to launch gitk. Skipped only when
+        // we already detected convergence so we don't waste a process
+        // launch in the common case.
+        bool allSkipped = false;
+        if (converged == null)
+        {
+            allSkipped = await DetectAllSkippedAsync(session, cancellationToken);
+        }
+
         return await ReadStateAsync(
             session, stepsHint: null, firstBadHint: converged,
-            allSkippedHint: false, cancellationToken);
+            allSkippedHint: allSkipped, cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns true when an in-progress bisect has reached the
+    /// all-skipped terminator state — every untested candidate was
+    /// marked skip and the search can't be narrowed further. Probed
+    /// via <c>git bisect view --pretty=format:%H</c>, which lists the
+    /// remaining bisect candidates without mutating state.
+    /// </summary>
+    private async Task<bool> DetectAllSkippedAsync(IRepositorySession session, CancellationToken cancellationToken)
+    {
+        var view = await _commandRunner.RunAsync(
+            session.RepositoryPath,
+            ["bisect", "view", "--pretty=format:%H"],
+            cancellationToken: cancellationToken);
+        if (!view.Success)
+        {
+            // git bisect view failures are not necessarily fatal — older
+            // gits or odd configs might fail this probe. Default to
+            // "not all skipped" so the UI keeps showing the testing
+            // banner; the next user verdict will resolve it.
+            Log.Info("Bisect", $"DetectAllSkipped: probe failed (exit {view.ExitCode}); assuming not all-skipped.");
+            return false;
+        }
+        return string.IsNullOrWhiteSpace(view.StandardOutput);
     }
 
     /// <summary>

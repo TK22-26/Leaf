@@ -106,6 +106,15 @@ public partial class MainViewModel
     public DiffViewerViewModel? BisectDiffViewerViewModel { get; set; }
 
     /// <summary>
+    /// Monotonic counter incremented on every selected-file change so
+    /// the embedded bisect diff loader can supersede in-flight loads
+    /// when the user switches files quickly. Each call captures its
+    /// sequence number; later checks compare against the latest value
+    /// to decide whether to apply results or abandon them.
+    /// </summary>
+    private int _bisectDiffSequence;
+
+    /// <summary>
     /// Whether the "Changes in this commit" panel in the bisect right
     /// rail is expanded. Mirrors the staged/unstaged collapsible
     /// sections in <c>WorkingChangesView</c>.
@@ -303,10 +312,12 @@ public partial class MainViewModel
                 return;
             }
 
-            CurrentBisectState = null;
-            BisectFoundSha = null;
-            CurrentBisectChanges.Clear();
-            BisectLog.Clear();
+            // ClearBisectState wipes every bisect observable in lockstep
+            // (root state + dependents + diff viewer). Inline cleanup here
+            // used to miss CurrentBisectCommitInfo / SelectedBisectFile /
+            // the diff viewer — leaving stale commit metadata visible
+            // after the user ended the bisect.
+            ClearBisectState();
             NotifyInfo("Bisect ended", "HEAD has been restored.");
             await RefreshAsync();
         }
@@ -328,10 +339,7 @@ public partial class MainViewModel
     {
         if (_currentSession == null)
         {
-            CurrentBisectState = null;
-            BisectFoundSha = null;
-            CurrentBisectChanges.Clear();
-            BisectLog.Clear();
+            ClearBisectState();
             return;
         }
 
@@ -349,10 +357,60 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
+            // Wipe the lot on a transient error — leaving partial state
+            // (e.g. CurrentBisectChanges populated from a prior session
+            // while CurrentBisectState is null) shows ghost data on the
+            // next render. ReloadBisectDetailAsync's null-state path
+            // already handles cleanup; we just route through it.
             Log.Info("Bisect", $"RefreshBisectState: {ex.Message}");
-            CurrentBisectState = null;
+            ClearBisectState();
         }
     }
+
+    /// <summary>
+    /// Reset every bisect-related observable to its empty/null state.
+    /// Used by the no-session early-out, the explicit reset path, and
+    /// the error path so they can't leak partial UI state from a prior
+    /// bisect. Built on <see cref="ClearDependentBisectState"/>; this
+    /// method additionally nulls the root-level <see cref="CurrentBisectState"/>
+    /// and <see cref="BisectFoundSha"/>.
+    /// </summary>
+    private void ClearBisectState()
+    {
+        CurrentBisectState = null;
+        BisectFoundSha = null;
+        ClearDependentBisectState();
+    }
+
+    /// <summary>
+    /// Clear only the observables derived from the current bisect commit
+    /// — leaves <see cref="CurrentBisectState"/> and
+    /// <see cref="BisectFoundSha"/> untouched. Used by
+    /// <see cref="ReloadBisectDetailAsync"/>'s null-branch where the root
+    /// state is already null and we just need to wipe its dependents.
+    /// </summary>
+    private void ClearDependentBisectState()
+    {
+        CurrentBisectCommitInfo = null;
+        SelectedBisectFile = null;
+        CurrentBisectChanges.Clear();
+        BisectLog.Clear();
+        BisectDiffViewerViewModel?.Clear();
+    }
+
+    /// <summary>
+    /// SHA the bisect view binds against for diffs, file lists, commit
+    /// header lookups, and clipboard copy. Resolves to the converged
+    /// "first bad" commit when bisect has terminated; otherwise the
+    /// commit git just checked out for testing. Centralising this
+    /// avoids drift between call sites when convergence semantics
+    /// change — every bisect-aware read goes through this one helper.
+    /// Returns null when no bisect is active.
+    /// </summary>
+    private string? EffectiveBisectSha =>
+        !string.IsNullOrEmpty(BisectFoundSha)
+            ? BisectFoundSha
+            : CurrentBisectState?.CurrentSha;
 
     private static string Shorten(string? sha) =>
         string.IsNullOrEmpty(sha) ? "?" : sha.Length >= 7 ? sha[..7] : sha;
@@ -369,22 +427,15 @@ public partial class MainViewModel
     {
         if (_currentSession == null || CurrentBisectState == null)
         {
-            CurrentBisectChanges.Clear();
-            BisectLog.Clear();
-            CurrentBisectCommitInfo = null;
-            SelectedBisectFile = null;
-            BisectDiffViewerViewModel?.Clear();
+            ClearDependentBisectState();
             return;
         }
 
-        // Diff target: the converged "first bad commit" if we've reached
-        // termination, otherwise the commit git just checked out for
-        // testing. Either way, what the user wants to see is "what
-        // changes does this commit introduce?" — i.e., the diff vs its
-        // parent.
-        var diffSha = !string.IsNullOrEmpty(BisectFoundSha)
-            ? BisectFoundSha
-            : CurrentBisectState.CurrentSha;
+        // Diff target — the "what should we be looking at right now?"
+        // SHA. Centralised on EffectiveBisectSha so every bisect-aware
+        // read agrees: detail diff (here), per-file diff load
+        // (OnSelectedBisectFileChanged), and SHA copy (CopyBisectSha).
+        var diffSha = EffectiveBisectSha;
 
         try
         {
@@ -439,18 +490,17 @@ public partial class MainViewModel
     partial void OnSelectedBisectFileChanged(FileChangeInfo? value)
     {
         if (value == null || BisectDiffViewerViewModel == null || _currentSession == null) return;
-        var diffSha = !string.IsNullOrEmpty(BisectFoundSha)
-            ? BisectFoundSha
-            : CurrentBisectState?.CurrentSha;
+        var diffSha = EffectiveBisectSha;
         if (string.IsNullOrEmpty(diffSha)) return;
 
-        // Fire-and-forget so the property setter doesn't block. The diff
-        // service itself is async-resilient — multiple in-flight loads
-        // for the same VM are serialised by the VM's own sequence id.
-        _ = LoadBisectDiffAsync(value, diffSha);
+        // Bump the sequence and fire the load. Any in-flight earlier
+        // loads see a now-stale sequence on completion and abandon
+        // their results — last-call-wins, no torn renders if the user
+        // clicks through files faster than git can read them.
+        _ = LoadBisectDiffAsync(value, diffSha, ++_bisectDiffSequence);
     }
 
-    private async Task LoadBisectDiffAsync(FileChangeInfo file, string commitSha)
+    private async Task LoadBisectDiffAsync(FileChangeInfo file, string commitSha, int sequence)
     {
         if (BisectDiffViewerViewModel == null || SelectedRepository == null) return;
         try
@@ -459,6 +509,12 @@ public partial class MainViewModel
             BisectDiffViewerViewModel.RepositoryPath = SelectedRepository.Path;
             var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
                 SelectedRepository.Path, commitSha, file.Path, cancellationToken: CurrentRepositoryToken);
+
+            // Superseded? Newer selection bumped the sequence while we
+            // were awaiting git. Drop our results — the newer load will
+            // paint the right thing when its await returns.
+            if (sequence != _bisectDiffSequence) return;
+
             var result = _diffService.ComputeDiff(oldContent, newContent, file.FileName, file.Path);
             BisectDiffViewerViewModel.LoadDiff(result);
         }
@@ -468,7 +524,11 @@ public partial class MainViewModel
         }
         finally
         {
-            BisectDiffViewerViewModel.IsLoading = false;
+            // Only clear IsLoading when we're still the latest load.
+            // A superseded load clearing it would prematurely tell the
+            // UI "diff ready" while a newer load is still pending.
+            if (sequence == _bisectDiffSequence)
+                BisectDiffViewerViewModel.IsLoading = false;
         }
     }
 
@@ -488,9 +548,7 @@ public partial class MainViewModel
     [RelayCommand]
     public void CopyBisectSha()
     {
-        var sha = !string.IsNullOrEmpty(BisectFoundSha)
-            ? BisectFoundSha
-            : CurrentBisectState?.CurrentSha;
+        var sha = EffectiveBisectSha;
         if (string.IsNullOrEmpty(sha)) return;
         _clipboardService.SetText(sha);
         NotifyInfo("Copied", $"SHA {Shorten(sha)} copied to clipboard.");
@@ -524,10 +582,20 @@ public partial class MainViewModel
             // whatever git tells us.
             BisectFoundSha = result.FirstBadSha;
             await ReloadBisectDetailAsync();
-            NotifyInfo("Verdict undone",
-                CurrentBisectState != null
-                    ? $"Re-testing {CurrentBisectState.CurrentShortSha}."
-                    : "Bisect state restored.");
+
+            // Toast text: distinguish the three post-undo outcomes.
+            // Re-converged is rare but real; we'd rather say "first bad
+            // commit" than the misleading "Re-testing X" — the user
+            // expected an undo to re-open the search, and they need to
+            // know it didn't.
+            string undoMessage;
+            if (!string.IsNullOrEmpty(BisectFoundSha))
+                undoMessage = $"Re-converged on {Shorten(BisectFoundSha)} as the first bad commit.";
+            else if (CurrentBisectState != null)
+                undoMessage = $"Re-testing {CurrentBisectState.CurrentShortSha}.";
+            else
+                undoMessage = "Bisect state restored.";
+            NotifyInfo("Verdict undone", undoMessage);
             await RefreshAsync();
         }
         catch (Exception ex)

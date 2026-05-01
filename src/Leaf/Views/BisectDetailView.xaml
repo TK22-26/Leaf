@@ -13,6 +13,48 @@
         <converters:BoolToSectionRowHeightConverter x:Key="BoolToSectionRowHeightConverter" />
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
 
+        <!--  Pill segment style — used by the 3-segment verdict pill
+              (Good | Bad | Skip). The Tag carries the per-button
+              CornerRadius (e.g. "5,0,0,5" for the left segment, "0"
+              for the middle, "0,5,5,0" for the right) so we can
+              parameterize each segment from XAML. Background /
+              Foreground / BorderBrush stay on the Button itself so
+              the per-segment colors travel with the markup.  -->
+        <Style x:Key="VerdictPillSegmentStyle" TargetType="Button">
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="SegmentBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding Tag}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <!--  Lift on hover by ~8% to give the
+                                  segment some life without looking
+                                  glassy. Pressed state goes the other
+                                  way (-8%) for a "push-in" feel.  -->
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SegmentBorder" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="SegmentBorder" Property="Opacity" Value="0.7" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!--  Chevron toggle style for the collapsible section headers in the
               right rail. Reused for both "Changes in this commit" and
               "Verdict log" so they read identically to the staged/unstaged
@@ -55,17 +97,28 @@
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="8"
-                Padding="16,12"
+                Padding="16,14"
                 Margin="0,0,0,12">
             <Grid>
+                <!--  Outer split: info on the left (flexes), actions on
+                      the right (vertical stack — End Bisect on top, the
+                      verdict pill below). Stacking actions in the right
+                      gutter frees the entire bottom of the card for
+                      info, and gives the pill room to breathe without
+                      competing with the End Bisect button for the same
+                      horizontal strip.  -->
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- ── LEFT: commit summary (sha + subject + author/date + body) ── -->
-                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                <!-- ════════════════════════════════════════════════════
+                     LEFT — Rich commit info. Modeled on the commit
+                     detail card so users have full context (author,
+                     co-authors, branches/tags, parents, body) without
+                     leaving the bisect.
+                     ════════════════════════════════════════════════════ -->
+                <StackPanel Grid.Column="0" Margin="0,0,16,0">
                     <!-- Mode title — flips between testing / converged / all-skipped -->
                     <TextBlock FontSize="11" FontWeight="SemiBold" Opacity="0.7">
                         <TextBlock.Style>
@@ -86,63 +139,231 @@
                         </TextBlock.Style>
                     </TextBlock>
 
-                    <!-- Sha + subject row. The sha is a Hyperlink-style
-                         button that copies the full sha to clipboard on
-                         click — users frequently want to share or paste
-                         the SHA into a bug report mid-bisect.  -->
-                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                    <!--  Identity row — single inline strip packed left:
+                          SHA, subject, author chip, co-author chips, in
+                          that order. A horizontal StackPanel keeps the
+                          chips immediately adjacent to the subject
+                          (rather than flex-pushed to the far right).
+                          The subject TextBlock has a MaxWidth so very
+                          long subjects ellipsize instead of forcing the
+                          chips off-screen — most commit subjects sit
+                          well under that cap and just render at their
+                          natural width.  -->
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <!--  SHA copy button. Bound to CurrentBisectCommitInfo
+                              (not CurrentBisectState) so the SHA + subject
+                              match the found-bad commit after convergence
+                              — CurrentBisectState.CurrentSha continues to
+                              point at the last-tested commit even when
+                              git has converged on a different one.  -->
                         <Button Padding="0"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 Cursor="Hand"
+                                VerticalAlignment="Center"
                                 Command="{Binding CopyBisectShaCommand}"
-                                ToolTip="Copy full SHA to clipboard">
+                                ToolTip="{Binding CurrentBisectCommitInfo.Sha, FallbackValue='Copy full SHA'}">
                             <TextBlock FontFamily="Consolas"
                                        FontSize="14"
                                        FontWeight="SemiBold"
                                        VerticalAlignment="Center"
                                        Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
-                                       Text="{Binding CurrentBisectState.CurrentShortSha, FallbackValue=''}" />
+                                       Text="{Binding CurrentBisectCommitInfo.ShortSha, FallbackValue=''}" />
                         </Button>
+
+                        <!--  Subject — natural width, ellipsizes only when
+                              the line gets unreasonably long.  -->
                         <TextBlock FontSize="14"
-                                   Margin="12,0,0,0"
+                                   Margin="12,0,10,0"
+                                   MaxWidth="700"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                   Text="{Binding CurrentBisectState.CurrentSubject, FallbackValue=''}" />
+                                   Text="{Binding CurrentBisectCommitInfo.MessageShort, FallbackValue=''}" />
+
+                        <!--  Author + co-author chips, packed immediately
+                              after the subject.  -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <!--  ToolTip suppressed when AuthorEmail is empty
+                                  (CurrentBisectCommitInfo absent OR commit
+                                  has no author email) — without the trigger
+                                  WPF still renders an empty-string tooltip
+                                  on hover, which flickers an empty popup.  -->
+                            <!--  Author pill: identicon + name. Tooltip
+                                  carries the email; the Style trigger
+                                  suppresses it when empty so we don't
+                                  flicker an empty popup.  -->
+                            <Border Padding="6,3"
+                                    CornerRadius="12"
+                                    Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="ToolTip" Value="{Binding CurrentBisectCommitInfo.AuthorEmail}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentBisectCommitInfo.AuthorEmail, FallbackValue=''}" Value="">
+                                                <Setter Property="ToolTip" Value="{x:Null}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel Orientation="Horizontal">
+                                    <controls:CommitIdenticon Size="18"
+                                                              Margin="0,0,6,0"
+                                                              AvatarKey="{Binding CurrentBisectCommitInfo.AvatarKey, FallbackValue=''}" />
+                                    <TextBlock VerticalAlignment="Center"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                               Text="{Binding CurrentBisectCommitInfo.Author, FallbackValue=''}" />
+                                </StackPanel>
+                            </Border>
+
+                            <!--  Co-author pills (avatar-only chips with
+                                  per-pill name+email tooltip). Self-
+                                  collapsing when no co-authors.  -->
+                            <controls:CoAuthorPills Margin="6,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    CoAuthors="{Binding CurrentBisectCommitInfo.CoAuthors, FallbackValue={x:Null}}" />
+                        </StackPanel>
                     </StackPanel>
 
-                    <!-- Author · date · step number · steps remaining.
-                         Author tooltip surfaces the email address. The
-                         step counter is computed from BisectLog.Count,
-                         which is always available even when git omits
-                         the "(roughly K steps)" hint.  -->
-                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                        <TextBlock FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   Text="{Binding CurrentBisectCommitInfo.Author, FallbackValue=''}"
-                                   ToolTip="{Binding CurrentBisectCommitInfo.AuthorEmail, FallbackValue=''}" />
-                        <TextBlock FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                   Text=" · "
-                                   Visibility="{Binding CurrentBisectCommitInfo.Author, Converter={StaticResource EmptyToVisibilityConverter}, FallbackValue=Collapsed}" />
-                        <TextBlock FontSize="12"
+                    <!-- Metadata row: authored date · step · remaining ·
+                         parent · merge indicator · file count.  -->
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <ic:SymbolIcon Symbol="Clock" FontSize="11" Margin="0,0,4,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        <TextBlock FontSize="11"
+                                   VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                    Text="{Binding CurrentBisectCommitInfo.Date, StringFormat='{}{0:yyyy-MM-dd HH:mm}', FallbackValue=''}"
                                    ToolTip="{Binding CurrentBisectCommitInfo.DateDisplay, FallbackValue=''}" />
-                        <TextBlock FontSize="12"
-                                   Margin="16,0,0,0"
-                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+
+                        <TextBlock FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="·" />
+                        <TextBlock FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                    ToolTip="Number of verdicts (good/bad/skip) issued so far in this bisect">
                             <Run Text="Step " /><Run Text="{Binding BisectLog.Count, Mode=OneWay, FallbackValue=0}" />
                         </TextBlock>
-                        <TextBlock FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                   Margin="8,0,0,0"
+                        <TextBlock FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                    Visibility="{Binding CurrentBisectState.StepsRemaining, Converter={StaticResource NullToVisibilityConverter}}">
-                            <Run Text=" · ~" /><Run Text="{Binding CurrentBisectState.StepsRemaining, Mode=OneWay, FallbackValue=''}" /><Run Text=" remaining" />
+                            <Run Text="~" /><Run Text="{Binding CurrentBisectState.StepsRemaining, Mode=OneWay, FallbackValue=''}" /><Run Text=" remaining" />
+                        </TextBlock>
+
+                        <!-- Parent count -->
+                        <TextBlock FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="·"
+                                   Visibility="{Binding CurrentBisectCommitInfo.ParentShas.Count, Converter={StaticResource EmptyToVisibilityConverter}, FallbackValue=Collapsed}" />
+                        <ic:SymbolIcon Symbol="Branch" FontSize="11" Margin="10,0,4,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       Visibility="{Binding CurrentBisectCommitInfo.ParentShas.Count, Converter={StaticResource EmptyToVisibilityConverter}, FallbackValue=Collapsed}" />
+                        <TextBlock FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Visibility="{Binding CurrentBisectCommitInfo.ParentShas.Count, Converter={StaticResource EmptyToVisibilityConverter}, FallbackValue=Collapsed}">
+                            <Run Text="{Binding CurrentBisectCommitInfo.ParentShas.Count, Mode=OneWay, FallbackValue=0}" /><Run Text=" parent(s)" />
+                        </TextBlock>
+                        <TextBlock FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"
+                                   FontWeight="SemiBold"
+                                   Foreground="#F5C842"
+                                   Text="(merge)"
+                                   Visibility="{Binding CurrentBisectCommitInfo.IsMerge, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}" />
+
+                        <!-- File count -->
+                        <TextBlock FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="·"
+                                   Visibility="{Binding CurrentBisectChanges.Count, Converter={StaticResource EmptyToVisibilityConverter}, FallbackValue=Collapsed}" />
+                        <ic:SymbolIcon Symbol="Document" FontSize="11" Margin="10,0,4,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       Visibility="{Binding CurrentBisectChanges.Count, Converter={StaticResource EmptyToVisibilityConverter}, FallbackValue=Collapsed}" />
+                        <TextBlock FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Visibility="{Binding CurrentBisectChanges.Count, Converter={StaticResource EmptyToVisibilityConverter}, FallbackValue=Collapsed}">
+                            <Run Text="{Binding CurrentBisectChanges.Count, Mode=OneWay, FallbackValue=0}" /><Run Text=" file(s) changed" />
                         </TextBlock>
                     </StackPanel>
+
+                    <!-- Branch / tag chips — only when refs point at this commit. -->
+                    <ItemsControl Margin="0,8,0,0"
+                                  ItemsSource="{Binding CurrentBisectCommitInfo.BranchNames, FallbackValue={x:Null}}"
+                                  Visibility="{Binding CurrentBisectCommitInfo.BranchNames.Count, Converter={StaticResource EmptyToVisibilityConverter}, FallbackValue=Collapsed}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,6,4"
+                                        Padding="6,2"
+                                        CornerRadius="4"
+                                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        ToolTip="Branch tip pointing at this commit">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ic:SymbolIcon Symbol="Branch" FontSize="10" Margin="0,0,4,0"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock FontSize="11" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                   Text="{Binding}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <ItemsControl ItemsSource="{Binding CurrentBisectCommitInfo.TagNames, FallbackValue={x:Null}}"
+                                  Visibility="{Binding CurrentBisectCommitInfo.TagNames.Count, Converter={StaticResource EmptyToVisibilityConverter}, FallbackValue=Collapsed}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,6,4"
+                                        Padding="6,2"
+                                        CornerRadius="4"
+                                        Background="#3D2E0A"
+                                        BorderBrush="#7A5C14"
+                                        BorderThickness="1"
+                                        ToolTip="Tag pointing at this commit">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ic:SymbolIcon Symbol="Tag" FontSize="10" Margin="0,0,4,0"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="#F5C842" />
+                                        <TextBlock FontSize="11" VerticalAlignment="Center"
+                                                   Foreground="#F5E0A0"
+                                                   Text="{Binding}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Body of the commit message (truncated, italic).
+                         Only renders when there's actually a body beyond
+                         the subject line.  -->
+                    <Border Margin="0,8,0,0"
+                            Padding="10,8"
+                            Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                            CornerRadius="4"
+                            Visibility="{Binding CurrentBisectCommitInfo.Description, Converter={StaticResource EmptyToVisibilityConverter}, FallbackValue=Collapsed}">
+                        <TextBlock TextWrapping="Wrap"
+                                   FontSize="12"
+                                   FontFamily="Consolas"
+                                   MaxHeight="80"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Text="{Binding CurrentBisectCommitInfo.Description, FallbackValue=''}" />
+                    </Border>
 
                     <!-- All-skipped explanation (only shows in that state) -->
                     <TextBlock TextWrapping="Wrap"
@@ -163,162 +384,129 @@
                     </TextBlock>
                 </StackPanel>
 
-                <!-- ── CENTER: verdict dropdown (only in testing state).
-                     A single button opens a popup with the three verdict
-                     options, each retaining the green / red / gray
-                     palette from the previous side-by-side layout. The
-                     dropdown form keeps the top bar tight and lets us
-                     promote bookend / step info into the freed space.
-                     ── -->
-                <Grid Grid.Column="1"
-                      VerticalAlignment="Center"
-                      Margin="0,0,16,0">
-                    <Grid.Style>
-                        <Style TargetType="Grid">
-                            <Setter Property="Visibility" Value="Visible" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding BisectFoundSha, Converter={StaticResource NullToVisibilityConverter}}" Value="Visible">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding CurrentBisectState.AllSkippedTerminator, FallbackValue=False}" Value="True">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Grid.Style>
-                    <Button x:Name="VerdictDropdownButton"
-                            Padding="20,10"
-                            Background="{DynamicResource AccentFillColorDefaultBrush}"
-                            BorderBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                <!-- ════════════════════════════════════════════════════
+                     RIGHT — Stacked actions. End Bisect anchors the
+                     top-right corner (always reachable, even after
+                     converged / all-skipped); the verdict pill sits
+                     directly below, right-aligned to match the End
+                     Bisect's right edge so the action column reads as
+                     a unified "what do I do now" panel.
+                     ════════════════════════════════════════════════════ -->
+                <StackPanel Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Right" VerticalAlignment="Top">
+                    <!-- ── End Bisect — anchors the top-right corner. ── -->
+                    <Button HorizontalAlignment="Right"
+                            Padding="10,4"
+                            FontSize="12"
+                            Background="Transparent"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                             BorderThickness="1"
-                            Foreground="White"
-                            Click="VerdictDropdown_Click"
-                            ToolTip="Mark this commit (git bisect good / bad / skip)">
+                            Command="{Binding ResetBisectCommand}"
+                            ToolTip="End bisect and restore HEAD (git bisect reset)">
                         <StackPanel Orientation="Horizontal">
-                            <ic:SymbolIcon Symbol="TaskListSquareLtr" FontSize="14" Margin="0,0,8,0" />
-                            <TextBlock Text="Mark commit…" FontWeight="SemiBold" />
-                            <ic:SymbolIcon Symbol="ChevronDown" FontSize="11" Margin="8,0,0,0" />
+                            <ic:SymbolIcon Symbol="ArrowReset" FontSize="12" Margin="0,0,6,0" />
+                            <TextBlock Text="End Bisect" />
                         </StackPanel>
                     </Button>
-                    <Popup x:Name="VerdictPopup"
-                           PlacementTarget="{Binding ElementName=VerdictDropdownButton}"
-                           Placement="Bottom"
-                           StaysOpen="False"
-                           AllowsTransparency="True">
-                        <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
-                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="6"
-                                Padding="6"
-                                Margin="0,4,0,0"
-                                MinWidth="280">
-                            <StackPanel>
-                                <Button Padding="12,10"
-                                        HorizontalContentAlignment="Stretch"
-                                        Background="#1E3A1E"
-                                        BorderBrush="#3D7A3D"
-                                        BorderThickness="1"
-                                        Foreground="#9FE89F"
-                                        Command="{Binding MarkBisectGoodCommand}"
-                                        Click="VerdictItem_Click"
-                                        ToolTip="Regression NOT present in this commit (git bisect good)">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <ic:SymbolIcon Grid.Column="0" Symbol="Checkmark" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="Good" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="2"
-                                                   Text="Regression NOT present here"
-                                                   FontSize="11"
-                                                   Margin="12,0,0,0"
-                                                   Opacity="0.8"
-                                                   VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <Button Padding="12,10"
-                                        Margin="0,4,0,0"
-                                        HorizontalContentAlignment="Stretch"
-                                        Background="#3A1E1E"
-                                        BorderBrush="#7A3D3D"
-                                        BorderThickness="1"
-                                        Foreground="#E89F9F"
-                                        Command="{Binding MarkBisectBadCommand}"
-                                        Click="VerdictItem_Click"
-                                        ToolTip="Regression IS present in this commit (git bisect bad)">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <ic:SymbolIcon Grid.Column="0" Symbol="Dismiss" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="Bad" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="2"
-                                                   Text="Regression IS present here"
-                                                   FontSize="11"
-                                                   Margin="12,0,0,0"
-                                                   Opacity="0.8"
-                                                   VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <Button Padding="12,10"
-                                        Margin="0,4,0,0"
-                                        HorizontalContentAlignment="Stretch"
-                                        Background="#2A2A3A"
-                                        BorderBrush="#4A4A5A"
-                                        BorderThickness="1"
-                                        Foreground="#C0C0E0"
-                                        Command="{Binding MarkBisectSkipCommand}"
-                                        Click="VerdictItem_Click"
-                                        ToolTip="Cannot test this commit — let git pick another (git bisect skip)">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <ic:SymbolIcon Grid.Column="0" Symbol="ArrowForward" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="Skip" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="2"
-                                                   Text="Cannot test — pick another"
-                                                   FontSize="11"
-                                                   Margin="12,0,0,0"
-                                                   Opacity="0.8"
-                                                   VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                            </StackPanel>
-                        </Border>
-                    </Popup>
-                </Grid>
 
-                <!-- ── RIGHT: End Bisect (always visible during a bisect) ── -->
-                <Button Grid.Column="2"
-                        Padding="16,10"
-                        VerticalAlignment="Center"
-                        Background="Transparent"
-                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        Command="{Binding ResetBisectCommand}"
-                        ToolTip="End bisect and restore HEAD (git bisect reset)">
-                    <StackPanel Orientation="Horizontal">
-                        <ic:SymbolIcon Symbol="ArrowReset" FontSize="14" Margin="0,0,8,0" />
-                        <TextBlock Text="End Bisect" />
-                    </StackPanel>
-                </Button>
+                    <!--  Verdict pill — 3 buttons fused into one rounded
+                          control. Sits directly under End Bisect with
+                          matching right-edge alignment. Hidden when the
+                          bisect has converged or all candidates were
+                          skipped (no more verdicts to issue).  -->
+                    <Border HorizontalAlignment="Right"
+                            Margin="0,10,0,0"
+                            CornerRadius="6"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding BisectFoundSha, Converter={StaticResource NullToVisibilityConverter}}" Value="Visible">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding CurrentBisectState.AllSkippedTerminator, FallbackValue=False}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="1" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="1" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <!--  Good — left segment, rounded on the left edge
+                                  (Tag carries the CornerRadius into the
+                                  template).  -->
+                            <Button Grid.Column="0"
+                                    Style="{StaticResource VerdictPillSegmentStyle}"
+                                    Tag="5,0,0,5"
+                                    Background="#1E3A1E"
+                                    Foreground="#9FE89F"
+                                    Command="{Binding MarkBisectGoodCommand}"
+                                    ToolTip="Regression NOT present in this commit (git bisect good)">
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="Checkmark" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Good" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!--  Hairline divider — matches the outer
+                                  border so the segments read as one
+                                  control with internal partitions.  -->
+                            <Rectangle Grid.Column="1" Fill="{DynamicResource ControlStrokeColorDefaultBrush}" />
+
+                            <!--  Bad — middle segment, square on both sides.  -->
+                            <Button Grid.Column="2"
+                                    Style="{StaticResource VerdictPillSegmentStyle}"
+                                    Tag="0"
+                                    Background="#3A1E1E"
+                                    Foreground="#E89F9F"
+                                    Command="{Binding MarkBisectBadCommand}"
+                                    ToolTip="Regression IS present in this commit (git bisect bad)">
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="Dismiss" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Bad" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <Rectangle Grid.Column="3" Fill="{DynamicResource ControlStrokeColorDefaultBrush}" />
+
+                            <!--  Skip — right segment, rounded on the right edge.  -->
+                            <Button Grid.Column="4"
+                                    Style="{StaticResource VerdictPillSegmentStyle}"
+                                    Tag="0,5,5,0"
+                                    Background="#2A2A3A"
+                                    Foreground="#C0C0E0"
+                                    Command="{Binding MarkBisectSkipCommand}"
+                                    ToolTip="Cannot test this commit — let git pick another (git bisect skip)">
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="ArrowForward" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Skip" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Border>
+                </StackPanel>
             </Grid>
         </Border>
 
         <!-- ════════════════════════════════════════════════════════
-             BODY: 2/3 diff viewer + 1/3 right rail.
+             BODY: diff viewer (flexes) + right rail (fixed width).
+             Right rail is intentionally fixed so it doesn't balloon
+             on wide monitors — file lists and verdict entries don't
+             benefit from extra width past ~380px, while the diff
+             viewer absorbs all remaining space.
              ════════════════════════════════════════════════════════ -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*" />
-                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="380" />
             </Grid.ColumnDefinitions>
 
             <!--  LEFT: Diff viewer card. Reuses the same AvalonEdit-
