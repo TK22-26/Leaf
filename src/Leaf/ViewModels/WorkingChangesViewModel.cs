@@ -399,6 +399,11 @@ public partial class WorkingChangesViewModel : ObservableObject
             CommitDescription = _preAmendDescription ?? string.Empty;
             _preAmendMessage = null;
             _preAmendDescription = null;
+            // §5.15 Phase 4: keep the structured form in sync with the
+            // restored pre-amend draft. Without this, exiting amend mode
+            // while Conventional is on leaves the form holding the now-
+            // stale HEAD message.
+            SyncConventionalFieldsFromFreeform();
         }
     }
 
@@ -431,6 +436,11 @@ public partial class WorkingChangesViewModel : ObservableObject
                 CommitMessage = message.Trim();
                 CommitDescription = string.Empty;
             }
+
+            // §5.15 Phase 4: keep the structured form in sync when the user
+            // amends a commit while Conventional mode is on, so editing
+            // any structured field doesn't clobber HEAD's loaded message.
+            SyncConventionalFieldsFromFreeform();
         }
         catch (Exception ex) when (ex is InvalidOperationException
                                 or System.IO.IOException
@@ -1318,6 +1328,14 @@ exit /b %errorlevel%
 
             CommitMessage = message;
             CommitDescription = description?.Trim() ?? string.Empty;
+
+            // §5.15 Phase 4: in Conventional Commits mode the structured
+            // fields drive CommitMessage/CommitDescription via Rebuild
+            // on every field change, so writing these properties directly
+            // leaves the form out of sync. Mirror the freeform values
+            // back into the structured fields so the next field edit
+            // doesn't clobber the AI output. No-op when the toggle is off.
+            SyncConventionalFieldsFromFreeform();
         }
         catch (OperationCanceledException)
         {

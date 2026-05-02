@@ -153,6 +153,14 @@ public partial class WorkingChangesViewModel
             _settingsService.SaveSettings(settings);
         }
 
+        // Conventional Commits mode: the structured fields drive
+        // CommitMessage/CommitDescription via Rebuild on every field
+        // change, so writing those properties directly leaves the form
+        // out of sync. Without this sync, the user's next keystroke in
+        // any structured field would Rebuild from stale fields and
+        // wipe the template output. Sync now so Rebuild is a no-op.
+        SyncConventionalFieldsFromFreeform();
+
         TemplateApplyTick++;
     }
 

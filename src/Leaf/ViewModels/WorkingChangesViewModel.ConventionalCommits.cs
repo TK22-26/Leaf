@@ -118,53 +118,74 @@ public partial class WorkingChangesViewModel
         if (value)
         {
             // Switching ON — pre-populate the structured fields from the
-            // current freeform message. Three cases:
-            //   1. Empty CommitMessage   — leave fields alone, no rebuild.
-            //      Avoids clobbering the form with "feat: " when there's
-            //      nothing to recover.
-            //   2. Parse succeeds        — fields get populated; rebuild
-            //      writes back the same string (modulo whitespace), so
-            //      no user-visible change.
-            //   3. Parse fails           — user typed freeform that isn't
-            //      Conventional-shaped (e.g. "fix bug" without the colon).
-            //      Drop the entire freeform message into the description
-            //      field so the user's text isn't lost; default type stays
-            //      "feat" so the form is in a valid initial state.
+            // current freeform message via the shared migration helper.
+            // Empty/empty short-circuit avoids stamping "feat: " onto a
+            // panel the user just opened.
             if (string.IsNullOrEmpty(CommitMessage) && string.IsNullOrEmpty(CommitDescription))
-            {
-                // Case 1 — nothing to migrate, nothing to rebuild.
                 return;
-            }
 
-            var parsed = TryParseConventionalIntoFields(CommitMessage, CommitDescription);
-            if (!parsed)
-            {
-                // Case 3 — graceful fallback. Move the existing freeform
-                // text into the structured Description field so RebuildBody
-                // re-emits something materially equivalent. Suppress the
-                // rebuild cascade during the assignment because the field
-                // setters would otherwise call Rebuild N times — once per
-                // assigned field — and we want exactly one rebuild after.
-                _suppressConventionalRebuild = true;
-                try
-                {
-                    ConventionalDescription = CommitMessage;
-                    ConventionalBody = CommitDescription;
-                    // Don't overwrite type/scope/breaking/footer — they
-                    // keep whatever the user had set previously.
-                }
-                finally
-                {
-                    _suppressConventionalRebuild = false;
-                }
-            }
-            // Case 2 + 3 both fall through here for the single canonical
-            // rebuild. Case 2 produces the same bytes the user typed; case
-            // 3 produces "feat: <their text>" preserving everything.
+            MigrateFreeformIntoStructuredFields(CommitMessage, CommitDescription);
             RebuildConventionalCommitMessage();
         }
         // Switching OFF leaves CommitMessage/CommitDescription where they
         // are — user keeps whatever the form just built.
+    }
+
+    /// <summary>
+    /// Sync the structured Conventional Commits fields to match a freeform
+    /// (subject, body) pair. Called both on toggle-on and after an
+    /// external write to CommitMessage/CommitDescription (template apply)
+    /// while in Conventional mode — without this, the structured fields
+    /// stay stale and the next field edit clobbers the freshly-written
+    /// freeform text.
+    ///
+    /// <para>Two cases:</para>
+    /// <list type="number">
+    /// <item><description><b>Parse succeeds</b> — fields populated from
+    /// the canonical shape, no information loss.</description></item>
+    /// <item><description><b>Parse fails</b> — drop the subject into
+    /// <see cref="ConventionalDescription"/> and the body into
+    /// <see cref="ConventionalBody"/> so the user's text isn't lost. Type
+    /// defaults to "feat", scope/footer/breaking stay at whatever the user
+    /// had previously.</description></item>
+    /// </list>
+    ///
+    /// <para>The Rebuild cascade is suppressed during the assignment so the
+    /// caller can decide when (and whether) to call
+    /// <see cref="RebuildConventionalCommitMessage"/> — which is also why
+    /// this helper does NOT call it itself.</para>
+    /// </summary>
+    private void MigrateFreeformIntoStructuredFields(string subject, string body)
+    {
+        if (TryParseConventionalIntoFields(subject, body))
+            return;
+
+        _suppressConventionalRebuild = true;
+        try
+        {
+            ConventionalDescription = subject ?? string.Empty;
+            ConventionalBody = body ?? string.Empty;
+            // type/scope/breaking/footer kept — user's prior choices win.
+        }
+        finally
+        {
+            _suppressConventionalRebuild = false;
+        }
+    }
+
+    /// <summary>
+    /// Sync structured fields from the current CommitMessage / CommitDescription.
+    /// Called by the §5.15 template-apply pipeline when a template writes
+    /// the freeform values directly while the structured form is the active
+    /// view; without this, the next structured-field edit would Rebuild from
+    /// stale fields and overwrite the freshly-applied template output.
+    /// Public so the partial in <c>WorkingChangesViewModel.CommitTemplates.cs</c>
+    /// can invoke it.
+    /// </summary>
+    internal void SyncConventionalFieldsFromFreeform()
+    {
+        if (!UseConventionalCommitsForm) return;
+        MigrateFreeformIntoStructuredFields(CommitMessage, CommitDescription);
     }
 
     partial void OnConventionalTypeChanged(string value) => RebuildConventionalCommitMessage();
