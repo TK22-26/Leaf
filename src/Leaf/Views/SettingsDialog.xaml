@@ -276,6 +276,16 @@
                             </StackPanel>
                         </TreeViewItem.Header>
                     </TreeViewItem>
+
+                    <!-- Commit Templates (§5.15) -->
+                    <TreeViewItem x:Name="NavCommitTemplates" Tag="CommitTemplates">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="DocumentText" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Commit Templates" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
                 </TreeView>
             </Grid>
         </Border>
@@ -709,6 +719,9 @@
 
                     <!-- Branch Colours Content (§5.14) -->
                     <settings:BranchColorsSettingsControl x:Name="BranchColorsSettings" Visibility="Collapsed" />
+
+                    <!-- Commit Templates Content (§5.15) -->
+                    <settings:CommitTemplatesSettingsControl x:Name="CommitTemplatesSettings" Visibility="Collapsed" />
 
                     <!-- Search Results (shown when searching) -->
                     <StackPanel x:Name="ContentSearchResults" Visibility="Collapsed">

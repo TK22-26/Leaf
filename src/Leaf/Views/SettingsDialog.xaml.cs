@@ -96,6 +96,8 @@ public partial class SettingsDialog : Window
             new("Branch Colors", "Choose the palette for graph branch colours and manage custom palettes", "BranchColors", Symbol.Color),
             new("Colour Palette", "Pick a built-in or custom colour palette for the graph", "BranchColors", Symbol.Color),
             new("Color Palette", "Pick a built-in or custom colour palette for the graph", "BranchColors", Symbol.Color),
+            new("Commit Templates", "Manage reusable commit message templates and placeholders", "CommitTemplates", Symbol.DocumentText),
+            new("Conventional Commits", "Edit the Conventional Commits preset and built-in templates", "CommitTemplates", Symbol.DocumentText),
         };
 
         // Configure UserControls
@@ -151,6 +153,7 @@ public partial class SettingsDialog : Window
         ExternalToolsSettings.Visibility = Visibility.Collapsed;
         KeyboardShortcutsSettings.Visibility = Visibility.Collapsed;
         BranchColorsSettings.Visibility = Visibility.Collapsed;
+        CommitTemplatesSettings.Visibility = Visibility.Collapsed;
         ContentSearchResults.Visibility = Visibility.Collapsed;
 
         // Show the selected content
@@ -219,6 +222,9 @@ public partial class SettingsDialog : Window
                 break;
             case "BranchColors":
                 BranchColorsSettings.Visibility = Visibility.Visible;
+                break;
+            case "CommitTemplates":
+                CommitTemplatesSettings.Visibility = Visibility.Visible;
                 break;
         }
     }
@@ -292,6 +298,7 @@ public partial class SettingsDialog : Window
         ExternalToolsSettings.Visibility = Visibility.Collapsed;
         KeyboardShortcutsSettings.Visibility = Visibility.Collapsed;
         BranchColorsSettings.Visibility = Visibility.Collapsed;
+        CommitTemplatesSettings.Visibility = Visibility.Collapsed;
 
         // Show search results
         ContentSearchResults.Visibility = Visibility.Visible;
@@ -340,6 +347,7 @@ public partial class SettingsDialog : Window
             "ExternalTools" => NavExternalTools,
             "KeyboardShortcuts" => NavKeyboardShortcuts,
             "BranchColors" => NavBranchColors,
+            "CommitTemplates" => NavCommitTemplates,
             _ => null
         };
 
@@ -380,6 +388,7 @@ public partial class SettingsDialog : Window
         AiSettings.LoadSettings(_settings, _credentialService);
         GitFlowSettings.LoadSettings(_settings, _credentialService);
         BranchColorsSettings.LoadSettings(_settings, _credentialService);
+        CommitTemplatesSettings.LoadSettings(_settings, _credentialService);
     }
 
     private void BrowseClonePath_Click(object sender, RoutedEventArgs e)
@@ -430,6 +439,7 @@ public partial class SettingsDialog : Window
         AiSettings.SaveSettings(_settings, _credentialService);
         GitFlowSettings.SaveSettings(_settings, _credentialService);
         BranchColorsSettings.SaveSettings(_settings, _credentialService);
+        CommitTemplatesSettings.SaveSettings(_settings, _credentialService);
 
         // Save all settings
         _settingsService.SaveSettings(_settings);

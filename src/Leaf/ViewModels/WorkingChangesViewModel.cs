@@ -51,6 +51,7 @@ public partial class WorkingChangesViewModel : ObservableObject
     private readonly SettingsService _settingsService;
     private readonly IExternalToolConfigService _externalToolConfig;
     private readonly IExternalToolLauncherService _externalToolLauncher;
+    private readonly ICommitTemplateService _commitTemplateService;
     private string? _repositoryPath;
     private CancellationTokenSource? _aiCancellationTokenSource;
 
@@ -212,7 +213,8 @@ public partial class WorkingChangesViewModel : ObservableObject
         IGitignoreService gitignoreService,
         IExternalToolConfigService externalToolConfig,
         IExternalToolLauncherService externalToolLauncher,
-        SettingsService settingsService)
+        SettingsService settingsService,
+        ICommitTemplateService commitTemplateService)
     {
         _gitService = gitService;
         _clipboardService = clipboardService;
@@ -223,9 +225,32 @@ public partial class WorkingChangesViewModel : ObservableObject
         _externalToolConfig = externalToolConfig;
         _externalToolLauncher = externalToolLauncher;
         _settingsService = settingsService;
+        _commitTemplateService = commitTemplateService ?? throw new ArgumentNullException(nameof(commitTemplateService));
         _isOptionsExpanded = _settingsService.LoadSettings().IsCommitOptionsExpanded;
         RefreshAiAvailability();
+        RefreshTemplates();
+        _commitTemplateService.TemplatesChanged += OnTemplatesChanged;
+        InitializeConventionalCommitsState();
     }
+
+    private void OnTemplatesChanged(object? sender, EventArgs e) => RefreshTemplates();
+
+    private void RefreshTemplates()
+    {
+        // ObservableCollection<T> mutation must happen on the UI thread —
+        // CommitTemplates is bound to the popup picker. Build the new
+        // list off-thread-safe (no I/O after GetAll returns) then publish
+        // by replacing the collection.
+        CommitTemplates = new ObservableCollection<Models.CommitTemplate>(_commitTemplateService.GetAll());
+    }
+
+    /// <summary>
+    /// Templates available right now — built-ins, user globals, and any
+    /// repo-scoped entries for the active repository. Re-published on
+    /// every <see cref="ICommitTemplateService.TemplatesChanged"/> fire.
+    /// </summary>
+    [ObservableProperty]
+    private ObservableCollection<Models.CommitTemplate> _commitTemplates = [];
 
     partial void OnIsOptionsExpandedChanged(bool value)
     {
@@ -254,6 +279,10 @@ public partial class WorkingChangesViewModel : ObservableObject
     {
         _repositoryPath = repoPath;
         IsAmendMode = false;
+        // §5.15 — point the template service at the new repo so its
+        // GetAll snapshot includes any repo-scoped templates from this
+        // repository's .git/leaf/commit-templates.json.
+        _commitTemplateService.SetActiveRepository(repoPath);
         await RefreshAsync();
         await RefreshAmendStateAsync();
         await RefreshExternalDiffToolAvailabilityAsync();
@@ -265,6 +294,7 @@ public partial class WorkingChangesViewModel : ObservableObject
     public void ClearWorkingChanges()
     {
         _repositoryPath = null;
+        _commitTemplateService.SetActiveRepository(null);
         WorkingChanges = null;
         CommitMessage = string.Empty;
         CommitDescription = string.Empty;
@@ -1182,6 +1212,12 @@ exit /b %errorlevel%
                 amend: amend,
                 cancellationToken: SessionToken);
 
+            // §5.15 Phase 4: remember Conventional Commits scope on
+            // successful commit so the editable scope ComboBox can offer
+            // it next time. Capture before clearing the structured fields.
+            if (UseConventionalCommitsForm)
+                RememberConventionalScope(ConventionalScope);
+
             // Clear form + flip out of amend mode on success. The
             // pre-amend buffers are deliberately not restored — after a
             // successful amend the buffers are stale and a fresh state is
@@ -1189,6 +1225,25 @@ exit /b %errorlevel%
             _preAmendMessage = null;
             _preAmendDescription = null;
             IsAmendMode = false;
+            // Reset structured fields when active so the next commit
+            // doesn't carry over the previous one's body / footer / etc.
+            // The toggle stays on — that's a persisted user preference.
+            if (UseConventionalCommitsForm)
+            {
+                _suppressConventionalRebuild = true;
+                try
+                {
+                    ConventionalScope = string.Empty;
+                    ConventionalDescription = string.Empty;
+                    ConventionalBody = string.Empty;
+                    ConventionalIsBreaking = false;
+                    ConventionalFooter = string.Empty;
+                }
+                finally
+                {
+                    _suppressConventionalRebuild = false;
+                }
+            }
             CommitMessage = string.Empty;
             CommitDescription = string.Empty;
 

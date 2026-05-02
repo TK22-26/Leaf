@@ -87,8 +87,10 @@
 
         <!-- Commit Section -->
         <controls:CommitInputControl
+            x:Name="CommitInput"
             Grid.Row="3"
             Margin="8"
+            ApplyTemplateCommand="{Binding ApplyCommitTemplateCommand}"
             AutoFillCommand="{Binding AutoFillCommitMessageCommand}"
             CanAmend="{Binding CanAmend}"
             CanCommit="{Binding CanCommit}"
@@ -100,6 +102,11 @@
             IsAmendMode="{Binding IsAmendMode, Mode=TwoWay}"
             IsLoading="{Binding IsLoading}"
             IsOptionsExpanded="{Binding IsOptionsExpanded, Mode=TwoWay}"
-            RemainingChars="{Binding RemainingChars}" />
+            RemainingChars="{Binding RemainingChars}"
+            TemplateApplyTick="{Binding TemplateApplyTick, Mode=OneWay}"
+            TemplateCaretIndex="{Binding TemplateCaretIndex, Mode=OneWay}"
+            TemplateCaretInDescription="{Binding TemplateCaretInDescription, Mode=OneWay}"
+            Templates="{Binding CommitTemplates}"
+            UseConventionalCommitsForm="{Binding UseConventionalCommitsForm, Mode=TwoWay}" />
     </Grid>
 </UserControl>

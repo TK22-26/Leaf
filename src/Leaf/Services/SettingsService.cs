@@ -281,6 +281,33 @@ public class AppSettings
     // here — the registry composes them at runtime so updates to the
     // shipped colour set apply automatically on next launch.
     public List<Leaf.Models.BranchColorPalette> CustomBranchColorPalettes { get; set; } = [];
+
+    // §5.15 commit templates (global scope). Built-in presets are NOT
+    // persisted here — they're composed at runtime by
+    // CommitTemplateService so shipped updates apply automatically. This
+    // list holds only user-created custom templates.
+    public List<Leaf.Models.CommitTemplate> CommitTemplates { get; set; } = [];
+
+    // §5.15 user tweaks to built-in presets, keyed by preset id. Lets a
+    // user adjust the body or ticket regex of a shipped template without
+    // duplicating the row. Empty by default; an entry here shadows the
+    // shipped values for that preset.
+    public Dictionary<string, Leaf.Models.CommitTemplate> CommitTemplateOverrides { get; set; } = [];
+
+    // §5.15 last-applied template id for the keyboard-shortcut Apply
+    // path. When the user presses Ctrl+T without opening the picker,
+    // we reapply this template if it still exists.
+    public string LastUsedCommitTemplateId { get; set; } = string.Empty;
+
+    // §5.15 Phase 4 Conventional Commits structured form: persisted scope
+    // history so the AutoSuggest-style scope input can offer recently-used
+    // values. Capped at the most recent 20 entries.
+    public List<string> ConventionalCommitScopeHistory { get; set; } = [];
+
+    // §5.15 Phase 4: whether the Conventional Commits structured form is
+    // currently the active commit input. Persisted across launches so a
+    // user who opts in stays opted in.
+    public bool UseConventionalCommitsForm { get; set; } = false;
 }
 
 /// <summary>

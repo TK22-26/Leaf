@@ -39,6 +39,11 @@ public static class ShortcutCommandId
         public const string CreateCommit = "commit.commit";
         public const string Stash = "commit.stash";
         public const string PopStash = "commit.popStash";
+
+        // §5.15 commit templates picker. Default Ctrl+T. Bound at the
+        // commit-input level rather than the window so it doesn't steal
+        // Ctrl+T from text boxes elsewhere.
+        public const string OpenTemplatePicker = "commit.openTemplatePicker";
     }
 
     public static class Merge
