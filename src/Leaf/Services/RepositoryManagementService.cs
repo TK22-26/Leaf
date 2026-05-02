@@ -447,6 +447,15 @@ public class RepositoryManagementService : IRepositoryManagementService
             Tags = repo.Tags.ToList(),
             HiddenBranchNames = repo.HiddenBranchNames.ToList(),
             SoloBranchNames = repo.SoloBranchNames.ToList(),
+            // §5.14 branch colour overrides — kept in the snapshot so saves
+            // initiated from any management-service path (rename, pin,
+            // group, tag) preserve them. Defensive copy with the
+            // OrdinalIgnoreCase comparer; comparer is lost on JSON
+            // round-trip, but BranchColorService normalises keys to
+            // lowercase so the comparer ends up unused at lookup time.
+            BranchColorOverrides = new Dictionary<string, string>(
+                repo.BranchColorOverrides,
+                StringComparer.OrdinalIgnoreCase),
             LastAccessed = repo.LastAccessed,
             GroupId = repo.GroupId,
             IsPinned = repo.IsPinned

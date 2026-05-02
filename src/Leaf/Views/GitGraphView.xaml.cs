@@ -885,6 +885,49 @@ public partial class GitGraphView : UserControl
 
         menu.Items.Add(new Separator());
 
+        // §5.14 — Branch colour overrides. Resolved against the active
+        // GitGraphViewModel's IBranchColorService; the menu items are
+        // disabled when no colour service is bound (no repo loaded)
+        // rather than hidden, so the existence of the feature is
+        // discoverable from any branch right-click.
+        var colorService = (DataContext as GitGraphViewModel)?.BranchColorService;
+        var normalizedBranchName = label.Name; // service does its own remote-prefix normalisation
+        var hasOverride = colorService?.HasOverride(normalizedBranchName) ?? false;
+        var hasAnyOverrides = colorService?.HasAnyOverrides ?? false;
+
+        var changeColorItem = new MenuItem
+        {
+            Header = "Change colour…",
+            IsEnabled = colorService != null,
+            Icon = new SymbolIcon { Symbol = Symbol.Color, FontSize = 14 },
+        };
+        changeColorItem.Click += (_, _) => OpenBranchColorPicker(label);
+        menu.Items.Add(changeColorItem);
+
+        var resetItem = new MenuItem
+        {
+            Header = "Reset to auto",
+            IsEnabled = hasOverride,
+            ToolTip = hasOverride
+                ? null
+                : "This branch has no override — its colour already comes from the active palette.",
+        };
+        resetItem.Click += (_, _) => colorService?.ClearOverride(normalizedBranchName);
+        menu.Items.Add(resetItem);
+
+        var resetAllItem = new MenuItem
+        {
+            Header = "Reset all branch colours…",
+            IsEnabled = hasAnyOverrides,
+            ToolTip = hasAnyOverrides
+                ? "Remove every per-branch colour override on this repository."
+                : "No colour overrides set on this repository.",
+        };
+        resetAllItem.Click += (_, _) => ConfirmAndResetAllBranchColors(colorService);
+        menu.Items.Add(resetAllItem);
+
+        menu.Items.Add(new Separator());
+
         // Delete branch
         var deleteItem = new MenuItem
         {
@@ -897,6 +940,61 @@ public partial class GitGraphView : UserControl
 
         menu.IsOpen = true;
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// Open the §5.14 colour picker for the right-clicked branch label.
+    /// Pre-fills the picker with the branch's currently-resolved colour
+    /// (override or palette-derived) and routes the result back through
+    /// the active <see cref="IBranchColorService"/>.
+    /// </summary>
+    private void OpenBranchColorPicker(BranchLabel label)
+    {
+        if (DataContext is not GitGraphViewModel viewModel) return;
+        var service = viewModel.BranchColorService;
+        if (service is null) return;
+
+        var initial = service.GetColor(label.Name);
+        var dialog = new Branch.BranchColorPickerDialog(label.Name, initial, service.ActivePalette)
+        {
+            Owner = Window.GetWindow(this),
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        switch (dialog.Result)
+        {
+            case Branch.BranchColorPickerDialog.PickerResult.OverrideSet:
+                service.SetOverride(label.Name, dialog.SelectedColor);
+                break;
+            case Branch.BranchColorPickerDialog.PickerResult.ResetToAuto:
+                service.ClearOverride(label.Name);
+                break;
+            case Branch.BranchColorPickerDialog.PickerResult.Cancelled:
+                // User dismissed — leave existing state alone.
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Confirm before wiping every branch override on the repo. The
+    /// "Reset all" affordance is destructive enough that an accidental
+    /// click in a busy graph context should be recoverable, so a yes/no
+    /// dialog gates the call.
+    /// </summary>
+    private void ConfirmAndResetAllBranchColors(IBranchColorService? service)
+    {
+        if (service is null) return;
+        var owner = Window.GetWindow(this);
+        var result = MessageBox.Show(
+            owner,
+            "Remove every per-branch colour override on this repository?\n\n" +
+            "Branches will go back to using the active palette.",
+            "Reset all branch colours",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (result == MessageBoxResult.Yes)
+            service.ClearAllOverrides();
     }
 
     private void MainScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)

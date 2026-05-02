@@ -92,6 +92,10 @@ public partial class SettingsDialog : Window
             new("External Tools", "Configure external diff and merge tools", "ExternalTools", Symbol.Wrench),
             new("Diff Tool", "Choose an external diff tool (VS Code, Beyond Compare, etc.)", "ExternalTools", Symbol.Wrench),
             new("Merge Tool", "Choose an external merge tool for conflict resolution", "ExternalTools", Symbol.Wrench),
+            new("Branch Colours", "Choose the palette for graph branch colours and manage custom palettes", "BranchColors", Symbol.Color),
+            new("Branch Colors", "Choose the palette for graph branch colours and manage custom palettes", "BranchColors", Symbol.Color),
+            new("Colour Palette", "Pick a built-in or custom colour palette for the graph", "BranchColors", Symbol.Color),
+            new("Color Palette", "Pick a built-in or custom colour palette for the graph", "BranchColors", Symbol.Color),
         };
 
         // Configure UserControls
@@ -146,6 +150,7 @@ public partial class SettingsDialog : Window
         GitFlowSettings.Visibility = Visibility.Collapsed;
         ExternalToolsSettings.Visibility = Visibility.Collapsed;
         KeyboardShortcutsSettings.Visibility = Visibility.Collapsed;
+        BranchColorsSettings.Visibility = Visibility.Collapsed;
         ContentSearchResults.Visibility = Visibility.Collapsed;
 
         // Show the selected content
@@ -211,6 +216,9 @@ public partial class SettingsDialog : Window
                 break;
             case "KeyboardShortcuts":
                 KeyboardShortcutsSettings.Visibility = Visibility.Visible;
+                break;
+            case "BranchColors":
+                BranchColorsSettings.Visibility = Visibility.Visible;
                 break;
         }
     }
@@ -282,6 +290,8 @@ public partial class SettingsDialog : Window
         AiSettings.Visibility = Visibility.Collapsed;
         GitFlowSettings.Visibility = Visibility.Collapsed;
         ExternalToolsSettings.Visibility = Visibility.Collapsed;
+        KeyboardShortcutsSettings.Visibility = Visibility.Collapsed;
+        BranchColorsSettings.Visibility = Visibility.Collapsed;
 
         // Show search results
         ContentSearchResults.Visibility = Visibility.Visible;
@@ -328,6 +338,8 @@ public partial class SettingsDialog : Window
             "Logging" => NavLogging,
             "GitFlow" => NavGitFlow,
             "ExternalTools" => NavExternalTools,
+            "KeyboardShortcuts" => NavKeyboardShortcuts,
+            "BranchColors" => NavBranchColors,
             _ => null
         };
 
@@ -367,6 +379,7 @@ public partial class SettingsDialog : Window
         GitHubSettings.LoadSettings(_settings, _credentialService);
         AiSettings.LoadSettings(_settings, _credentialService);
         GitFlowSettings.LoadSettings(_settings, _credentialService);
+        BranchColorsSettings.LoadSettings(_settings, _credentialService);
     }
 
     private void BrowseClonePath_Click(object sender, RoutedEventArgs e)
@@ -416,6 +429,7 @@ public partial class SettingsDialog : Window
         GitHubSettings.SaveSettings(_settings, _credentialService);
         AiSettings.SaveSettings(_settings, _credentialService);
         GitFlowSettings.SaveSettings(_settings, _credentialService);
+        BranchColorsSettings.SaveSettings(_settings, _credentialService);
 
         // Save all settings
         _settingsService.SaveSettings(_settings);

@@ -56,6 +56,17 @@ public partial class RepositoryInfo : ObservableObject
     public List<string> SoloBranchNames { get; set; } = [];
 
     /// <summary>
+    /// User-overridden colours for branches in this repository (plan §5.14).
+    /// Key is the normalised branch name (remote prefix stripped — see
+    /// <see cref="Services.BranchColorService"/>). Value is a hex colour
+    /// string (<c>#RRGGBB</c> or <c>#AARRGGBB</c>). Branches without an
+    /// entry resolve through the GitFlow / palette layers in
+    /// <see cref="Services.IBranchColorService"/>.
+    /// </summary>
+    public Dictionary<string, string> BranchColorOverrides { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Last time this repository was accessed in the app.
     /// </summary>
     public DateTimeOffset LastAccessed { get; set; }

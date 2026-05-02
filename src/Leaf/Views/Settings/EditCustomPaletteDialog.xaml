@@ -1,0 +1,123 @@
+<Window x:Class="Leaf.Views.Settings.EditCustomPaletteDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Edit custom palette"
+        Width="460"
+        Height="520"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+        FontFamily="Segoe UI Variable">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Palette name"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   Margin="0,0,0,4"/>
+        <TextBox x:Name="NameTextBox"
+                 Grid.Row="1"
+                 Margin="0,0,0,16"/>
+
+        <Grid Grid.Row="2" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Colours"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <Button Grid.Column="1"
+                    Content="Add colour…"
+                    Click="AddColor_Click"/>
+        </Grid>
+
+        <TextBlock Grid.Row="3"
+                   Text="At least one colour is required. Order determines how branches are assigned — same hash always lands on the same slot."
+                   TextWrapping="Wrap"
+                   FontSize="11"
+                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                   Margin="0,0,0,8"/>
+
+        <ListBox Grid.Row="4"
+                 x:Name="ColorsList"
+                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                 BorderThickness="1">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="32"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Width="22"
+                                Height="22"
+                                CornerRadius="3"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+                            <Border.Background>
+                                <SolidColorBrush Color="{Binding Color}"/>
+                            </Border.Background>
+                        </Border>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding Hex}"
+                                   FontFamily="Consolas, Cascadia Mono"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="2"
+                                Content="↑"
+                                Tag="{Binding}"
+                                Width="24"
+                                Margin="2,0"
+                                ToolTip="Move up"
+                                Click="MoveUp_Click"/>
+                        <Button Grid.Column="3"
+                                Content="↓"
+                                Tag="{Binding}"
+                                Width="24"
+                                Margin="2,0"
+                                ToolTip="Move down"
+                                Click="MoveDown_Click"/>
+                        <Button Grid.Column="4"
+                                Content="Edit"
+                                Tag="{Binding}"
+                                Margin="4,0,2,0"
+                                Click="EditColor_Click"/>
+                        <Button Grid.Column="5"
+                                Content="Remove"
+                                Tag="{Binding}"
+                                Margin="2,0,0,0"
+                                Click="RemoveColor_Click"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <Grid Grid.Row="5" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="1"
+                    Content="Cancel"
+                    Width="80"
+                    Margin="0,0,8,0"
+                    Click="CancelButton_Click"/>
+            <Button Grid.Column="2"
+                    Content="Save"
+                    Width="80"
+                    IsDefault="True"
+                    Click="SaveButton_Click"/>
+        </Grid>
+    </Grid>
+</Window>
