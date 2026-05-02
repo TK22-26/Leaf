@@ -24,6 +24,9 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     public const string WorkingChangesSha = "WORKING_CHANGES";
 
     private readonly IGitService _gitService;
+    private readonly SettingsService _settingsService;
+    private readonly IRepositoryManagementService _repositoryService;
+    private readonly IBranchColorPaletteRegistry _paletteRegistry;
 
     /// <summary>
     /// Returns the current repository's cancellation token. Set by
@@ -32,14 +35,28 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     /// </summary>
     public Func<CancellationToken>? GetSessionToken { get; set; }
 
+    /// <summary>
+    /// Returns the active <see cref="RepositoryInfo"/> for the repo
+    /// currently being shown — used by §5.14 branch-colour overrides
+    /// which live on the RepositoryInfo and need to round-trip through
+    /// <see cref="SettingsService.SaveRepositories"/>. Set by
+    /// MainViewModel; null only at startup before any repo is selected.
+    /// </summary>
+    public Func<RepositoryInfo?>? GetActiveRepositoryInfo { get; set; }
+
     private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
 
-    // The active builder that owns colour state for the currently-displayed
+    // The active builder that owns layout state for the currently-displayed
     // graph. Swapped atomically with <see cref="Nodes"/> and
     // <see cref="ColorResolver"/> at the end of a background build so the
     // canvas can never render nodes from one repository against another
     // repository's colour context.
-    private GraphBuilder _graphBuilder = new();
+    //
+    // §5.14: GraphBuilder no longer owns colour resolution — _branchColorService
+    // does. The builder reads colours through the resolver at build time;
+    // colour-only changes are applied via _graphBuilder.RecolorNodes.
+    private GraphBuilder _graphBuilder;
+    private BranchColorService? _branchColorService;
 
     // Context deferred from SetGitFlowContext until the next LoadRepositoryAsync
     // consumes it and atomically swaps the builder. _hasPendingContext
@@ -192,11 +209,30 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool HasStashes => Stashes.Count > 0;
 
-    public GitGraphViewModel(IGitService gitService)
+    public GitGraphViewModel(
+        IGitService gitService,
+        SettingsService settingsService,
+        IRepositoryManagementService repositoryService,
+        IBranchColorPaletteRegistry paletteRegistry)
     {
-        _gitService = gitService;
-        _colorResolver = _graphBuilder;
+        _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
+        _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
+        _repositoryService = repositoryService ?? throw new ArgumentNullException(nameof(repositoryService));
+        _paletteRegistry = paletteRegistry ?? throw new ArgumentNullException(nameof(paletteRegistry));
+
+        // Initial state has no repo loaded — use a no-op resolver so the
+        // builder + canvas are valid before LoadRepositoryAsync runs.
+        _graphBuilder = new GraphBuilder(NullBranchColorResolver.Instance);
+        _colorResolver = NullBranchColorResolver.Instance;
     }
+
+    /// <summary>
+    /// Active per-repo branch colour service (§5.14). Null until the first
+    /// LoadRepositoryAsync completes. Exposed so the right-click colour
+    /// picker on the graph can call SetOverride / ClearOverride against
+    /// the current repository's authority.
+    /// </summary>
+    public IBranchColorService? BranchColorService => _branchColorService;
 
     /// <summary>
     /// Creates synthetic CommitInfo entries for stashes.
@@ -420,9 +456,19 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
                 effectiveRemotes = _activeRemoteNames;
             }
 
-            // Build the new builder on the UI thread (cheap — just defensive
-            // copies) so the config snapshot is taken before any awaiting.
-            var newBuilder = new GraphBuilder(effectiveConfig, effectiveRemotes);
+            // Build the per-repo colour service first — the builder needs
+            // a resolver, and the resolver carries this repo's GitFlow +
+            // remote-name + override state. Constructed on the UI thread
+            // so its initial palette read happens synchronously and the
+            // service is fully formed before any background reads from it.
+            var repoInfo = GetActiveRepositoryInfo?.Invoke();
+            var newColorService = repoInfo != null
+                ? new BranchColorService(repoInfo, _settingsService, _repositoryService, _paletteRegistry, effectiveConfig, effectiveRemotes)
+                : null;
+
+            // Build the new layout builder against the new resolver.
+            IBranchColorResolver resolver = (IBranchColorResolver?)newColorService ?? NullBranchColorResolver.Instance;
+            var newBuilder = new GraphBuilder(resolver);
 
             var (graphNodes, graphMaxLane) = await Task.Run(() =>
             {
@@ -433,13 +479,17 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
 
             ct.ThrowIfCancellationRequested();
 
-            // Atomic swap: builder + resolver + nodes flip together so the
-            // canvas can never render new nodes against the old resolver or
-            // old nodes against the new resolver.
+            // Atomic swap: builder + resolver + colour service + nodes flip
+            // together so the canvas can never render new nodes against the
+            // old resolver or old nodes against the new resolver.
+            DetachColorService();
+            _branchColorService = newColorService;
+            AttachColorService();
+
             _graphBuilder = newBuilder;
             _activeGitFlowConfig = effectiveConfig;
             _activeRemoteNames = effectiveRemotes;
-            ColorResolver = newBuilder;
+            ColorResolver = resolver;
             Nodes = new ObservableCollection<GitTreeNode>(graphNodes);
             Commits = new ObservableCollection<CommitInfo>(commitsWithStashes);
             MaxLane = graphMaxLane;
@@ -674,11 +724,15 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             var currentBranch = _currentBranchName;
 
             // Build graph on background thread with a fresh GraphBuilder
-            // bound to the currently-active context (pagination never changes
-            // colour context — only LoadRepositoryAsync does). Isolated
-            // instance means MaxLane mutation cannot race the UI-thread
-            // builder.
-            var tempBuilder = new GraphBuilder(_activeGitFlowConfig, _activeRemoteNames);
+            // bound to the currently-active resolver (pagination never
+            // changes colour context — only LoadRepositoryAsync does).
+            // Isolated builder instance means MaxLane mutation cannot race
+            // the UI-thread builder. Resolver itself stays the same: pagination
+            // appending more rows of the same repo's history must keep the
+            // exact same colour authority.
+            IBranchColorResolver paginationResolver =
+                (IBranchColorResolver?)_branchColorService ?? NullBranchColorResolver.Instance;
+            var tempBuilder = new GraphBuilder(paginationResolver);
             var (nodes, maxLane) = await Task.Run(() =>
             {
                 ct.ThrowIfCancellationRequested();
@@ -691,7 +745,7 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             // Atomic swap of builder + resolver + nodes keeps rendering
             // consistent even though the context itself did not change.
             _graphBuilder = tempBuilder;
-            ColorResolver = tempBuilder;
+            ColorResolver = paginationResolver;
             Nodes = new ObservableCollection<GitTreeNode>(nodes);
             Commits = new ObservableCollection<CommitInfo>(commitsWithStashes);
             MaxLane = maxLane;
@@ -1119,21 +1173,69 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             }
         }
 
-        // Tooltip preview uses a short-lived builder bound to the active
-        // GitFlow + remote-name context so colours match the main graph.
-        var tooltipGraphBuilder = new GraphBuilder(_activeGitFlowConfig, _activeRemoteNames);
+        // Tooltip preview shares the active repo's colour service so the
+        // preview matches the main graph exactly — overrides, palette,
+        // GitFlow semantics all line up.
+        IBranchColorResolver tooltipResolver =
+            (IBranchColorResolver?)_branchColorService ?? NullBranchColorResolver.Instance;
+        var tooltipGraphBuilder = new GraphBuilder(tooltipResolver);
         var visibleCommits = mergeCommits.Take(10).ToList();
         var nodes = tooltipGraphBuilder.BuildGraph(visibleCommits);
 
-        // Pass the tooltip's own builder as the resolver — its colour cache
-        // contains exactly the branches in the preview, and it will live for
-        // the tooltip's lifetime without racing the main builder.
         return new MergeCommitTooltipViewModel(
             new ObservableCollection<CommitInfo>(mergeCommits),
             new ObservableCollection<GitTreeNode>(nodes),
             tooltipGraphBuilder.MaxLane,
             RowHeight,
-            tooltipGraphBuilder);
+            tooltipResolver);
+    }
+
+    /// <summary>
+    /// Wire up the active colour service so override / palette changes
+    /// flow through to the canvas as in-place re-paints. No-op when the
+    /// service is null (no repo loaded).
+    /// </summary>
+    private void AttachColorService()
+    {
+        if (_branchColorService != null)
+            _branchColorService.ColorsChanged += OnBranchColorsChanged;
+    }
+
+    private void DetachColorService()
+    {
+        if (_branchColorService != null)
+        {
+            _branchColorService.ColorsChanged -= OnBranchColorsChanged;
+            _branchColorService.Dispose();
+            _branchColorService = null;
+        }
+    }
+
+    /// <summary>
+    /// Re-paint already-built nodes against the resolver's new state. Used
+    /// for colour-only changes (override edit, palette swap, custom-palette
+    /// edit) — avoids re-running the lane allocator for what is purely a
+    /// rendering change. Re-publishes Nodes so the canvas's
+    /// <c>OnNodesChanged</c> hook rebuilds its lane-segment colour cache.
+    /// </summary>
+    private void OnBranchColorsChanged(object? sender, EventArgs e)
+    {
+        if (_graphBuilder is null) return;
+        var current = Nodes;
+        if (current.Count == 0) return;
+
+        _graphBuilder.RecolorNodes(current);
+        Nodes = new ObservableCollection<GitTreeNode>(current);
+    }
+
+    /// <summary>
+    /// Pull the latest palette id out of <see cref="AppSettings"/> and
+    /// republish if it changed. Called by MainViewModel after the Settings
+    /// dialog closes.
+    /// </summary>
+    public void RefreshBranchColorsFromSettings()
+    {
+        _branchColorService?.RefreshFromSettings();
     }
 
     /// <inheritdoc />
@@ -1142,5 +1244,8 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
         // Cancel + dispose the last in-flight graph build CTS so the handle
         // is released at VM end-of-life (pickup from plan §1.5).
         CancellationTokenSourceExtensions.DisposeAndClear(ref _graphBuildCts);
+        // Detach §5.14 colour-service event subscription so the registry
+        // doesn't keep this VM alive past its repo's lifetime.
+        DetachColorService();
     }
 }

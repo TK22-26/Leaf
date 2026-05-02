@@ -1,4 +1,6 @@
+using System.IO;
 using FluentAssertions;
+using Leaf.Services;
 using Leaf.Tests.Fakes;
 using Leaf.ViewModels;
 using Xunit;
@@ -35,7 +37,9 @@ public class DisposableViewModelTests
     [Fact]
     public void GitGraphViewModel_Dispose_IsIdempotent()
     {
-        var vm = new GitGraphViewModel(new FakeGitService());
+        var settings = CreateSettings();
+        var repositoryService = new RepositoryManagementService(settings);
+        var vm = new GitGraphViewModel(new FakeGitService(), settings, repositoryService, new BranchColorPaletteRegistry(settings));
 
         var firstDispose = () => vm.Dispose();
         var secondDispose = () => vm.Dispose();
@@ -47,7 +51,16 @@ public class DisposableViewModelTests
     [Fact]
     public void GitGraphViewModel_Dispose_ImplementsIDisposable()
     {
-        var vm = new GitGraphViewModel(new FakeGitService());
+        var settings = CreateSettings();
+        var repositoryService = new RepositoryManagementService(settings);
+        var vm = new GitGraphViewModel(new FakeGitService(), settings, repositoryService, new BranchColorPaletteRegistry(settings));
         vm.Should().BeAssignableTo<IDisposable>();
     }
+
+    private static SettingsService CreateSettings()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "leaf-tests", Guid.NewGuid().ToString("N"));
+        return new SettingsService(temp);
+    }
+
 }

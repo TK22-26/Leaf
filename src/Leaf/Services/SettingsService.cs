@@ -269,6 +269,18 @@ public class AppSettings
     // entries that diverge from the registered default get persisted —
     // ShortcutService prunes the default-equal cases when it writes.
     public Dictionary<string, string> ShortcutOverrides { get; set; } = [];
+
+    // §5.14 graph branch colour palette. Id matches a built-in
+    // (BranchColorPaletteRegistry.DefaultId / OkabeItoId / PastelId /
+    // HighContrastId) or a custom palette in CustomBranchColorPalettes.
+    // Empty / unknown id falls back to the registry default — survives
+    // a hand-edited settings.json that references a deleted palette.
+    public string DefaultBranchColorPaletteId { get; set; } = string.Empty;
+
+    // User-defined custom palettes. Built-in palettes are not persisted
+    // here — the registry composes them at runtime so updates to the
+    // shipped colour set apply automatically on next launch.
+    public List<Leaf.Models.BranchColorPalette> CustomBranchColorPalettes { get; set; } = [];
 }
 
 /// <summary>

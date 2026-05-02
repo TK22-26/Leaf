@@ -266,6 +266,16 @@
                             </StackPanel>
                         </TreeViewItem.Header>
                     </TreeViewItem>
+
+                    <!-- Branch Colours (§5.14) -->
+                    <TreeViewItem x:Name="NavBranchColors" Tag="BranchColors">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="Color" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Branch Colours" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
                 </TreeView>
             </Grid>
         </Border>
@@ -696,6 +706,9 @@
 
                     <!-- Keyboard Shortcuts Content (§5.9) -->
                     <settings:KeyboardShortcutsSettingsControl x:Name="KeyboardShortcutsSettings" Visibility="Collapsed" />
+
+                    <!-- Branch Colours Content (§5.14) -->
+                    <settings:BranchColorsSettingsControl x:Name="BranchColorsSettings" Visibility="Collapsed" />
 
                     <!-- Search Results (shown when searching) -->
                     <StackPanel x:Name="ContentSearchResults" Visibility="Collapsed">

@@ -47,6 +47,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IInteractiveRebaseService _interactiveRebaseService;
     private readonly IPatchService _patchService;
     private readonly IBisectService _bisectService;
+    private readonly IBranchColorPaletteRegistry _branchColorPaletteRegistry;
 
     // The per-repo DI scope. Owns the current IRepositorySession (scoped)
     // and — in future phases — the per-repo ViewModels. Disposed on repo
@@ -392,6 +393,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IInteractiveRebaseService interactiveRebaseService,
         IPatchService patchService,
         IBisectService bisectService,
+        IBranchColorPaletteRegistry branchColorPaletteRegistry,
         INotificationService? notificationService = null,
         Services.Merge.IAiMergeAssistant? aiMergeAssistant = null,
         Services.Merge.IImageMergeService? imageMergeService = null)
@@ -405,6 +407,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _interactiveRebaseService = interactiveRebaseService ?? throw new ArgumentNullException(nameof(interactiveRebaseService));
         _patchService = patchService ?? throw new ArgumentNullException(nameof(patchService));
         _bisectService = bisectService ?? throw new ArgumentNullException(nameof(bisectService));
+        _branchColorPaletteRegistry = branchColorPaletteRegistry ?? throw new ArgumentNullException(nameof(branchColorPaletteRegistry));
         _gitFlowService = gitFlowService;
         _credentialService = credentialService;
         _settingsService = settingsService;
@@ -453,7 +456,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // its background git calls abort when the user switches repositories.
         Func<CancellationToken> tokenGetter = () => CurrentRepositoryToken;
 
-        _gitGraphViewModel = new GitGraphViewModel(gitService) { GetSessionToken = tokenGetter };
+        _gitGraphViewModel = new GitGraphViewModel(gitService, settingsService, repositoryService, branchColorPaletteRegistry)
+        {
+            GetSessionToken = tokenGetter,
+            // §5.14: feed the active RepositoryInfo through so per-repo
+            // branch-colour overrides resolve against the right repo on
+            // every load. Resolved at invocation time so SelectedRepository
+            // changes during the session are picked up.
+            GetActiveRepositoryInfo = () => SelectedRepository,
+        };
         _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService, externalToolConfig, externalToolLauncher, settingsService)
             { GetSessionToken = tokenGetter };
 
