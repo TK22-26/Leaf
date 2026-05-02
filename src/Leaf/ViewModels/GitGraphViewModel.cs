@@ -1193,12 +1193,18 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Wire up the active colour service so override / palette changes
     /// flow through to the canvas as in-place re-paints. No-op when the
-    /// service is null (no repo loaded).
+    /// service is null (no repo loaded). Calls
+    /// <see cref="BranchColorService.Attach"/> so the service subscribes
+    /// to the registry only once it's the live resolver — see the comment
+    /// on Attach for why we don't subscribe from the constructor.
     /// </summary>
     private void AttachColorService()
     {
         if (_branchColorService != null)
+        {
+            _branchColorService.Attach();
             _branchColorService.ColorsChanged += OnBranchColorsChanged;
+        }
     }
 
     private void DetachColorService()

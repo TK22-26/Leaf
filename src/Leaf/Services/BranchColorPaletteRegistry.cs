@@ -27,7 +27,8 @@ public sealed class BranchColorPaletteRegistry : IBranchColorPaletteRegistry
         _builtIns = BuildBuiltIns();
     }
 
-    public BranchColorPalette Default => _builtIns[0];
+    public BranchColorPalette Default =>
+        _builtIns.First(p => string.Equals(p.Id, DefaultId, StringComparison.OrdinalIgnoreCase));
 
     public event EventHandler? PalettesChanged;
 

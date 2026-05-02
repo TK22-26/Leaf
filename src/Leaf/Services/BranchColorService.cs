@@ -29,6 +29,17 @@ public sealed class BranchColorService : IBranchColorService, IDisposable
     // every branch on the next paint.
     private readonly Dictionary<string, Brush> _resolvedCache = new(StringComparer.OrdinalIgnoreCase);
 
+    // Guards every read and write of <see cref="RepositoryInfo.BranchColorOverrides"/>.
+    // <see cref="GraphBuilder.BuildGraph"/> runs on a background thread (via
+    // <c>Task.Run</c> inside <c>GitGraphViewModel</c>) and calls
+    // <see cref="GetBranchColor"/>, which touches the override dict. The user
+    // can racily mutate that dict from the UI thread by right-clicking a
+    // branch label during a build — without this lock that's a torn read
+    // / InvalidOperationException waiting to fire under timing pressure.
+    // Cheap because the override dict is small (rarely more than a handful
+    // of entries) and reads vastly outnumber writes.
+    private readonly object _overridesLock = new();
+
     public BranchColorService(
         RepositoryInfo repository,
         SettingsService settingsService,
@@ -48,20 +59,37 @@ public sealed class BranchColorService : IBranchColorService, IDisposable
 
         _activePalette = ResolveActivePalette();
         _paletteBrushes = BuildPaletteBrushes(_activePalette);
+        // Registry subscription deferred to Attach() so an in-flight load
+        // that gets cancelled before swap doesn't leak a subscription. See
+        // <see cref="Attach"/>.
+    }
 
-        // React to palette changes (custom palette added/edited/deleted) by
-        // re-resolving the active palette. Settings-driven changes (e.g. the
-        // user picks a different default palette) come through
-        // RefreshFromSettings since AppSettings has no events.
+    /// <summary>
+    /// Connect this service to the palette registry so custom-palette
+    /// edits propagate. Called by <c>GitGraphViewModel</c> after the
+    /// service is committed as the active resolver — must NOT be called
+    /// from the constructor, otherwise a cancelled load (where the
+    /// freshly-constructed service is discarded before swap) leaks the
+    /// subscription forever.
+    /// </summary>
+    public void Attach()
+    {
+        if (_attached) return;
+        _attached = true;
         _paletteRegistry.PalettesChanged += OnPalettesChanged;
     }
+
+    private bool _attached;
 
     public BranchColorPalette ActivePalette
     {
         get { lock (_paletteLock) return _activePalette; }
     }
 
-    public bool HasAnyOverrides => _repository.BranchColorOverrides.Count > 0;
+    public bool HasAnyOverrides
+    {
+        get { lock (_overridesLock) return _repository.BranchColorOverrides.Count > 0; }
+    }
 
     public event EventHandler? ColorsChanged;
 
@@ -101,7 +129,7 @@ public sealed class BranchColorService : IBranchColorService, IDisposable
     public bool HasOverride(string branchName)
     {
         var key = NormalizeBranchName(branchName);
-        return _repository.BranchColorOverrides.ContainsKey(key);
+        lock (_overridesLock) return _repository.BranchColorOverrides.ContainsKey(key);
     }
 
     public void SetOverride(string branchName, Color color)
@@ -111,22 +139,29 @@ public sealed class BranchColorService : IBranchColorService, IDisposable
 
         var key = NormalizeBranchName(branchName);
         var hex = BranchColorPalette.FormatColor(color);
-        _repository.BranchColorOverrides[key] = hex;
+        lock (_overridesLock) _repository.BranchColorOverrides[key] = hex;
         PersistAndNotify();
     }
 
     public void ClearOverride(string branchName)
     {
         var key = NormalizeBranchName(branchName);
-        if (_repository.BranchColorOverrides.Remove(key))
-            PersistAndNotify();
+        bool removed;
+        lock (_overridesLock) removed = _repository.BranchColorOverrides.Remove(key);
+        if (removed) PersistAndNotify();
     }
 
     public void ClearAllOverrides()
     {
-        if (_repository.BranchColorOverrides.Count == 0) return;
-        _repository.BranchColorOverrides.Clear();
-        PersistAndNotify();
+        bool changed;
+        lock (_overridesLock)
+        {
+            if (_repository.BranchColorOverrides.Count == 0)
+                return;
+            _repository.BranchColorOverrides.Clear();
+            changed = true;
+        }
+        if (changed) PersistAndNotify();
     }
 
     /// <summary>
@@ -159,10 +194,14 @@ public sealed class BranchColorService : IBranchColorService, IDisposable
 
     /// <summary>
     /// Detach from the registry. Called by <c>GitGraphViewModel.Dispose</c>
-    /// when the per-repo VM goes away.
+    /// when the per-repo VM goes away. Idempotent — safe to call on a
+    /// service that was never <see cref="Attach"/>'d (e.g. one constructed
+    /// for a load that got cancelled).
     /// </summary>
     public void Dispose()
     {
+        if (!_attached) return;
+        _attached = false;
         _paletteRegistry.PalettesChanged -= OnPalettesChanged;
     }
 
@@ -234,9 +273,15 @@ public sealed class BranchColorService : IBranchColorService, IDisposable
         if (string.Equals(normalizedName, "HEAD", StringComparison.OrdinalIgnoreCase))
             return HeadBrush;
 
-        // 2. User override — wins over everything else.
-        if (_repository.BranchColorOverrides.TryGetValue(normalizedName, out var hex)
-            && BranchColorPalette.TryParseColor(hex, out var overrideColor))
+        // 2. User override — wins over everything else. Guarded by
+        //    _overridesLock because BuildGraph runs on a Task.Run thread
+        //    and the right-click "Set override" path mutates from UI.
+        string? hex;
+        lock (_overridesLock)
+        {
+            _repository.BranchColorOverrides.TryGetValue(normalizedName, out hex);
+        }
+        if (hex != null && BranchColorPalette.TryParseColor(hex, out var overrideColor))
         {
             var brush = new SolidColorBrush(overrideColor);
             brush.Freeze();

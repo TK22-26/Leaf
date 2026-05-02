@@ -235,4 +235,85 @@ public class BranchColorServiceTests : IDisposable
         Action act = () => svc.SetOverride("", Colors.Red);
         act.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void NotAttached_DoesNotReactToRegistryPalettesChanged()
+    {
+        // Service constructed but never Attach()'d — simulates the "load
+        // got cancelled before we swapped in the new service" path. The
+        // service must NOT remain subscribed to the registry, otherwise
+        // every palette change for the rest of the app's lifetime would
+        // run through this orphaned instance.
+        using var svc = NewService();
+
+        var fired = 0;
+        svc.ColorsChanged += (_, _) => fired++;
+
+        // Trigger a registry PalettesChanged event. If the unattached
+        // service were still subscribed, it would re-resolve and fire
+        // its own ColorsChanged.
+        _registry.AddOrUpdateCustom(new BranchColorPalette
+        {
+            Id = "wakeup-attempt",
+            DisplayName = "x",
+            Colors = ["#000000"],
+        });
+
+        fired.Should().Be(0, "an unattached service must not react to registry events");
+    }
+
+    [Fact]
+    public void Attached_ReactsToRegistryPalettesChanged()
+    {
+        using var svc = NewService();
+        svc.Attach();
+
+        var fired = 0;
+        svc.ColorsChanged += (_, _) => fired++;
+
+        _registry.AddOrUpdateCustom(new BranchColorPalette
+        {
+            Id = "wakeup",
+            DisplayName = "x",
+            Colors = ["#000000"],
+        });
+
+        fired.Should().Be(1, "an attached service forwards palette changes as ColorsChanged");
+    }
+
+    [Fact]
+    public void ConcurrentReadDuringWrite_DoesNotThrow()
+    {
+        // Smoke test for the §5.14 concurrency fix: BuildGraph runs on a
+        // Task.Run thread and calls GetBranchColor while the user can
+        // racily SetOverride from the UI thread. Without the override
+        // lock this would intermittently blow up with
+        // InvalidOperationException ("collection was modified") or
+        // produce torn reads.
+        using var svc = NewService();
+        for (int i = 0; i < 100; i++)
+            svc.SetOverride($"branch-{i}", Colors.Blue);
+
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        var reader = Task.Run(() =>
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                for (int i = 0; i < 100; i++)
+                    _ = svc.GetBranchColor($"branch-{i}");
+            }
+        });
+        var writer = Task.Run(() =>
+        {
+            int n = 0;
+            while (!cts.Token.IsCancellationRequested)
+            {
+                svc.SetOverride($"branch-{n % 100}", Color.FromRgb((byte)n, 0, 0));
+                n++;
+            }
+        });
+
+        Action wait = () => Task.WaitAll(reader, writer);
+        wait.Should().NotThrow();
+    }
 }
