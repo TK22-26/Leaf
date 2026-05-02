@@ -338,4 +338,31 @@ public class CommitTemplateServiceTests : IDisposable
         blankId.Should().Throw<ArgumentException>();
         blankName.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void Resolve_TicketTokenSurvivesEmptyBranchName()
+    {
+        // Edge case: detached HEAD → branchName is null. {ticket} should
+        // resolve to empty regardless of the regex.
+        var template = new CommitTemplate
+        {
+            Id = "t",
+            Name = "t",
+            Body = "[{ticket}] body",
+            TicketRegex = "[A-Z]+-[0-9]+",
+        };
+        var resolved = _service.Resolve(template, null, null, null, out _);
+        resolved.Should().Be("[] body");
+    }
+
+    [Fact]
+    public void Resolve_DateAndDateTimeAreInvariantCulture()
+    {
+        // Regression — date placeholders must format as ISO-8601-like
+        // strings irrespective of the host's locale, otherwise commits
+        // would change format depending on who's running Leaf.
+        var template = new CommitTemplate { Id = "t", Name = "t", Body = "{date}|{datetime}" };
+        var resolved = _service.Resolve(template, null, null, null, out _);
+        resolved.Should().MatchRegex(@"^\d{4}-\d{2}-\d{2}\|\d{4}-\d{2}-\d{2} \d{2}:\d{2}$");
+    }
 }

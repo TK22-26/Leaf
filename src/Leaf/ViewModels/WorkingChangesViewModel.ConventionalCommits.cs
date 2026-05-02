@@ -118,14 +118,49 @@ public partial class WorkingChangesViewModel
         if (value)
         {
             // Switching ON — pre-populate the structured fields from the
-            // current freeform message when it parses as Conventional, so
-            // a user who's already typed "feat(api): something" doesn't
-            // lose their work. When parsing fails the form just shows
-            // empty fields; the user can build from there.
-            TryParseConventionalIntoFields(CommitMessage, CommitDescription);
-            // Recompute the assembled message so subject/description
-            // align with the structured fields right away — even if
-            // parsing wrote zero changes, this normalises whitespace.
+            // current freeform message. Three cases:
+            //   1. Empty CommitMessage   — leave fields alone, no rebuild.
+            //      Avoids clobbering the form with "feat: " when there's
+            //      nothing to recover.
+            //   2. Parse succeeds        — fields get populated; rebuild
+            //      writes back the same string (modulo whitespace), so
+            //      no user-visible change.
+            //   3. Parse fails           — user typed freeform that isn't
+            //      Conventional-shaped (e.g. "fix bug" without the colon).
+            //      Drop the entire freeform message into the description
+            //      field so the user's text isn't lost; default type stays
+            //      "feat" so the form is in a valid initial state.
+            if (string.IsNullOrEmpty(CommitMessage) && string.IsNullOrEmpty(CommitDescription))
+            {
+                // Case 1 — nothing to migrate, nothing to rebuild.
+                return;
+            }
+
+            var parsed = TryParseConventionalIntoFields(CommitMessage, CommitDescription);
+            if (!parsed)
+            {
+                // Case 3 — graceful fallback. Move the existing freeform
+                // text into the structured Description field so RebuildBody
+                // re-emits something materially equivalent. Suppress the
+                // rebuild cascade during the assignment because the field
+                // setters would otherwise call Rebuild N times — once per
+                // assigned field — and we want exactly one rebuild after.
+                _suppressConventionalRebuild = true;
+                try
+                {
+                    ConventionalDescription = CommitMessage;
+                    ConventionalBody = CommitDescription;
+                    // Don't overwrite type/scope/breaking/footer — they
+                    // keep whatever the user had set previously.
+                }
+                finally
+                {
+                    _suppressConventionalRebuild = false;
+                }
+            }
+            // Case 2 + 3 both fall through here for the single canonical
+            // rebuild. Case 2 produces the same bytes the user typed; case
+            // 3 produces "feat: <their text>" preserving everything.
             RebuildConventionalCommitMessage();
         }
         // Switching OFF leaves CommitMessage/CommitDescription where they
@@ -214,26 +249,26 @@ public partial class WorkingChangesViewModel
 
     /// <summary>
     /// Parse a (subject, body) pair that may already be in Conventional
-    /// Commits shape. On success populates the structured fields; on
-    /// failure leaves them at their current values. Conservative — it
-    /// only matches the canonical shape with the exact set of types we
-    /// ship; an unknown type leaves the user in the form with empty
-    /// fields rather than treating their text as a free-form custom type.
+    /// Commits shape. On success populates the structured fields and
+    /// returns true; on failure returns false without mutating any field.
+    /// Conservative — it only matches the canonical shape with the exact
+    /// set of types we ship; an unknown type returns false so the caller
+    /// can decide how to handle truly freeform text.
     /// </summary>
-    internal void TryParseConventionalIntoFields(string subject, string body)
+    internal bool TryParseConventionalIntoFields(string subject, string body)
     {
-        if (string.IsNullOrEmpty(subject)) return;
+        if (string.IsNullOrEmpty(subject)) return false;
 
         // Regex: ^(type)(\(scope\))?(!)?: description
         var match = System.Text.RegularExpressions.Regex.Match(
             subject,
             @"^(?<type>[a-z]+)(?:\((?<scope>[^)]+)\))?(?<bang>!)?:\s+(?<desc>.*)$",
             System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-        if (!match.Success) return;
+        if (!match.Success) return false;
 
         var type = match.Groups["type"].Value;
         if (!ConventionalCommitTypes.Contains(type, StringComparer.OrdinalIgnoreCase))
-            return;
+            return false;
 
         // Use the field-level setters so OnConventional*Changed fires and
         // the assembled-message stays in sync — but suppress the
@@ -259,6 +294,7 @@ public partial class WorkingChangesViewModel
         {
             _suppressConventionalRebuild = false;
         }
+        return true;
     }
 
     private bool _suppressConventionalRebuild;

@@ -21,6 +21,7 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
     private readonly ObservableCollection<TemplateRow> _rows = [];
     private TemplateRow? _editing;
     private bool _suppressDirty;
+    private bool _subscribed;
 
     public CommitTemplatesSettingsControl()
     {
@@ -34,7 +35,11 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
     {
         _service ??= Leaf.App.Services?.GetService<ICommitTemplateService>();
         if (_service is null) return;
-        _service.TemplatesChanged += OnTemplatesChanged;
+        if (!_subscribed)
+        {
+            _service.TemplatesChanged += OnTemplatesChanged;
+            _subscribed = true;
+        }
         Reload();
     }
 
@@ -44,7 +49,11 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
         // the user's last keystroke would silently drop on the floor when
         // they hit Save in the parent dialog.
         CommitEditorChanges();
-        if (_service is not null) _service.TemplatesChanged -= OnTemplatesChanged;
+        if (_service is not null && _subscribed)
+        {
+            _service.TemplatesChanged -= OnTemplatesChanged;
+            _subscribed = false;
+        }
     }
 
     public void LoadSettings(AppSettings settings, CredentialService credentialService)

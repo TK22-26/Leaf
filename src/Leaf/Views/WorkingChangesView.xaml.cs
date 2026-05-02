@@ -12,6 +12,12 @@ namespace Leaf.Views;
 public partial class WorkingChangesView : UserControl
 {
     private IShortcutService? _shortcutService;
+    // WPF fires Loaded / Unloaded multiple times across a UserControl's
+    // lifetime (parent rehosting, virtualised lists, even theme reloads).
+    // Without a guard we'd subscribe to GestureChanged twice and leave
+    // one dangling on Unload. Tracked separately from _shortcutService
+    // because the resolved service stays cached across cycles.
+    private bool _subscribed;
 
     public WorkingChangesView()
     {
@@ -28,13 +34,20 @@ public partial class WorkingChangesView : UserControl
         if (_shortcutService is null) return;
 
         ApplyShortcuts();
-        _shortcutService.GestureChanged += OnShortcutGestureChanged;
+        if (!_subscribed)
+        {
+            _shortcutService.GestureChanged += OnShortcutGestureChanged;
+            _subscribed = true;
+        }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        if (_shortcutService is not null)
+        if (_shortcutService is not null && _subscribed)
+        {
             _shortcutService.GestureChanged -= OnShortcutGestureChanged;
+            _subscribed = false;
+        }
     }
 
     private void OnShortcutGestureChanged(object? sender, string? commandId)
