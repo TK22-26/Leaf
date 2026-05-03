@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Leaf.Models;
 
 namespace Leaf.Controls;
 
@@ -96,6 +98,60 @@ public partial class CommitInputControl : UserControl
     public static readonly DependencyProperty IsOptionsExpandedProperty =
         DependencyProperty.Register(
             nameof(IsOptionsExpanded),
+            typeof(bool),
+            typeof(CommitInputControl),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
+
+    // §5.15 — template list shown in the picker popup. Driven by the
+    // VM's CommitTemplates collection; the picker control reads it via
+    // its own Templates DP, which is bound here.
+    public static readonly DependencyProperty TemplatesProperty =
+        DependencyProperty.Register(
+            nameof(Templates),
+            typeof(IEnumerable<CommitTemplate>),
+            typeof(CommitInputControl),
+            new PropertyMetadata(null));
+
+    // §5.15 — command invoked when the picker fires. Parameter is a
+    // CommitTemplateApplyRequest (template + replace/append mode).
+    public static readonly DependencyProperty ApplyTemplateCommandProperty =
+        DependencyProperty.Register(
+            nameof(ApplyTemplateCommand),
+            typeof(ICommand),
+            typeof(CommitInputControl),
+            new PropertyMetadata(null));
+
+    // §5.15 caret-target DPs. The VM bumps these after writing
+    // CommitMessage/CommitDescription so the control can move focus
+    // and the cursor to where the {cursor} token resolved.
+    public static readonly DependencyProperty TemplateCaretIndexProperty =
+        DependencyProperty.Register(
+            nameof(TemplateCaretIndex),
+            typeof(int),
+            typeof(CommitInputControl),
+            new PropertyMetadata(-1));
+
+    public static readonly DependencyProperty TemplateCaretInDescriptionProperty =
+        DependencyProperty.Register(
+            nameof(TemplateCaretInDescription),
+            typeof(bool),
+            typeof(CommitInputControl),
+            new PropertyMetadata(false));
+
+    public static readonly DependencyProperty TemplateApplyTickProperty =
+        DependencyProperty.Register(
+            nameof(TemplateApplyTick),
+            typeof(int),
+            typeof(CommitInputControl),
+            new PropertyMetadata(0, OnTemplateApplyTickChanged));
+
+    // §5.15 Phase 4 — when true, replace the freeform subject/description
+    // pair with a structured Conventional Commits form. Two-way bound to
+    // the VM toggle so the persisted-across-launches flip lives in one
+    // place.
+    public static readonly DependencyProperty UseConventionalCommitsFormProperty =
+        DependencyProperty.Register(
+            nameof(UseConventionalCommitsForm),
             typeof(bool),
             typeof(CommitInputControl),
             new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
@@ -227,5 +283,133 @@ public partial class CommitInputControl : UserControl
     {
         get => (bool)GetValue(IsOptionsExpandedProperty);
         set => SetValue(IsOptionsExpandedProperty, value);
+    }
+
+    /// <summary>Commit templates available right now (built-ins + user + repo).</summary>
+    public IEnumerable<CommitTemplate>? Templates
+    {
+        get => (IEnumerable<CommitTemplate>?)GetValue(TemplatesProperty);
+        set => SetValue(TemplatesProperty, value);
+    }
+
+    /// <summary>Command fired by the picker. Parameter is a <see cref="ViewModels.CommitTemplateApplyRequest"/>.</summary>
+    public ICommand? ApplyTemplateCommand
+    {
+        get => (ICommand?)GetValue(ApplyTemplateCommandProperty);
+        set => SetValue(ApplyTemplateCommandProperty, value);
+    }
+
+    /// <summary>Where the caret should land after a template apply.</summary>
+    public int TemplateCaretIndex
+    {
+        get => (int)GetValue(TemplateCaretIndexProperty);
+        set => SetValue(TemplateCaretIndexProperty, value);
+    }
+
+    public bool TemplateCaretInDescription
+    {
+        get => (bool)GetValue(TemplateCaretInDescriptionProperty);
+        set => SetValue(TemplateCaretInDescriptionProperty, value);
+    }
+
+    /// <summary>Tick bumped by the VM on every successful template apply — DP change drives the caret-restore code path.</summary>
+    public int TemplateApplyTick
+    {
+        get => (int)GetValue(TemplateApplyTickProperty);
+        set => SetValue(TemplateApplyTickProperty, value);
+    }
+
+    /// <summary>Whether the Conventional Commits structured form replaces the freeform input.</summary>
+    public bool UseConventionalCommitsForm
+    {
+        get => (bool)GetValue(UseConventionalCommitsFormProperty);
+        set => SetValue(UseConventionalCommitsFormProperty, value);
+    }
+
+    private static void OnTemplateApplyTickChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not CommitInputControl ctl) return;
+        // Defer the focus + caret move to the next dispatcher pass so the
+        // bound CommitMessage/CommitDescription updates are flushed first
+        // — otherwise CaretIndex would land in the *previous* string.
+        ctl.Dispatcher.BeginInvoke(new Action(ctl.RestoreCaretAfterTemplateApply),
+            System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private void RestoreCaretAfterTemplateApply()
+    {
+        var idx = TemplateCaretIndex;
+        if (idx < 0) return;
+
+        if (TemplateCaretInDescription)
+        {
+            CommitDescriptionBox.Focus();
+            CommitDescriptionBox.CaretIndex = Math.Min(idx, CommitDescriptionBox.Text?.Length ?? 0);
+        }
+        else
+        {
+            CommitMessageBox.Focus();
+            CommitMessageBox.CaretIndex = Math.Min(idx, CommitMessageBox.Text?.Length ?? 0);
+        }
+    }
+
+    // ---- §5.15 popup wiring ------------------------------------------
+
+    private void TemplatesButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenTemplatesPicker();
+    }
+
+    /// <summary>
+    /// Open the §5.15 picker. Public because the host window's Ctrl+T
+    /// shortcut binding routes here through a command — see
+    /// <see cref="OpenTemplatePickerCommand"/>.
+    /// </summary>
+    public void OpenTemplatesPicker()
+    {
+        TemplatesPicker.PrepareForShow();
+        TemplatesPopup.IsOpen = true;
+    }
+
+    private void TemplatesPicker_CloseRequested(object? sender, EventArgs e)
+    {
+        TemplatesPopup.IsOpen = false;
+    }
+
+    private void TemplatesPicker_ApplyRequested(object? sender, EventArgs e)
+    {
+        TemplatesPopup.IsOpen = false;
+    }
+
+    private void TemplatesPopup_Closed(object sender, EventArgs e)
+    {
+        // Return focus to the commit message box so the user can continue
+        // typing without an extra click. The VM's caret-restore path runs
+        // independently; this is only the no-template-applied close.
+        if (TemplateCaretIndex < 0)
+            CommitMessageBox.Focus();
+    }
+
+    /// <summary>
+    /// ICommand surface so the host's Ctrl+T <see cref="KeyBinding"/>
+    /// can open the picker without reaching into the control's code-
+    /// behind. Always-executable; the picker handles "no templates"
+    /// internally (renders an empty list).
+    /// </summary>
+    public ICommand OpenTemplatePickerCommand =>
+        _openTemplatePickerCommand ??= new RelayActionCommand(OpenTemplatesPicker);
+    private RelayActionCommand? _openTemplatePickerCommand;
+
+    private sealed class RelayActionCommand : ICommand
+    {
+        private readonly Action _execute;
+        public RelayActionCommand(Action execute) { _execute = execute; }
+        public bool CanExecute(object? parameter) => true;
+        public void Execute(object? parameter) => _execute();
+        public event EventHandler? CanExecuteChanged
+        {
+            add { /* always executable — no source to subscribe to */ }
+            remove { }
+        }
     }
 }

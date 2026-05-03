@@ -87,6 +87,7 @@ public static class ServiceRegistry
         services.AddSingleton<IBisectService, BisectService>();
         services.AddSingleton<Leaf.Services.Shortcuts.IShortcutService, Leaf.Services.Shortcuts.ShortcutService>();
         services.AddSingleton<IBranchColorPaletteRegistry, BranchColorPaletteRegistry>();
+        services.AddSingleton<ICommitTemplateService, CommitTemplateService>();
 
         // CLI --auto-commit path. Same provider, same lifetime rules.
         services.AddSingleton<AutoCommitService>();

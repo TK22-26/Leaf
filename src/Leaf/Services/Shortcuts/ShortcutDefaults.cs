@@ -127,6 +127,21 @@ internal static class ShortcutDefaults
             "Pop latest stash",
             DefaultGesture: null));
 
+        registry.Register(new ShortcutDefinition(
+            ShortcutCommandId.Commit.OpenTemplatePicker,
+            ShortcutScope.Application,
+            CategoryCommit,
+            "Open commit template picker",
+            // Ctrl+T is the de-facto convention (GitKraken, Gitter,
+            // various IDEs) for "insert a template here". The binding
+            // is wired to the CommitInputControl rather than the main
+            // window so it only fires when the commit panel — or its
+            // children — has focus, which avoids clobbering the same
+            // keystroke in text boxes elsewhere in the app.
+            new System.Windows.Input.KeyGesture(
+                System.Windows.Input.Key.T,
+                System.Windows.Input.ModifierKeys.Control)));
+
         // ----- Merge editor (replaces the hardcoded XAML KeyBindings) ----
         // VS Code's Alt+1 / Alt+2 / Alt+3 layout is the de-facto pattern;
         // F8 / Shift+F8 matches build-error navigation many users know.

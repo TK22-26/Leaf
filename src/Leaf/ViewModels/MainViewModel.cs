@@ -48,6 +48,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IPatchService _patchService;
     private readonly IBisectService _bisectService;
     private readonly IBranchColorPaletteRegistry _branchColorPaletteRegistry;
+    private readonly ICommitTemplateService _commitTemplateService;
 
     // The per-repo DI scope. Owns the current IRepositorySession (scoped)
     // and — in future phases — the per-repo ViewModels. Disposed on repo
@@ -394,6 +395,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IPatchService patchService,
         IBisectService bisectService,
         IBranchColorPaletteRegistry branchColorPaletteRegistry,
+        ICommitTemplateService commitTemplateService,
         INotificationService? notificationService = null,
         Services.Merge.IAiMergeAssistant? aiMergeAssistant = null,
         Services.Merge.IImageMergeService? imageMergeService = null)
@@ -408,6 +410,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _patchService = patchService ?? throw new ArgumentNullException(nameof(patchService));
         _bisectService = bisectService ?? throw new ArgumentNullException(nameof(bisectService));
         _branchColorPaletteRegistry = branchColorPaletteRegistry ?? throw new ArgumentNullException(nameof(branchColorPaletteRegistry));
+        _commitTemplateService = commitTemplateService ?? throw new ArgumentNullException(nameof(commitTemplateService));
         _gitFlowService = gitFlowService;
         _credentialService = credentialService;
         _settingsService = settingsService;
@@ -474,7 +477,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var aiCommitService = new AiCommitMessageService(settingsService, ollamaService, commitMessageParser);
         var gitignoreService = new GitignoreService(gitService);
 
-        _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService, externalToolConfig, externalToolLauncher, settingsService)
+        _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService, externalToolConfig, externalToolLauncher, settingsService, commitTemplateService)
             { GetSessionToken = tokenGetter };
         _workingChangesViewModel.FileSelected += OnWorkingChangesFileSelected;
         _workingChangesViewModel.FileDeletedOrDiscarded += OnFileDeletedOrDiscarded;
