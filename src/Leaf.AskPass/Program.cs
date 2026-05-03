@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Leaf.Services;
 
 namespace Leaf.AskPass;
@@ -50,6 +51,14 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        // Force UTF-8 on stdout. The .NET console writer defaults to
+        // the OEM/system code page when stdout is redirected (which it
+        // always is here — git and ssh-add invoke us with a pipe).
+        // That default mangles non-ASCII passphrases / PATs by the
+        // time the parent reads bytes back. UTF-8 with no BOM matches
+        // what both git and OpenSSH expect.
+        Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
         var prompt = args.Length > 0 ? args[0] : string.Empty;
 
         // SSH path takes precedence — when LEAF_SSH_PASSPHRASE is set,

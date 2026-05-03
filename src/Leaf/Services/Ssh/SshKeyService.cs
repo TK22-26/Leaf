@@ -56,17 +56,9 @@ public sealed class SshKeyService : ISshKeyService
             // Fingerprint via ssh-keygen — the canonical source. If
             // ssh-keygen is missing we still return the entry, just with
             // an empty fingerprint; the panel labels that state clearly.
-            var fingerprint = string.Empty;
-            int? bits = null;
             var fingerprintComment = commentFromFile;
-            var probe = await ProcessHelper.RunAsync("ssh-keygen", ["-l", "-f", pubPath], cancellationToken: cancellationToken).ConfigureAwait(false);
-            if (probe.Spawned && probe.ExitCode == 0
-                && SshPublicKeyParser.TryParseFingerprintLine(probe.Output, out var parsedBits, out var parsedFp, out var parsedComment))
-            {
-                bits = parsedBits;
-                fingerprint = parsedFp;
-                if (!string.IsNullOrWhiteSpace(parsedComment)) fingerprintComment = parsedComment;
-            }
+            var (bits, fingerprint, parsedComment) = await ProbeFingerprintAsync(pubPath, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(parsedComment)) fingerprintComment = parsedComment;
 
             var privatePath = StripPubExtension(pubPath);
             keys.Add(new SshPublicKey(
@@ -99,6 +91,19 @@ public sealed class SshKeyService : ISshKeyService
             "ssh",
             ["-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10", sshTarget],
             cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        // ssh wasn't on PATH — surface that distinctly from "ssh ran
+        // but rejected us". A blank "Authentication failed" message
+        // sends the user looking for credentials when the real fix is
+        // installing OpenSSH.
+        if (!probe.Spawned)
+        {
+            return new SshConnectionTestResult(
+                Authenticated: false,
+                Output: "ssh isn't available on this machine. Install OpenSSH (Settings → Apps → Optional features → \"OpenSSH Client\") and try again.",
+                Identity: null);
+        }
+
         var output = probe.Output;
 
         var authenticated =
@@ -341,16 +346,9 @@ public sealed class SshKeyService : ISshKeyService
         var text = await File.ReadAllTextAsync(pubPath, cancellationToken).ConfigureAwait(false);
         SshPublicKeyParser.TryParse(text, out var algorithm, out var comment);
 
-        var fingerprint = string.Empty;
-        int? bits = null;
-        var probe = await ProcessHelper.RunAsync("ssh-keygen", ["-l", "-f", pubPath], cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (probe.Spawned && probe.ExitCode == 0
-            && SshPublicKeyParser.TryParseFingerprintLine(probe.Output, out var parsedBits, out var parsedFp, out var parsedComment))
-        {
-            bits = parsedBits;
-            fingerprint = parsedFp;
-            if (!string.IsNullOrWhiteSpace(parsedComment)) comment = parsedComment;
-        }
+        var (bits, fingerprint, parsedComment) = await ProbeFingerprintAsync(pubPath, cancellationToken).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(parsedComment)) comment = parsedComment;
+
         return new SshPublicKey(
             PublicKeyPath: pubPath,
             PrivateKeyPath: StripPubExtension(pubPath),
@@ -358,6 +356,27 @@ public sealed class SshKeyService : ISshKeyService
             Comment: comment,
             Fingerprint: fingerprint,
             KeyBits: bits);
+    }
+
+    /// <summary>
+    /// Run <c>ssh-keygen -l -f path</c> and parse the canonical
+    /// fingerprint line. Returns empty fingerprint + null bits when
+    /// ssh-keygen is missing or rejects the file — callers treat that
+    /// as "no fingerprint available" rather than an error.
+    /// <para>The comment field is returned as null when ssh-keygen
+    /// didn't produce one so callers can decide whether to fall back
+    /// to an alternate source (e.g. the comment embedded in the .pub
+    /// file).</para>
+    /// </summary>
+    private static async Task<(int? Bits, string Fingerprint, string? Comment)> ProbeFingerprintAsync(string pubPath, CancellationToken cancellationToken)
+    {
+        var probe = await ProcessHelper.RunAsync("ssh-keygen", ["-l", "-f", pubPath], cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (probe.Spawned && probe.ExitCode == 0
+            && SshPublicKeyParser.TryParseFingerprintLine(probe.Output, out var bits, out var fp, out var comment))
+        {
+            return (bits, fp, string.IsNullOrWhiteSpace(comment) ? null : comment);
+        }
+        return (null, string.Empty, null);
     }
 
     private static string StripPubExtension(string pubPath)
