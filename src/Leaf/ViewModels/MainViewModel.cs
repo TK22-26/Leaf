@@ -119,6 +119,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private CommitDetailViewModel? _commitDetailViewModel;
 
+    /// <summary>
+    /// §5.17 — view-model behind the right-pane TagDetailView. Created
+    /// lazily on first SelectTag, lives for the app's lifetime alongside
+    /// the other detail VMs. Tag is set/cleared in the selection path.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTagDetailMode))]
+    private TagDetailViewModel? _tagDetailViewModel;
+
+    /// <summary>True when the right pane should show TagDetailView (a tag is currently selected).</summary>
+    public bool IsTagDetailMode => TagDetailViewModel?.Tag is not null;
+
     [ObservableProperty]
     private WorkingChangesViewModel? _workingChangesViewModel;
 
@@ -557,6 +569,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (e.PropertyName == nameof(GitGraphViewModel.SelectedCommit))
         {
+            // §5.17 — picking a commit in the graph cancels any open
+            // tag-detail mode so the right pane swaps back to the
+            // commit detail view. Done before LoadCommitDetails so the
+            // CommitDetailViewModel becomes visible without flashing
+            // alongside TagDetailView.
+            if (graph.SelectedCommit is not null)
+                ClearTagDetailIfOpen();
+
             // Skip LoadCommitDetails for stash pseudo-commits — the
             // SelectedStash branch below loads stash details.
             if (graph.SelectedCommit?.IsStash != true)
@@ -633,6 +653,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     partial void OnSelectedRepositoryChanged(RepositoryInfo? value)
     {
         TerminalViewModel?.SetWorkingDirectory(value?.Path);
+
+        // §5.17 — drop the tag detail pane on every repo switch (and
+        // when the user clears the selection). Without this, switching
+        // to a new repo leaves TagDetailViewModel pointing at a TagInfo
+        // owned by the previous repo, IsTagDetailMode stays true, and
+        // the right pane keeps showing stale tag data instead of the
+        // new repo's commit detail.
+        ClearTagDetailIfOpen();
 
         if (value == null)
         {

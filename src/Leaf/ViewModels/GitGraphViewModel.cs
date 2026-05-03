@@ -119,6 +119,17 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private IBranchColorResolver _colorResolver;
 
+    /// <summary>
+    /// §5.17 — tag-name → <see cref="TagInfo"/> lookup the graph canvas
+    /// reads when rendering tag-chip badges and surfacing hover tooltips.
+    /// Populated by <see cref="MainViewModel"/> after every branch
+    /// reload (where tags are also loaded). Empty until the first reload
+    /// completes; the canvas tolerates absence by falling back to a
+    /// basic chip with no annotation / signature info.
+    /// </summary>
+    [ObservableProperty]
+    private IReadOnlyDictionary<string, TagInfo> _tagsByName = new Dictionary<string, TagInfo>(StringComparer.Ordinal);
+
     [ObservableProperty]
     private string? _repositoryPath;
 

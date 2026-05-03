@@ -101,7 +101,10 @@
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center">
-                        <!-- Commit template picker button (§5.15) -->
+                        <!-- Commit template picker button (§5.15) — hidden
+                             when the master toggle is off. The Ctrl+T
+                             command also no-ops at the code-behind level
+                             so a stray keystroke doesn't pop the picker. -->
                         <Button x:Name="TemplatesButton"
                                 Width="32"
                                 Height="32"
@@ -109,7 +112,8 @@
                                 Background="Transparent"
                                 BorderBrush="Transparent"
                                 ToolTip="Insert commit template (Ctrl+T)"
-                                Click="TemplatesButton_Click">
+                                Click="TemplatesButton_Click"
+                                Visibility="{Binding IsTemplatesEnabled, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}">
                             <ic:SymbolIcon Symbol="DocumentText" FontSize="14"/>
                         </Button>
                         <Popup x:Name="TemplatesPopup"
@@ -274,7 +278,17 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Type / Scope / Description row -->
+                <!-- Type / Scope / Description row.
+                     The Conventional Commits fields live on the parent
+                     WorkingChangesViewModel, not on CommitInputControl
+                     itself — CommitInputControl was designed to be a
+                     reusable control fed entirely via DPs, but adding
+                     8+ DPs just to forward the structured-form state
+                     would be heavy. These bindings drop ElementName=Root
+                     so they resolve against the inherited DataContext
+                     (the VM) directly. The CommitMessage / CommitDescription
+                     bindings above keep ElementName=Root because those
+                     ARE real DPs on this control. -->
                 <Grid Grid.Row="0" Margin="0,0,0,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="110"/>
@@ -284,14 +298,14 @@
                     </Grid.ColumnDefinitions>
                     <ComboBox Grid.Column="0"
                               Margin="0,0,4,0"
-                              ItemsSource="{Binding ConventionalCommitTypes, ElementName=Root}"
-                              SelectedItem="{Binding ConventionalType, ElementName=Root, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              ItemsSource="{Binding ConventionalCommitTypes}"
+                              SelectedItem="{Binding ConventionalType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                               ToolTip="Conventional Commits type"/>
                     <ComboBox Grid.Column="1"
                               Margin="0,0,4,0"
                               IsEditable="True"
-                              ItemsSource="{Binding ConventionalScopeHistory, ElementName=Root}"
-                              Text="{Binding ConventionalScope, ElementName=Root, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              ItemsSource="{Binding ConventionalScopeHistory}"
+                              Text="{Binding ConventionalScope, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                               ToolTip="Optional scope (e.g. api, ui)"/>
                     <TextBox Grid.Column="2"
                              FontSize="13"
@@ -299,13 +313,13 @@
                              VerticalContentAlignment="Center"
                              Padding="6,4"
                              Tag="Description"
-                             Text="{Binding ConventionalDescription, ElementName=Root, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                             Text="{Binding ConventionalDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                     <TextBlock Grid.Column="3"
                                Margin="6,0,0,0"
                                VerticalAlignment="Center"
                                FontSize="10"
                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                               Text="{Binding ConventionalDescriptionRemaining, ElementName=Root, Mode=OneWay, FallbackValue=72}"/>
+                               Text="{Binding ConventionalDescriptionRemaining, Mode=OneWay, FallbackValue=72}"/>
                 </Grid>
 
                 <!-- Body (multiline) -->
@@ -320,7 +334,7 @@
                              MaxHeight="120"
                              VerticalScrollBarVisibility="Auto"
                              TextWrapping="Wrap"
-                             Text="{Binding ConventionalBody, ElementName=Root, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                             Text="{Binding ConventionalBody, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                 </Expander>
 
                 <!-- Breaking change toggle -->
@@ -329,7 +343,7 @@
                           FontSize="11"
                           Content="Breaking change"
                           ToolTip="Mark as a backwards-incompatible change. Adds a ! before the colon and a BREAKING CHANGE: footer."
-                          IsChecked="{Binding ConventionalIsBreaking, ElementName=Root, Mode=TwoWay}"/>
+                          IsChecked="{Binding ConventionalIsBreaking, Mode=TwoWay}"/>
 
                 <!-- Footer (multiline) -->
                 <Expander Grid.Row="3"
@@ -344,7 +358,7 @@
                              VerticalScrollBarVisibility="Auto"
                              TextWrapping="Wrap"
                              ToolTip="Trailers like 'Refs: TICKET-123' or 'Co-authored-by: …'"
-                             Text="{Binding ConventionalFooter, ElementName=Root, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                             Text="{Binding ConventionalFooter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                 </Expander>
             </Grid>
         </Border>

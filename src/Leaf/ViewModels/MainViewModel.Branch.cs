@@ -607,4 +607,44 @@ public partial class MainViewModel
         if (tag == null) return;
         _clipboardService.SetText(tag.Name);
     }
+
+    /// <summary>
+    /// §5.17 — push a tag to the origin remote. Used by both the
+    /// graph-tag right-click menu and the sidebar context menu. Uses
+    /// the same credential-key resolution as the existing branch push
+    /// path so signed pushes through HTTPS keep working without the
+    /// caller threading auth through manually.
+    /// </summary>
+    [RelayCommand]
+    public async Task PushTagAsync(TagInfo tag)
+    {
+        if (SelectedRepository == null || tag == null) return;
+
+        try
+        {
+            await BeginBusyAsync($"Pushing tag {tag.Name}...");
+            // Match the existing branch push path: resolve the credential
+            // key for the origin remote so PATs / SSH agents kick in via
+            // GIT_ASKPASS the same way they do for branch pushes.
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
+            var origin = remotes.FirstOrDefault(r => string.Equals(r.Name, "origin", StringComparison.Ordinal))
+                ?? remotes.FirstOrDefault();
+            var credentialKey = _credentialService.ResolveActiveCredentialKey(origin?.Url);
+            await _gitService.PushTagAsync(
+                SelectedRepository.Path,
+                tag.Name,
+                origin?.Name ?? "origin",
+                credentialKey: credentialKey,
+                cancellationToken: CurrentRepositoryToken);
+            NotifySuccess("Tag pushed", $"Pushed tag {tag.Name} to origin.");
+        }
+        catch (Exception ex)
+        {
+            await ReportOperationFailureAsync("Push tag", ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }

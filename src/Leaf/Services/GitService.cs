@@ -13,6 +13,7 @@ public class GitService : IGitService
     private readonly GitOperationContext _context;
     private readonly RepositoryOperations _repositoryOps;
     private readonly CommitHistoryOperations _commitHistoryOps;
+    private readonly CommitSignatureOperations _commitSignatureOps;
     private readonly CommitOperations _commitOps;
     private readonly DiffOperations _diffOps;
     private readonly BranchOperations _branchOps;
@@ -24,6 +25,7 @@ public class GitService : IGitService
     private readonly AmOperations _amOps;
     private readonly StashOperations _stashOps;
     private readonly TagOperations _tagOps;
+    private readonly TagSignatureOperations _tagSignatureOps;
     private readonly HunkOperations _hunkOps;
     private readonly ConfigOperations _configOps;
     private readonly WorktreeOperations _worktreeOps;
@@ -44,6 +46,7 @@ public class GitService : IGitService
         // Create operations in dependency order
         _repositoryOps = new RepositoryOperations(_context);
         _commitHistoryOps = new CommitHistoryOperations(_context);
+        _commitSignatureOps = new CommitSignatureOperations(_context);
         _commitOps = new CommitOperations(_context);
         _diffOps = new DiffOperations(_context);
         _branchOps = new BranchOperations(_context);
@@ -55,6 +58,7 @@ public class GitService : IGitService
         _amOps = new AmOperations(_context);
         _stashOps = new StashOperations(_context, _conflictOps);
         _tagOps = new TagOperations(_context);
+        _tagSignatureOps = new TagSignatureOperations(_context);
         _hunkOps = new HunkOperations(_context);
         _configOps = new ConfigOperations(_context);
         _worktreeOps = new WorktreeOperations(_context);
@@ -79,11 +83,61 @@ public class GitService : IGitService
 
     #region Commit History Operations
 
-    public Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0, CancellationToken cancellationToken = default)
-        => _commitHistoryOps.GetCommitHistoryAsync(repoPath, count, branchName, skip, cancellationToken);
+    public async Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0, CancellationToken cancellationToken = default)
+    {
+        var commits = await _commitHistoryOps
+            .GetCommitHistoryAsync(repoPath, count, branchName, skip, cancellationToken)
+            .ConfigureAwait(false);
+        await EnrichSignaturesAsync(repoPath, commits, cancellationToken).ConfigureAwait(false);
+        return commits;
+    }
 
-    public Task<CommitInfo?> GetCommitAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
-        => _commitHistoryOps.GetCommitAsync(repoPath, sha, cancellationToken);
+    public async Task<CommitInfo?> GetCommitAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
+    {
+        var commit = await _commitHistoryOps.GetCommitAsync(repoPath, sha, cancellationToken).ConfigureAwait(false);
+        if (commit != null)
+            await EnrichSignaturesAsync(repoPath, [commit], cancellationToken).ConfigureAwait(false);
+        return commit;
+    }
+
+    /// <summary>
+    /// Stamp <see cref="CommitInfo.SignatureStatus"/> + signer fields on
+    /// each commit by running a chunked <c>git log</c> query. Failures
+    /// are non-fatal — the badges just don't appear.
+    /// </summary>
+    private async Task EnrichSignaturesAsync(string repoPath, IReadOnlyList<CommitInfo> commits, CancellationToken cancellationToken)
+    {
+        if (commits.Count == 0) return;
+        try
+        {
+            var shas = commits.Select(c => c.Sha).ToList();
+            var sigs = await _commitSignatureOps
+                .GetSignaturesAsync(repoPath, shas, cancellationToken)
+                .ConfigureAwait(false);
+            if (sigs.Count == 0) return;
+
+            foreach (var commit in commits)
+            {
+                if (!sigs.TryGetValue(commit.Sha, out var data)) continue;
+                commit.SignatureStatus = data.Status;
+                commit.SignerName = data.SignerName;
+                commit.SignerEmail = data.SignerEmail;
+                commit.SignerKeyFingerprint = data.Fingerprint;
+            }
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or InvalidOperationException)
+        {
+            // Failure modes: process spawn fails, git binary missing,
+            // unexpected exit code with parseable stderr. None of these
+            // should fail the parent history fetch — the user still wants
+            // to see commits, just without badges. Caller cancellation
+            // (OperationCanceledException) is intentionally not caught
+            // here so the cancellation contract propagates up: callers
+            // that observe a token cancel expect their await to throw,
+            // not silently complete with a partial result.
+            Log.Warn("Signing", $"Signature enrichment failed for {repoPath}: {ex.Message}");
+        }
+    }
 
     public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
         => _commitHistoryOps.GetCommitChangesAsync(repoPath, sha, cancellationToken);
@@ -387,8 +441,47 @@ public class GitService : IGitService
 
     #region Tag Operations
 
-    public Task<List<TagInfo>> GetTagsAsync(string repoPath, CancellationToken cancellationToken = default)
-        => _tagOps.GetTagsAsync(repoPath, cancellationToken);
+    public async Task<List<TagInfo>> GetTagsAsync(string repoPath, CancellationToken cancellationToken = default)
+    {
+        var tags = await _tagOps.GetTagsAsync(repoPath, cancellationToken).ConfigureAwait(false);
+        await EnrichTagSignaturesAsync(repoPath, tags, cancellationToken).ConfigureAwait(false);
+        return tags;
+    }
+
+    /// <summary>
+    /// Stamp signature data on the given tags via a single
+    /// <c>git for-each-ref</c> query. Failures are non-fatal — the
+    /// badges just don't appear, same model as the commit-side
+    /// enrichment in <c>EnrichSignaturesAsync</c>.
+    /// </summary>
+    private async Task EnrichTagSignaturesAsync(string repoPath, IReadOnlyList<TagInfo> tags, CancellationToken cancellationToken)
+    {
+        if (tags.Count == 0) return;
+        try
+        {
+            var sigs = await _tagSignatureOps
+                .GetTagSignaturesAsync(repoPath, cancellationToken)
+                .ConfigureAwait(false);
+            if (sigs.Count == 0) return;
+
+            foreach (var tag in tags)
+            {
+                if (!sigs.TryGetValue(tag.Name, out var data)) continue;
+                tag.SignatureStatus = data.Status;
+                tag.SignerName = data.SignerName;
+                tag.SignerEmail = data.SignerEmail;
+                tag.SignerKeyFingerprint = data.Fingerprint;
+            }
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or InvalidOperationException)
+        {
+            // Same exception policy as EnrichSignaturesAsync: graceful
+            // degradation on process / IO failure, but cancellation
+            // propagates so callers awaiting the parent fetch see the
+            // expected OperationCanceledException.
+            Log.Warn("Signing", $"Tag signature enrichment failed for {repoPath}: {ex.Message}");
+        }
+    }
 
     public Task CreateTagAsync(string repoPath, string tagName, string? message = null, string? targetSha = null, CancellationToken cancellationToken = default)
         => _tagOps.CreateTagAsync(repoPath, tagName, message, targetSha, cancellationToken);

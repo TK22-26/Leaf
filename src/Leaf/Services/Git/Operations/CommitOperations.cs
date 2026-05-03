@@ -20,17 +20,31 @@ internal class CommitOperations
     /// Create a commit with staged files. When <paramref name="amend"/> is
     /// true, the new commit replaces HEAD — preserving the original author
     /// but updating the committer and the message/description.
+    ///
+    /// <para>§5.8: when <c>commit.gpgsign=true</c>, route through the git
+    /// CLI rather than LibGit2Sharp. <c>libgit2</c> doesn't run gpg /
+    /// ssh-keygen, so signing-enabled commits would silently produce
+    /// unsigned commits if we kept the libgit2 path. The CLI handles
+    /// every signing setting (key id, format, key file path) via git's
+    /// own machinery, including credential helpers and pinentry.</para>
     /// </summary>
-    public Task CommitAsync(string repoPath, string message, string? description = null, bool amend = false, CancellationToken cancellationToken = default)
+    public async Task CommitAsync(string repoPath, string message, string? description = null, bool amend = false, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() =>
+        var fullMessage = string.IsNullOrEmpty(description)
+            ? message
+            : $"{message}\n\n{description}";
+
+        var shouldSign = await IsCommitSigningEnabledAsync(repoPath, cancellationToken).ConfigureAwait(false);
+
+        if (shouldSign)
+        {
+            await CommitViaCliAsync(repoPath, fullMessage, amend, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
-
-            var fullMessage = string.IsNullOrEmpty(description)
-                ? message
-                : $"{message}\n\n{description}";
-
             var committer = repo.Config.BuildSignature(DateTimeOffset.Now);
 
             if (amend)
@@ -49,7 +63,55 @@ internal class CommitOperations
             {
                 repo.Commit(fullMessage, committer, committer);
             }
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Read <c>commit.gpgsign</c> from the repo's effective config (local
+    /// then global). When the key isn't set, <c>git config --get</c> exits
+    /// non-zero — we treat that as "signing off". Real failures (process
+    /// spawn errors, cancellation) propagate so the caller and ultimately
+    /// the user know signing routing is broken before the commit happens;
+    /// silently catching here would let a transient git-launch failure
+    /// downgrade a signed commit to unsigned, which is the worse failure
+    /// mode for a security feature.
+    /// </summary>
+    private async Task<bool> IsCommitSigningEnabledAsync(string repoPath, CancellationToken cancellationToken)
+    {
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath,
+            ["config", "--get", "--bool", "commit.gpgsign"],
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return result.Success
+            && string.Equals(result.StandardOutput.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Commit through the git CLI. Message comes in via stdin (<c>-F -</c>)
+    /// so newlines / blank lines / trailers round-trip exactly. The CLI
+    /// honours every signing-related config key automatically, including
+    /// agent / pinentry interactions.
+    /// </summary>
+    private async Task CommitViaCliAsync(string repoPath, string fullMessage, bool amend, CancellationToken cancellationToken)
+    {
+        var args = new List<string> { "commit", "-F", "-" };
+        if (amend) args.Add("--amend");
+
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath,
+            args.ToArray(),
+            input: fullMessage,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        if (!result.Success)
+        {
+            // git commit prints the actual error on stderr — pinentry
+            // failures, missing key, etc. Surface it verbatim.
+            var detail = string.IsNullOrEmpty(result.StandardError)
+                ? "git commit failed (unknown error)"
+                : result.StandardError.Trim();
+            throw new InvalidOperationException(detail);
+        }
     }
 
     /// <summary>

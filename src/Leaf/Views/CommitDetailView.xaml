@@ -334,6 +334,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -458,6 +459,32 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <!--  §5.8 Signature row — visible only when the commit is signed.
+                          Glyph + summary + truncated fingerprint, mirrors the
+                          information available via the graph badge tooltip.  -->
+                    <StackPanel
+                        Grid.Row="2"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="2"
+                        Margin="0,8,0,0"
+                        Orientation="Horizontal"
+                        Visibility="{Binding Commit.IsSigned, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
+                        <TextBlock
+                            Margin="0,0,6,0"
+                            VerticalAlignment="Center"
+                            FontFamily="Segoe Fluent Icons"
+                            FontSize="13"
+                            Foreground="{Binding SignatureBadgeBrush}"
+                            Text="{Binding SignatureBadgeGlyph}" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="{Binding Commit.SignatureSummary}"
+                            ToolTip="{Binding SignatureFingerprintDisplay}" />
+                    </StackPanel>
                 </Grid>
             </Border>
 

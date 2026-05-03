@@ -102,6 +102,7 @@
             IsAmendMode="{Binding IsAmendMode, Mode=TwoWay}"
             IsLoading="{Binding IsLoading}"
             IsOptionsExpanded="{Binding IsOptionsExpanded, Mode=TwoWay}"
+            IsTemplatesEnabled="{Binding IsCommitTemplatesEnabled}"
             RemainingChars="{Binding RemainingChars}"
             TemplateApplyTick="{Binding TemplateApplyTick, Mode=OneWay}"
             TemplateCaretIndex="{Binding TemplateCaretIndex, Mode=OneWay}"

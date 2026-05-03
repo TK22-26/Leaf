@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -23,6 +24,9 @@ public partial class CommitDetailViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ParentShortSha))]
     [NotifyPropertyChangedFor(nameof(CoAuthors))]
     [NotifyPropertyChangedFor(nameof(HasCoAuthors))]
+    [NotifyPropertyChangedFor(nameof(SignatureBadgeGlyph))]
+    [NotifyPropertyChangedFor(nameof(SignatureBadgeBrush))]
+    [NotifyPropertyChangedFor(nameof(SignatureFingerprintDisplay))]
     private CommitInfo? _commit;
 
     [ObservableProperty]
@@ -86,6 +90,39 @@ public partial class CommitDetailViewModel : ObservableObject
     public List<CommitInfo.CoAuthorInfo> CoAuthors => Commit?.CoAuthors ?? [];
 
     public bool HasCoAuthors => CoAuthors.Count > 0;
+
+    /// <summary>
+    /// §5.8 — Segoe Fluent Icons glyph for the signature badge in the
+    /// commit detail header. Sourced from <see cref="SignatureAppearance"/>
+    /// so the graph badge, commit detail, and tag detail show the same
+    /// glyph for the same status.
+    /// </summary>
+    public string SignatureBadgeGlyph =>
+        Commit is null ? string.Empty : SignatureAppearance.GlyphFor(Commit.SignatureStatus);
+
+    /// <summary>Brush colouring the signature glyph — shared palette.</summary>
+    public System.Windows.Media.Brush SignatureBadgeBrush =>
+        SignatureAppearance.BrushFor(Commit?.SignatureStatus ?? CommitSignatureStatus.None);
+
+    /// <summary>
+    /// Tooltip text for the signature row — full fingerprint plus signer
+    /// identity. Hidden when the commit is unsigned.
+    /// </summary>
+    public string SignatureFingerprintDisplay
+    {
+        get
+        {
+            if (Commit is null || !Commit.IsSigned) return string.Empty;
+            var lines = new List<string>(3) { Commit.SignatureSummary };
+            if (!string.IsNullOrWhiteSpace(Commit.SignerEmail))
+                lines.Add(string.IsNullOrWhiteSpace(Commit.SignerName)
+                    ? Commit.SignerEmail
+                    : $"{Commit.SignerName} <{Commit.SignerEmail}>");
+            if (!string.IsNullOrWhiteSpace(Commit.SignerKeyFingerprint))
+                lines.Add($"Key: {Commit.SignerKeyFingerprint}");
+            return string.Join('\n', lines);
+        }
+    }
 
     /// <summary>
     /// Short SHA of the first parent commit.

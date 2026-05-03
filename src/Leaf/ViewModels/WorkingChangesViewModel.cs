@@ -93,6 +93,17 @@ public partial class WorkingChangesViewModel : ObservableObject
     [ObservableProperty]
     private bool _isAiAvailable;
 
+    /// <summary>
+    /// §5.15 master toggle. When false (the default — opt-in), the
+    /// commit panel hides the templates icon button and the Ctrl+T
+    /// shortcut becomes a no-op. Stored templates are preserved either
+    /// way. Read from <see cref="AppSettings.CommitTemplatesEnabled"/>
+    /// in <see cref="RefreshCommitTemplatesEnabled"/> after settings
+    /// close.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isCommitTemplatesEnabled;
+
     [ObservableProperty]
     private ObservableCollection<PathTreeNode> _unstagedTreeItems = [];
 
@@ -228,6 +239,7 @@ public partial class WorkingChangesViewModel : ObservableObject
         _commitTemplateService = commitTemplateService ?? throw new ArgumentNullException(nameof(commitTemplateService));
         _isOptionsExpanded = _settingsService.LoadSettings().IsCommitOptionsExpanded;
         RefreshAiAvailability();
+        RefreshCommitTemplatesEnabled();
         RefreshTemplates();
         _commitTemplateService.TemplatesChanged += OnTemplatesChanged;
         InitializeConventionalCommitsState();
@@ -270,6 +282,16 @@ public partial class WorkingChangesViewModel : ObservableObject
                         || settings.IsGeminiConnected
                         || settings.IsCodexConnected
                         || !string.IsNullOrEmpty(settings.OllamaSelectedModel);
+    }
+
+    /// <summary>
+    /// Re-read <see cref="AppSettings.CommitTemplatesEnabled"/>. Called
+    /// after the settings dialog closes so a master-toggle change shows
+    /// up on the commit panel without an app restart.
+    /// </summary>
+    public void RefreshCommitTemplatesEnabled()
+    {
+        IsCommitTemplatesEnabled = _settingsService.LoadSettings().CommitTemplatesEnabled;
     }
 
     /// <summary>

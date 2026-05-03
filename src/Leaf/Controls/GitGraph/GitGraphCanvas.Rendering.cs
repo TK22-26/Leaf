@@ -13,6 +13,11 @@ public partial class GitGraphCanvas
     {
         // Clear hit testing areas before re-drawing
         _hitTestService.ClearHitAreas();
+        // §5.17 per-chip tag hit areas live next door for the same
+        // per-render lifecycle. Cleared here so a stale Rect from a
+        // previous render can't surface a tag tooltip / context menu
+        // for a chip that just scrolled out of view.
+        _tagChipHitAreas.Clear();
         base.OnRender(dc);
 
         // Row offset: working changes (0 or 1) — stashes are now inline graph nodes
@@ -351,7 +356,56 @@ public partial class GitGraphCanvas
 
             var fillBrush = IdenticonGenerator.GetIdenticonBrush(key, iconSize, backgroundColor);
             dc.DrawEllipse(fillBrush, null, new Point(x, y), avatarRadius - 1, avatarRadius - 1);
+
+            // §5.8 verification badge — small filled circle anchored at the
+            // bottom-right of the avatar circle. Drawn here (not in a
+            // separate pass) so the badge geometry stays in DPI-correct
+            // coordinates with the avatar; the canvas's existing redraw
+            // model handles invalidation when SignatureStatus changes.
+            DrawSignatureBadge(dc, x, y, avatarRadius, node.SignatureStatus);
         }
+    }
+
+    /// <summary>
+    /// Render a small verification glyph overlay anchored at the lower
+    /// right of an avatar circle. Skips silently for unsigned commits;
+    /// callers don't need to gate.
+    /// </summary>
+    private void DrawSignatureBadge(DrawingContext dc, double x, double y, double avatarRadius, CommitSignatureStatus status)
+    {
+        if (status == CommitSignatureStatus.None) return;
+
+        // Position: ~36° below horizontal at the avatar's edge, badge
+        // radius is ~1/3 of the avatar so two glyphs would touch at most
+        // — keeps the badge visually distinct from the larger circle.
+        // Geometry constants live in GitGraphCanvas.Constants.cs and are
+        // shared with the input-hit-test path.
+        var badgeRadius = Math.Max(SignatureBadgeMinRadius, avatarRadius * SignatureBadgeAvatarRatio);
+        var offset = avatarRadius - badgeRadius * SignatureBadgeAnchorPullback;
+        var bx = x + offset * Math.Cos(SignatureBadgeAngleRadians);
+        var by = y + offset * Math.Sin(SignatureBadgeAngleRadians);
+
+        var glyph = SignatureAppearance.GlyphFor(status);
+        var fill = SignatureAppearance.ColorFor(status);
+        if (string.IsNullOrEmpty(glyph)) return;
+
+        var fillBrush = new SolidColorBrush(fill);
+        fillBrush.Freeze();
+        // White ring around the badge so it reads against any avatar fill.
+        var ringPen = new Pen(Brushes.White, 1.5);
+        ringPen.Freeze();
+        dc.DrawEllipse(fillBrush, ringPen, new Point(bx, by), badgeRadius, badgeRadius);
+
+        var glyphSize = badgeRadius * 1.25;
+        var glyphText = new FormattedText(
+            glyph,
+            System.Globalization.CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            IconTypeface,
+            glyphSize,
+            Brushes.White,
+            VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        dc.DrawText(glyphText, new Point(bx - glyphText.Width / 2, by - glyphText.Height / 2));
     }
 
     private void DrawConnections(DrawingContext dc, GitTreeNode node, IReadOnlyDictionary<string, GitTreeNode> nodesBySha, int rowOffset = 0)

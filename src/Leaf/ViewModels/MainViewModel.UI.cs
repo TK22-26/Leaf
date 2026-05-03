@@ -84,6 +84,7 @@ public partial class MainViewModel
         await _dialogService.ShowDialogAsync(dialog);
         TerminalViewModel?.ReloadSettings();
         WorkingChangesViewModel?.RefreshAiAvailability();
+        WorkingChangesViewModel?.RefreshCommitTemplatesEnabled();
         WorkingChangesViewModel?.RefreshSectionContexts();
         if (WorkingChangesViewModel != null)
             await WorkingChangesViewModel.RefreshExternalDiffToolAvailabilityAsync();

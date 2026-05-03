@@ -1,0 +1,203 @@
+<UserControl x:Class="Leaf.Views.TagDetailView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:Leaf.Controls"
+             xmlns:converters="clr-namespace:Leaf.Converters">
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </UserControl.Resources>
+
+    <Border Background="{DynamicResource LayerFillColorDefaultBrush}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Padding="16">
+            <StackPanel>
+                <!-- Header card: tag name, kind label, signature glyph, action buttons -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16"
+                        Margin="0,0,0,12">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Title + signature glyph -->
+                        <StackPanel Grid.Row="0" Orientation="Horizontal">
+                            <TextBlock Text="{Binding Tag.Name}"
+                                       FontSize="20"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            <TextBlock Margin="10,0,0,0"
+                                       VerticalAlignment="Center"
+                                       FontFamily="Segoe Fluent Icons"
+                                       FontSize="14"
+                                       Foreground="{Binding SignatureBadgeBrush}"
+                                       Text="{Binding SignatureBadgeGlyph}"
+                                       ToolTip="{Binding SignatureFingerprintDisplay}"
+                                       Visibility="{Binding Tag.IsSigned, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}"/>
+                        </StackPanel>
+
+                        <!-- Kind label -->
+                        <TextBlock Grid.Row="1"
+                                   Margin="0,2,0,0"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   Text="{Binding KindLabel}"/>
+
+                        <!-- Action buttons -->
+                        <StackPanel Grid.Row="2"
+                                    Margin="0,12,0,0"
+                                    Orientation="Horizontal">
+                            <Button Padding="12,4"
+                                    Margin="0,0,8,0"
+                                    Content="Checkout"
+                                    ToolTip="Check out this tag (detached HEAD)"
+                                    Command="{Binding CheckoutTagCommand}"
+                                    CommandParameter="{Binding Tag}"/>
+                            <Button Padding="12,4"
+                                    Margin="0,0,8,0"
+                                    Content="Push to origin"
+                                    ToolTip="Push this tag to the origin remote"
+                                    Command="{Binding PushTagCommand}"
+                                    CommandParameter="{Binding Tag}"/>
+                            <Button Padding="12,4"
+                                    Margin="0,0,8,0"
+                                    Content="Delete…"
+                                    Foreground="#DC2626"
+                                    ToolTip="Delete this tag locally and from origin"
+                                    Command="{Binding DeleteTagCommand}"
+                                    CommandParameter="{Binding Tag}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Annotation message card. Hidden for lightweight tags. -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16"
+                        Margin="0,0,0,12"
+                        Visibility="{Binding HasMessage, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
+                    <StackPanel>
+                        <TextBlock Text="Message"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Margin="0,0,0,8"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        <TextBlock Text="{Binding MessageBody}"
+                                   FontFamily="Consolas, Cascadia Mono"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Tagger card. Annotated tags only. -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16"
+                        Margin="0,0,0,12"
+                        Visibility="{Binding Tag.IsAnnotated, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
+                    <StackPanel>
+                        <TextBlock Text="Tagger"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Margin="0,0,0,8"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        <StackPanel Orientation="Horizontal">
+                            <controls:CommitIdenticon Size="20"
+                                                       Margin="0,0,8,0"
+                                                       AvatarKey="{Binding TaggerAvatarKey}"/>
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                       Text="{Binding TaggerDisplay}"/>
+                        </StackPanel>
+                        <TextBlock Margin="0,4,0,0"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Text="{Binding TaggedAtDisplay, StringFormat='tagged {0}'}"/>
+
+                        <!-- Signature row mirroring CommitDetailView -->
+                        <StackPanel Margin="0,8,0,0"
+                                    Orientation="Horizontal"
+                                    Visibility="{Binding Tag.IsSigned, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
+                            <TextBlock Margin="0,0,6,0"
+                                       VerticalAlignment="Center"
+                                       FontFamily="Segoe Fluent Icons"
+                                       FontSize="13"
+                                       Foreground="{Binding SignatureBadgeBrush}"
+                                       Text="{Binding SignatureBadgeGlyph}"/>
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="{Binding Tag.SignatureSummary}"
+                                       ToolTip="{Binding SignatureFingerprintDisplay}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Target commit mini-card -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16"
+                        Cursor="Hand"
+                        ToolTip="Click to navigate to this commit in the graph">
+                    <Border.InputBindings>
+                        <MouseBinding MouseAction="LeftClick"
+                                      Command="{Binding NavigateToTargetCommitCommand}"/>
+                    </Border.InputBindings>
+                    <StackPanel>
+                        <TextBlock Text="Tagged commit"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Margin="0,0,0,8"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <controls:CommitIdenticon Size="28"
+                                                       Margin="0,0,10,0"
+                                                       VerticalAlignment="Top"
+                                                       AvatarKey="{Binding TargetCommit.AvatarKey, FallbackValue=''}"/>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="{Binding TargetCommit.MessageShort, FallbackValue='(loading…)'}"
+                                           FontWeight="SemiBold"
+                                           FontSize="12"
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                    <TextBlock FontFamily="Consolas, Cascadia Mono"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                               Text="{Binding TargetCommit.ShortSha, FallbackValue=''}"/>
+                                    <TextBlock Margin="8,0,0,0"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                               Text="{Binding TargetCommit.Author, FallbackValue=''}"/>
+                                    <TextBlock Margin="8,0,0,0"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                               Text="{Binding TargetCommit.DateDisplay, FallbackValue=''}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>

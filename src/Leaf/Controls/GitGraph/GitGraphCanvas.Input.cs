@@ -344,12 +344,70 @@ public partial class GitGraphCanvas
         int nodeIndex = row - currentRow;
         if (nodeIndex >= 0 && nodeIndex < nodes.Count)
         {
-            HoveredSha = nodes[nodeIndex].Sha;
+            var hovered = nodes[nodeIndex];
+            HoveredSha = hovered.Sha;
+
+            // §5.8 — show the signature tooltip when the cursor is inside
+            // the badge's hit-area on a signed commit. Hit-area mirrors
+            // the geometry in DrawSignatureBadge so a keyboard-driven
+            // user who sees the badge can find the exact tooltip the
+            // mouse user does.
+            if (IsCursorInSignatureBadge(hovered, pos, row + (HasWorkingChanges ? 0 : 0)))
+            {
+                ShowSignatureTooltip(hovered, pos);
+            }
+            else
+            {
+                HideSignatureTooltip();
+            }
         }
         else
         {
             HoveredSha = null;
+            HideSignatureTooltip();
         }
+
+        // §5.17 — tag chip hover. Independent from the commit hover above
+        // so a tag chip in the label area pops the tag tooltip even when
+        // the cursor isn't over a commit row's avatar. TagsByName lookup
+        // handles the absence-of-info case (basic chip with no tooltip).
+        var tagName = GetTagAt(pos);
+        if (tagName is not null
+            && TagsByName is not null
+            && TagsByName.TryGetValue(tagName, out var tag))
+        {
+            ShowTagTooltip(tag, pos);
+        }
+        else
+        {
+            HideTagTooltip();
+        }
+    }
+
+    /// <summary>
+    /// Hit-test for the §5.8 signature badge. Mirrors the geometry in
+    /// <c>GitGraphCanvas.Rendering.DrawSignatureBadge</c>: badge centred
+    /// at the avatar's edge at ~36° below horizontal, radius 36% of the
+    /// avatar radius. Hit area is the badge circle plus 2px slack so
+    /// users don't have to land precisely.
+    /// </summary>
+    private bool IsCursorInSignatureBadge(GitTreeNode node, Point cursor, int displayRow)
+    {
+        if (node.SignatureStatus == CommitSignatureStatus.None) return false;
+        if (node.IsStash || node.IsMerge) return false; // badges only on regular commits
+
+        double x = GetXForColumn(node.ColumnIndex);
+        double y = GetYForRow(node.RowIndex + (HasWorkingChanges ? 1 : 0));
+        var avatarRadius = NodeRadius * 1.875;
+        var badgeRadius = Math.Max(SignatureBadgeMinRadius, avatarRadius * SignatureBadgeAvatarRatio);
+        var offset = avatarRadius - badgeRadius * SignatureBadgeAnchorPullback;
+        var bx = x + offset * Math.Cos(SignatureBadgeAngleRadians);
+        var by = y + offset * Math.Sin(SignatureBadgeAngleRadians);
+
+        var dx = cursor.X - bx;
+        var dy = cursor.Y - by;
+        var hitRadius = badgeRadius + SignatureBadgeHitSlackPx;
+        return dx * dx + dy * dy <= hitRadius * hitRadius;
     }
 
     private void OnMouseLeave(object sender, MouseEventArgs e)
@@ -362,6 +420,13 @@ public partial class GitGraphCanvas
             _stateService.HoveredOverflowRow = -1;
             HideBranchTooltip();
         }
+        // §5.8 — drop the signature tooltip on canvas leave. Without this
+        // the popup hangs around when the user moves the cursor past the
+        // canvas edge, since StaysOpen=true means our explicit hide is
+        // the only thing that closes it.
+        HideSignatureTooltip();
+        // §5.17 — same logic for the tag tooltip.
+        HideTagTooltip();
     }
 
     public BranchLabel? GetBranchLabelAt(Point position)

@@ -156,6 +156,17 @@ public partial class CommitInputControl : UserControl
             typeof(CommitInputControl),
             new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
 
+    // §5.15 master toggle. When false, the templates icon button + popup
+    // are hidden and the Ctrl+T command becomes a no-op (the popup just
+    // never opens). False by default — opt-in. Users flip it on under
+    // Settings → Commit Templates to surface the templates UI.
+    public static readonly DependencyProperty IsTemplatesEnabledProperty =
+        DependencyProperty.Register(
+            nameof(IsTemplatesEnabled),
+            typeof(bool),
+            typeof(CommitInputControl),
+            new PropertyMetadata(false));
+
     public CommitInputControl()
     {
         InitializeComponent();
@@ -326,6 +337,13 @@ public partial class CommitInputControl : UserControl
         set => SetValue(UseConventionalCommitsFormProperty, value);
     }
 
+    /// <summary>Master toggle for the §5.15 templates UI — controls templates button visibility and the Ctrl+T no-op.</summary>
+    public bool IsTemplatesEnabled
+    {
+        get => (bool)GetValue(IsTemplatesEnabledProperty);
+        set => SetValue(IsTemplatesEnabledProperty, value);
+    }
+
     private static void OnTemplateApplyTickChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not CommitInputControl ctl) return;
@@ -363,10 +381,13 @@ public partial class CommitInputControl : UserControl
     /// <summary>
     /// Open the §5.15 picker. Public because the host window's Ctrl+T
     /// shortcut binding routes here through a command — see
-    /// <see cref="OpenTemplatePickerCommand"/>.
+    /// <see cref="OpenTemplatePickerCommand"/>. No-op when the master
+    /// toggle is off so the keystroke doesn't surface the popup behind
+    /// the user's back even though the icon button is hidden.
     /// </summary>
     public void OpenTemplatesPicker()
     {
+        if (!IsTemplatesEnabled) return;
         TemplatesPicker.PrepareForShow();
         TemplatesPopup.IsOpen = true;
     }

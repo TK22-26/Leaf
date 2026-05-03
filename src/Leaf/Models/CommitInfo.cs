@@ -169,4 +169,65 @@ public partial class CommitInfo : ObservableObject
             return results;
         }
     }
+
+    /// <summary>
+    /// §5.8 — verification status for the commit's GPG/SSH signature, as
+    /// reported by <c>git log %G?</c>. Defaults to
+    /// <see cref="CommitSignatureStatus.None"/> for unsigned commits and
+    /// for commits where signature parsing was skipped (test fixtures,
+    /// commits constructed by client code without a git enrich pass).
+    /// </summary>
+    public CommitSignatureStatus SignatureStatus { get; set; } = CommitSignatureStatus.None;
+
+    /// <summary>The signer's name (<c>%GS</c>). Empty for unsigned commits.</summary>
+    public string SignerName { get; set; } = string.Empty;
+
+    /// <summary>The signer's email (<c>%GE</c>). Empty for unsigned commits.</summary>
+    public string SignerEmail { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The signing key's fingerprint (<c>%GF</c>). For GPG this is the
+    /// 40-char hex fingerprint; for SSH it's the algorithm-prefixed
+    /// fingerprint string. Empty for unsigned commits.
+    /// </summary>
+    public string SignerKeyFingerprint { get; set; } = string.Empty;
+
+    /// <summary>True when the commit has any signature regardless of trust.</summary>
+    public bool IsSigned => SignatureStatus != CommitSignatureStatus.None;
+
+    /// <summary>
+    /// Single-line human-readable summary of the signature status, used by
+    /// the graph badge tooltip and the commit detail view. Delegates to
+    /// <see cref="SignatureSummaryFormatter"/> so commit / tag / tooltip
+    /// surfaces all read the same string for the same status.
+    /// </summary>
+    public string SignatureSummary => SignatureSummaryFormatter.Format(SignatureStatus, SignerEmail);
+}
+
+/// <summary>
+/// §5.8 mapping of <c>git log %G?</c> trust codes to typed values. The
+/// upstream codes (<c>G/U/B/X/Y/R/E/N</c>) collapse a fair amount of
+/// nuance into one byte; this enum keeps each meaningful state distinct
+/// so the UI can pick a colour and message per status.
+/// <list type="bullet">
+/// <item><c>G</c> → <see cref="Valid"/> — good signature with a fully-trusted key.</item>
+/// <item><c>U</c> → <see cref="UntrustedKey"/> — good signature, key is in the keyring but the web of trust hasn't reached it.</item>
+/// <item><c>X</c> → <see cref="Expired"/> — good signature that has since expired.</item>
+/// <item><c>Y</c> → <see cref="ExpiredKey"/> — good signature made with an expired key.</item>
+/// <item><c>R</c> → <see cref="RevokedKey"/> — good signature made with a revoked key.</item>
+/// <item><c>B</c> → <see cref="Bad"/> — bad (forged or corrupt) signature.</item>
+/// <item><c>E</c> → <see cref="UnknownKey"/> — signature couldn't be checked, typically because the key isn't in the local keyring.</item>
+/// <item><c>N</c> → <see cref="None"/> — no signature.</item>
+/// </list>
+/// </summary>
+public enum CommitSignatureStatus
+{
+    None = 0,
+    Valid = 1,
+    UnknownKey = 2,
+    UntrustedKey = 3,
+    Expired = 4,
+    ExpiredKey = 5,
+    RevokedKey = 6,
+    Bad = 7,
 }
