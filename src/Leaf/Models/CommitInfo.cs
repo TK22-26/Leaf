@@ -206,8 +206,12 @@ public partial class CommitInfo : ObservableObject
         CommitSignatureStatus.Valid => string.IsNullOrWhiteSpace(SignerEmail)
             ? "Verified signature"
             : $"Verified signature by {SignerEmail}",
-        CommitSignatureStatus.UnknownKey => "Signed, but the signing key isn't in the local keyring",
-        CommitSignatureStatus.UntrustedKey => "Signed by a key the local trust database doesn't trust",
+        // %G? code E — most often: signing key isn't in the local keyring,
+        // so git can't verify the signature at all.
+        CommitSignatureStatus.UnknownKey => "Couldn't verify — signing key isn't in the local keyring",
+        // %G? code U — key IS in the keyring, but the trust web hasn't
+        // reached it (you haven't signed it yourself or trusted a path).
+        CommitSignatureStatus.UntrustedKey => "Signed — key is in the keyring but not yet trusted",
         CommitSignatureStatus.Expired => "Signature has expired",
         CommitSignatureStatus.ExpiredKey => "Signing key has expired",
         CommitSignatureStatus.RevokedKey => "Signing key has been revoked",
@@ -224,12 +228,12 @@ public partial class CommitInfo : ObservableObject
 /// so the UI can pick a colour and message per status.
 /// <list type="bullet">
 /// <item><c>G</c> → <see cref="Valid"/> — good signature with a fully-trusted key.</item>
-/// <item><c>U</c> → <see cref="UnknownKey"/> — good signature, key not in local keyring.</item>
+/// <item><c>U</c> → <see cref="UntrustedKey"/> — good signature, key is in the keyring but the web of trust hasn't reached it.</item>
 /// <item><c>X</c> → <see cref="Expired"/> — good signature that has since expired.</item>
 /// <item><c>Y</c> → <see cref="ExpiredKey"/> — good signature made with an expired key.</item>
 /// <item><c>R</c> → <see cref="RevokedKey"/> — good signature made with a revoked key.</item>
 /// <item><c>B</c> → <see cref="Bad"/> — bad (forged or corrupt) signature.</item>
-/// <item><c>E</c> → <see cref="UntrustedKey"/> — couldn't be verified (often missing key); UI treats as unverified.</item>
+/// <item><c>E</c> → <see cref="UnknownKey"/> — signature couldn't be checked, typically because the key isn't in the local keyring.</item>
 /// <item><c>N</c> → <see cref="None"/> — no signature.</item>
 /// </list>
 /// </summary>

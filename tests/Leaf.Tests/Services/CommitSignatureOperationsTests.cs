@@ -24,12 +24,16 @@ public class CommitSignatureOperationsTests
 
     [Theory]
     [InlineData("G", CommitSignatureStatus.Valid)]
-    [InlineData("U", CommitSignatureStatus.UnknownKey)]
+    // U = good signature with unknown validity (key in keyring, trust web
+    //     hasn't reached it). Maps to UntrustedKey, not UnknownKey.
+    [InlineData("U", CommitSignatureStatus.UntrustedKey)]
     [InlineData("X", CommitSignatureStatus.Expired)]
     [InlineData("Y", CommitSignatureStatus.ExpiredKey)]
     [InlineData("R", CommitSignatureStatus.RevokedKey)]
     [InlineData("B", CommitSignatureStatus.Bad)]
-    [InlineData("E", CommitSignatureStatus.UntrustedKey)]
+    // E = signature cannot be checked, most often because the key isn't
+    //     in the local keyring at all. Maps to UnknownKey, not UntrustedKey.
+    [InlineData("E", CommitSignatureStatus.UnknownKey)]
     [InlineData("N", CommitSignatureStatus.None)]
     public void ParseTrustCode_KnownCodes(string code, CommitSignatureStatus expected)
     {
@@ -86,7 +90,7 @@ public class CommitSignatureOperationsTests
 
         sink.Should().HaveCount(3);
         sink["sha1"].Status.Should().Be(CommitSignatureStatus.Valid);
-        sink["sha2"].Status.Should().Be(CommitSignatureStatus.UnknownKey);
+        sink["sha2"].Status.Should().Be(CommitSignatureStatus.UntrustedKey);
         sink["sha3"].Status.Should().Be(CommitSignatureStatus.None);
     }
 

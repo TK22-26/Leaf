@@ -114,8 +114,8 @@ public partial class GitGraphCanvas
     private static string SummariseSignatureStatus(CommitSignatureStatus s) => s switch
     {
         CommitSignatureStatus.Valid => "Verified signature",
-        CommitSignatureStatus.UnknownKey => "Signed — key not in local keyring",
-        CommitSignatureStatus.UntrustedKey => "Signed — key not trusted locally",
+        CommitSignatureStatus.UnknownKey => "Couldn't verify — key not in local keyring",
+        CommitSignatureStatus.UntrustedKey => "Signed — key in keyring but not yet trusted",
         CommitSignatureStatus.Expired => "Signed — signature expired",
         CommitSignatureStatus.ExpiredKey => "Signed — signing key expired",
         CommitSignatureStatus.RevokedKey => "Signed — signing key revoked",

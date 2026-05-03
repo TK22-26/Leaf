@@ -137,6 +137,18 @@ internal class CommitSignatureOperations
     /// Unknown codes fall through to <see cref="CommitSignatureStatus.None"/>
     /// because returning a positive verification status for a code we
     /// don't understand would be a privilege escalation in UI terms.
+    ///
+    /// <para>Note on <c>U</c> vs <c>E</c> — git's man page is the source
+    /// of truth and they have specifically opposite meanings to what an
+    /// English speaker would guess:</para>
+    /// <list type="bullet">
+    /// <item><c>U</c> = good signature with <b>unknown validity</b> — the
+    /// key IS in the keyring but the web of trust hasn't reached it. We
+    /// surface this as <see cref="CommitSignatureStatus.UntrustedKey"/>.</item>
+    /// <item><c>E</c> = the signature <b>cannot be checked</b>, most often
+    /// because the key isn't in the local keyring at all. We surface this
+    /// as <see cref="CommitSignatureStatus.UnknownKey"/>.</item>
+    /// </list>
     /// </summary>
     internal static CommitSignatureStatus ParseTrustCode(string code)
     {
@@ -144,12 +156,12 @@ internal class CommitSignatureOperations
         return code.Trim() switch
         {
             "G" => CommitSignatureStatus.Valid,
-            "U" => CommitSignatureStatus.UnknownKey,
+            "U" => CommitSignatureStatus.UntrustedKey,
             "X" => CommitSignatureStatus.Expired,
             "Y" => CommitSignatureStatus.ExpiredKey,
             "R" => CommitSignatureStatus.RevokedKey,
             "B" => CommitSignatureStatus.Bad,
-            "E" => CommitSignatureStatus.UntrustedKey,
+            "E" => CommitSignatureStatus.UnknownKey,
             "N" => CommitSignatureStatus.None,
             _ => CommitSignatureStatus.None,
         };
