@@ -1,0 +1,502 @@
+<UserControl x:Class="Leaf.Views.Settings.SshKeysSettingsControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ic="http://schemas.fluenticons.com/icons"
+             xmlns:converters="clr-namespace:Leaf.Converters">
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="0,0,0,32">
+            <TextBlock Text="SSH Keys"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Margin="0,0,0,4"/>
+            <TextBlock Text="Manage SSH keys, the SSH config file, and the running ssh-agent. All edits go to your real ~/.ssh — Leaf keeps no parallel store."
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,16"/>
+
+            <!-- Tooling availability banner -->
+            <Border x:Name="ToolingBanner"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Tooling"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,8"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="ssh"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="SshStatusText" Grid.Row="0" Grid.Column="1"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="ssh-keygen"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0"/>
+                        <TextBlock x:Name="SshKeygenStatusText" Grid.Row="1" Grid.Column="1"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,4,0,0"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="ssh-add"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0"/>
+                        <TextBlock x:Name="SshAddStatusText" Grid.Row="2" Grid.Column="1"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,4,0,0"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="ssh-agent"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0"/>
+                        <TextBlock x:Name="SshAgentStatusText" Grid.Row="3" Grid.Column="1"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,4,0,0"/>
+                    </Grid>
+                    <TextBlock x:Name="ToolingHelpText"
+                               Margin="0,8,0,0"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Visibility="Collapsed"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Keys list -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Keys in ~/.ssh"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        <Button Grid.Column="1"
+                                x:Name="OpenSshFolderButton"
+                                Content="Open folder"
+                                Padding="10,4"
+                                Margin="0,0,8,0"
+                                Click="OpenSshFolderButton_Click"
+                                ToolTip="Reveal ~/.ssh in File Explorer."/>
+                        <Button Grid.Column="2"
+                                x:Name="GenerateKeyButton"
+                                Content="Generate key…"
+                                Padding="10,4"
+                                Click="GenerateKeyButton_Click"
+                                ToolTip="Create a new SSH key pair via ssh-keygen."/>
+                    </Grid>
+
+                    <ItemsControl x:Name="KeysList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="12"
+                                        Margin="0,0,0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           FontWeight="SemiBold"
+                                                           FontSize="13"
+                                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                                <Border Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                                        CornerRadius="3"
+                                                        Padding="6,1"
+                                                        Margin="8,0,0,0">
+                                                    <TextBlock Text="{Binding AlgorithmDisplay}"
+                                                               FontSize="10"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="White"/>
+                                                </Border>
+                                                <TextBlock Text="{Binding BitsDisplay}"
+                                                           FontSize="10"
+                                                           Margin="6,0,0,0"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Comment}"
+                                                       FontSize="11"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       Visibility="{Binding HasComment, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <TextBlock Text="{Binding Fingerprint}"
+                                                       FontSize="10"
+                                                       FontFamily="Consolas, Cascadia Mono"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                            <TextBlock Text="{Binding PublicKeyPath}"
+                                                       FontSize="10"
+                                                       FontFamily="Consolas, Cascadia Mono"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Content="Copy public"
+                                                    Padding="8,2"
+                                                    Margin="0,0,6,0"
+                                                    Tag="{Binding}"
+                                                    Click="CopyPublicKey_Click"
+                                                    ToolTip="Copy the public key text to the clipboard."/>
+                                            <Button Content="Add to agent"
+                                                    Padding="8,2"
+                                                    Margin="0,0,6,0"
+                                                    Tag="{Binding}"
+                                                    Click="AddKeyToAgent_Click"
+                                                    Visibility="{Binding HasPrivateKey, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                    ToolTip="Load this key into the running ssh-agent."/>
+                                            <Button Content="Reveal"
+                                                    Padding="8,2"
+                                                    Tag="{Binding}"
+                                                    Click="RevealKey_Click"
+                                                    ToolTip="Open the .pub file's folder."/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock x:Name="EmptyKeysHint"
+                               Text="No public keys found in ~/.ssh. Generate one or copy your existing keys into that folder."
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Visibility="Collapsed"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Test connection -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Test connection"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,8"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock Text="Pick a known host or type a custom target (e.g. git@bitbucket.org). Leaf runs `ssh -T -o BatchMode=yes` and shows the response so you can see exactly what the server said."
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Host"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        <ComboBox Grid.Column="1"
+                                  x:Name="TestHostCombo"
+                                  IsEditable="True"
+                                  Width="380"
+                                  HorizontalAlignment="Left"
+                                  ToolTip="Pick a known host or type a custom target like git@your.server.com."
+                                  Text="git@github.com">
+                            <ComboBoxItem Content="git@github.com"/>
+                            <ComboBoxItem Content="git@gitlab.com"/>
+                            <ComboBoxItem Content="git@bitbucket.org"/>
+                            <ComboBoxItem Content="git@ssh.dev.azure.com"/>
+                        </ComboBox>
+                        <Button Grid.Column="2"
+                                x:Name="RunTestButton"
+                                Content="Run test"
+                                Padding="12,4"
+                                Margin="8,0,0,0"
+                                Click="RunTestButton_Click"/>
+                    </Grid>
+                    <Border x:Name="TestResultBorder"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="10"
+                            Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock x:Name="TestResultHeader"
+                                       FontWeight="SemiBold"
+                                       FontSize="12"/>
+                            <TextBlock x:Name="TestResultBody"
+                                       FontSize="11"
+                                       FontFamily="Consolas, Cascadia Mono"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,0"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- SSH config (Phase 3) -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="SSH config"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        <Button Grid.Column="1"
+                                x:Name="ReloadConfigButton"
+                                Content="Reload"
+                                Padding="10,4"
+                                Margin="0,0,8,0"
+                                Click="ReloadConfigButton_Click"
+                                ToolTip="Re-read ~/.ssh/config from disk."/>
+                        <Button Grid.Column="2"
+                                x:Name="AddHostButton"
+                                Content="Add host"
+                                Padding="10,4"
+                                Click="AddHostButton_Click"
+                                ToolTip="Append a new Host stanza."/>
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ListBox x:Name="HostsList"
+                                 Grid.Column="0"
+                                 MinHeight="160"
+                                 SelectionChanged="HostsList_SelectionChanged"
+                                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"/>
+
+                        <Border Grid.Column="1"
+                                Padding="12,0,0,0">
+                            <StackPanel x:Name="HostEditor" IsEnabled="False">
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Host pattern"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBox Grid.Column="1"
+                                             x:Name="HostPatternBox"
+                                             ToolTip="Pattern matched against the hostname you ssh to (e.g. github.com, *.internal, work-github)."
+                                             TextChanged="HostField_Changed"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="HostName"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBox Grid.Column="1"
+                                             x:Name="HostNameBox"
+                                             ToolTip="The actual hostname to connect to."
+                                             TextChanged="HostField_Changed"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="User"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBox Grid.Column="1"
+                                             x:Name="HostUserBox"
+                                             TextChanged="HostField_Changed"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Port"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBox Grid.Column="1"
+                                             x:Name="HostPortBox"
+                                             MaxLength="5"
+                                             ToolTip="Defaults to 22 when empty."
+                                             TextChanged="HostField_Changed"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="IdentityFile"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBox Grid.Column="1"
+                                             x:Name="HostIdentityFileBox"
+                                             FontFamily="Consolas, Cascadia Mono"
+                                             FontSize="11"
+                                             TextChanged="HostField_Changed"/>
+                                    <Button Grid.Column="2"
+                                            Content="Browse…"
+                                            Margin="6,0,0,0"
+                                            Padding="8,2"
+                                            Click="BrowseIdentityFile_Click"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="ProxyCommand"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBox Grid.Column="1"
+                                             x:Name="HostProxyCommandBox"
+                                             FontFamily="Consolas, Cascadia Mono"
+                                             FontSize="11"
+                                             TextChanged="HostField_Changed"/>
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button x:Name="SaveHostButton"
+                                            Content="Save changes"
+                                            Padding="12,4"
+                                            Margin="0,0,8,0"
+                                            Click="SaveHostButton_Click"/>
+                                    <Button x:Name="DeleteHostButton"
+                                            Content="Delete host"
+                                            Padding="12,4"
+                                            Click="DeleteHostButton_Click"/>
+                                </StackPanel>
+
+                                <TextBlock x:Name="ExtraOptionsText"
+                                           FontSize="10"
+                                           FontFamily="Consolas, Cascadia Mono"
+                                           Margin="0,8,0,0"
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ssh-agent (Phase 4) -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="ssh-agent"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        <Button Grid.Column="1"
+                                x:Name="ReloadAgentButton"
+                                Content="Reload"
+                                Padding="10,4"
+                                Click="ReloadAgentButton_Click"
+                                ToolTip="Re-query ssh-agent for loaded keys."/>
+                    </Grid>
+
+                    <ItemsControl x:Name="AgentKeysList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="10"
+                                        Margin="0,0,0,6">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                                <TextBlock Text="{Binding AlgorithmDisplay}"
+                                                           FontWeight="SemiBold"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                                <TextBlock Text="{Binding BitsDisplay}"
+                                                           FontSize="10"
+                                                           Margin="6,0,0,0"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Comment}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                            <TextBlock Text="{Binding Fingerprint}"
+                                                       FontSize="10"
+                                                       FontFamily="Consolas, Cascadia Mono"
+                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                Content="Remove"
+                                                VerticalAlignment="Center"
+                                                Padding="8,2"
+                                                Tag="{Binding}"
+                                                Click="RemoveAgentKey_Click"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock x:Name="AgentEmptyText"
+                               FontSize="11"
+                               Margin="0,4,0,0"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Visibility="Collapsed"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

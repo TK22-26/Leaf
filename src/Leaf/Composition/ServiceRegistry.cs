@@ -89,6 +89,7 @@ public static class ServiceRegistry
         services.AddSingleton<IBranchColorPaletteRegistry, BranchColorPaletteRegistry>();
         services.AddSingleton<ICommitTemplateService, CommitTemplateService>();
         services.AddSingleton<Leaf.Services.Signing.ISigningToolDetector, Leaf.Services.Signing.SigningToolDetector>();
+        services.AddSingleton<Leaf.Services.Ssh.ISshKeyService, Leaf.Services.Ssh.SshKeyService>();
 
         // CLI --auto-commit path. Same provider, same lifetime rules.
         services.AddSingleton<AutoCommitService>();

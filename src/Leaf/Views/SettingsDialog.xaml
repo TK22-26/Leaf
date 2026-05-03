@@ -296,6 +296,16 @@
                             </StackPanel>
                         </TreeViewItem.Header>
                     </TreeViewItem>
+
+                    <!-- SSH Keys (§5.13) -->
+                    <TreeViewItem x:Name="NavSshKeys" Tag="SshKeys">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="Key" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="SSH Keys" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
                 </TreeView>
             </Grid>
         </Border>
@@ -735,6 +745,9 @@
 
                     <!-- Commit Signing Content (§5.8) -->
                     <settings:CommitSigningSettingsControl x:Name="CommitSigningSettings" Visibility="Collapsed" />
+
+                    <!-- SSH Keys Content (§5.13) -->
+                    <settings:SshKeysSettingsControl x:Name="SshKeysSettings" Visibility="Collapsed" />
 
                     <!-- Search Results (shown when searching) -->
                     <StackPanel x:Name="ContentSearchResults" Visibility="Collapsed">

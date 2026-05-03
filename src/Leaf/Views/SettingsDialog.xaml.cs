@@ -101,6 +101,10 @@ public partial class SettingsDialog : Window
             new("Commit Signing", "Configure GPG / SSH signing for commits and tags", "CommitSigning", Symbol.ShieldCheckmark),
             new("GPG", "Set up commit signing with GnuPG", "CommitSigning", Symbol.ShieldCheckmark),
             new("Signing key", "Pick the GPG or SSH key used to sign commits", "CommitSigning", Symbol.Key),
+            new("SSH Keys", "Manage SSH keys, ~/.ssh/config, and the running ssh-agent", "SshKeys", Symbol.Key),
+            new("Generate SSH key", "Create a new ED25519 / RSA / ECDSA SSH key pair", "SshKeys", Symbol.Key),
+            new("ssh-agent", "Add or remove keys from the running ssh-agent", "SshKeys", Symbol.Key),
+            new("ssh config", "Edit ~/.ssh/config host entries", "SshKeys", Symbol.Key),
         };
 
         // Configure UserControls
@@ -158,6 +162,7 @@ public partial class SettingsDialog : Window
         BranchColorsSettings.Visibility = Visibility.Collapsed;
         CommitTemplatesSettings.Visibility = Visibility.Collapsed;
         CommitSigningSettings.Visibility = Visibility.Collapsed;
+        SshKeysSettings.Visibility = Visibility.Collapsed;
         ContentSearchResults.Visibility = Visibility.Collapsed;
 
         // Show the selected content
@@ -234,6 +239,9 @@ public partial class SettingsDialog : Window
                 CommitSigningSettings.Visibility = Visibility.Visible;
                 CommitSigningSettings.ActiveRepositoryPath = _currentRepoPath;
                 break;
+            case "SshKeys":
+                SshKeysSettings.Visibility = Visibility.Visible;
+                break;
         }
     }
 
@@ -307,6 +315,8 @@ public partial class SettingsDialog : Window
         KeyboardShortcutsSettings.Visibility = Visibility.Collapsed;
         BranchColorsSettings.Visibility = Visibility.Collapsed;
         CommitTemplatesSettings.Visibility = Visibility.Collapsed;
+        CommitSigningSettings.Visibility = Visibility.Collapsed;
+        SshKeysSettings.Visibility = Visibility.Collapsed;
 
         // Show search results
         ContentSearchResults.Visibility = Visibility.Visible;
@@ -357,6 +367,7 @@ public partial class SettingsDialog : Window
             "BranchColors" => NavBranchColors,
             "CommitTemplates" => NavCommitTemplates,
             "CommitSigning" => NavCommitSigning,
+            "SshKeys" => NavSshKeys,
             _ => null
         };
 
@@ -400,6 +411,7 @@ public partial class SettingsDialog : Window
         CommitTemplatesSettings.LoadSettings(_settings, _credentialService);
         CommitSigningSettings.ActiveRepositoryPath = _currentRepoPath;
         CommitSigningSettings.LoadSettings(_settings, _credentialService);
+        SshKeysSettings.LoadSettings(_settings, _credentialService);
     }
 
     private void BrowseClonePath_Click(object sender, RoutedEventArgs e)
@@ -452,6 +464,7 @@ public partial class SettingsDialog : Window
         BranchColorsSettings.SaveSettings(_settings, _credentialService);
         CommitTemplatesSettings.SaveSettings(_settings, _credentialService);
         CommitSigningSettings.SaveSettings(_settings, _credentialService);
+        SshKeysSettings.SaveSettings(_settings, _credentialService);
 
         // Save all settings
         _settingsService.SaveSettings(_settings);
