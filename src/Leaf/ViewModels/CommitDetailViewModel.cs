@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -92,33 +93,16 @@ public partial class CommitDetailViewModel : ObservableObject
 
     /// <summary>
     /// §5.8 — Segoe Fluent Icons glyph for the signature badge in the
-    /// commit detail header. Mirrors what the graph badge shows so the
-    /// two surfaces speak the same visual language.
+    /// commit detail header. Sourced from <see cref="SignatureAppearance"/>
+    /// so the graph badge, commit detail, and tag detail show the same
+    /// glyph for the same status.
     /// </summary>
-    public string SignatureBadgeGlyph => Commit?.SignatureStatus switch
-    {
-        CommitSignatureStatus.Valid => "",         // CheckMark
-        CommitSignatureStatus.UnknownKey => "",    // Info
-        CommitSignatureStatus.UntrustedKey => "",  // Warning
-        CommitSignatureStatus.Expired => "",       // Recent (clock)
-        CommitSignatureStatus.ExpiredKey => "",
-        CommitSignatureStatus.RevokedKey => "",    // Cancel
-        CommitSignatureStatus.Bad => "",           // ErrorBadge
-        _ => string.Empty,
-    };
+    public string SignatureBadgeGlyph =>
+        Commit is null ? string.Empty : SignatureAppearance.GlyphFor(Commit.SignatureStatus);
 
-    /// <summary>Brush colouring the signature glyph. Same palette as the graph badge.</summary>
-    public System.Windows.Media.Brush SignatureBadgeBrush => Commit?.SignatureStatus switch
-    {
-        CommitSignatureStatus.Valid => SignatureBrushes.Green,
-        CommitSignatureStatus.UnknownKey => SignatureBrushes.Amber,
-        CommitSignatureStatus.UntrustedKey => SignatureBrushes.Amber,
-        CommitSignatureStatus.Expired => SignatureBrushes.Amber,
-        CommitSignatureStatus.ExpiredKey => SignatureBrushes.Amber,
-        CommitSignatureStatus.RevokedKey => SignatureBrushes.Red,
-        CommitSignatureStatus.Bad => SignatureBrushes.Red,
-        _ => SignatureBrushes.Neutral,
-    };
+    /// <summary>Brush colouring the signature glyph — shared palette.</summary>
+    public System.Windows.Media.Brush SignatureBadgeBrush =>
+        SignatureAppearance.BrushFor(Commit?.SignatureStatus ?? CommitSignatureStatus.None);
 
     /// <summary>
     /// Tooltip text for the signature row — full fingerprint plus signer
@@ -137,20 +121,6 @@ public partial class CommitDetailViewModel : ObservableObject
             if (!string.IsNullOrWhiteSpace(Commit.SignerKeyFingerprint))
                 lines.Add($"Key: {Commit.SignerKeyFingerprint}");
             return string.Join('\n', lines);
-        }
-    }
-
-    private static class SignatureBrushes
-    {
-        public static readonly System.Windows.Media.Brush Green = Freeze(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2E, 0xA0, 0x43)));
-        public static readonly System.Windows.Media.Brush Amber = Freeze(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xBF, 0x83, 0x00)));
-        public static readonly System.Windows.Media.Brush Red = Freeze(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xC8, 0x35, 0x35)));
-        public static readonly System.Windows.Media.Brush Neutral = Freeze(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x80, 0x80, 0x80)));
-
-        private static System.Windows.Media.Brush Freeze(System.Windows.Media.SolidColorBrush b)
-        {
-            b.Freeze();
-            return b;
         }
     }
 

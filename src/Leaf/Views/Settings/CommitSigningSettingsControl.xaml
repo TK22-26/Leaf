@@ -107,7 +107,7 @@
                               HorizontalAlignment="Left"
                               SelectionChanged="ScopeCombo_SelectionChanged"
                               ToolTip="Choose whether these settings apply globally or only to the current repository.">
-                        <ComboBoxItem Content="Global" Tag="Global" IsSelected="True"/>
+                        <ComboBoxItem Content="Global" Tag="Global"/>
                         <ComboBoxItem Content="This repo" Tag="Local"/>
                     </ComboBox>
                 </Grid>
@@ -125,7 +125,7 @@
                               Width="380"
                               HorizontalAlignment="Left"
                               SelectionChanged="MethodCombo_SelectionChanged">
-                        <ComboBoxItem Content="None — no signing" Tag="None" IsSelected="True"/>
+                        <ComboBoxItem Content="None — no signing" Tag="None"/>
                         <ComboBoxItem Content="GPG" Tag="openpgp"/>
                         <ComboBoxItem Content="SSH" Tag="ssh"/>
                     </ComboBox>

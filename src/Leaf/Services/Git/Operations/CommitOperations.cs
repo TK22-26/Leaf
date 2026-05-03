@@ -68,26 +68,22 @@ internal class CommitOperations
 
     /// <summary>
     /// Read <c>commit.gpgsign</c> from the repo's effective config (local
-    /// then global). Returns false on any error so a config-read failure
-    /// can never silently downgrade a non-signing commit to signing — and
-    /// vice versa, can never accidentally route an unsigned commit into
-    /// the CLI path where pinentry might block on a missing key.
+    /// then global). When the key isn't set, <c>git config --get</c> exits
+    /// non-zero — we treat that as "signing off". Real failures (process
+    /// spawn errors, cancellation) propagate so the caller and ultimately
+    /// the user know signing routing is broken before the commit happens;
+    /// silently catching here would let a transient git-launch failure
+    /// downgrade a signed commit to unsigned, which is the worse failure
+    /// mode for a security feature.
     /// </summary>
     private async Task<bool> IsCommitSigningEnabledAsync(string repoPath, CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await _context.CommandRunner.RunAsync(
-                repoPath,
-                ["config", "--get", "--bool", "commit.gpgsign"],
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-            return result.Success
-                && string.Equals(result.StandardOutput.Trim(), "true", StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath,
+            ["config", "--get", "--bool", "commit.gpgsign"],
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return result.Success
+            && string.Equals(result.StandardOutput.Trim(), "true", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

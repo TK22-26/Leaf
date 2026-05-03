@@ -197,28 +197,11 @@ public partial class CommitInfo : ObservableObject
 
     /// <summary>
     /// Single-line human-readable summary of the signature status, used by
-    /// the graph badge tooltip and the commit detail view. Built lazily
-    /// because the strings only show on hover / focus, not in normal
-    /// rendering.
+    /// the graph badge tooltip and the commit detail view. Delegates to
+    /// <see cref="SignatureSummaryFormatter"/> so commit / tag / tooltip
+    /// surfaces all read the same string for the same status.
     /// </summary>
-    public string SignatureSummary => SignatureStatus switch
-    {
-        CommitSignatureStatus.Valid => string.IsNullOrWhiteSpace(SignerEmail)
-            ? "Verified signature"
-            : $"Verified signature by {SignerEmail}",
-        // %G? code E — most often: signing key isn't in the local keyring,
-        // so git can't verify the signature at all.
-        CommitSignatureStatus.UnknownKey => "Couldn't verify — signing key isn't in the local keyring",
-        // %G? code U — key IS in the keyring, but the trust web hasn't
-        // reached it (you haven't signed it yourself or trusted a path).
-        CommitSignatureStatus.UntrustedKey => "Signed — key is in the keyring but not yet trusted",
-        CommitSignatureStatus.Expired => "Signature has expired",
-        CommitSignatureStatus.ExpiredKey => "Signing key has expired",
-        CommitSignatureStatus.RevokedKey => "Signing key has been revoked",
-        CommitSignatureStatus.Bad => "Bad signature — content may have been tampered with",
-        CommitSignatureStatus.None => "No signature",
-        _ => "Unknown signature status",
-    };
+    public string SignatureSummary => SignatureSummaryFormatter.Format(SignatureStatus, SignerEmail);
 }
 
 /// <summary>

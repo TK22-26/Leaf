@@ -33,16 +33,7 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
     private string? _activeRepoPath;
     private GitConfigScope _scope = GitConfigScope.Global;
     private SigningToolAvailability? _availability;
-    private bool _suppressEvents;
-
-    // ComboBoxItem IsSelected="True" markers in the XAML cause WPF to
-    // fire SelectionChanged for ScopeCombo / MethodCombo while later
-    // child controls (MethodCombo itself, GpgKeyRow, SshKeyRow) are
-    // still being parsed. Any handler that touches them in that window
-    // hits a NullReferenceException. We block every handler until the
-    // control has fully Loaded — at which point every named child is
-    // accessible.
-    private bool _isLoaded;
+    private bool _suppressEvents = true;
 
     public CommitSigningSettingsControl()
     {
@@ -88,13 +79,23 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
         _gitService ??= Leaf.App.Services?.GetService<IGitService>();
         _commandRunner ??= Leaf.App.Services?.GetService<IGitCommandRunner>();
         _detector ??= Leaf.App.Services?.GetService<ISigningToolDetector>();
-        // Flip the guard regardless of service availability so the
-        // selection-changed handlers stop swallowing events even when
-        // the DI container isn't built (designer / standalone XAML
-        // preview). Handlers also check _gitService before issuing
-        // git operations, so a null service is harmless.
-        _isLoaded = true;
-        if (_gitService is null || _detector is null) return;
+
+        // Set the initial neutral selection under the suppress guard —
+        // no XAML IsSelected markers, so SelectionChanged never fires
+        // before this code has assigned every named child a baseline.
+        // ReloadConfigAsync inside InitializeAsync will overwrite these
+        // with the user's real state.
+        ScopeCombo.SelectedIndex = 0;
+        MethodCombo.SelectedIndex = 0;
+
+        if (_gitService is null || _detector is null)
+        {
+            // Designer / DI-less preview: leave _suppressEvents=true so
+            // the unbound panel is read-only rather than crashing on the
+            // first SelectionChanged. Handlers also early-return on a
+            // null _gitService, so this is belt-and-braces.
+            return;
+        }
 
         InitializeAsync().FireAndForget(nameof(InitializeAsync), isUserAction: true);
     }
@@ -107,22 +108,13 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
         // §5.8 — auto-detect the most relevant scope on open. If any of
         // the four signing keys is set in this repo's local config,
         // default Scope to "This repo" so the panel's initial state
-        // reflects what's actually in effect for the user. Without this,
-        // a per-repo setting is invisible until the user manually flips
-        // Scope, which the original report called out as confusing.
+        // reflects what's actually in effect for the user. Suppress is
+        // already on (set in the ctor), so this assignment is silent.
         if (!string.IsNullOrEmpty(_activeRepoPath)
             && await HasAnyLocalSigningConfigAsync().ConfigureAwait(true))
         {
-            _suppressEvents = true;
-            try
-            {
-                ScopeCombo.SelectedIndex = 1; // "This repo"
-                _scope = GitConfigScope.Local;
-            }
-            finally
-            {
-                _suppressEvents = false;
-            }
+            ScopeCombo.SelectedIndex = 1; // "This repo"
+            _scope = GitConfigScope.Local;
         }
 
         // Populate the GPG key list once. Re-pre-selection on scope
@@ -135,6 +127,10 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
         }
 
         await ReloadConfigAsync();
+
+        // Initial hydration done — release the guard so the user's
+        // interactions start writing to git config.
+        _suppressEvents = false;
     }
 
     /// <summary>
@@ -178,15 +174,37 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
     /// (<c>gpg.format</c>, <c>user.signingkey</c>, <c>commit.gpgsign</c>,
     /// <c>tag.gpgsign</c>) is set at the local level on the active repo.
     /// Drives the auto-detect of the initial Scope on panel open.
+    /// One <c>git config --local --list</c> spawn instead of four
+    /// independent <c>--get</c>s.
     /// </summary>
     private async Task<bool> HasAnyLocalSigningConfigAsync()
     {
-        foreach (var key in new[] { KeyFormat, KeySigningKey, KeyCommitSign, KeyTagSign })
+        if (_commandRunner is null || string.IsNullOrEmpty(_activeRepoPath)) return false;
+        try
         {
-            var value = await ReadStrictScopedConfigAsync(key, GitConfigScope.Local);
-            if (!string.IsNullOrWhiteSpace(value)) return true;
+            var result = await _commandRunner.RunAsync(_activeRepoPath, ["config", "--local", "--list"]);
+            if (!result.Success) return false;
+            // --list emits "key=value" per line. Match on "key=" so a
+            // signing-related substring living inside another key's
+            // value (a contrived case) doesn't trigger a false positive.
+            foreach (var line in result.StandardOutput.Split('\n'))
+            {
+                var trimmed = line.TrimEnd('\r');
+                if (trimmed.StartsWith(KeyFormat + "=", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith(KeySigningKey + "=", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith(KeyCommitSign + "=", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith(KeyTagSign + "=", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
-        return false;
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            Log.Warn("Signing", $"Local config probe failed: {ex.Message}");
+            return false;
+        }
     }
 
     private void UpdateToolingDisplay(SigningToolAvailability availability)
@@ -312,7 +330,7 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
 
     private void ScopeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_isLoaded || _suppressEvents) return;
+        if (_suppressEvents) return;
         _scope = (ScopeCombo.SelectedItem as ComboBoxItem)?.Tag as string == "Local"
             ? GitConfigScope.Local
             : GitConfigScope.Global;
@@ -321,7 +339,6 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
 
     private void MethodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_isLoaded) return;
         UpdateMethodVisibility();
         if (_suppressEvents) return;
 
@@ -364,7 +381,7 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
 
     private void GpgKeyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_isLoaded || _suppressEvents) return;
+        if (_suppressEvents) return;
         var key = (GpgKeyCombo.SelectedItem as GpgSecretKey)?.LongKeyId;
         WriteConfigSafeAsync(KeySigningKey, key).FireAndForget(nameof(GpgKeyCombo_SelectionChanged), isUserAction: true);
     }
@@ -396,7 +413,7 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
     /// </summary>
     private void CommitSshKeyPath()
     {
-        if (!_isLoaded || _suppressEvents) return;
+        if (_suppressEvents) return;
         var path = SshKeyPathTextBox.Text?.Trim() ?? string.Empty;
         WriteConfigSafeAsync(KeySigningKey, string.IsNullOrWhiteSpace(path) ? null : path)
             .FireAndForget(nameof(CommitSshKeyPath), isUserAction: true);
@@ -416,14 +433,14 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
 
     private void SignCommitsCheckBox_Click(object sender, RoutedEventArgs e)
     {
-        if (!_isLoaded || _suppressEvents) return;
+        if (_suppressEvents) return;
         var value = SignCommitsCheckBox.IsChecked == true ? "true" : null;
         WriteConfigSafeAsync(KeyCommitSign, value).FireAndForget(nameof(SignCommitsCheckBox_Click), isUserAction: true);
     }
 
     private void SignTagsCheckBox_Click(object sender, RoutedEventArgs e)
     {
-        if (!_isLoaded || _suppressEvents) return;
+        if (_suppressEvents) return;
         var value = SignTagsCheckBox.IsChecked == true ? "true" : null;
         WriteConfigSafeAsync(KeyTagSign, value).FireAndForget(nameof(SignTagsCheckBox_Click), isUserAction: true);
     }

@@ -75,27 +75,17 @@ public partial class TagInfo : ObservableObject
     public bool IsSigned => SignatureStatus != CommitSignatureStatus.None;
 
     /// <summary>
-    /// Single-line human-readable signature summary, mirrored from
-    /// <see cref="CommitInfo.SignatureSummary"/> so commits and tags
-    /// speak the same vocabulary in the UI.
+    /// Single-line human-readable signature summary, sharing wording with
+    /// <see cref="CommitInfo.SignatureSummary"/> via
+    /// <see cref="SignatureSummaryFormatter"/>. Unsigned tags surface
+    /// their kind ("Annotated tag" / "Lightweight tag") instead of "No
+    /// signature" — for a lightweight tag the user would otherwise see
+    /// a tooltip about the absence of a thing they didn't expect to be
+    /// there.
     /// </summary>
-    public string SignatureSummary => SignatureStatus switch
-    {
-        CommitSignatureStatus.Valid => string.IsNullOrWhiteSpace(SignerEmail)
-            ? "Verified signature"
-            : $"Verified signature by {SignerEmail}",
-        CommitSignatureStatus.UnknownKey => "Couldn't verify — signing key isn't in the local keyring",
-        CommitSignatureStatus.UntrustedKey => "Signed — key is in the keyring but not yet trusted",
-        CommitSignatureStatus.Expired => "Signature has expired",
-        CommitSignatureStatus.ExpiredKey => "Signing key has expired",
-        CommitSignatureStatus.RevokedKey => "Signing key has been revoked",
-        CommitSignatureStatus.Bad => "Bad signature — content may have been tampered with",
-        // Unsigned: surface the tag KIND instead of "No signature" — for
-        // a lightweight tag the user would otherwise see a tooltip about
-        // the absence of a thing they didn't expect to be there.
-        CommitSignatureStatus.None => IsAnnotated ? "Annotated tag" : "Lightweight tag",
-        _ => "Unknown signature status",
-    };
+    public string SignatureSummary => SignatureStatus == CommitSignatureStatus.None
+        ? (IsAnnotated ? "Annotated tag" : "Lightweight tag")
+        : SignatureSummaryFormatter.Format(SignatureStatus, SignerEmail);
 
     /// <summary>
     /// Parses the tag name as a semantic version.

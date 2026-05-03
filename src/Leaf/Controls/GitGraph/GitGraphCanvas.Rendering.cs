@@ -385,18 +385,8 @@ public partial class GitGraphCanvas
         var bx = x + offset * Math.Cos(SignatureBadgeAngleRadians);
         var by = y + offset * Math.Sin(SignatureBadgeAngleRadians);
 
-        var (fill, glyph) = status switch
-        {
-            CommitSignatureStatus.Valid       => (Color.FromRgb(0x2E, 0xA0, 0x43), ""), // CheckMark
-            CommitSignatureStatus.UnknownKey  => (Color.FromRgb(0xBF, 0x83, 0x00), ""), // Question
-            CommitSignatureStatus.UntrustedKey=> (Color.FromRgb(0xBF, 0x83, 0x00), ""), // Warning
-            CommitSignatureStatus.Expired     => (Color.FromRgb(0xBF, 0x83, 0x00), ""), // Recent (clock)
-            CommitSignatureStatus.ExpiredKey  => (Color.FromRgb(0xBF, 0x83, 0x00), ""),
-            CommitSignatureStatus.RevokedKey  => (Color.FromRgb(0xC8, 0x35, 0x35), ""), // Cancel
-            CommitSignatureStatus.Bad         => (Color.FromRgb(0xC8, 0x35, 0x35), ""), // ErrorBadge
-            _ => (Color.FromRgb(0x80, 0x80, 0x80), string.Empty),
-        };
-
+        var glyph = SignatureAppearance.GlyphFor(status);
+        var fill = SignatureAppearance.ColorFor(status);
         if (string.IsNullOrEmpty(glyph)) return;
 
         var fillBrush = new SolidColorBrush(fill);

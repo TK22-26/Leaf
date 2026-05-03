@@ -2,6 +2,7 @@ using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -75,47 +76,18 @@ public partial class TagDetailViewModel : ObservableObject
         : string.Empty;
 
     /// <summary>
-    /// Annotation message stripped of the trailing PGP signature block
-    /// when present — git stores the inline signature inside the tag's
-    /// raw object, but the user only wants to read the message above it.
+    /// Annotation message stripped of the trailing PGP / SSH signature
+    /// block — see <see cref="SignatureSummaryFormatter.StripSignatureBlock"/>.
     /// </summary>
-    public string MessageBody
-    {
-        get
-        {
-            var raw = Tag?.Message;
-            if (string.IsNullOrEmpty(raw)) return string.Empty;
-            var idx = raw.IndexOf("-----BEGIN PGP SIGNATURE-----", StringComparison.Ordinal);
-            if (idx < 0) idx = raw.IndexOf("-----BEGIN SSH SIGNATURE-----", StringComparison.Ordinal);
-            return idx > 0 ? raw[..idx].TrimEnd() : raw.TrimEnd();
-        }
-    }
+    public string MessageBody => SignatureSummaryFormatter.StripSignatureBlock(Tag?.Message);
 
-    /// <summary>Segoe Fluent Icons glyph for the signature badge — mirrors CommitDetailViewModel.SignatureBadgeGlyph.</summary>
-    public string SignatureBadgeGlyph => Tag?.SignatureStatus switch
-    {
-        CommitSignatureStatus.Valid => "",
-        CommitSignatureStatus.UnknownKey => "",
-        CommitSignatureStatus.UntrustedKey => "",
-        CommitSignatureStatus.Expired => "",
-        CommitSignatureStatus.ExpiredKey => "",
-        CommitSignatureStatus.RevokedKey => "",
-        CommitSignatureStatus.Bad => "",
-        _ => string.Empty,
-    };
+    /// <summary>Segoe Fluent Icons glyph for the signature badge — shared with the commit detail header and the graph.</summary>
+    public string SignatureBadgeGlyph =>
+        Tag is null ? string.Empty : SignatureAppearance.GlyphFor(Tag.SignatureStatus);
 
-    /// <summary>Brush for the signature glyph — same palette as CommitDetailViewModel.</summary>
-    public Brush SignatureBadgeBrush => Tag?.SignatureStatus switch
-    {
-        CommitSignatureStatus.Valid => SignatureBrushes.Green,
-        CommitSignatureStatus.UnknownKey => SignatureBrushes.Amber,
-        CommitSignatureStatus.UntrustedKey => SignatureBrushes.Amber,
-        CommitSignatureStatus.Expired => SignatureBrushes.Amber,
-        CommitSignatureStatus.ExpiredKey => SignatureBrushes.Amber,
-        CommitSignatureStatus.RevokedKey => SignatureBrushes.Red,
-        CommitSignatureStatus.Bad => SignatureBrushes.Red,
-        _ => SignatureBrushes.Neutral,
-    };
+    /// <summary>Brush for the signature glyph — shared palette.</summary>
+    public Brush SignatureBadgeBrush =>
+        SignatureAppearance.BrushFor(Tag?.SignatureStatus ?? CommitSignatureStatus.None);
 
     /// <summary>Multi-line tooltip for the signature row — summary + signer + fingerprint.</summary>
     public string SignatureFingerprintDisplay
@@ -151,15 +123,5 @@ public partial class TagDetailViewModel : ObservableObject
     {
         if (Tag is null) return;
         NavigateToCommit?.Invoke(Tag.TargetSha);
-    }
-
-    private static class SignatureBrushes
-    {
-        public static readonly Brush Green = Freeze(new SolidColorBrush(Color.FromRgb(0x2E, 0xA0, 0x43)));
-        public static readonly Brush Amber = Freeze(new SolidColorBrush(Color.FromRgb(0xBF, 0x83, 0x00)));
-        public static readonly Brush Red = Freeze(new SolidColorBrush(Color.FromRgb(0xC8, 0x35, 0x35)));
-        public static readonly Brush Neutral = Freeze(new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80)));
-
-        private static Brush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
     }
 }

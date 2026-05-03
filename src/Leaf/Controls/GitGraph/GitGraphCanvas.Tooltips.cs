@@ -73,7 +73,7 @@ public partial class GitGraphCanvas
 
         _signatureTooltipPanel!.Children.Clear();
         _signatureTooltipPanel.Children.Add(BuildSignatureLine(
-            FontWeights.SemiBold, 12, SummariseSignatureStatus(node.SignatureStatus)));
+            FontWeights.SemiBold, 12, SignatureSummaryFormatter.Format(node.SignatureStatus)));
 
         if (!string.IsNullOrWhiteSpace(node.SignerName) || !string.IsNullOrWhiteSpace(node.SignerEmail))
         {
@@ -218,7 +218,7 @@ public partial class GitGraphCanvas
         if (tag.IsSigned)
         {
             _tagTooltipPanel.Children.Add(BuildSignatureLine(
-                FontWeights.SemiBold, 11, SummariseSignatureStatus(tag.SignatureStatus)));
+                FontWeights.SemiBold, 11, SignatureSummaryFormatter.Format(tag.SignatureStatus)));
             if (!string.IsNullOrWhiteSpace(tag.SignerKeyFingerprint))
             {
                 _tagTooltipPanel.Children.Add(BuildSignatureLine(
@@ -241,15 +241,18 @@ public partial class GitGraphCanvas
 
     /// <summary>
     /// Return the first non-empty, non-comment line of a tag's annotation
-    /// message. Mirrors what the picker preview does for commit templates.
+    /// message, capped at 120 chars. Mirrors what the picker preview does
+    /// for commit templates. Uses the shared signature-block stripper so
+    /// "first line" doesn't accidentally fall onto the PGP block when the
+    /// message body is empty.
     /// </summary>
     private static string FirstMessageLine(string message)
     {
-        foreach (var line in message.Split('\n'))
+        var body = SignatureSummaryFormatter.StripSignatureBlock(message);
+        foreach (var line in body.Split('\n'))
         {
             var trimmed = line.TrimEnd('\r').Trim();
             if (string.IsNullOrEmpty(trimmed)) continue;
-            if (trimmed.StartsWith("-----BEGIN ", StringComparison.Ordinal)) break; // strip PGP block
             if (trimmed.StartsWith('#')) continue;
             return trimmed.Length > 120 ? trimmed[..120] + "…" : trimmed;
         }
@@ -269,18 +272,6 @@ public partial class GitGraphCanvas
         FontSize = size,
         FontWeight = weight,
         Margin = new Thickness(0, 1, 0, 1),
-    };
-
-    private static string SummariseSignatureStatus(CommitSignatureStatus s) => s switch
-    {
-        CommitSignatureStatus.Valid => "Verified signature",
-        CommitSignatureStatus.UnknownKey => "Couldn't verify — key not in local keyring",
-        CommitSignatureStatus.UntrustedKey => "Signed — key in keyring but not yet trusted",
-        CommitSignatureStatus.Expired => "Signed — signature expired",
-        CommitSignatureStatus.ExpiredKey => "Signed — signing key expired",
-        CommitSignatureStatus.RevokedKey => "Signed — signing key revoked",
-        CommitSignatureStatus.Bad => "Bad signature — content may be tampered",
-        _ => "Signature",
     };
 
     /// <summary>

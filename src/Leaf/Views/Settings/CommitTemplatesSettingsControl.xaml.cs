@@ -108,24 +108,14 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
 
     private void EnabledCheckBox_Click(object sender, RoutedEventArgs e)
     {
-        if (_suppressEnabledClick || _settingsService is null) return;
-        var newValue = EnabledCheckBox.IsChecked == true;
-
-        // Mutate the parent's in-memory copy so its Close-time save
-        // doesn't overwrite us. Without this, the parent dialog
-        // serialises its stale _settings on Close and the toggle
-        // appears to "not stick" across reopens.
+        if (_suppressEnabledClick) return;
+        // Mutate the dialog's in-memory AppSettings — that's the
+        // instance Close_Click serialises, and SaveSettings on this
+        // panel mirrors the toggle back into it as a final flush.
+        // No eager disk write: it would race other panels' unflushed
+        // edits and is redundant with the dialog's Close-time save.
         if (_parentSettings is not null)
-            _parentSettings.CommitTemplatesEnabled = newValue;
-
-        // Also persist immediately so the change survives a Cancel /
-        // window-X close path that the parent might add later. Reads
-        // a fresh AppSettings to avoid clobbering other panels' edits
-        // that haven't been mirrored back to the parent yet.
-        var fresh = _settingsService.LoadSettings();
-        if (fresh.CommitTemplatesEnabled == newValue) return;
-        fresh.CommitTemplatesEnabled = newValue;
-        _settingsService.SaveSettings(fresh);
+            _parentSettings.CommitTemplatesEnabled = EnabledCheckBox.IsChecked == true;
     }
 
     private void OnTemplatesChanged(object? sender, EventArgs e)
