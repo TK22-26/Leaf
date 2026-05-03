@@ -34,6 +34,15 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
     private SigningToolAvailability? _availability;
     private bool _suppressEvents;
 
+    // ComboBoxItem IsSelected="True" markers in the XAML cause WPF to
+    // fire SelectionChanged for ScopeCombo / MethodCombo while later
+    // child controls (MethodCombo itself, GpgKeyRow, SshKeyRow) are
+    // still being parsed. Any handler that touches them in that window
+    // hits a NullReferenceException. We block every handler until the
+    // control has fully Loaded — at which point every named child is
+    // accessible.
+    private bool _isLoaded;
+
     public CommitSigningSettingsControl()
     {
         InitializeComponent();
@@ -77,6 +86,12 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
     {
         _gitService ??= Leaf.App.Services?.GetService<IGitService>();
         _detector ??= Leaf.App.Services?.GetService<ISigningToolDetector>();
+        // Flip the guard regardless of service availability so the
+        // selection-changed handlers stop swallowing events even when
+        // the DI container isn't built (designer / standalone XAML
+        // preview). Handlers also check _gitService before issuing
+        // git operations, so a null service is harmless.
+        _isLoaded = true;
         if (_gitService is null || _detector is null) return;
 
         InitializeAsync().FireAndForget(nameof(InitializeAsync), isUserAction: true);
@@ -224,7 +239,7 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
 
     private void ScopeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppressEvents) return;
+        if (!_isLoaded || _suppressEvents) return;
         _scope = (ScopeCombo.SelectedItem as ComboBoxItem)?.Tag as string == "Local"
             ? GitConfigScope.Local
             : GitConfigScope.Global;
@@ -233,6 +248,7 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
 
     private void MethodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (!_isLoaded) return;
         UpdateMethodVisibility();
         if (_suppressEvents) return;
 
@@ -275,7 +291,7 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
 
     private void GpgKeyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppressEvents) return;
+        if (!_isLoaded || _suppressEvents) return;
         var key = (GpgKeyCombo.SelectedItem as GpgSecretKey)?.LongKeyId;
         WriteConfigSafeAsync(KeySigningKey, key).FireAndForget(nameof(GpgKeyCombo_SelectionChanged), isUserAction: true);
     }
@@ -307,7 +323,7 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
     /// </summary>
     private void CommitSshKeyPath()
     {
-        if (_suppressEvents) return;
+        if (!_isLoaded || _suppressEvents) return;
         var path = SshKeyPathTextBox.Text?.Trim() ?? string.Empty;
         WriteConfigSafeAsync(KeySigningKey, string.IsNullOrWhiteSpace(path) ? null : path)
             .FireAndForget(nameof(CommitSshKeyPath), isUserAction: true);
@@ -327,14 +343,14 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
 
     private void SignCommitsCheckBox_Click(object sender, RoutedEventArgs e)
     {
-        if (_suppressEvents) return;
+        if (!_isLoaded || _suppressEvents) return;
         var value = SignCommitsCheckBox.IsChecked == true ? "true" : null;
         WriteConfigSafeAsync(KeyCommitSign, value).FireAndForget(nameof(SignCommitsCheckBox_Click), isUserAction: true);
     }
 
     private void SignTagsCheckBox_Click(object sender, RoutedEventArgs e)
     {
-        if (_suppressEvents) return;
+        if (!_isLoaded || _suppressEvents) return;
         var value = SignTagsCheckBox.IsChecked == true ? "true" : null;
         WriteConfigSafeAsync(KeyTagSign, value).FireAndForget(nameof(SignTagsCheckBox_Click), isUserAction: true);
     }
