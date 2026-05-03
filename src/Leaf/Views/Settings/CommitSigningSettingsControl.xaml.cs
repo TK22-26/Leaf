@@ -28,6 +28,7 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
     private const string KeyTagSign = "tag.gpgsign";
 
     private IGitService? _gitService;
+    private IGitCommandRunner? _commandRunner;
     private ISigningToolDetector? _detector;
     private string? _activeRepoPath;
     private GitConfigScope _scope = GitConfigScope.Global;
@@ -85,6 +86,7 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _gitService ??= Leaf.App.Services?.GetService<IGitService>();
+        _commandRunner ??= Leaf.App.Services?.GetService<IGitCommandRunner>();
         _detector ??= Leaf.App.Services?.GetService<ISigningToolDetector>();
         // Flip the guard regardless of service availability so the
         // selection-changed handlers stop swallowing events even when
@@ -101,22 +103,90 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
     {
         _availability = await _detector!.DetectAsync();
         UpdateToolingDisplay(_availability);
-        await ReloadConfigAsync();
 
+        // §5.8 — auto-detect the most relevant scope on open. If any of
+        // the four signing keys is set in this repo's local config,
+        // default Scope to "This repo" so the panel's initial state
+        // reflects what's actually in effect for the user. Without this,
+        // a per-repo setting is invisible until the user manually flips
+        // Scope, which the original report called out as confusing.
+        if (!string.IsNullOrEmpty(_activeRepoPath)
+            && await HasAnyLocalSigningConfigAsync().ConfigureAwait(true))
+        {
+            _suppressEvents = true;
+            try
+            {
+                ScopeCombo.SelectedIndex = 1; // "This repo"
+                _scope = GitConfigScope.Local;
+            }
+            finally
+            {
+                _suppressEvents = false;
+            }
+        }
+
+        // Populate the GPG key list once. Re-pre-selection on scope
+        // switch is handled inside ReloadConfigAsync via the cached
+        // ItemsSource.
         if (_availability.GpgAvailable)
         {
             var keys = await _detector.ListGpgSecretKeysAsync();
             GpgKeyCombo.ItemsSource = keys;
-            // Pre-select the key matching the configured user.signingkey.
-            var configuredKey = await ReadConfigSafeAsync(KeySigningKey);
-            if (!string.IsNullOrWhiteSpace(configuredKey))
-            {
-                var match = keys.FirstOrDefault(k =>
-                    string.Equals(k.LongKeyId, configuredKey, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(k.Fingerprint, configuredKey, StringComparison.OrdinalIgnoreCase));
-                if (match is not null) GpgKeyCombo.SelectedItem = match;
-            }
         }
+
+        await ReloadConfigAsync();
+    }
+
+    /// <summary>
+    /// Run <c>git config --local --get</c> or <c>--global --get</c>
+    /// directly via the command runner. The shared
+    /// <see cref="IGitService.GetConfigAsync"/> for <see cref="GitConfigScope.Local"/>
+    /// reads with normal fall-through (local → global → system) which
+    /// hides per-scope visibility — fine for "what's in effect" but the
+    /// settings panel needs "what's actually set in THIS file" to make
+    /// auto-detect and pre-selection accurate.
+    /// </summary>
+    private async Task<string?> ReadStrictScopedConfigAsync(string key, GitConfigScope scope)
+    {
+        if (_commandRunner is null) return null;
+
+        var path = scope == GitConfigScope.Local
+            ? _activeRepoPath
+            : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(path)) return null;
+
+        var args = scope == GitConfigScope.Local
+            ? new[] { "config", "--local", "--get", key }
+            : new[] { "config", "--global", "--get", key };
+        try
+        {
+            var result = await _commandRunner.RunAsync(path, args);
+            // git config --get returns exit 1 when the key isn't set in
+            // the requested scope. Don't treat that as an error — it's
+            // exactly what we need to know.
+            return result.Success ? result.StandardOutput.Trim() : null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            Log.Warn("Signing", $"Strict scope read failed for '{key}' ({scope}): {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Probe whether any of the four signing-related keys
+    /// (<c>gpg.format</c>, <c>user.signingkey</c>, <c>commit.gpgsign</c>,
+    /// <c>tag.gpgsign</c>) is set at the local level on the active repo.
+    /// Drives the auto-detect of the initial Scope on panel open.
+    /// </summary>
+    private async Task<bool> HasAnyLocalSigningConfigAsync()
+    {
+        foreach (var key in new[] { KeyFormat, KeySigningKey, KeyCommitSign, KeyTagSign })
+        {
+            var value = await ReadStrictScopedConfigAsync(key, GitConfigScope.Local);
+            if (!string.IsNullOrWhiteSpace(value)) return true;
+        }
+        return false;
     }
 
     private void UpdateToolingDisplay(SigningToolAvailability availability)
@@ -140,15 +210,18 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
 
     /// <summary>
     /// Re-read the relevant git config keys for the current scope and
-    /// repo. Suppresses event handlers while writing the controls so
-    /// the load doesn't race the user's edits back into config.
+    /// repo. Uses strict <c>--local</c> / <c>--global</c> reads so the
+    /// panel always reflects what's actually set in the chosen scope's
+    /// file — not the fall-through value. Suppresses event handlers
+    /// while writing the controls so the load doesn't race the user's
+    /// edits back into config.
     /// </summary>
     private async Task ReloadConfigAsync()
     {
-        var format = await ReadConfigSafeAsync(KeyFormat);
-        var commitSign = await ReadConfigSafeAsync(KeyCommitSign);
-        var tagSign = await ReadConfigSafeAsync(KeyTagSign);
-        var key = await ReadConfigSafeAsync(KeySigningKey);
+        var format = await ReadStrictScopedConfigAsync(KeyFormat, _scope);
+        var commitSign = await ReadStrictScopedConfigAsync(KeyCommitSign, _scope);
+        var tagSign = await ReadStrictScopedConfigAsync(KeyTagSign, _scope);
+        var key = await ReadStrictScopedConfigAsync(KeySigningKey, _scope);
 
         _suppressEvents = true;
         try
@@ -177,6 +250,24 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
 
             SignCommitsCheckBox.IsChecked = ParseBool(commitSign);
             SignTagsCheckBox.IsChecked = ParseBool(tagSign);
+
+            // Re-pre-select the GPG key for whatever scope we're now
+            // showing. Done inside the suppress block so the
+            // SelectionChanged handler doesn't echo the read back as a
+            // spurious config write.
+            if (string.Equals(normalisedFormat, "openpgp", StringComparison.OrdinalIgnoreCase)
+                && GpgKeyCombo.ItemsSource is IEnumerable<GpgSecretKey> existingKeys
+                && !string.IsNullOrWhiteSpace(key))
+            {
+                var match = existingKeys.FirstOrDefault(k =>
+                    string.Equals(k.LongKeyId, key, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(k.Fingerprint, key, StringComparison.OrdinalIgnoreCase));
+                GpgKeyCombo.SelectedItem = match;
+            }
+            else
+            {
+                GpgKeyCombo.SelectedItem = null;
+            }
         }
         finally
         {
@@ -192,24 +283,6 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
             "true" or "1" or "yes" or "on" => true,
             _ => false,
         };
-    }
-
-    private async Task<string?> ReadConfigSafeAsync(string key)
-    {
-        if (_gitService is null) return null;
-        var path = _scope == GitConfigScope.Local
-            ? _activeRepoPath
-            : (Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        if (string.IsNullOrEmpty(path)) return null;
-        try
-        {
-            return await _gitService.GetConfigAsync(path, key, _scope);
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException)
-        {
-            Log.Warn("Signing", $"Could not read git config '{key}' ({_scope}): {ex.Message}");
-            return null;
-        }
     }
 
     private async Task WriteConfigSafeAsync(string key, string? value)
