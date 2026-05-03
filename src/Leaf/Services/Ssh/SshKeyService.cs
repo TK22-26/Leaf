@@ -114,10 +114,15 @@ public sealed class SshKeyService : ISshKeyService
             || output.Contains("\nHi ", StringComparison.Ordinal);
 
         // Try to extract the GitHub-style "Hi <username>!" identity from
-        // the greeting. Only lifts a pure-ASCII username — anything more
-        // ambitious risks misparsing a GitLab welcome line.
+        // the greeting. Match only at line start so a server MOTD like
+        // "...we'll respond. Hi there — please mail us." doesn't get
+        // parsed as the authenticated user.
         string? identity = null;
-        var hiMarker = output.IndexOf("Hi ", StringComparison.Ordinal);
+        int hiMarker = output.StartsWith("Hi ", StringComparison.Ordinal)
+            ? 0
+            : output.IndexOf("\nHi ", StringComparison.Ordinal) is var nlMarker && nlMarker >= 0
+                ? nlMarker + 1
+                : -1;
         if (hiMarker >= 0)
         {
             var slice = output[(hiMarker + 3)..];
@@ -133,10 +138,30 @@ public sealed class SshKeyService : ISshKeyService
         if (string.IsNullOrWhiteSpace(request.OutputPath))
             return new SshKeyGenerationResult(false, "Output path is required.", null);
 
+        // Canonicalise to an absolute path. A relative input like
+        // "id_ed25519" would otherwise produce an empty parent dir and
+        // crash `Directory.CreateDirectory("")` with ArgumentException.
+        // GetFullPath resolves against the current working directory —
+        // not ideal as a default, but better than throwing, and the
+        // dialog's Browse button always returns absolute anyway.
+        string outputPath;
+        try
+        {
+            outputPath = Path.GetFullPath(request.OutputPath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or PathTooLongException or NotSupportedException)
+        {
+            return new SshKeyGenerationResult(false, $"Invalid output path: {ex.Message}", null);
+        }
+        request = request with { OutputPath = outputPath };
+
         if (File.Exists(request.OutputPath) || File.Exists(request.OutputPath + ".pub"))
             return new SshKeyGenerationResult(false, "A key already exists at that path. Choose a different filename.", null);
 
-        var parentDir = Path.GetDirectoryName(request.OutputPath)!;
+        var parentDir = Path.GetDirectoryName(request.OutputPath);
+        if (string.IsNullOrEmpty(parentDir))
+            return new SshKeyGenerationResult(false, "Output path has no parent directory.", null);
+
         // When the user generates into ~/.ssh (the default), apply the
         // owner-only ACL via EnsureSshDirectoryCore; for other parents,
         // CreateDirectory is fine — those are the user's call.

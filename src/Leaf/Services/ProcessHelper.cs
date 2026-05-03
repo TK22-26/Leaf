@@ -35,7 +35,14 @@ internal static class ProcessHelper
     /// process's env block (null value removes the key) — used to set
     /// e.g. <c>SSH_ASKPASS</c> on ssh-add invocations without leaking
     /// the value into Leaf's own process. Returns <c>Spawned=false</c>
-    /// when the binary isn't on PATH or the operation was cancelled.
+    /// when the binary isn't on PATH.
+    ///
+    /// <para>Cancellation kills the underlying OS process (not just the
+    /// .NET <see cref="Process"/> handle) and propagates as
+    /// <see cref="OperationCanceledException"/>; callers downstream of
+    /// repo-switch / dialog-close need to distinguish "command failed"
+    /// from "user moved on", and Leaf's convention is that OCE always
+    /// surfaces.</para>
     /// </summary>
     public static async Task<Result> RunAsync(
         string exe,
@@ -43,19 +50,20 @@ internal static class ProcessHelper
         IReadOnlyDictionary<string, string?>? environmentOverrides = null,
         CancellationToken cancellationToken = default)
     {
+        Process? proc;
         try
         {
-            using var proc = StartCore(exe, args, environmentOverrides: environmentOverrides);
-            if (proc is null) return new Result(false, -1, string.Empty);
-            return await CaptureAsync(proc, cancellationToken).ConfigureAwait(false);
+            proc = StartCore(exe, args, environmentOverrides: environmentOverrides);
         }
         catch (Win32Exception)
         {
             return new Result(false, -1, string.Empty);
         }
-        catch (OperationCanceledException)
+        if (proc is null) return new Result(false, -1, string.Empty);
+        using (proc)
         {
-            return new Result(false, -1, string.Empty);
+            using var killOnCancel = RegisterKillOnCancel(proc, cancellationToken);
+            return await CaptureAsync(proc, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -73,10 +81,19 @@ internal static class ProcessHelper
         IReadOnlyDictionary<string, string?>? environmentOverrides = null,
         CancellationToken cancellationToken = default)
     {
+        Process? proc;
         try
         {
-            using var proc = StartCore(exe, args, redirectStdin: true, environmentOverrides: environmentOverrides);
-            if (proc is null) return new Result(false, -1, string.Empty);
+            proc = StartCore(exe, args, redirectStdin: true, environmentOverrides: environmentOverrides);
+        }
+        catch (Win32Exception)
+        {
+            return new Result(false, -1, string.Empty);
+        }
+        if (proc is null) return new Result(false, -1, string.Empty);
+        using (proc)
+        {
+            using var killOnCancel = RegisterKillOnCancel(proc, cancellationToken);
 
             await proc.StandardInput.WriteAsync(stdinText.AsMemory(), cancellationToken).ConfigureAwait(false);
             await proc.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -84,39 +101,52 @@ internal static class ProcessHelper
 
             return await CaptureAsync(proc, cancellationToken).ConfigureAwait(false);
         }
-        catch (Win32Exception)
-        {
-            return new Result(false, -1, string.Empty);
-        }
-        catch (OperationCanceledException)
-        {
-            return new Result(false, -1, string.Empty);
-        }
     }
 
     /// <summary>
     /// Spawn-and-wait probe. Used for "does this binary exist on PATH"
     /// checks where output isn't interesting. Suppresses
     /// <see cref="Win32Exception"/> (the only thing this method is
-    /// trying to detect) and returns false on cancellation.
+    /// trying to detect); cancellation kills the process and propagates
+    /// as <see cref="OperationCanceledException"/>.
     /// </summary>
     public static async Task<bool> CanSpawnAsync(string exe, IReadOnlyList<string> args, CancellationToken cancellationToken = default)
     {
+        Process? proc;
         try
         {
-            using var proc = StartCore(exe, args);
-            if (proc is null) return false;
-            await proc.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            return true;
+            proc = StartCore(exe, args);
         }
         catch (Win32Exception)
         {
             return false;
         }
-        catch (OperationCanceledException)
+        if (proc is null) return false;
+        using (proc)
         {
-            return false;
+            using var killOnCancel = RegisterKillOnCancel(proc, cancellationToken);
+            await proc.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            return true;
         }
+    }
+
+    /// <summary>
+    /// Wire <paramref name="cancellationToken"/> so that cancellation
+    /// kills <paramref name="proc"/> instead of leaving an orphan
+    /// running. The returned registration is disposed when the caller
+    /// exits its <c>using</c> scope, unhooking the kill if the process
+    /// already exited normally.
+    /// </summary>
+    private static CancellationTokenRegistration RegisterKillOnCancel(Process proc, CancellationToken cancellationToken)
+    {
+        if (!cancellationToken.CanBeCanceled) return default;
+        return cancellationToken.Register(static state =>
+        {
+            try { ((Process)state!).Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { /* already exited */ }
+            catch (System.NotSupportedException) { /* not supported on this OS */ }
+            catch (Win32Exception) { /* access denied / race with normal exit */ }
+        }, proc);
     }
 
     private static Process? StartCore(

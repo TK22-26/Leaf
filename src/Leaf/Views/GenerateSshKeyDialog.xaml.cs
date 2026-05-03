@@ -70,12 +70,15 @@ public partial class GenerateSshKeyDialog : Window
         if (!string.IsNullOrEmpty(current) && !LooksLikeCanonicalDefault(current)) return;
 
         var (algo, _) = ParseAlgorithmTag();
+        // DSA is intentionally absent — the algorithm combo doesn't
+        // expose it (OpenSSH dropped DSA generation in 7.0). If a
+        // future enum value were added we'd fall through to the Ed25519
+        // default rather than emit `id_<unknown>`.
         var filename = algo switch
         {
             SshKeyAlgorithm.Ed25519 => "id_ed25519",
             SshKeyAlgorithm.Rsa => "id_rsa",
             SshKeyAlgorithm.Ecdsa => "id_ecdsa",
-            SshKeyAlgorithm.Dsa => "id_dsa",
             _ => "id_ed25519",
         };
         PathBox.Text = Path.Combine(DefaultSshDir, filename);
@@ -84,7 +87,7 @@ public partial class GenerateSshKeyDialog : Window
     private static bool LooksLikeCanonicalDefault(string path)
     {
         var name = Path.GetFileName(path);
-        return name is "id_ed25519" or "id_rsa" or "id_ecdsa" or "id_dsa";
+        return name is "id_ed25519" or "id_rsa" or "id_ecdsa";
     }
 
     private (SshKeyAlgorithm Algorithm, int? Bits) ParseAlgorithmTag()
