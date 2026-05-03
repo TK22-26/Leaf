@@ -94,14 +94,15 @@ public partial class WorkingChangesViewModel : ObservableObject
     private bool _isAiAvailable;
 
     /// <summary>
-    /// §5.15 master toggle. When false, the commit panel hides the
-    /// templates icon button and the Ctrl+T shortcut becomes a no-op.
-    /// Stored templates are preserved either way. Read from
-    /// <see cref="AppSettings.CommitTemplatesEnabled"/> in
-    /// <see cref="RefreshCommitTemplatesEnabled"/> after settings close.
+    /// §5.15 master toggle. When false (the default — opt-in), the
+    /// commit panel hides the templates icon button and the Ctrl+T
+    /// shortcut becomes a no-op. Stored templates are preserved either
+    /// way. Read from <see cref="AppSettings.CommitTemplatesEnabled"/>
+    /// in <see cref="RefreshCommitTemplatesEnabled"/> after settings
+    /// close.
     /// </summary>
     [ObservableProperty]
-    private bool _isCommitTemplatesEnabled = true;
+    private bool _isCommitTemplatesEnabled;
 
     [ObservableProperty]
     private ObservableCollection<PathTreeNode> _unstagedTreeItems = [];

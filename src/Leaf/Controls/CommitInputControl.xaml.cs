@@ -158,14 +158,14 @@ public partial class CommitInputControl : UserControl
 
     // §5.15 master toggle. When false, the templates icon button + popup
     // are hidden and the Ctrl+T command becomes a no-op (the popup just
-    // never opens). True by default so existing users see no change
-    // until they explicitly toggle it off in Settings → Commit Templates.
+    // never opens). False by default — opt-in. Users flip it on under
+    // Settings → Commit Templates to surface the templates UI.
     public static readonly DependencyProperty IsTemplatesEnabledProperty =
         DependencyProperty.Register(
             nameof(IsTemplatesEnabled),
             typeof(bool),
             typeof(CommitInputControl),
-            new PropertyMetadata(true));
+            new PropertyMetadata(false));
 
     public CommitInputControl()
     {

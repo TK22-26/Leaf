@@ -313,8 +313,9 @@ public class AppSettings
     // button is hidden and the Ctrl+T shortcut is a no-op (the picker is
     // built but never shown). Lets users who don't want the feature get
     // it out of the way without losing their stored templates. Default
-    // true so existing users see no change.
-    public bool CommitTemplatesEnabled { get; set; } = true;
+    // false — opt-in. Users who want the feature flip it on under
+    // Settings → Commit Templates.
+    public bool CommitTemplatesEnabled { get; set; } = false;
 }
 
 /// <summary>
