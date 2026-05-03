@@ -157,7 +157,11 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
     private void OpenSshFolderButton_Click(object sender, RoutedEventArgs e)
     {
         var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh");
-        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        // EnsureSshDirectory applies the owner-only ACL on first
+        // creation — a plain Directory.CreateDirectory inherits the
+        // user-profile defaults, which include Users group entries
+        // that OpenSSH StrictModes rejects.
+        SshKeyService.EnsureSshDirectory();
         _fileSystemService?.OpenInExplorer(dir);
     }
 
@@ -286,12 +290,14 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
 
     private void AddHostButton_Click(object sender, RoutedEventArgs e)
     {
-        var row = new HostRow { HostPattern = "new-host" };
+        // In-memory only — the file is rewritten when the user clicks
+        // Save. Persisting here would put a half-built `Host new-host`
+        // stanza on disk that survives a Cancel-style dialog close.
+        var row = new HostRow { HostPattern = "new-host", IsDirty = true };
         _hosts.Add(row);
         HostsList.SelectedItem = row;
         HostPatternBox.Focus();
         HostPatternBox.SelectAll();
-        PersistConfigAsync().FireAndForget(nameof(PersistConfigAsync), isUserAction: true);
     }
 
     private void HostsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -392,7 +398,6 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
         _editingHost.IdentityFile = NullIfBlank(HostIdentityFileBox.Text);
         _editingHost.ProxyCommand = NullIfBlank(HostProxyCommandBox.Text);
         _editingHost.IsDirty = false;
-        _editingHost.RaiseChanged();
 
         PersistConfigAsync().FireAndForget(nameof(PersistConfigAsync), isUserAction: true);
     }
@@ -520,29 +525,84 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
         };
     }
 
+    /// <summary>
+    /// View-model row for one Host stanza. Implements
+    /// <see cref="System.ComponentModel.INotifyPropertyChanged"/> on every
+    /// displayed property so the ListBox's <c>HostPattern</c> /
+    /// <c>SubtitleDisplay</c> bindings refresh after an in-place edit
+    /// (without this, edits to HostName left the list rendering the
+    /// stale value).
+    /// </summary>
     private sealed class HostRow : System.ComponentModel.INotifyPropertyChanged
     {
-        public string HostPattern { get; set; } = string.Empty;
-        public string? HostName { get; set; }
-        public string? User { get; set; }
-        public int? Port { get; set; }
-        public string? IdentityFile { get; set; }
-        public string? ProxyCommand { get; set; }
-        public IReadOnlyList<SshConfigOption> ExtraOptions { get; set; } = [];
+        private string _hostPattern = string.Empty;
+        private string? _hostName;
+        private string? _user;
+        private int? _port;
+        private string? _identityFile;
+        private string? _proxyCommand;
+        private IReadOnlyList<SshConfigOption> _extraOptions = [];
+
+        public string HostPattern
+        {
+            get => _hostPattern;
+            set { if (_hostPattern == value) return; _hostPattern = value; Raise(nameof(HostPattern)); Raise(nameof(SubtitleDisplay)); }
+        }
+        public string? HostName
+        {
+            get => _hostName;
+            set { if (_hostName == value) return; _hostName = value; Raise(nameof(HostName)); Raise(nameof(SubtitleDisplay)); }
+        }
+        public string? User
+        {
+            get => _user;
+            set { if (_user == value) return; _user = value; Raise(nameof(User)); Raise(nameof(SubtitleDisplay)); }
+        }
+        public int? Port
+        {
+            get => _port;
+            set { if (_port == value) return; _port = value; Raise(nameof(Port)); Raise(nameof(SubtitleDisplay)); }
+        }
+        public string? IdentityFile
+        {
+            get => _identityFile;
+            set { if (_identityFile == value) return; _identityFile = value; Raise(nameof(IdentityFile)); }
+        }
+        public string? ProxyCommand
+        {
+            get => _proxyCommand;
+            set { if (_proxyCommand == value) return; _proxyCommand = value; Raise(nameof(ProxyCommand)); }
+        }
+        public IReadOnlyList<SshConfigOption> ExtraOptions
+        {
+            get => _extraOptions;
+            set { _extraOptions = value; Raise(nameof(ExtraOptions)); }
+        }
         public bool IsDirty { get; set; }
 
-        public string Display => string.IsNullOrEmpty(HostName) || HostName == HostPattern
-            ? HostPattern
-            : $"{HostPattern}  →  {HostName}";
-
-        public override string ToString() => Display;
+        /// <summary>Secondary line under the host pattern in the list — "user@host:port" shape, fields skipped when blank.</summary>
+        public string SubtitleDisplay
+        {
+            get
+            {
+                var parts = new List<string>(3);
+                if (!string.IsNullOrWhiteSpace(_hostName) && _hostName != _hostPattern)
+                {
+                    parts.Add(string.IsNullOrWhiteSpace(_user) ? _hostName : $"{_user}@{_hostName}");
+                }
+                else if (!string.IsNullOrWhiteSpace(_user))
+                {
+                    parts.Add(_user);
+                }
+                if (_port is { } p && p != 22) parts.Add($":{p}");
+                return string.Join(string.Empty, parts);
+            }
+        }
 
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
-        public void RaiseChanged()
-        {
-            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Display)));
-        }
+        private void Raise(string property) =>
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(property));
 
         public static HostRow From(SshConfigEntry e) => new()
         {

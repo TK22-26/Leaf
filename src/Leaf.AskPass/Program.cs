@@ -4,9 +4,10 @@ using Leaf.Services;
 namespace Leaf.AskPass;
 
 /// <summary>
-/// GIT_ASKPASS helper invoked by git when credentials are needed.
+/// Dual-purpose ASKPASS helper invoked by git (GIT_ASKPASS) and OpenSSH
+/// (SSH_ASKPASS) when credentials or a private-key passphrase are needed.
 ///
-/// Contract (from <c>gitcredentials(7)</c>):
+/// <para><b>Git contract</b> (from <c>gitcredentials(7)</c>):</para>
 ///   - Git sets GIT_ASKPASS to this executable's full path.
 ///   - Git invokes us with the prompt text as argv[0], e.g.
 ///       "Username for 'https://github.com':"  or
@@ -14,32 +15,62 @@ namespace Leaf.AskPass;
 ///   - Helper writes the answer to stdout (one line, trailing newline OK)
 ///     and exits 0. Any non-zero exit aborts authentication.
 ///
-/// Leaf's contract (env vars set by <c>GitCommandRunner</c> when a credential
-/// context is supplied):
-///   - LEAF_CREDENTIAL_KEY — required. The key under which the PAT is stored
-///     in Windows Credential Manager (e.g. "GitHub:microsoft").
-///   - LEAF_CREDENTIAL_USERNAME — optional. Username to return for Username
-///     prompts. Defaults to "x-access-token" which is accepted by GitHub and
-///     Azure DevOps when the PAT is used as password.
+/// <para><b>SSH contract</b> (from <c>ssh-add(1)</c> / <c>readpass.c</c>):</para>
+///   - ssh-add invokes us with the prompt text as argv[0], e.g.
+///       "Enter passphrase for /Users/me/.ssh/id_ed25519:"
+///   - Helper writes the passphrase to stdout (one line) and exits 0.
 ///
-/// The helper fails loudly (exit 1, diagnostic on stderr) when the key is
-/// missing or no PAT is found — per Leaf's Engineering Software Policy, we
-/// do not silently substitute fallback credentials.
+/// <para><b>Leaf's contracts</b> (env vars set by Leaf when invoking the
+/// underlying tool):</para>
+/// <list type="bullet">
+///   <item><c>LEAF_SSH_PASSPHRASE</c> — set when Leaf is loading a key
+///   into ssh-agent. Takes precedence over the git path; presence of
+///   this variable means "this is an SSH passphrase request, not a git
+///   credential request". The value is the passphrase verbatim.
+///   The variable is only on the ssh-add child process's environment —
+///   not on Leaf's, not on the user's shell.</item>
+///   <item><c>LEAF_CREDENTIAL_KEY</c> — required for the git path.
+///   The key under which the PAT is stored in Windows Credential Manager
+///   (e.g. "GitHub:microsoft").</item>
+///   <item><c>LEAF_CREDENTIAL_USERNAME</c> — optional. Username to return
+///   for Username prompts. Defaults to "x-access-token" which is accepted
+///   by GitHub and Azure DevOps when the PAT is used as password.</item>
+/// </list>
+///
+/// The helper fails loudly (exit 1, diagnostic on stderr) when the
+/// expected environment variable is missing — per Leaf's Engineering
+/// Software Policy, we do not silently substitute fallback credentials.
 /// </summary>
 internal static class Program
 {
     private const string CredentialKeyEnv = "LEAF_CREDENTIAL_KEY";
     private const string UsernameEnv = "LEAF_CREDENTIAL_USERNAME";
+    private const string SshPassphraseEnv = "LEAF_SSH_PASSPHRASE";
     private const string DefaultUsername = "x-access-token";
 
     private static int Main(string[] args)
     {
         var prompt = args.Length > 0 ? args[0] : string.Empty;
+
+        // SSH path takes precedence — when LEAF_SSH_PASSPHRASE is set,
+        // ssh-add invoked us via SSH_ASKPASS and is waiting on the key
+        // passphrase. Empty string is a valid value (key has no
+        // passphrase): ssh-add accepts it and loads the key directly.
+        var sshPassphrase = Environment.GetEnvironmentVariable(SshPassphraseEnv);
+        if (sshPassphrase is not null)
+        {
+            Debug.WriteLine($"[AskPass] SSH passphrase prompt: '{Truncate(prompt, 60)}'");
+            Console.Out.WriteLine(sshPassphrase);
+            return 0;
+        }
+
         var key = Environment.GetEnvironmentVariable(CredentialKeyEnv);
 
         if (string.IsNullOrEmpty(key))
         {
-            Console.Error.WriteLine($"Leaf.AskPass: {CredentialKeyEnv} environment variable is not set.");
+            Console.Error.WriteLine(
+                $"Leaf.AskPass: neither {SshPassphraseEnv} nor {CredentialKeyEnv} is set. "
+                + "This helper is only meant to be invoked by Leaf.");
             return 1;
         }
 
@@ -80,4 +111,7 @@ internal static class Program
         // git does not actually localise, but we stay defensive.
         return prompt.StartsWith("Username", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static string Truncate(string value, int max) =>
+        value.Length <= max ? value : value[..max] + "…";
 }

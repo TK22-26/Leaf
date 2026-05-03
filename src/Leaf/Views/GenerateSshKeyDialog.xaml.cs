@@ -21,10 +21,12 @@ public partial class GenerateSshKeyDialog : Window
     public GenerateSshKeyDialog()
     {
         InitializeComponent();
-        // Seed the path with a sensible default for the initial algorithm
-        // (Ed25519 → id_ed25519) and let AlgorithmCombo_SelectionChanged
-        // keep it in sync if the user changes algorithm.
-        UpdateDefaultPathForAlgorithm();
+        // Set the initial algorithm in code rather than via XAML
+        // IsSelected="True" — that marker fires SelectionChanged during
+        // parse, before later children (PathBox, etc.) are constructed.
+        // Setting the index after InitializeComponent triggers the same
+        // handler with every named child already in place.
+        AlgorithmCombo.SelectedIndex = 0;
         UpdateValidation();
     }
 
@@ -61,7 +63,6 @@ public partial class GenerateSshKeyDialog : Window
 
     private void UpdateDefaultPathForAlgorithm()
     {
-        if (PathBox is null) return;
         // Don't overwrite a path the user has already customised. The
         // simplest signal: PathBox is empty or matches one of our
         // canonical defaults. Anything else means "user typed it".
@@ -102,8 +103,6 @@ public partial class GenerateSshKeyDialog : Window
 
     private void UpdateValidation()
     {
-        if (PathBox is null || ValidationText is null || GenerateButton is null) return;
-
         string? error = null;
         var path = PathBox.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrEmpty(path))

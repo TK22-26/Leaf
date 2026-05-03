@@ -148,38 +148,12 @@ public sealed class SigningToolDetector : ISigningToolDetector
     }
 
     /// <summary>
-    /// Cheap "does this binary spawn?" probe. We don't care about the
-    /// output — only whether <see cref="Process.Start(ProcessStartInfo)"/>
-    /// can find and launch it. Run with <c>--version</c> so the process
-    /// exits quickly; binaries without that flag still spawn long enough
-    /// to clear the Win32Exception path.
+    /// Cheap "does this binary spawn?" probe via the shared
+    /// <see cref="ProcessHelper"/>. Uses <c>--version</c> as the cheapest
+    /// args that exit immediately for both gpg and ssh-keygen.
     /// </summary>
-    private static async Task<bool> CanSpawnAsync(string exe, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo(exe)
-            {
-                CreateNoWindow = true,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            psi.ArgumentList.Add("--version");
-            using var proc = Process.Start(psi);
-            if (proc == null) return false;
-            await proc.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            return true;
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            return false; // exe not on PATH
-        }
-        catch (OperationCanceledException)
-        {
-            return false;
-        }
-    }
+    private static Task<bool> CanSpawnAsync(string exe, CancellationToken cancellationToken) =>
+        ProcessHelper.CanSpawnAsync(exe, ["--version"], cancellationToken);
 
     /// <summary>
     /// Parse the colon-separated machine-readable format from
@@ -247,27 +221,17 @@ public sealed class SigningToolDetector : ISigningToolDetector
         return keys;
     }
 
+    /// <summary>
+    /// Run <paramref name="exe"/> via <see cref="ProcessHelper"/> and
+    /// return the (exit-zero, combined-output) tuple this class's
+    /// callers expect. Stdout-only would be cleaner for gpg parsing,
+    /// but combined output is harmless because gpg writes its keylist
+    /// to stdout and only diagnostics to stderr — and the parser
+    /// ignores anything outside its expected colon-record shape.
+    /// </summary>
     private static async Task<(bool Success, string Output)> RunCapturingAsync(string exe, string[] args, CancellationToken cancellationToken)
     {
-        try
-        {
-            var psi = new ProcessStartInfo(exe)
-            {
-                CreateNoWindow = true,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            foreach (var a in args) psi.ArgumentList.Add(a);
-            using var proc = Process.Start(psi);
-            if (proc == null) return (false, string.Empty);
-
-            var stdoutTask = proc.StandardOutput.ReadToEndAsync(cancellationToken);
-            await proc.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            var stdout = await stdoutTask.ConfigureAwait(false);
-            return (proc.ExitCode == 0, stdout);
-        }
-        catch (System.ComponentModel.Win32Exception) { return (false, string.Empty); }
-        catch (OperationCanceledException) { return (false, string.Empty); }
+        var result = await ProcessHelper.RunAsync(exe, args, cancellationToken).ConfigureAwait(false);
+        return (result.Spawned && result.ExitCode == 0, result.Output);
     }
 }

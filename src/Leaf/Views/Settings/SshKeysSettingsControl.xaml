@@ -211,8 +211,13 @@
                     <TextBlock Text="Pick a known host or type a custom target (e.g. git@bitbucket.org). Leaf runs `ssh -T -o BatchMode=yes` and shows the response so you can see exactly what the server said."
                                FontSize="11"
                                TextWrapping="Wrap"
-                               Margin="0,0,0,8"
+                               Margin="0,0,0,4"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock Text="First-time hosts are added to ~/.ssh/known_hosts automatically (StrictHostKeyChecking=accept-new) — same behaviour as `git clone` over SSH."
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="120"/>
@@ -304,7 +309,20 @@
                                  Grid.Column="0"
                                  MinHeight="160"
                                  SelectionChanged="HostsList_SelectionChanged"
-                                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"/>
+                                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding HostPattern}"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="{Binding SubtitleDisplay}"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
 
                         <Border Grid.Column="1"
                                 Padding="12,0,0,0">

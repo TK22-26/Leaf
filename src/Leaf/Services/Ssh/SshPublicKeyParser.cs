@@ -49,21 +49,24 @@ internal static class SshPublicKeyParser
     }
 
     /// <summary>
-    /// Map an OpenSSH key-type token (the first field of a <c>.pub</c>
-    /// file) onto our enum. The list mirrors what ssh-keygen produces;
-    /// older types like <c>ssh-dss</c> map to <see cref="SshKeyAlgorithm.Dsa"/>
-    /// even though we don't generate them — listing them correctly lets
-    /// users see legacy keys still on disk.
+    /// Map any OpenSSH key-type token onto our enum. Accepts both the
+    /// long-form tokens that appear in <c>.pub</c> files
+    /// (<c>ssh-ed25519</c>, <c>ecdsa-sha2-nistp256</c>) and the short
+    /// upper-case forms ssh-add appends in parentheses (<c>ED25519</c>,
+    /// <c>RSA</c>, <c>ECDSA</c>, <c>DSA</c>). Returns
+    /// <see cref="SshKeyAlgorithm.Unknown"/> for anything else — callers
+    /// treat that as "best-effort listing" rather than an error.
     /// </summary>
     public static SshKeyAlgorithm MapAlgorithm(string token) => token switch
     {
-        "ssh-ed25519" or "ssh-ed25519-cert-v01@openssh.com" => SshKeyAlgorithm.Ed25519,
-        "ssh-rsa" or "rsa-sha2-256" or "rsa-sha2-512" or "ssh-rsa-cert-v01@openssh.com" => SshKeyAlgorithm.Rsa,
+        "ssh-ed25519" or "ssh-ed25519-cert-v01@openssh.com" or "ED25519" => SshKeyAlgorithm.Ed25519,
+        "ssh-rsa" or "rsa-sha2-256" or "rsa-sha2-512" or "ssh-rsa-cert-v01@openssh.com" or "RSA" => SshKeyAlgorithm.Rsa,
         "ecdsa-sha2-nistp256" or "ecdsa-sha2-nistp384" or "ecdsa-sha2-nistp521"
             or "ecdsa-sha2-nistp256-cert-v01@openssh.com"
             or "ecdsa-sha2-nistp384-cert-v01@openssh.com"
-            or "ecdsa-sha2-nistp521-cert-v01@openssh.com" => SshKeyAlgorithm.Ecdsa,
-        "ssh-dss" or "ssh-dss-cert-v01@openssh.com" => SshKeyAlgorithm.Dsa,
+            or "ecdsa-sha2-nistp521-cert-v01@openssh.com"
+            or "ECDSA" => SshKeyAlgorithm.Ecdsa,
+        "ssh-dss" or "ssh-dss-cert-v01@openssh.com" or "DSA" => SshKeyAlgorithm.Dsa,
         _ => SshKeyAlgorithm.Unknown,
     };
 

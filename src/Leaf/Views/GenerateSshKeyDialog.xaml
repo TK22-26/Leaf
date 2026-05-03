@@ -44,7 +44,7 @@
             <ComboBox Grid.Column="1"
                       x:Name="AlgorithmCombo"
                       SelectionChanged="AlgorithmCombo_SelectionChanged">
-                <ComboBoxItem Content="ED25519 (recommended)" Tag="Ed25519" IsSelected="True"/>
+                <ComboBoxItem Content="ED25519 (recommended)" Tag="Ed25519"/>
                 <ComboBoxItem Content="RSA 4096" Tag="Rsa-4096"/>
                 <ComboBoxItem Content="RSA 3072" Tag="Rsa-3072"/>
                 <ComboBoxItem Content="ECDSA 384" Tag="Ecdsa-384"/>
