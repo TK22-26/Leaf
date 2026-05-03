@@ -23,6 +23,17 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
     private bool _suppressDirty;
     private bool _subscribed;
 
+    private SettingsService? _settingsService;
+    private bool _suppressEnabledClick;
+
+    // The parent SettingsDialog hands us its in-memory AppSettings via
+    // LoadSettings on construction and saves THAT same instance on
+    // Close. If we write to a fresh LoadSettings() + SaveSettings() pair
+    // here, the parent's Close path overwrites our value with its
+    // pre-toggle copy. Cache the parent's instance so toggle clicks
+    // mutate the same object the dialog will persist.
+    private AppSettings? _parentSettings;
+
     public CommitTemplatesSettingsControl()
     {
         InitializeComponent();
@@ -34,11 +45,24 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _service ??= Leaf.App.Services?.GetService<ICommitTemplateService>();
+        _settingsService ??= Leaf.App.Services?.GetService<SettingsService>();
         if (_service is null) return;
         if (!_subscribed)
         {
             _service.TemplatesChanged += OnTemplatesChanged;
             _subscribed = true;
+        }
+        // Hydration of the master toggle is the parent dialog's job via
+        // LoadSettings(AppSettings, ...). When this control's Loaded
+        // fires before the parent gets a chance to call LoadSettings
+        // (uncommon but possible during XAML init order), fall back to
+        // a fresh disk read so the checkbox doesn't render stuck on
+        // its default-true state.
+        if (_parentSettings is null && _settingsService is not null)
+        {
+            _suppressEnabledClick = true;
+            try { EnabledCheckBox.IsChecked = _settingsService.LoadSettings().CommitTemplatesEnabled; }
+            finally { _suppressEnabledClick = false; }
         }
         Reload();
     }
@@ -58,16 +82,50 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
 
     public void LoadSettings(AppSettings settings, CredentialService credentialService)
     {
-        // Nothing to load eagerly — Reload pulls fresh from the service
-        // when the section is shown. Settings dialog calls SaveSettings
-        // on Close; commit-template CRUD is already persisted as the
-        // user clicks New/Delete/edit, so SaveSettings has nothing to do.
+        // Cache the parent's instance so EnabledCheckBox_Click mutates
+        // the object the SettingsDialog will save on Close. The toggle
+        // ALSO immediately writes to disk so a Cancel-style close path
+        // doesn't lose the change — but since parent always saves its
+        // _settings on Close, we have to mutate that one too.
+        _parentSettings = settings;
+
+        _suppressEnabledClick = true;
+        try { EnabledCheckBox.IsChecked = settings.CommitTemplatesEnabled; }
+        finally { _suppressEnabledClick = false; }
     }
 
     public void SaveSettings(AppSettings settings, CredentialService credentialService)
     {
         // Last-chance flush of pending edits — see OnUnloaded above.
         CommitEditorChanges();
+        // Mirror the toggle into the dialog's settings copy. The parent
+        // dialog calls _settingsService.SaveSettings(_settings) right
+        // after this, so a final write here guarantees the toggle is
+        // persisted even if a future change to the click handler stops
+        // doing its own immediate save.
+        settings.CommitTemplatesEnabled = EnabledCheckBox.IsChecked == true;
+    }
+
+    private void EnabledCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (_suppressEnabledClick || _settingsService is null) return;
+        var newValue = EnabledCheckBox.IsChecked == true;
+
+        // Mutate the parent's in-memory copy so its Close-time save
+        // doesn't overwrite us. Without this, the parent dialog
+        // serialises its stale _settings on Close and the toggle
+        // appears to "not stick" across reopens.
+        if (_parentSettings is not null)
+            _parentSettings.CommitTemplatesEnabled = newValue;
+
+        // Also persist immediately so the change survives a Cancel /
+        // window-X close path that the parent might add later. Reads
+        // a fresh AppSettings to avoid clobbering other panels' edits
+        // that haven't been mirrored back to the parent yet.
+        var fresh = _settingsService.LoadSettings();
+        if (fresh.CommitTemplatesEnabled == newValue) return;
+        fresh.CommitTemplatesEnabled = newValue;
+        _settingsService.SaveSettings(fresh);
     }
 
     private void OnTemplatesChanged(object? sender, EventArgs e)

@@ -13,6 +13,22 @@
                    TextWrapping="Wrap"
                    Margin="0,0,0,16"/>
 
+        <!-- Master toggle — hides the templates icon button in the
+             commit panel + makes Ctrl+T a no-op. Stored templates are
+             preserved either way; flipping the toggle off doesn't lose
+             any user-created entries. -->
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16"
+                Margin="0,0,0,16">
+            <CheckBox x:Name="EnabledCheckBox"
+                      Content="Show the templates button in the commit panel"
+                      ToolTip="When off, the templates icon next to the AI fill button is hidden and Ctrl+T is a no-op. Your stored templates are preserved."
+                      Click="EnabledCheckBox_Click"/>
+        </Border>
+
         <!-- Two-column layout: list on the left, editor on the right -->
         <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"

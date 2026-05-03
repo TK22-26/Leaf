@@ -101,7 +101,10 @@
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center">
-                        <!-- Commit template picker button (§5.15) -->
+                        <!-- Commit template picker button (§5.15) — hidden
+                             when the master toggle is off. The Ctrl+T
+                             command also no-ops at the code-behind level
+                             so a stray keystroke doesn't pop the picker. -->
                         <Button x:Name="TemplatesButton"
                                 Width="32"
                                 Height="32"
@@ -109,7 +112,8 @@
                                 Background="Transparent"
                                 BorderBrush="Transparent"
                                 ToolTip="Insert commit template (Ctrl+T)"
-                                Click="TemplatesButton_Click">
+                                Click="TemplatesButton_Click"
+                                Visibility="{Binding IsTemplatesEnabled, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}">
                             <ic:SymbolIcon Symbol="DocumentText" FontSize="14"/>
                         </Button>
                         <Popup x:Name="TemplatesPopup"

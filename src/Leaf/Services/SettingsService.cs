@@ -308,6 +308,13 @@ public class AppSettings
     // currently the active commit input. Persisted across launches so a
     // user who opts in stays opted in.
     public bool UseConventionalCommitsForm { get; set; } = false;
+
+    // §5.15 master toggle. When false, the commit panel's templates icon
+    // button is hidden and the Ctrl+T shortcut is a no-op (the picker is
+    // built but never shown). Lets users who don't want the feature get
+    // it out of the way without losing their stored templates. Default
+    // true so existing users see no change.
+    public bool CommitTemplatesEnabled { get; set; } = true;
 }
 
 /// <summary>
