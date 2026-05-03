@@ -123,14 +123,16 @@ public class GitService : IGitService
                 commit.SignerKeyFingerprint = data.Fingerprint;
             }
         }
-        catch (OperationCanceledException)
-        {
-            // Caller cancelled — let CallerExitTokenException flow up by
-            // not rethrowing here; the partial enrichment that did make
-            // it onto commits stays.
-        }
         catch (Exception ex) when (ex is System.IO.IOException or InvalidOperationException)
         {
+            // Failure modes: process spawn fails, git binary missing,
+            // unexpected exit code with parseable stderr. None of these
+            // should fail the parent history fetch — the user still wants
+            // to see commits, just without badges. Caller cancellation
+            // (OperationCanceledException) is intentionally not caught
+            // here so the cancellation contract propagates up: callers
+            // that observe a token cancel expect their await to throw,
+            // not silently complete with a partial result.
             Log.Warn("Signing", $"Signature enrichment failed for {repoPath}: {ex.Message}");
         }
     }
