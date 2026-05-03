@@ -86,18 +86,25 @@
                 Padding="16"
                 Margin="0,0,0,16">
             <StackPanel>
-                <Grid Margin="0,0,0,12">
+                <TextBlock Text="Signing"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,12"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+
+                <!-- Scope row — labelled like Method / Key so all three
+                     ComboBoxes share a column and align at the same X. -->
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Signing"
-                               FontWeight="SemiBold"
+                    <TextBlock Text="Scope"
                                VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                     <ComboBox x:Name="ScopeCombo"
                               Grid.Column="1"
-                              Width="140"
+                              Width="380"
+                              HorizontalAlignment="Left"
                               SelectionChanged="ScopeCombo_SelectionChanged"
                               ToolTip="Choose whether these settings apply globally or only to the current repository.">
                         <ComboBoxItem Content="Global" Tag="Global" IsSelected="True"/>
@@ -115,7 +122,7 @@
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                     <ComboBox x:Name="MethodCombo"
                               Grid.Column="1"
-                              MaxWidth="220"
+                              Width="380"
                               HorizontalAlignment="Left"
                               SelectionChanged="MethodCombo_SelectionChanged">
                         <ComboBoxItem Content="None — no signing" Tag="None" IsSelected="True"/>
@@ -137,8 +144,8 @@
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                     <ComboBox x:Name="GpgKeyCombo"
                               Grid.Column="1"
-                              MaxWidth="380"
-                              HorizontalAlignment="Stretch"
+                              Width="380"
+                              HorizontalAlignment="Left"
                               SelectionChanged="GpgKeyCombo_SelectionChanged"
                               ToolTip="GPG secret keys available on this machine. The selected key id is written to user.signingkey.">
                         <ComboBox.ItemTemplate>
@@ -156,30 +163,32 @@
                     </ComboBox>
                 </Grid>
 
-                <!-- SSH key path -->
+                <!-- SSH key path. Width on the TextBox + a left-aligned
+                     Browse button keep the input pinned to the same X
+                     as the other rows' value columns. -->
                 <Grid x:Name="SshKeyRow"
                       Margin="0,0,0,8"
                       Visibility="Collapsed">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="120"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="Key file"
                                VerticalAlignment="Center"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                    <TextBox x:Name="SshKeyPathTextBox"
-                             Grid.Column="1"
-                             FontFamily="Consolas, Cascadia Mono"
-                             FontSize="11"
-                             ToolTip="Absolute path to the SSH public key (typically ~/.ssh/id_ed25519.pub) or its private key counterpart, written to user.signingkey."
-                             LostFocus="SshKeyPathTextBox_LostFocus"
-                             KeyDown="SshKeyPathTextBox_KeyDown"/>
-                    <Button Grid.Column="2"
-                            Margin="6,0,0,0"
-                            Padding="8,2"
-                            Content="Browse…"
-                            Click="BrowseSshKey_Click"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <TextBox x:Name="SshKeyPathTextBox"
+                                 Width="380"
+                                 FontFamily="Consolas, Cascadia Mono"
+                                 FontSize="11"
+                                 ToolTip="Absolute path to the SSH public key (typically ~/.ssh/id_ed25519.pub) or its private key counterpart, written to user.signingkey."
+                                 LostFocus="SshKeyPathTextBox_LostFocus"
+                                 KeyDown="SshKeyPathTextBox_KeyDown"/>
+                        <Button Margin="6,0,0,0"
+                                Padding="8,2"
+                                Content="Browse…"
+                                Click="BrowseSshKey_Click"/>
+                    </StackPanel>
                 </Grid>
 
                 <CheckBox x:Name="SignCommitsCheckBox"
