@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 
 namespace Leaf.Services.Signing;
@@ -9,6 +10,7 @@ public sealed class SigningToolDetector : ISigningToolDetector
     private readonly object _lock = new();
     private SigningToolAvailability? _cachedAvailability;
     private IReadOnlyList<GpgSecretKey>? _cachedGpgKeys;
+    private string? _cachedGpgPath;
 
     public async Task<SigningToolAvailability> DetectAsync(CancellationToken cancellationToken = default)
     {
@@ -17,21 +19,34 @@ public sealed class SigningToolDetector : ISigningToolDetector
             if (_cachedAvailability is not null) return _cachedAvailability;
         }
 
-        var gpg = await ProbeAsync("gpg", "--version", cancellationToken).ConfigureAwait(false);
-        var ssh = await ProbeAsync("ssh-keygen", "-V", cancellationToken).ConfigureAwait(false);
+        var gpgPath = await ResolveToolPathAsync("gpg", "gpg.exe", cancellationToken).ConfigureAwait(false);
+        var sshKeygenPath = await ResolveToolPathAsync("ssh-keygen", "ssh-keygen.exe", cancellationToken).ConfigureAwait(false);
 
-        // ssh-keygen -V is the closest "is this installed?" check that
-        // doesn't require a key argument. Modern OpenSSH responds with a
-        // usage error on stderr but exits non-zero — both behaviours
-        // confirm the binary exists. We treat any output (stdout OR
-        // stderr) as proof of installation.
+        // Prove gpg is real by reading its --version (cheap, also gives us
+        // a value to display). ssh-keygen has no version flag; existence
+        // alone is the signal — there's nothing further to extract.
+        string? gpgVersion = null;
+        if (gpgPath is not null)
+        {
+            var (ok, output) = await RunCapturingAsync(gpgPath, ["--version"], cancellationToken).ConfigureAwait(false);
+            if (ok)
+                gpgVersion = output.Split('\n').FirstOrDefault()?.Trim();
+        }
+
         var availability = new SigningToolAvailability(
-            GpgAvailable: gpg.Found,
-            GpgVersion: gpg.FirstLine,
-            SshAvailable: ssh.Found,
-            SshVersion: ssh.FirstLine);
+            GpgAvailable: gpgPath is not null,
+            GpgVersion: gpgVersion,
+            SshAvailable: sshKeygenPath is not null,
+            // ssh-keygen has no --version; "OpenSSH" is the user-meaningful
+            // label and the only useful version string would require parsing
+            // ssh-keygen's help output, which isn't worth the regex.
+            SshVersion: sshKeygenPath is not null ? "OpenSSH ssh-keygen" : null);
 
-        lock (_lock) _cachedAvailability = availability;
+        lock (_lock)
+        {
+            _cachedAvailability = availability;
+            _cachedGpgPath = gpgPath;
+        }
         return availability;
     }
 
@@ -42,15 +57,18 @@ public sealed class SigningToolDetector : ISigningToolDetector
             if (_cachedGpgKeys is not null) return _cachedGpgKeys;
         }
 
-        var availability = await DetectAsync(cancellationToken).ConfigureAwait(false);
-        if (!availability.GpgAvailable)
+        await DetectAsync(cancellationToken).ConfigureAwait(false);
+
+        string? gpgPath;
+        lock (_lock) gpgPath = _cachedGpgPath;
+        if (gpgPath is null)
         {
             lock (_lock) _cachedGpgKeys = [];
             return [];
         }
 
         var (success, output) = await RunCapturingAsync(
-            "gpg",
+            gpgPath,
             ["--list-secret-keys", "--keyid-format", "LONG", "--with-colons"],
             cancellationToken).ConfigureAwait(false);
         if (!success)
@@ -62,6 +80,105 @@ public sealed class SigningToolDetector : ISigningToolDetector
         var keys = ParseGpgColonOutput(output);
         lock (_lock) _cachedGpgKeys = keys;
         return keys;
+    }
+
+    /// <summary>
+    /// Locate a signing tool. Tries plain PATH first (Gpg4win users, or
+    /// anyone who's added the binary to PATH explicitly). Falls back to
+    /// the Git for Windows install root via <c>git --exec-path</c>, since
+    /// Git ships its own gpg / ssh-keygen at a fixed relative path from
+    /// there but doesn't add that directory to the user's PATH.
+    /// </summary>
+    /// <returns>Resolved absolute path or just the command name (when PATH lookup works), or null when truly missing.</returns>
+    private static async Task<string?> ResolveToolPathAsync(string command, string windowsExe, CancellationToken cancellationToken)
+    {
+        // 1. PATH lookup. The cheapest probe — if it works, we're done.
+        if (await CanSpawnAsync(command, cancellationToken).ConfigureAwait(false))
+            return command;
+
+        // 2. Git for Windows bundled binary. This is the case the audit
+        //    plan §5.8 expects: most Windows users run Git for Windows,
+        //    its installer puts git.exe on PATH but NOT the bundled
+        //    usr/bin (which has gpg, ssh-keygen, ssh, etc.).
+        var gitInstallDir = await FindGitInstallDirAsync(cancellationToken).ConfigureAwait(false);
+        if (gitInstallDir is not null)
+        {
+            var bundled = Path.Combine(gitInstallDir, "usr", "bin", windowsExe);
+            if (File.Exists(bundled)) return bundled;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Discover the Git for Windows install root by asking git itself
+    /// for its libexec path and walking up. <c>git --exec-path</c> on
+    /// Windows returns something like
+    /// <c>C:/Program Files/Git/mingw64/libexec/git-core</c>; the install
+    /// root is three levels above that. Returns null if git can't be
+    /// spawned or the layout doesn't match — we never assume a path
+    /// that doesn't actually contain the bundled binaries.
+    /// </summary>
+    private static async Task<string?> FindGitInstallDirAsync(CancellationToken cancellationToken)
+    {
+        var (ok, output) = await RunCapturingAsync("git", ["--exec-path"], cancellationToken).ConfigureAwait(false);
+        if (!ok) return null;
+        var execPath = output.Trim();
+        if (string.IsNullOrEmpty(execPath) || !Directory.Exists(execPath)) return null;
+
+        // libexec/git-core/.. → libexec
+        // libexec/.. → mingw64 (or mingw32 on 32-bit installs)
+        // mingw64/.. → install root
+        var current = execPath;
+        for (var i = 0; i < 3; i++)
+        {
+            var parent = Path.GetDirectoryName(current);
+            if (string.IsNullOrEmpty(parent)) return null;
+            current = parent;
+        }
+        // Sanity check: a Git for Windows install root has both `cmd` and
+        // `usr` directories. Without this a quirky non-Git binary returning
+        // some random path from --exec-path could trick us.
+        if (Directory.Exists(Path.Combine(current, "cmd"))
+            && Directory.Exists(Path.Combine(current, "usr")))
+        {
+            return current;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Cheap "does this binary spawn?" probe. We don't care about the
+    /// output — only whether <see cref="Process.Start(ProcessStartInfo)"/>
+    /// can find and launch it. Run with <c>--version</c> so the process
+    /// exits quickly; binaries without that flag still spawn long enough
+    /// to clear the Win32Exception path.
+    /// </summary>
+    private static async Task<bool> CanSpawnAsync(string exe, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(exe)
+            {
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            psi.ArgumentList.Add("--version");
+            using var proc = Process.Start(psi);
+            if (proc == null) return false;
+            await proc.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return false; // exe not on PATH
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -128,49 +245,6 @@ public sealed class SigningToolDetector : ISigningToolDetector
                 currentFingerprint ?? string.Empty));
         }
         return keys;
-    }
-
-    /// <summary>
-    /// Run a command and capture (stdout + stderr). Returns whether the
-    /// process started at all — we use this for both "is it installed"
-    /// (any output is positive) and "what's the output" (parser callers
-    /// inspect the captured string).
-    /// </summary>
-    private static async Task<(bool Found, string FirstLine)> ProbeAsync(string exe, string args, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo(exe, args)
-            {
-                CreateNoWindow = true,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            using var proc = Process.Start(psi);
-            if (proc == null) return (false, string.Empty);
-
-            await proc.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            var stdout = await proc.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-            var stderr = await proc.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-
-            // Any text output is proof the binary exists. ssh-keygen prints
-            // its usage on stderr with no -V handling, but the binary is
-            // installed — that's what we want to know.
-            var combined = string.IsNullOrEmpty(stdout) ? stderr : stdout;
-            var firstLine = combined.Split('\n').FirstOrDefault()?.Trim() ?? string.Empty;
-            return (combined.Length > 0, firstLine);
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            // The exe wasn't found on PATH — the most common "not
-            // installed" signal on Windows.
-            return (false, string.Empty);
-        }
-        catch (OperationCanceledException)
-        {
-            return (false, string.Empty);
-        }
     }
 
     private static async Task<(bool Success, string Output)> RunCapturingAsync(string exe, string[] args, CancellationToken cancellationToken)
