@@ -231,7 +231,7 @@ public sealed class SigningToolDetector : ISigningToolDetector
     /// </summary>
     private static async Task<(bool Success, string Output)> RunCapturingAsync(string exe, string[] args, CancellationToken cancellationToken)
     {
-        var result = await ProcessHelper.RunAsync(exe, args, cancellationToken).ConfigureAwait(false);
+        var result = await ProcessHelper.RunAsync(exe, args, cancellationToken: cancellationToken).ConfigureAwait(false);
         return (result.Spawned && result.ExitCode == 0, result.Output);
     }
 }

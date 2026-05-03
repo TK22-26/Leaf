@@ -30,18 +30,22 @@ internal static class ProcessHelper
 
     /// <summary>
     /// Run <paramref name="exe"/> with the given args, capture stdout
-    /// and stderr, return the combined output and exit code. Returns
-    /// <c>Spawned=false</c> when the binary isn't on PATH or the
-    /// operation was cancelled.
+    /// and stderr, return the combined output and exit code.
+    /// <paramref name="environmentOverrides"/> patches the child
+    /// process's env block (null value removes the key) — used to set
+    /// e.g. <c>SSH_ASKPASS</c> on ssh-add invocations without leaking
+    /// the value into Leaf's own process. Returns <c>Spawned=false</c>
+    /// when the binary isn't on PATH or the operation was cancelled.
     /// </summary>
     public static async Task<Result> RunAsync(
         string exe,
         IReadOnlyList<string> args,
+        IReadOnlyDictionary<string, string?>? environmentOverrides = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            using var proc = StartCore(exe, args);
+            using var proc = StartCore(exe, args, environmentOverrides: environmentOverrides);
             if (proc is null) return new Result(false, -1, string.Empty);
             return await CaptureAsync(proc, cancellationToken).ConfigureAwait(false);
         }
@@ -57,9 +61,10 @@ internal static class ProcessHelper
 
     /// <summary>
     /// Same as <see cref="RunAsync"/> but pipes <paramref name="stdinText"/>
-    /// to the process's stdin and adds optional environment overrides
-    /// (used to defeat <c>SSH_ASKPASS</c> / <c>DISPLAY</c> heuristics
-    /// that would otherwise spawn a GUI prompt under WPF).
+    /// to the process's stdin. Use this only when the child genuinely
+    /// reads stdin (e.g. <c>git commit -F -</c>); for env-only callers
+    /// prefer <see cref="RunAsync"/>'s <c>environmentOverrides</c>
+    /// parameter to avoid the cost of an unused stdin pipe.
     /// </summary>
     public static async Task<Result> RunWithStdinAsync(
         string exe,

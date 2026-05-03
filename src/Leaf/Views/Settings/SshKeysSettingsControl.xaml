@@ -337,8 +337,7 @@
                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                     <TextBox Grid.Column="1"
                                              x:Name="HostPatternBox"
-                                             ToolTip="Pattern matched against the hostname you ssh to (e.g. github.com, *.internal, work-github)."
-                                             TextChanged="HostField_Changed"/>
+                                             ToolTip="Pattern matched against the hostname you ssh to (e.g. github.com, *.internal, work-github)."/>
                                 </Grid>
                                 <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
@@ -350,8 +349,7 @@
                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                     <TextBox Grid.Column="1"
                                              x:Name="HostNameBox"
-                                             ToolTip="The actual hostname to connect to."
-                                             TextChanged="HostField_Changed"/>
+                                             ToolTip="The actual hostname to connect to."/>
                                 </Grid>
                                 <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
@@ -362,8 +360,7 @@
                                                VerticalAlignment="Center"
                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                     <TextBox Grid.Column="1"
-                                             x:Name="HostUserBox"
-                                             TextChanged="HostField_Changed"/>
+                                             x:Name="HostUserBox"/>
                                 </Grid>
                                 <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
@@ -376,8 +373,7 @@
                                     <TextBox Grid.Column="1"
                                              x:Name="HostPortBox"
                                              MaxLength="5"
-                                             ToolTip="Defaults to 22 when empty."
-                                             TextChanged="HostField_Changed"/>
+                                             ToolTip="Defaults to 22 when empty."/>
                                 </Grid>
                                 <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
@@ -391,8 +387,7 @@
                                     <TextBox Grid.Column="1"
                                              x:Name="HostIdentityFileBox"
                                              FontFamily="Consolas, Cascadia Mono"
-                                             FontSize="11"
-                                             TextChanged="HostField_Changed"/>
+                                             FontSize="11"/>
                                     <Button Grid.Column="2"
                                             Content="Browse…"
                                             Margin="6,0,0,0"
@@ -410,8 +405,7 @@
                                     <TextBox Grid.Column="1"
                                              x:Name="HostProxyCommandBox"
                                              FontFamily="Consolas, Cascadia Mono"
-                                             FontSize="11"
-                                             TextChanged="HostField_Changed"/>
+                                             FontSize="11"/>
                                 </Grid>
 
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">

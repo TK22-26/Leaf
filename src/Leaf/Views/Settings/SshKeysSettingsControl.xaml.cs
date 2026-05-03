@@ -28,7 +28,6 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
     private readonly ObservableCollection<HostRow> _hosts = [];
     private readonly ObservableCollection<AgentKeyRow> _agentKeys = [];
 
-    private bool _suppressHostFieldChanges;
     private HostRow? _editingHost;
 
     public SshKeysSettingsControl()
@@ -161,7 +160,7 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
         // creation — a plain Directory.CreateDirectory inherits the
         // user-profile defaults, which include Users group entries
         // that OpenSSH StrictModes rejects.
-        SshKeyService.EnsureSshDirectory();
+        _sshService?.EnsureSshDirectory();
         _fileSystemService?.OpenInExplorer(dir);
     }
 
@@ -293,7 +292,7 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
         // In-memory only — the file is rewritten when the user clicks
         // Save. Persisting here would put a half-built `Host new-host`
         // stanza on disk that survives a Cancel-style dialog close.
-        var row = new HostRow { HostPattern = "new-host", IsDirty = true };
+        var row = new HostRow { HostPattern = "new-host" };
         _hosts.Add(row);
         HostsList.SelectedItem = row;
         HostPatternBox.Focus();
@@ -309,42 +308,28 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
     private void ApplyHostToEditor(HostRow? row)
     {
         _editingHost = row;
-        _suppressHostFieldChanges = true;
-        try
+        HostEditor.IsEnabled = row is not null;
+        if (row is null)
         {
-            HostEditor.IsEnabled = row is not null;
-            if (row is null)
-            {
-                HostPatternBox.Clear();
-                HostNameBox.Clear();
-                HostUserBox.Clear();
-                HostPortBox.Clear();
-                HostIdentityFileBox.Clear();
-                HostProxyCommandBox.Clear();
-                ExtraOptionsText.Text = string.Empty;
-                return;
-            }
-            HostPatternBox.Text = row.HostPattern;
-            HostNameBox.Text = row.HostName ?? string.Empty;
-            HostUserBox.Text = row.User ?? string.Empty;
-            HostPortBox.Text = row.Port?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
-            HostIdentityFileBox.Text = row.IdentityFile ?? string.Empty;
-            HostProxyCommandBox.Text = row.ProxyCommand ?? string.Empty;
-            ExtraOptionsText.Text = row.ExtraOptions.Count == 0
-                ? string.Empty
-                : "Other options preserved verbatim:\n"
-                  + string.Join("\n", row.ExtraOptions.Select(o => $"    {o.Key} {o.Value}"));
+            HostPatternBox.Clear();
+            HostNameBox.Clear();
+            HostUserBox.Clear();
+            HostPortBox.Clear();
+            HostIdentityFileBox.Clear();
+            HostProxyCommandBox.Clear();
+            ExtraOptionsText.Text = string.Empty;
+            return;
         }
-        finally
-        {
-            _suppressHostFieldChanges = false;
-        }
-    }
-
-    private void HostField_Changed(object sender, TextChangedEventArgs e)
-    {
-        if (_suppressHostFieldChanges || _editingHost is null) return;
-        _editingHost.IsDirty = true;
+        HostPatternBox.Text = row.HostPattern;
+        HostNameBox.Text = row.HostName ?? string.Empty;
+        HostUserBox.Text = row.User ?? string.Empty;
+        HostPortBox.Text = row.Port?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        HostIdentityFileBox.Text = row.IdentityFile ?? string.Empty;
+        HostProxyCommandBox.Text = row.ProxyCommand ?? string.Empty;
+        ExtraOptionsText.Text = row.ExtraOptions.Count == 0
+            ? string.Empty
+            : "Other options preserved verbatim:\n"
+              + string.Join("\n", row.ExtraOptions.Select(o => $"    {o.Key} {o.Value}"));
     }
 
     private void BrowseIdentityFile_Click(object sender, RoutedEventArgs e)
@@ -397,7 +382,6 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
         _editingHost.Port = port;
         _editingHost.IdentityFile = NullIfBlank(HostIdentityFileBox.Text);
         _editingHost.ProxyCommand = NullIfBlank(HostProxyCommandBox.Text);
-        _editingHost.IsDirty = false;
 
         PersistConfigAsync().FireAndForget(nameof(PersistConfigAsync), isUserAction: true);
     }
@@ -578,24 +562,36 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
             get => _extraOptions;
             set { _extraOptions = value; Raise(nameof(ExtraOptions)); }
         }
-        public bool IsDirty { get; set; }
 
-        /// <summary>Secondary line under the host pattern in the list — "user@host:port" shape, fields skipped when blank.</summary>
+        /// <summary>
+        /// Secondary line under the host pattern in the list — the
+        /// "what does this stanza actually resolve to" view. Shape is
+        /// <c>user@host:port</c>, with fields skipped when blank.
+        /// Always includes the hostname when set (even when it matches
+        /// the pattern), so the row reads <c>git@github.com</c> rather
+        /// than just <c>git</c> for the canonical "Host github.com /
+        /// HostName github.com / User git" stanza.
+        /// </summary>
         public string SubtitleDisplay
         {
             get
             {
-                var parts = new List<string>(3);
-                if (!string.IsNullOrWhiteSpace(_hostName) && _hostName != _hostPattern)
+                var hostToken = !string.IsNullOrWhiteSpace(_hostName) ? _hostName : null;
+                var userToken = !string.IsNullOrWhiteSpace(_user) ? _user : null;
+                if (hostToken is null && userToken is null && _port is null) return string.Empty;
+
+                var head = (userToken, hostToken) switch
                 {
-                    parts.Add(string.IsNullOrWhiteSpace(_user) ? _hostName : $"{_user}@{_hostName}");
-                }
-                else if (!string.IsNullOrWhiteSpace(_user))
-                {
-                    parts.Add(_user);
-                }
-                if (_port is { } p && p != 22) parts.Add($":{p}");
-                return string.Join(string.Empty, parts);
+                    (not null, not null) => $"{userToken}@{hostToken}",
+                    (not null, null) => userToken!,
+                    (null, not null) => hostToken!,
+                    _ => string.Empty,
+                };
+
+                if (_port is { } p && p != 22)
+                    head = head.Length > 0 ? $"{head}:{p}" : $":{p}";
+
+                return head;
             }
         }
 

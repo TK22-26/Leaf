@@ -91,4 +91,29 @@ public class SshPublicKeyParserTests
         SshPublicKeyParser.MapAlgorithm("ssh-rsa-cert-v01@openssh.com").Should().Be(SshKeyAlgorithm.Rsa);
         SshPublicKeyParser.MapAlgorithm("ecdsa-sha2-nistp256-cert-v01@openssh.com").Should().Be(SshKeyAlgorithm.Ecdsa);
     }
+
+    [Theory]
+    [InlineData("ED25519", SshKeyAlgorithm.Ed25519)]
+    [InlineData("RSA", SshKeyAlgorithm.Rsa)]
+    [InlineData("ECDSA", SshKeyAlgorithm.Ecdsa)]
+    [InlineData("DSA", SshKeyAlgorithm.Dsa)]
+    public void MapAlgorithm_HandlesAgentShortForms(string token, SshKeyAlgorithm expected)
+    {
+        // ssh-add appends the upper-case algorithm in parentheses on
+        // each fingerprint line — `4096 SHA256:abc me@host (RSA)`. The
+        // mapper must recognise both these short forms and the long-
+        // form tokens .pub files use; this is the regression net for
+        // that union.
+        SshPublicKeyParser.MapAlgorithm(token).Should().Be(expected);
+    }
+
+    [Fact]
+    public void MapAlgorithm_RejectsLowercaseShortForms()
+    {
+        // ssh-add only emits upper-case; lowercase shouldn't be
+        // accidentally accepted because it would mask a future
+        // regression where the agent output format changed.
+        SshPublicKeyParser.MapAlgorithm("ed25519").Should().Be(SshKeyAlgorithm.Unknown);
+        SshPublicKeyParser.MapAlgorithm("rsa").Should().Be(SshKeyAlgorithm.Unknown);
+    }
 }

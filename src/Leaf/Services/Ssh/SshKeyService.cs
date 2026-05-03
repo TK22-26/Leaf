@@ -59,15 +59,13 @@ public sealed class SshKeyService : ISshKeyService
             var fingerprint = string.Empty;
             int? bits = null;
             var fingerprintComment = commentFromFile;
-            var (ok, output) = await RunCapturingAsync("ssh-keygen", ["-l", "-f", pubPath], cancellationToken).ConfigureAwait(false);
-            if (ok)
+            var probe = await ProcessHelper.RunAsync("ssh-keygen", ["-l", "-f", pubPath], cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (probe.Spawned && probe.ExitCode == 0
+                && SshPublicKeyParser.TryParseFingerprintLine(probe.Output, out var parsedBits, out var parsedFp, out var parsedComment))
             {
-                if (SshPublicKeyParser.TryParseFingerprintLine(output, out var parsedBits, out var parsedFp, out var parsedComment))
-                {
-                    bits = parsedBits;
-                    fingerprint = parsedFp;
-                    if (!string.IsNullOrWhiteSpace(parsedComment)) fingerprintComment = parsedComment;
-                }
+                bits = parsedBits;
+                fingerprint = parsedFp;
+                if (!string.IsNullOrWhiteSpace(parsedComment)) fingerprintComment = parsedComment;
             }
 
             var privatePath = StripPubExtension(pubPath);
@@ -97,10 +95,11 @@ public sealed class SshKeyService : ISshKeyService
         // -o BatchMode=yes refuses to fall back to password prompts.
         // -o StrictHostKeyChecking=accept-new auto-trusts unknown hosts on first contact.
         // -o ConnectTimeout=10 keeps the test from hanging indefinitely.
-        var (_, output) = await RunCapturingBothStreamsAsync(
+        var probe = await ProcessHelper.RunAsync(
             "ssh",
             ["-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10", sshTarget],
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        var output = probe.Output;
 
         var authenticated =
             output.Contains("successfully authenticated", StringComparison.OrdinalIgnoreCase)
@@ -134,10 +133,10 @@ public sealed class SshKeyService : ISshKeyService
 
         var parentDir = Path.GetDirectoryName(request.OutputPath)!;
         // When the user generates into ~/.ssh (the default), apply the
-        // owner-only ACL via EnsureSshDirectory; for other parents,
+        // owner-only ACL via EnsureSshDirectoryCore; for other parents,
         // CreateDirectory is fine — those are the user's call.
         if (string.Equals(Path.GetFullPath(parentDir), Path.GetFullPath(SshDirectory), StringComparison.OrdinalIgnoreCase))
-            EnsureSshDirectory();
+            EnsureSshDirectoryCore();
         else
             Directory.CreateDirectory(parentDir);
 
@@ -160,10 +159,12 @@ public sealed class SshKeyService : ISshKeyService
             args.AddRange(["-b", bits.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
         }
 
-        var (ok, output) = await RunCapturingBothStreamsAsync("ssh-keygen", args.ToArray(), cancellationToken).ConfigureAwait(false);
-        if (!ok)
+        var probe = await ProcessHelper.RunAsync("ssh-keygen", args.ToArray(), cancellationToken: cancellationToken).ConfigureAwait(false);
+        // ssh-keygen exits 0 on success and writes the random-art header
+        // to stderr. Any non-zero / non-spawn outcome is a real failure.
+        if (!probe.Spawned || probe.ExitCode != 0)
         {
-            var message = string.IsNullOrWhiteSpace(output) ? "ssh-keygen failed." : output.Trim();
+            var message = string.IsNullOrWhiteSpace(probe.Output) ? "ssh-keygen failed." : probe.Output.Trim();
             return new SshKeyGenerationResult(false, message, null);
         }
 
@@ -186,7 +187,7 @@ public sealed class SshKeyService : ISshKeyService
 
     public async Task WriteSshConfigAsync(IReadOnlyList<SshConfigEntry> entries, CancellationToken cancellationToken = default)
     {
-        EnsureSshDirectory();
+        EnsureSshDirectoryCore();
 
         // Preserve preamble + Match tail from the existing file. The
         // editor only modifies Host stanzas, so re-using the leading
@@ -215,12 +216,11 @@ public sealed class SshKeyService : ISshKeyService
         // ssh-add -l with -E sha256 so the fingerprints match
         // ssh-keygen's default. Exit 1 means "no keys"; exit 2 means
         // "agent not running" — caller distinguishes via DetectToolingAsync.
-        var (success, exitCode, output) = await RunCapturingWithExitAsync("ssh-add", ["-l", "-E", "sha256"], cancellationToken).ConfigureAwait(false);
-        if (!success || exitCode == 2) return [];
-        if (exitCode == 1) return []; // "The agent has no identities."
+        var probe = await ProcessHelper.RunAsync("ssh-add", ["-l", "-E", "sha256"], cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!probe.Spawned || probe.ExitCode == 2 || probe.ExitCode == 1) return [];
 
         var keys = new List<SshAgentKey>();
-        foreach (var rawLine in output.Split('\n'))
+        foreach (var rawLine in probe.Output.Split('\n'))
         {
             var line = rawLine.Trim();
             if (line.Length == 0) continue;
@@ -256,7 +256,7 @@ public sealed class SshKeyService : ISshKeyService
         // SSH_ASKPASS_REQUIRE=force makes ssh-add ALWAYS use the
         // helper, even when a tty is technically available. Without
         // that, OpenSSH 8.4+ would prefer the (non-existent) tty.
-        var askPass = ResolveAskPassPath();
+        var askPass = AskPassPathResolver.ExecutablePath;
         if (askPass is null)
         {
             return new SshAgentOperationResult(false,
@@ -275,16 +275,13 @@ public sealed class SshKeyService : ISshKeyService
             ["LEAF_SSH_PASSPHRASE"] = passphrase ?? string.Empty,
         };
 
-        // RunWithStdinAsync is the only ProcessHelper variant that
-        // accepts environment overrides — pass empty stdin since the
-        // real channel is the env var ssh-add's child (Leaf.AskPass)
-        // will read.
-        var result = await ProcessHelper.RunWithStdinAsync(
+        // ssh-add doesn't read stdin under SSH_ASKPASS_REQUIRE=force —
+        // env-only path is enough, no need to allocate the stdin pipe.
+        var result = await ProcessHelper.RunAsync(
             "ssh-add",
             new[] { privateKeyPath },
-            stdinText: string.Empty,
-            environmentOverrides: environmentOverrides,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+            environmentOverrides,
+            cancellationToken).ConfigureAwait(false);
 
         if (!result.Spawned || result.ExitCode != 0)
         {
@@ -295,25 +292,15 @@ public sealed class SshKeyService : ISshKeyService
         return new SshAgentOperationResult(true, result.Output.Trim());
     }
 
-    /// <summary>
-    /// Locate <c>Leaf.AskPass.exe</c> next to the running assembly.
-    /// Returns null when the helper is missing — caller surfaces that
-    /// as a user-facing error so the failure isn't silent.
-    /// </summary>
-    private static string? ResolveAskPassPath()
-    {
-        var candidate = Path.Combine(AppContext.BaseDirectory, "Leaf.AskPass.exe");
-        return File.Exists(candidate) ? candidate : null;
-    }
 
     public async Task<SshAgentOperationResult> RemoveKeyFromAgentAsync(string privateKeyPath, CancellationToken cancellationToken = default)
     {
-        var (success, exitCode, output) = await RunCapturingWithExitAsync("ssh-add", ["-d", privateKeyPath], cancellationToken).ConfigureAwait(false);
-        if (!success || exitCode != 0)
+        var probe = await ProcessHelper.RunAsync("ssh-add", ["-d", privateKeyPath], cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!probe.Spawned || probe.ExitCode != 0)
         {
-            return new SshAgentOperationResult(false, string.IsNullOrWhiteSpace(output) ? "ssh-add -d failed." : output.Trim());
+            return new SshAgentOperationResult(false, string.IsNullOrWhiteSpace(probe.Output) ? "ssh-add -d failed." : probe.Output.Trim());
         }
-        return new SshAgentOperationResult(true, output.Trim());
+        return new SshAgentOperationResult(true, probe.Output.Trim());
     }
 
     public async Task<SshToolingAvailability> DetectToolingAsync(CancellationToken cancellationToken = default)
@@ -330,11 +317,11 @@ public sealed class SshKeyService : ISshKeyService
         }
         else
         {
-            var (success, exitCode, _) = await RunCapturingWithExitAsync("ssh-add", ["-l"], cancellationToken).ConfigureAwait(false);
-            if (!success)
+            var probe = await ProcessHelper.RunAsync("ssh-add", ["-l"], cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!probe.Spawned)
                 agentStatus = SshAgentStatus.NotRunning;
             else
-                agentStatus = exitCode switch
+                agentStatus = probe.ExitCode switch
                 {
                     0 or 1 => SshAgentStatus.Running, // 0 = some keys, 1 = no keys but agent is alive
                     2 => SshAgentStatus.NotRunning,
@@ -356,8 +343,9 @@ public sealed class SshKeyService : ISshKeyService
 
         var fingerprint = string.Empty;
         int? bits = null;
-        var (ok, output) = await RunCapturingAsync("ssh-keygen", ["-l", "-f", pubPath], cancellationToken).ConfigureAwait(false);
-        if (ok && SshPublicKeyParser.TryParseFingerprintLine(output, out var parsedBits, out var parsedFp, out var parsedComment))
+        var probe = await ProcessHelper.RunAsync("ssh-keygen", ["-l", "-f", pubPath], cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (probe.Spawned && probe.ExitCode == 0
+            && SshPublicKeyParser.TryParseFingerprintLine(probe.Output, out var parsedBits, out var parsedFp, out var parsedComment))
         {
             bits = parsedBits;
             fingerprint = parsedFp;
@@ -381,6 +369,9 @@ public sealed class SshKeyService : ISshKeyService
             : pubPath;
     }
 
+    /// <inheritdoc />
+    public void EnsureSshDirectory() => EnsureSshDirectoryCore();
+
     /// <summary>
     /// Create <c>~/.ssh</c> if missing and apply an owner-only ACL —
     /// the Windows analogue of POSIX 700. OpenSSH's <c>StrictModes</c>
@@ -394,8 +385,13 @@ public sealed class SshKeyService : ISshKeyService
     /// has set up. OpenSSH will surface "bad permissions" if the
     /// existing ACL is too loose, which is the correct place for that
     /// signal to come from.</para>
+    ///
+    /// <para>The static implementation is private because in-process
+    /// callers must go through the <see cref="ISshKeyService"/> instance
+    /// — keeping the method static-internal would re-introduce the
+    /// architectural inconsistency the audit flagged.</para>
     /// </summary>
-    public static void EnsureSshDirectory()
+    private static void EnsureSshDirectoryCore()
     {
         if (Directory.Exists(SshDirectory)) return;
 
@@ -454,28 +450,4 @@ public sealed class SshKeyService : ISshKeyService
     /// </summary>
     private static Task<bool> CanSpawnAsync(string exe, CancellationToken cancellationToken) =>
         ProcessHelper.CanSpawnAsync(exe, ["-V"], cancellationToken);
-
-    /// <summary>
-    /// Wrapper that returns the legacy (Success, Output) tuple shape
-    /// used by listing / fingerprint paths — the caller treats any
-    /// non-zero exit as "no usable output".
-    /// </summary>
-    private static async Task<(bool Success, string Output)> RunCapturingAsync(string exe, string[] args, CancellationToken cancellationToken)
-    {
-        var result = await ProcessHelper.RunAsync(exe, args, cancellationToken).ConfigureAwait(false);
-        return (result.Spawned && result.ExitCode == 0 && result.Output.Length > 0, result.Output);
-    }
-
-    private static async Task<(bool Spawned, int ExitCode, string Output)> RunCapturingWithExitAsync(string exe, string[] args, CancellationToken cancellationToken)
-    {
-        var result = await ProcessHelper.RunAsync(exe, args, cancellationToken).ConfigureAwait(false);
-        return (result.Spawned, result.ExitCode, result.Output);
-    }
-
-    private static async Task<(bool Spawned, string Output)> RunCapturingBothStreamsAsync(string exe, string[] args, CancellationToken cancellationToken)
-    {
-        var result = await ProcessHelper.RunAsync(exe, args, cancellationToken).ConfigureAwait(false);
-        return (result.Spawned, result.Output);
-    }
-
 }

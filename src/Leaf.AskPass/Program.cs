@@ -60,7 +60,11 @@ internal static class Program
         if (sshPassphrase is not null)
         {
             Debug.WriteLine($"[AskPass] SSH passphrase prompt: '{Truncate(prompt, 60)}'");
-            Console.Out.WriteLine(sshPassphrase);
+            // Write — no Line — to match the askpass contract exactly.
+            // ssh-add reads up to the first newline OR EOF; printing
+            // a trailing \n happens to work today but conflates
+            // "the answer" with "end of stream".
+            Console.Out.Write(sshPassphrase);
             return 0;
         }
 

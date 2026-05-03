@@ -86,4 +86,13 @@ public interface ISshKeyService
     /// helpful error rather than spawning a non-existent binary.
     /// </summary>
     Task<SshToolingAvailability> DetectToolingAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Create <c>~/.ssh</c> if missing and apply an owner-only ACL —
+    /// the Windows analogue of POSIX 700. Idempotent: existing
+    /// directories are left alone (silently tightening another tool's
+    /// perms would be the wrong default; OpenSSH StrictModes will
+    /// surface the issue if the existing ACL is too loose).
+    /// </summary>
+    void EnsureSshDirectory();
 }
