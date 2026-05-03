@@ -21,6 +21,13 @@ public partial class GitGraphCanvas
     private StackPanel? _signatureTooltipPanel;
     private string? _signatureTooltipSha;
 
+    // §5.17 tag tooltip — same pattern as signature tooltip, dedicated
+    // popup so a tag chip hover doesn't replace a concurrent branch /
+    // signature tooltip.
+    private System.Windows.Controls.Primitives.Popup? _tagTooltipPopup;
+    private StackPanel? _tagTooltipPanel;
+    private string? _tagTooltipName;
+
     /// <summary>
     /// Show the §5.8 signature tooltip near the badge. Idempotent for
     /// the same SHA — hovering the same badge across frames is the
@@ -94,6 +101,159 @@ public partial class GitGraphCanvas
         if (_signatureTooltipPopup is { IsOpen: true })
             _signatureTooltipPopup.IsOpen = false;
         _signatureTooltipSha = null;
+    }
+
+    /// <summary>
+    /// §5.17 — show a tag tooltip near the chip at <paramref name="anchor"/>.
+    /// Idempotent for the same tag name (no jitter while the cursor is
+    /// inside the chip).
+    /// </summary>
+    private void ShowTagTooltip(TagInfo tag, Point anchor)
+    {
+        if (string.Equals(_tagTooltipName, tag.Name, StringComparison.Ordinal)
+            && _tagTooltipPopup is { IsOpen: true })
+        {
+            return;
+        }
+
+        if (_tagTooltipPopup == null)
+        {
+            _tagTooltipPanel = new StackPanel { Orientation = Orientation.Vertical };
+            var border = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(60, 60, 60)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(10, 8, 10, 8),
+                Child = _tagTooltipPanel,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = Colors.Black, BlurRadius = 12, ShadowDepth = 4, Opacity = 0.4,
+                },
+            };
+            _tagTooltipPopup = new System.Windows.Controls.Primitives.Popup
+            {
+                Child = border,
+                AllowsTransparency = true,
+                PlacementTarget = this,
+                Placement = System.Windows.Controls.Primitives.PlacementMode.Relative,
+                StaysOpen = true,
+            };
+        }
+
+        _tagTooltipPanel!.Children.Clear();
+
+        // Header line: tag name (bold) + small kind indicator.
+        var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+        header.Children.Add(new TextBlock
+        {
+            Text = tag.Name,
+            Foreground = Brushes.White,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+        });
+        var kind = tag.IsSigned ? "signed" : (tag.IsAnnotated ? "annotated" : "lightweight");
+        header.Children.Add(new TextBlock
+        {
+            Text = $"   {kind}",
+            Foreground = new SolidColorBrush(Color.FromRgb(160, 160, 160)),
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        _tagTooltipPanel.Children.Add(header);
+
+        // Annotation message preview (first non-empty line, truncated).
+        if (!string.IsNullOrWhiteSpace(tag.Message))
+        {
+            var preview = FirstMessageLine(tag.Message);
+            if (!string.IsNullOrEmpty(preview))
+            {
+                _tagTooltipPanel.Children.Add(new TextBlock
+                {
+                    Text = preview,
+                    Foreground = Brushes.White,
+                    FontFamily = new FontFamily("Segoe UI"),
+                    FontSize = 11,
+                    Margin = new Thickness(0, 0, 0, 4),
+                    MaxWidth = 380,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                });
+            }
+        }
+
+        // Tagger / date row when annotated.
+        if (tag.IsAnnotated)
+        {
+            var taggerLine = !string.IsNullOrWhiteSpace(tag.TaggerEmail)
+                ? $"{tag.TaggerName} <{tag.TaggerEmail}>"
+                : (tag.TaggerName ?? string.Empty);
+            if (!string.IsNullOrWhiteSpace(taggerLine))
+            {
+                _tagTooltipPanel.Children.Add(new TextBlock
+                {
+                    Text = taggerLine,
+                    Foreground = new SolidColorBrush(Color.FromRgb(180, 180, 180)),
+                    FontFamily = new FontFamily("Segoe UI"),
+                    FontSize = 10,
+                });
+            }
+            if (tag.TaggedAt is { } tagged)
+            {
+                _tagTooltipPanel.Children.Add(new TextBlock
+                {
+                    Text = tagged.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+                        System.Globalization.CultureInfo.InvariantCulture),
+                    Foreground = new SolidColorBrush(Color.FromRgb(160, 160, 160)),
+                    FontFamily = new FontFamily("Segoe UI"),
+                    FontSize = 10,
+                });
+            }
+        }
+
+        // Signature info when present — same wording vocabulary as the
+        // commit signature tooltip so users learn one mental model.
+        if (tag.IsSigned)
+        {
+            _tagTooltipPanel.Children.Add(BuildSignatureLine(
+                FontWeights.SemiBold, 11, SummariseSignatureStatus(tag.SignatureStatus)));
+            if (!string.IsNullOrWhiteSpace(tag.SignerKeyFingerprint))
+            {
+                _tagTooltipPanel.Children.Add(BuildSignatureLine(
+                    FontWeights.Normal, 10, FormatFingerprint(tag.SignerKeyFingerprint)));
+            }
+        }
+
+        _tagTooltipPopup.HorizontalOffset = anchor.X + 14;
+        _tagTooltipPopup.VerticalOffset = anchor.Y + 14;
+        _tagTooltipPopup.IsOpen = true;
+        _tagTooltipName = tag.Name;
+    }
+
+    private void HideTagTooltip()
+    {
+        if (_tagTooltipPopup is { IsOpen: true })
+            _tagTooltipPopup.IsOpen = false;
+        _tagTooltipName = null;
+    }
+
+    /// <summary>
+    /// Return the first non-empty, non-comment line of a tag's annotation
+    /// message. Mirrors what the picker preview does for commit templates.
+    /// </summary>
+    private static string FirstMessageLine(string message)
+    {
+        foreach (var line in message.Split('\n'))
+        {
+            var trimmed = line.TrimEnd('\r').Trim();
+            if (string.IsNullOrEmpty(trimmed)) continue;
+            if (trimmed.StartsWith("-----BEGIN ", StringComparison.Ordinal)) break; // strip PGP block
+            if (trimmed.StartsWith('#')) continue;
+            return trimmed.Length > 120 ? trimmed[..120] + "…" : trimmed;
+        }
+        return string.Empty;
     }
 
     /// <summary>

@@ -13,6 +13,11 @@ public partial class GitGraphCanvas
     {
         // Clear hit testing areas before re-drawing
         _hitTestService.ClearHitAreas();
+        // §5.17 per-chip tag hit areas live next door for the same
+        // per-render lifecycle. Cleared here so a stale Rect from a
+        // previous render can't surface a tag tooltip / context menu
+        // for a chip that just scrolled out of view.
+        _tagChipHitAreas.Clear();
         base.OnRender(dc);
 
         // Row offset: working changes (0 or 1) — stashes are now inline graph nodes

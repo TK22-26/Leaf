@@ -819,13 +819,18 @@
                         Cursor="Hand"
                         MouseLeftButtonDown="Tag_MouseLeftButtonDown"
                         MouseRightButtonDown="Tag_MouseRightButtonDown"
-                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                        ToolTip="{Binding SignatureSummary}">
                         <Border.ContextMenu>
                             <ContextMenu>
                                 <MenuItem
                                     Command="{Binding PlacementTarget.Tag.CheckoutTagCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                     CommandParameter="{Binding}"
                                     Header="Checkout (detached HEAD)" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.PushTagCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Push tag to origin" />
                                 <Separator />
                                 <MenuItem
                                     Command="{Binding PlacementTarget.Tag.CopyTagNameCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
@@ -866,6 +871,50 @@
                                 Symbol="Star"
                                 ToolTip="Annotated tag"
                                 Visibility="{Binding IsAnnotated, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <!--  §5.17 signature badge — same Segoe Fluent Icons glyph
+                                  vocabulary as the commit signature row in CommitDetailView,
+                                  so commits + tags read consistently.  -->
+                            <TextBlock
+                                Margin="4,0,0,0"
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="11"
+                                ToolTip="{Binding SignatureSummary}"
+                                Visibility="{Binding IsSigned, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="&#xE73E;"/>
+                                        <Setter Property="Foreground" Value="#2EA043"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SignatureStatus}" Value="UnknownKey">
+                                                <Setter Property="Text" Value="&#xE946;"/>
+                                                <Setter Property="Foreground" Value="#BF8300"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SignatureStatus}" Value="UntrustedKey">
+                                                <Setter Property="Text" Value="&#xE7BA;"/>
+                                                <Setter Property="Foreground" Value="#BF8300"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SignatureStatus}" Value="Expired">
+                                                <Setter Property="Text" Value="&#xE823;"/>
+                                                <Setter Property="Foreground" Value="#BF8300"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SignatureStatus}" Value="ExpiredKey">
+                                                <Setter Property="Text" Value="&#xE823;"/>
+                                                <Setter Property="Foreground" Value="#BF8300"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SignatureStatus}" Value="RevokedKey">
+                                                <Setter Property="Text" Value="&#xE711;"/>
+                                                <Setter Property="Foreground" Value="#C83535"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SignatureStatus}" Value="Bad">
+                                                <Setter Property="Text" Value="&#xEA39;"/>
+                                                <Setter Property="Foreground" Value="#C83535"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
                     </Border>
                 </DataTemplate>

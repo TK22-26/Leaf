@@ -1,4 +1,6 @@
 using Leaf.Models;
+using Leaf.Services;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -31,6 +33,9 @@ public partial class MainViewModel
 
         // Clear worktree and PR selections to avoid mixed selection types.
         repo.ClearPullRequestSelection();
+        // §5.17 — branch selection drops the tag-detail pane so the
+        // right side returns to the commit detail view.
+        ClearTagDetailIfOpen();
         foreach (var category in repo.BranchCategories)
         {
             if (category.IsWorktreesCategory)
@@ -77,6 +82,10 @@ public partial class MainViewModel
         if (toggle)
         {
             tag.IsSelected = !tag.IsSelected;
+            // Update the detail pane to track the new selection state —
+            // toggling off clears the pane so the user doesn't see stale
+            // info, toggling on (re)populates with this tag.
+            ShowTagDetail(tag.IsSelected ? tag : null);
             return;
         }
 
@@ -89,6 +98,94 @@ public partial class MainViewModel
             }
         }
         tag.IsSelected = true;
+        ShowTagDetail(tag);
+    }
+
+    /// <summary>
+    /// §5.17 — push <paramref name="tag"/> (or null) into the detail
+    /// pane. Lazily creates <see cref="TagDetailViewModel"/> on first
+    /// use, wires its commands + navigate-to-commit hook, and kicks
+    /// off an async load of the target commit so the mini-card hydrates.
+    /// </summary>
+    private void ShowTagDetail(TagInfo? tag)
+    {
+        if (tag is null)
+        {
+            if (TagDetailViewModel is not null) TagDetailViewModel.Tag = null;
+            // Notify even when the field already pointed at the same
+            // (null) tag so IsTagDetailMode re-evaluates and the right
+            // pane swaps back to CommitDetailView cleanly.
+            OnPropertyChanged(nameof(IsTagDetailMode));
+            return;
+        }
+
+        TagDetailViewModel ??= new TagDetailViewModel
+        {
+            CheckoutTagCommand = CheckoutTagCommand,
+            PushTagCommand = PushTagCommand,
+            DeleteTagCommand = DeleteTagCommand,
+            NavigateToCommit = sha =>
+            {
+                GitGraphViewModel?.SelectCommitBySha(sha);
+                // Switching to commit view means tag is no longer selected
+                // for the detail pane — clear so the next selection cycle
+                // can re-show.
+                ShowTagDetail(null);
+            },
+        };
+        TagDetailViewModel.Tag = tag;
+        TagDetailViewModel.TargetCommit = null;
+        OnPropertyChanged(nameof(IsTagDetailMode));
+
+        if (SelectedRepository?.Path is { Length: > 0 } repoPath
+            && !string.IsNullOrEmpty(tag.TargetSha))
+        {
+            LoadTagTargetCommitAsync(repoPath, tag).FireAndForget(
+                nameof(LoadTagTargetCommitAsync), isUserAction: false);
+        }
+    }
+
+    /// <summary>
+    /// §5.17 — drop any open tag-detail state. No-op when no tag is
+    /// selected. Public to the partial (called from
+    /// <c>OnGitGraphViewModelPropertyChanged</c>) so commit-selection
+    /// transitions can flush the tag pane.
+    /// </summary>
+    internal void ClearTagDetailIfOpen()
+    {
+        if (TagDetailViewModel?.Tag is null) return;
+        ShowTagDetail(null);
+        // Also flip IsSelected off on the tag itself so the sidebar's
+        // selection visual matches the cleared detail pane.
+        var repo = SelectedRepository;
+        if (repo is null) return;
+        foreach (var category in repo.BranchCategories)
+        {
+            if (category.IsTagsCategory)
+            {
+                foreach (var t in category.Tags)
+                    t.IsSelected = false;
+            }
+        }
+    }
+
+    private async Task LoadTagTargetCommitAsync(string repoPath, TagInfo tag)
+    {
+        try
+        {
+            var commit = await _gitService.GetCommitAsync(repoPath, tag.TargetSha,
+                cancellationToken: CurrentRepositoryToken);
+            // Late-arriving commit — only apply if the user is still
+            // looking at this tag. Otherwise drop on the floor; another
+            // tag's load is already in flight or the user moved on.
+            if (TagDetailViewModel?.Tag == tag)
+                TagDetailViewModel.TargetCommit = commit;
+        }
+        catch (OperationCanceledException) { /* repo switch */ }
+        catch (Exception ex) when (ex is System.IO.IOException or InvalidOperationException)
+        {
+            Log.Warn("Tag", $"Could not load target commit for {tag.Name}: {ex.Message}");
+        }
     }
 
     /// <summary>

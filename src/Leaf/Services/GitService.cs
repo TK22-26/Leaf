@@ -25,6 +25,7 @@ public class GitService : IGitService
     private readonly AmOperations _amOps;
     private readonly StashOperations _stashOps;
     private readonly TagOperations _tagOps;
+    private readonly TagSignatureOperations _tagSignatureOps;
     private readonly HunkOperations _hunkOps;
     private readonly ConfigOperations _configOps;
     private readonly WorktreeOperations _worktreeOps;
@@ -57,6 +58,7 @@ public class GitService : IGitService
         _amOps = new AmOperations(_context);
         _stashOps = new StashOperations(_context, _conflictOps);
         _tagOps = new TagOperations(_context);
+        _tagSignatureOps = new TagSignatureOperations(_context);
         _hunkOps = new HunkOperations(_context);
         _configOps = new ConfigOperations(_context);
         _worktreeOps = new WorktreeOperations(_context);
@@ -439,8 +441,47 @@ public class GitService : IGitService
 
     #region Tag Operations
 
-    public Task<List<TagInfo>> GetTagsAsync(string repoPath, CancellationToken cancellationToken = default)
-        => _tagOps.GetTagsAsync(repoPath, cancellationToken);
+    public async Task<List<TagInfo>> GetTagsAsync(string repoPath, CancellationToken cancellationToken = default)
+    {
+        var tags = await _tagOps.GetTagsAsync(repoPath, cancellationToken).ConfigureAwait(false);
+        await EnrichTagSignaturesAsync(repoPath, tags, cancellationToken).ConfigureAwait(false);
+        return tags;
+    }
+
+    /// <summary>
+    /// Stamp signature data on the given tags via a single
+    /// <c>git for-each-ref</c> query. Failures are non-fatal — the
+    /// badges just don't appear, same model as the commit-side
+    /// enrichment in <c>EnrichSignaturesAsync</c>.
+    /// </summary>
+    private async Task EnrichTagSignaturesAsync(string repoPath, IReadOnlyList<TagInfo> tags, CancellationToken cancellationToken)
+    {
+        if (tags.Count == 0) return;
+        try
+        {
+            var sigs = await _tagSignatureOps
+                .GetTagSignaturesAsync(repoPath, cancellationToken)
+                .ConfigureAwait(false);
+            if (sigs.Count == 0) return;
+
+            foreach (var tag in tags)
+            {
+                if (!sigs.TryGetValue(tag.Name, out var data)) continue;
+                tag.SignatureStatus = data.Status;
+                tag.SignerName = data.SignerName;
+                tag.SignerEmail = data.SignerEmail;
+                tag.SignerKeyFingerprint = data.Fingerprint;
+            }
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or InvalidOperationException)
+        {
+            // Same exception policy as EnrichSignaturesAsync: graceful
+            // degradation on process / IO failure, but cancellation
+            // propagates so callers awaiting the parent fetch see the
+            // expected OperationCanceledException.
+            Log.Warn("Signing", $"Tag signature enrichment failed for {repoPath}: {ex.Message}");
+        }
+    }
 
     public Task CreateTagAsync(string repoPath, string tagName, string? message = null, string? targetSha = null, CancellationToken cancellationToken = default)
         => _tagOps.CreateTagAsync(repoPath, tagName, message, targetSha, cancellationToken);

@@ -252,9 +252,18 @@ public partial class MainViewModel
             var applySw = Log.StartTimer();
             var applyPriority = skipFilterApplication ? DispatcherPriority.ContextIdle : DispatcherPriority.Normal;
 
+            // §5.17 — build a tag-name → TagInfo lookup for the graph
+            // canvas before we hand control back to the dispatcher. The
+            // canvas reads it for chip badges, hover tooltips, and right-
+            // click menus. `tags` is already awaited above (line 222);
+            // we just project it into a name-keyed dict here.
+            var tagsByName = tags.ToDictionary(t => t.Name, t => t, StringComparer.Ordinal);
+
             await _dispatcherService.InvokeAsync(() =>
             {
                 GitGraphViewModel?.SetGitFlowContext(gitFlowConfig, remoteNames);
+                if (GitGraphViewModel is not null)
+                    GitGraphViewModel.TagsByName = tagsByName;
                 IsGitFlowInitialized = gitFlowConfig?.IsInitialized == true;
                 repo.LocalBranches = new ObservableCollection<BranchInfo>(localBranches);
                 repo.RemoteBranches = new ObservableCollection<BranchInfo>(remoteBranches);

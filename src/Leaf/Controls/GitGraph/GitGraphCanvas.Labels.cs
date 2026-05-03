@@ -8,6 +8,74 @@ namespace Leaf.Controls.GitGraph;
 
 public partial class GitGraphCanvas
 {
+    // §5.17 — per-chip tag hit areas. Registered during DrawTagLabels,
+    // queried by hover (signature tooltip) and right-click (context
+    // menu) handlers. Cleared at the start of each render. Keyed by
+    // display row so a small graph doesn't iterate every row's tags.
+    private readonly Dictionary<int, List<(string Name, Rect Rect)>> _tagChipHitAreas = new();
+
+    /// <summary>
+    /// Look up a tag chip at <paramref name="position"/> using the
+    /// hit-areas registered during <see cref="DrawTagLabels"/>. Returns
+    /// the tag name (caller resolves <see cref="TagInfo"/> via
+    /// <see cref="TagsByName"/>) or null when the cursor isn't on a
+    /// chip.
+    /// </summary>
+    internal string? GetTagAt(Point position)
+    {
+        foreach (var (_, chips) in _tagChipHitAreas)
+        {
+            foreach (var (name, rect) in chips)
+            {
+                if (rect.Contains(position)) return name;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Render the §5.17 signature dot — a small filled circle anchored
+    /// at the bottom-right of a tag chip, colour-matched to the
+    /// commit-side signature badge palette. Skips silently when the
+    /// TagsByName lookup is empty (no enrichment yet) or the tag is
+    /// unsigned. Annotated-but-unsigned tags get a subtle neutral dot
+    /// so they're still distinguishable from lightweight chips.
+    /// </summary>
+    private void DrawTagSignatureDot(DrawingContext dc, Rect labelRect, string tagName)
+    {
+        if (TagsByName is null || !TagsByName.TryGetValue(tagName, out var tag) || tag is null)
+            return;
+
+        Color? fill = null;
+        if (tag.IsSigned)
+        {
+            fill = tag.SignatureStatus switch
+            {
+                CommitSignatureStatus.Valid => Color.FromRgb(0x2E, 0xA0, 0x43),
+                CommitSignatureStatus.RevokedKey => Color.FromRgb(0xC8, 0x35, 0x35),
+                CommitSignatureStatus.Bad => Color.FromRgb(0xC8, 0x35, 0x35),
+                _ => Color.FromRgb(0xBF, 0x83, 0x00),
+            };
+        }
+        else if (tag.IsAnnotated)
+        {
+            // Annotated-only — small amber-tinted dot with low opacity so
+            // the chip is visibly different from a lightweight tag without
+            // implying signature trust.
+            fill = Color.FromArgb(0xC0, 0xBF, 0x83, 0x00);
+        }
+
+        if (fill is null) return;
+
+        var brush = new SolidColorBrush(fill.Value);
+        brush.Freeze();
+        var ringPen = new Pen(Brushes.White, 1) { LineJoin = PenLineJoin.Round };
+        ringPen.Freeze();
+        const double dotRadius = 3.5;
+        var center = new Point(labelRect.Right - dotRadius - 1, labelRect.Bottom - dotRadius - 1);
+        dc.DrawEllipse(brush, ringPen, center, dotRadius, dotRadius);
+    }
+
     private double DrawBranchLabels(DrawingContext dc, GitTreeNode node, int rowOffset = 0)
     {
         double y = GetYForRow(node.RowIndex + rowOffset);
@@ -330,6 +398,23 @@ public partial class GitGraphCanvas
             var labelRect = new Rect(labelX, y - labelHeight / 2, totalWidth, labelHeight);
             dc.DrawRoundedRectangle(ghostBrush, LabelBorderPen, labelRect, cornerRadius, cornerRadius);
             dc.DrawText(nameFormatted, new Point(labelX + hPadding, y - nameFormatted.Height / 2));
+
+            // §5.17 — register a per-chip hit area so hover and right-
+            // click can identify which tag the cursor is on. Keyed by
+            // displayRow so the lookup loop in GetTagAt skips rows that
+            // don't have any tags.
+            if (!_tagChipHitAreas.TryGetValue(displayRow, out var chipList))
+            {
+                chipList = new List<(string, Rect)>(node.TagNames.Count);
+                _tagChipHitAreas[displayRow] = chipList;
+            }
+            chipList.Add((tagName, labelRect));
+
+            // §5.17 — paint a small signature dot at the chip's bottom-
+            // right when the tag has signature data. Reuses the colour
+            // palette from the commit signature badge so commits + tags
+            // speak one visual vocabulary.
+            DrawTagSignatureDot(dc, labelRect, tagName);
 
             if (!string.IsNullOrEmpty(overflowSuffix))
             {

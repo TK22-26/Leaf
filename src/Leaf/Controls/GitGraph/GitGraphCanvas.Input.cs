@@ -366,6 +366,22 @@ public partial class GitGraphCanvas
             HoveredSha = null;
             HideSignatureTooltip();
         }
+
+        // §5.17 — tag chip hover. Independent from the commit hover above
+        // so a tag chip in the label area pops the tag tooltip even when
+        // the cursor isn't over a commit row's avatar. TagsByName lookup
+        // handles the absence-of-info case (basic chip with no tooltip).
+        var tagName = GetTagAt(pos);
+        if (tagName is not null
+            && TagsByName is not null
+            && TagsByName.TryGetValue(tagName, out var tag))
+        {
+            ShowTagTooltip(tag, pos);
+        }
+        else
+        {
+            HideTagTooltip();
+        }
     }
 
     /// <summary>
@@ -409,6 +425,8 @@ public partial class GitGraphCanvas
         // canvas edge, since StaysOpen=true means our explicit hide is
         // the only thing that closes it.
         HideSignatureTooltip();
+        // §5.17 — same logic for the tag tooltip.
+        HideTagTooltip();
     }
 
     public BranchLabel? GetBranchLabelAt(Point position)

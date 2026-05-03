@@ -803,6 +803,20 @@ public partial class GitGraphView : UserControl
             return;
 
         var pos = e.GetPosition(GraphCanvas);
+
+        // §5.17 — tag chip right-click takes precedence over a branch
+        // label hit-test in the same area (rare overlap, but tag chips
+        // are explicit while branch labels share the wider label band).
+        var tagName = GraphCanvas.GetTagAt(pos);
+        if (tagName is not null
+            && Window.GetWindow(this)?.DataContext is MainViewModel mainVm
+            && DataContext is GitGraphViewModel graphVm)
+        {
+            ShowTagContextMenu(tagName, mainVm, graphVm);
+            e.Handled = true;
+            return;
+        }
+
         var label = GraphCanvas.GetBranchLabelAt(pos);
         if (label == null)
             return;
@@ -1040,4 +1054,74 @@ public partial class GitGraphView : UserControl
         }
     }
 
+    /// <summary>
+    /// §5.17 — surface the tag context menu for the chip the user
+    /// right-clicked. Resolves <see cref="TagInfo"/> via the graph VM's
+    /// TagsByName lookup; falls back to a name-only menu when the
+    /// lookup hasn't been populated (very brief window after panel open).
+    /// </summary>
+    private void ShowTagContextMenu(string tagName, MainViewModel mainVm, GitGraphViewModel graphVm)
+    {
+        TagInfo? tag = null;
+        graphVm.TagsByName?.TryGetValue(tagName, out tag);
+
+        var menu = new ContextMenu();
+
+        // Header line: tag name + a "signed/annotated/lightweight" pill so
+        // users see what they're acting on without re-reading the chip.
+        var header = new MenuItem
+        {
+            Header = tag is null
+                ? tagName
+                : $"{tag.Name}  ·  {(tag.IsSigned ? "signed" : tag.IsAnnotated ? "annotated" : "lightweight")}",
+            IsEnabled = false,
+            FontWeight = FontWeights.SemiBold,
+        };
+        menu.Items.Add(header);
+        menu.Items.Add(new Separator());
+
+        var checkoutItem = new MenuItem
+        {
+            Header = $"Checkout {tagName} (detached HEAD)",
+            Command = mainVm.CheckoutTagCommand,
+            CommandParameter = tag,
+            IsEnabled = tag is not null,
+            Icon = new SymbolIcon { Symbol = Symbol.ArrowDownload, FontSize = 14 },
+        };
+        menu.Items.Add(checkoutItem);
+
+        var pushItem = new MenuItem
+        {
+            Header = "Push tag to origin",
+            Command = mainVm.PushTagCommand,
+            CommandParameter = tag,
+            IsEnabled = tag is not null,
+            Icon = new SymbolIcon { Symbol = Symbol.ArrowUpload, FontSize = 14 },
+        };
+        menu.Items.Add(pushItem);
+
+        var copyItem = new MenuItem
+        {
+            Header = "Copy tag name",
+            Command = mainVm.CopyTagNameCommand,
+            CommandParameter = tag,
+            IsEnabled = tag is not null,
+            Icon = new SymbolIcon { Symbol = Symbol.Copy, FontSize = 14 },
+        };
+        menu.Items.Add(copyItem);
+
+        menu.Items.Add(new Separator());
+
+        var deleteItem = new MenuItem
+        {
+            Header = "Delete tag…",
+            Command = mainVm.DeleteTagCommand,
+            CommandParameter = tag,
+            IsEnabled = tag is not null,
+            Foreground = new SolidColorBrush(Color.FromRgb(232, 89, 89)),
+        };
+        menu.Items.Add(deleteItem);
+
+        menu.IsOpen = true;
+    }
 }

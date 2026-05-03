@@ -840,10 +840,39 @@
                                         <DataTrigger Binding="{Binding DataContext.SelectedRepository.ConflictCount, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed" />
                                         </DataTrigger>
+                                        <!--  §5.17 — hide commit detail when a tag is selected so the tag pane takes over  -->
+                                        <DataTrigger Binding="{Binding DataContext.IsTagDetailMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </views:CommitDetailView.Style>
                         </views:CommitDetailView>
+
+                        <!--  §5.17 Tag Detail View — visible only when a tag is selected
+                              AND no higher-priority right-pane mode is active. Working
+                              changes / merge / conflict states share the same Grid cell
+                              and would otherwise overlap; this MultiDataTrigger keeps
+                              TagDetailView strictly mutually exclusive with the higher-
+                              priority panes via the same conditions CommitDetailView uses.  -->
+                        <views:TagDetailView DataContext="{Binding TagDetailViewModel}">
+                            <views:TagDetailView.Style>
+                                <Style TargetType="views:TagDetailView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding DataContext.IsTagDetailMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"/>
+                                                <Condition Binding="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="False"/>
+                                                <Condition Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="False"/>
+                                                <Condition Binding="{Binding DataContext.SelectedRepository.ConflictCount, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="False"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </views:TagDetailView.Style>
+                        </views:TagDetailView>
                     </Grid>
                 </Border>
 

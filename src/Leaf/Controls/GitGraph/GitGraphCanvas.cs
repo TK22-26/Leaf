@@ -130,6 +130,20 @@ public partial class GitGraphCanvas : FrameworkElement
             typeof(GitGraphCanvas),
             new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    /// <summary>
+    /// §5.17 tag info lookup. Bound from GitGraphViewModel.TagsByName so
+    /// the canvas can render signature badges on tag chips and surface
+    /// tooltip / right-click context with rich annotation data — without
+    /// inflating GitTreeNode with TagInfo references the layout pass
+    /// doesn't need.
+    /// </summary>
+    public static readonly DependencyProperty TagsByNameProperty =
+        DependencyProperty.Register(
+            nameof(TagsByName),
+            typeof(IReadOnlyDictionary<string, TagInfo>),
+            typeof(GitGraphCanvas),
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
 
     private static void OnNodesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -275,6 +289,13 @@ public partial class GitGraphCanvas : FrameworkElement
     {
         get => (IBranchColorResolver?)GetValue(ColorResolverProperty);
         set => SetValue(ColorResolverProperty, value);
+    }
+
+    /// <summary>§5.17 — tag-name → <see cref="TagInfo"/> lookup for badge / tooltip rendering.</summary>
+    public IReadOnlyDictionary<string, TagInfo>? TagsByName
+    {
+        get => (IReadOnlyDictionary<string, TagInfo>?)GetValue(TagsByNameProperty);
+        set => SetValue(TagsByNameProperty, value);
     }
 
     /// <summary>
