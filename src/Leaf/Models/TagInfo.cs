@@ -90,7 +90,10 @@ public partial class TagInfo : ObservableObject
         CommitSignatureStatus.ExpiredKey => "Signing key has expired",
         CommitSignatureStatus.RevokedKey => "Signing key has been revoked",
         CommitSignatureStatus.Bad => "Bad signature — content may have been tampered with",
-        CommitSignatureStatus.None => "No signature",
+        // Unsigned: surface the tag KIND instead of "No signature" — for
+        // a lightweight tag the user would otherwise see a tooltip about
+        // the absence of a thing they didn't expect to be there.
+        CommitSignatureStatus.None => IsAnnotated ? "Annotated tag" : "Lightweight tag",
         _ => "Unknown signature status",
     };
 
