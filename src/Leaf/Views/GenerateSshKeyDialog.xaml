@@ -1,0 +1,138 @@
+<Window x:Class="Leaf.Views.GenerateSshKeyDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Generate SSH Key"
+        Width="520"
+        MinHeight="360"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Generate a new SSH key pair"
+                   FontSize="16"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,4"
+                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+        <TextBlock Grid.Row="1"
+                   Text="Runs ssh-keygen with the values you choose. ED25519 is the modern default; RSA 4096 is the conservative fallback if you talk to older servers."
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   Margin="0,0,0,12"/>
+
+        <Grid Grid.Row="2" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="120"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Algorithm"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <ComboBox Grid.Column="1"
+                      x:Name="AlgorithmCombo"
+                      SelectionChanged="AlgorithmCombo_SelectionChanged">
+                <ComboBoxItem Content="ED25519 (recommended)" Tag="Ed25519"/>
+                <ComboBoxItem Content="RSA 4096" Tag="Rsa-4096"/>
+                <ComboBoxItem Content="RSA 3072" Tag="Rsa-3072"/>
+                <ComboBoxItem Content="ECDSA 384" Tag="Ecdsa-384"/>
+                <ComboBoxItem Content="ECDSA 256" Tag="Ecdsa-256"/>
+            </ComboBox>
+        </Grid>
+
+        <Grid Grid.Row="3" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="120"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Comment / email"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <TextBox Grid.Column="1"
+                     x:Name="CommentBox"
+                     ToolTip="Embedded into the key file as a label. Conventionally an email address."/>
+        </Grid>
+
+        <Grid Grid.Row="4" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="120"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Output path"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <TextBox Grid.Column="1"
+                     x:Name="PathBox"
+                     FontFamily="Consolas, Cascadia Mono"
+                     FontSize="11"
+                     TextChanged="PathBox_TextChanged"/>
+            <Button Grid.Column="2"
+                    Content="Browse…"
+                    Padding="10,2"
+                    Margin="6,0,0,0"
+                    Click="BrowseButton_Click"/>
+        </Grid>
+
+        <Grid Grid.Row="5" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="120"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Passphrase"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <PasswordBox Grid.Column="1"
+                         x:Name="PassphraseBox"
+                         PasswordChanged="Passphrase_Changed"
+                         ToolTip="Optional but strongly recommended. Leave blank for an unencrypted key."/>
+        </Grid>
+
+        <Grid Grid.Row="6" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="120"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Confirm passphrase"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <PasswordBox Grid.Column="1"
+                         x:Name="ConfirmBox"
+                         PasswordChanged="Passphrase_Changed"/>
+        </Grid>
+
+        <TextBlock Grid.Row="7"
+                   x:Name="ValidationText"
+                   FontSize="11"
+                   Margin="0,4,0,0"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                   Visibility="Collapsed"/>
+
+        <StackPanel Grid.Row="9"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,16,0,0">
+            <Button x:Name="GenerateButton"
+                    Content="Generate"
+                    Width="90"
+                    Margin="0,0,8,0"
+                    Click="GenerateButton_Click"/>
+            <Button Content="Cancel"
+                    Width="90"
+                    Click="CancelButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

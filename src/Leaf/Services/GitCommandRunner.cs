@@ -10,27 +10,12 @@ namespace Leaf.Services;
 /// </summary>
 public class GitCommandRunner : IGitCommandRunner
 {
-    private const string AskPassExecutable = "Leaf.AskPass.exe";
-
     // Git emits UTF-8 by default on all platforms. The .NET default for
     // ProcessStartInfo.StandardOutputEncoding is the console's code page
     // (typically Windows-1252 on en-US) which silently corrupts non-ASCII
     // output — see the merge engine tests for a concrete failure case.
     // Explicit UTF-8 (no BOM) matches Git's wire format exactly.
     private static readonly Encoding GitOutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-
-    /// <summary>
-    /// Resolved path to Leaf.AskPass.exe, or null if the helper is missing.
-    /// Evaluated once; a missing helper means credential-requiring commands
-    /// will fall back to git's default credential flow (GCM).
-    /// </summary>
-    private static readonly Lazy<string?> _askPassPath = new(() =>
-    {
-        var candidate = Path.Combine(AppContext.BaseDirectory, AskPassExecutable);
-        if (File.Exists(candidate)) return candidate;
-        Log.Warn("Git", $"{AskPassExecutable} not found at {candidate}; credential-requiring commands will fall back to Git Credential Manager.");
-        return null;
-    });
 
     /// <inheritdoc />
     public event EventHandler<GitCommandEventArgs>? CommandExecuted;
@@ -84,7 +69,7 @@ public class GitCommandRunner : IGitCommandRunner
         // key (not the PAT) is exposed via environment variables.
         if (!string.IsNullOrEmpty(credentialKey))
         {
-            var askPass = _askPassPath.Value;
+            var askPass = AskPassPathResolver.ExecutablePath;
             if (!string.IsNullOrEmpty(askPass))
             {
                 startInfo.Environment["GIT_ASKPASS"] = askPass;
