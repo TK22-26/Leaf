@@ -179,12 +179,27 @@ internal static class ProcessHelper
     {
         var stdoutTask = proc.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderrTask = proc.StandardError.ReadToEndAsync(cancellationToken);
-        await proc.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        var stdout = await stdoutTask.ConfigureAwait(false);
-        var stderr = await stderrTask.ConfigureAwait(false);
-        var combined = stdout
-            + (stdout.Length > 0 && stderr.Length > 0 ? "\n" : string.Empty)
-            + stderr;
-        return new Result(true, proc.ExitCode, combined);
+        try
+        {
+            await proc.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            var stdout = await stdoutTask.ConfigureAwait(false);
+            var stderr = await stderrTask.ConfigureAwait(false);
+            var combined = stdout
+                + (stdout.Length > 0 && stderr.Length > 0 ? "\n" : string.Empty)
+                + stderr;
+            return new Result(true, proc.ExitCode, combined);
+        }
+        catch (OperationCanceledException)
+        {
+            // Observe the read tasks before propagating so they don't
+            // surface as unobserved exceptions on
+            // TaskScheduler.UnobservedTaskException once the GC reaps
+            // them. The kill-on-cancel registration has already torn
+            // the process down, so both tasks complete (with their own
+            // OCE / IOException) within the next few ms.
+            await Task.WhenAll(stdoutTask, stderrTask)
+                .ContinueWith(_ => { }, TaskScheduler.Default).ConfigureAwait(false);
+            throw;
+        }
     }
 }

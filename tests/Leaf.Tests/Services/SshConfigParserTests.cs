@@ -192,4 +192,41 @@ public class SshConfigParserTests
         entry.HostPattern.Should().Be("github.com gitlab.com");
         entry.User.Should().Be("git");
     }
+
+    [Fact]
+    public void Parse_InvalidPortValue_RoundTripsAsExtraOption()
+    {
+        // A typo or half-finished edit like `Port abc` shouldn't
+        // silently vanish on parse → write. The line is preserved
+        // verbatim through the Extras collection so the user sees
+        // the same bad value next time and can fix it.
+        var input = "Host foo\n    Port abc\n    User git\n";
+        var parsed = SshConfigParser.Parse(input);
+        var entry = parsed.Hosts.Single();
+        entry.Port.Should().BeNull();
+        entry.User.Should().Be("git");
+        entry.ExtraOptions.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(new SshConfigOption("Port", "abc"));
+
+        var rewritten = SshConfigParser.Write(parsed);
+        rewritten.Should().Contain("Port abc");
+    }
+
+    [Fact]
+    public void Parse_PortWithoutValue_RoundTripsAsEmptyExtraOption()
+    {
+        // Edge case: bare `Port` keyword with no value. Same path as
+        // Parse_InvalidPortValue — falls into Extras with empty value.
+        // The Write side intentionally drops empty-valued extras (via
+        // AppendOption's IsNullOrWhiteSpace gate), so this entry
+        // disappears on the next save — but parse step doesn't crash
+        // and the user's "Port" line is at least visible during the
+        // edit session.
+        var input = "Host foo\n    Port\n    User git\n";
+        var parsed = SshConfigParser.Parse(input);
+        var entry = parsed.Hosts.Single();
+        entry.Port.Should().BeNull();
+        entry.ExtraOptions.Should().ContainSingle()
+            .Which.Key.Should().Be("Port");
+    }
 }

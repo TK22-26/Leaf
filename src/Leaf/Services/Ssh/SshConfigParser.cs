@@ -192,9 +192,17 @@ internal static class SshConfigParser
             entry.HostName = value;
         else if (string.Equals(keyword, "User", StringComparison.OrdinalIgnoreCase))
             entry.User = value;
-        else if (string.Equals(keyword, "Port", StringComparison.OrdinalIgnoreCase)
-            && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var port))
-            entry.Port = port;
+        else if (string.Equals(keyword, "Port", StringComparison.OrdinalIgnoreCase))
+        {
+            // Parse to typed Port when possible; otherwise preserve the
+            // raw line as an extra so a malformed user value (typo,
+            // half-finished edit) round-trips verbatim instead of
+            // silently disappearing on the next save.
+            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var port))
+                entry.Port = port;
+            else
+                entry.Extras.Add(new SshConfigOption(keyword, value));
+        }
         else if (string.Equals(keyword, "IdentityFile", StringComparison.OrdinalIgnoreCase))
             entry.IdentityFile = value;
         else if (string.Equals(keyword, "ProxyCommand", StringComparison.OrdinalIgnoreCase))
