@@ -78,11 +78,13 @@ internal class CommitSignatureOperations
         CancellationToken cancellationToken)
     {
         // Build args: ["log", "--no-walk", "--format=...", sha1, sha2, ...]
-        // %H + %G? + %GS + %GE + %GF separated by FieldSeparator and
-        // terminated by RecordSeparator + LF (LF for cross-platform line
-        // splitting, RecordSeparator so an embedded LF in %GS doesn't
-        // confuse the parser).
-        var formatString = $"--format=%H{FieldSeparator}%G?{FieldSeparator}%GS{FieldSeparator}%GE{FieldSeparator}%GF{RecordSeparator}";
+        // %H + %G? + %GS + %GF separated by FieldSeparator and terminated
+        // by RecordSeparator. %GS returns the signer's name+email combined
+        // for GPG ("Name <email>"); SignerName / SignerEmail are split out
+        // in ParseRecords. There is no %GE placeholder in git despite an
+        // earlier commit assuming so — git renders unknown %G codes
+        // literally and they'd show up in the UI as "%GE".
+        var formatString = $"--format=%H{FieldSeparator}%G?{FieldSeparator}%GS{FieldSeparator}%GF{RecordSeparator}";
         var args = new List<string>(shas.Count + 3) { "log", "--no-walk", formatString };
         args.AddRange(shas);
 
@@ -119,17 +121,50 @@ internal class CommitSignatureOperations
             if (record.Length == 0) continue;
 
             var parts = record.Split(FieldSeparator);
-            if (parts.Length < 5) continue;
+            if (parts.Length < 4) continue;
 
             var sha = parts[0].Trim();
             if (sha.Length == 0) continue;
 
+            // %GS returns "Name <email>" for GPG; split it. SSH signatures
+            // emit just the key comment, with no <email> bracket — leave
+            // the whole string as the name in that case.
+            SplitSignerNameEmail(parts[2], out var signerName, out var signerEmail);
+
             sink[sha] = new CommitSignatureData(
                 Status: ParseTrustCode(parts[1]),
-                SignerName: parts[2],
-                SignerEmail: parts[3],
-                Fingerprint: parts[4]);
+                SignerName: signerName,
+                SignerEmail: signerEmail,
+                Fingerprint: parts[3]);
         }
+    }
+
+    /// <summary>
+    /// Split git's <c>%GS</c> output into name + email. Format is
+    /// <c>"Name &lt;email&gt;"</c> for GPG signatures; SSH signatures
+    /// emit just the key comment with no angle brackets, in which case
+    /// the whole string becomes the name and the email is empty.
+    /// </summary>
+    internal static void SplitSignerNameEmail(string signerField, out string name, out string email)
+    {
+        if (string.IsNullOrWhiteSpace(signerField))
+        {
+            name = string.Empty;
+            email = string.Empty;
+            return;
+        }
+
+        var trimmed = signerField.Trim();
+        var openBracket = trimmed.LastIndexOf('<');
+        var closeBracket = trimmed.LastIndexOf('>');
+        if (openBracket >= 0 && closeBracket > openBracket)
+        {
+            name = trimmed[..openBracket].TrimEnd();
+            email = trimmed.Substring(openBracket + 1, closeBracket - openBracket - 1).Trim();
+            return;
+        }
+        name = trimmed;
+        email = string.Empty;
     }
 
     /// <summary>

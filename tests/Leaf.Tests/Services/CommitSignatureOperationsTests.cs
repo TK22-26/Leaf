@@ -53,7 +53,9 @@ public class CommitSignatureOperationsTests
     [Fact]
     public void ParseRecords_SingleSignedRecord()
     {
-        var output = $"abc123{FS}G{FS}Alice{FS}alice@example.com{FS}ABCD1234EFFE5678{RS}";
+        // Real %GS shape for GPG: "Name <email>" — splitter pulls the
+        // email out of the angle brackets.
+        var output = $"abc123{FS}G{FS}Alice <alice@example.com>{FS}ABCD1234EFFE5678{RS}";
         var sink = new Dictionary<string, CommitSignatureData>(StringComparer.OrdinalIgnoreCase);
         CommitSignatureOperations.ParseRecords(output, sink);
 
@@ -68,7 +70,7 @@ public class CommitSignatureOperationsTests
     [Fact]
     public void ParseRecords_UnsignedRecordHasEmptyFields()
     {
-        var output = $"deadbeef{FS}N{FS}{FS}{FS}{RS}";
+        var output = $"deadbeef{FS}N{FS}{FS}{RS}";
         var sink = new Dictionary<string, CommitSignatureData>(StringComparer.OrdinalIgnoreCase);
         CommitSignatureOperations.ParseRecords(output, sink);
 
@@ -82,15 +84,17 @@ public class CommitSignatureOperationsTests
     public void ParseRecords_MultipleRecords()
     {
         var output =
-            $"sha1{FS}G{FS}Alice{FS}alice@example.com{FS}AAA{RS}" +
-            $"sha2{FS}U{FS}Bob{FS}bob@example.com{FS}BBB{RS}" +
-            $"sha3{FS}N{FS}{FS}{FS}{RS}";
+            $"sha1{FS}G{FS}Alice <alice@example.com>{FS}AAA{RS}" +
+            $"sha2{FS}U{FS}Bob <bob@example.com>{FS}BBB{RS}" +
+            $"sha3{FS}N{FS}{FS}{RS}";
         var sink = new Dictionary<string, CommitSignatureData>(StringComparer.OrdinalIgnoreCase);
         CommitSignatureOperations.ParseRecords(output, sink);
 
         sink.Should().HaveCount(3);
         sink["sha1"].Status.Should().Be(CommitSignatureStatus.Valid);
+        sink["sha1"].SignerEmail.Should().Be("alice@example.com");
         sink["sha2"].Status.Should().Be(CommitSignatureStatus.UntrustedKey);
+        sink["sha2"].SignerEmail.Should().Be("bob@example.com");
         sink["sha3"].Status.Should().Be(CommitSignatureStatus.None);
     }
 
@@ -100,8 +104,8 @@ public class CommitSignatureOperationsTests
         // git on Windows often emits \r\n between records; the parser
         // trims those off the SHA so the dictionary key is clean.
         var output =
-            $"sha1{FS}G{FS}Alice{FS}a@x{FS}AAA{RS}\r\n" +
-            $"sha2{FS}N{FS}{FS}{FS}{RS}\r\n";
+            $"sha1{FS}G{FS}Alice <a@x>{FS}AAA{RS}\r\n" +
+            $"sha2{FS}N{FS}{FS}{RS}\r\n";
         var sink = new Dictionary<string, CommitSignatureData>(StringComparer.OrdinalIgnoreCase);
         CommitSignatureOperations.ParseRecords(output, sink);
 
@@ -122,12 +126,45 @@ public class CommitSignatureOperationsTests
     [Fact]
     public void ParseRecords_SkipsMalformedRecord()
     {
-        // Two-field record (missing signer/email/fingerprint) is invalid;
+        // Two-field record (missing signer / fingerprint) is invalid;
         // skip silently rather than throwing, since git's output format
         // could change in a future version and we want graceful degradation.
         var output = $"sha1{FS}G{RS}";
         var sink = new Dictionary<string, CommitSignatureData>(StringComparer.OrdinalIgnoreCase);
         CommitSignatureOperations.ParseRecords(output, sink);
         sink.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("Alice <alice@example.com>", "Alice", "alice@example.com")]
+    [InlineData("Last, First <a@b.com>", "Last, First", "a@b.com")]
+    [InlineData("  Padded  <p@d.com>  ", "Padded", "p@d.com")]
+    public void SplitSignerNameEmail_GpgFormatSplitsCleanly(string input, string expectedName, string expectedEmail)
+    {
+        CommitSignatureOperations.SplitSignerNameEmail(input, out var name, out var email);
+        name.Should().Be(expectedName);
+        email.Should().Be(expectedEmail);
+    }
+
+    [Fact]
+    public void SplitSignerNameEmail_NoBracketsLeavesEmailEmpty()
+    {
+        // SSH signatures emit just the key comment with no <email> wrapper.
+        // The whole string becomes the name; we don't fabricate an email.
+        CommitSignatureOperations.SplitSignerNameEmail("ssh-rsa AAAAB3...", out var name, out var email);
+        name.Should().Be("ssh-rsa AAAAB3...");
+        email.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void SplitSignerNameEmail_EmptyInputReturnsEmpty()
+    {
+        CommitSignatureOperations.SplitSignerNameEmail("", out var name, out var email);
+        name.Should().BeEmpty();
+        email.Should().BeEmpty();
+
+        CommitSignatureOperations.SplitSignerNameEmail("   ", out name, out email);
+        name.Should().BeEmpty();
+        email.Should().BeEmpty();
     }
 }
