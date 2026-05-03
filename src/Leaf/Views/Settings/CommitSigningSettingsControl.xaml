@@ -173,7 +173,8 @@
                              FontFamily="Consolas, Cascadia Mono"
                              FontSize="11"
                              ToolTip="Absolute path to the SSH public key (typically ~/.ssh/id_ed25519.pub) or its private key counterpart, written to user.signingkey."
-                             TextChanged="SshKeyPathTextBox_TextChanged"/>
+                             LostFocus="SshKeyPathTextBox_LostFocus"
+                             KeyDown="SshKeyPathTextBox_KeyDown"/>
                     <Button Grid.Column="2"
                             Margin="6,0,0,0"
                             Padding="8,2"

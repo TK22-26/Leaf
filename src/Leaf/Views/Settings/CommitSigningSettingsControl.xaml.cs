@@ -280,15 +280,37 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
         WriteConfigSafeAsync(KeySigningKey, key).FireAndForget(nameof(GpgKeyCombo_SelectionChanged), isUserAction: true);
     }
 
-    private void SshKeyPathTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void SshKeyPathTextBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        CommitSshKeyPath();
+    }
+
+    private void SshKeyPathTextBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        // Enter commits — same UX shape as the rebind row in
+        // KeyboardShortcutsSettingsControl. Without this, users who type
+        // a path and hit Enter expecting save would have to tab-out first.
+        if (e.Key == System.Windows.Input.Key.Enter)
+        {
+            CommitSshKeyPath();
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// Persist the SSH key path. Triggered by LostFocus / Enter rather
+    /// than TextChanged so a user typing the path doesn't spawn one git
+    /// config process per keystroke. Empty path clears the override so
+    /// signing falls through to the global default; per Engineering
+    /// Software Policy the failure is visible (signing fails on commit)
+    /// rather than silently substituted.
+    /// </summary>
+    private void CommitSshKeyPath()
     {
         if (_suppressEvents) return;
         var path = SshKeyPathTextBox.Text?.Trim() ?? string.Empty;
-        // Per Engineering Software Policy don't silently substitute a
-        // default — empty string clears the key and signing breaks until
-        // the user picks one. Loud, visible failure.
         WriteConfigSafeAsync(KeySigningKey, string.IsNullOrWhiteSpace(path) ? null : path)
-            .FireAndForget(nameof(SshKeyPathTextBox_TextChanged), isUserAction: true);
+            .FireAndForget(nameof(CommitSshKeyPath), isUserAction: true);
     }
 
     private void BrowseSshKey_Click(object sender, RoutedEventArgs e)

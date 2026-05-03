@@ -31,9 +31,10 @@ public partial class GitGraphCanvas
         if (string.Equals(_signatureTooltipSha, node.Sha, StringComparison.Ordinal)
             && _signatureTooltipPopup is { IsOpen: true })
         {
-            // Already visible for this node — just reposition.
-            _signatureTooltipPopup.HorizontalOffset = anchor.X + 14;
-            _signatureTooltipPopup.VerticalOffset = anchor.Y + 14;
+            // Already visible for this node — leave it where it first
+            // popped up. Following the cursor causes the tooltip to
+            // jitter on every mouse-move frame within the badge area
+            // and is uncomfortable to read.
             return;
         }
 
