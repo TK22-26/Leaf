@@ -169,4 +169,78 @@ public partial class CommitInfo : ObservableObject
             return results;
         }
     }
+
+    /// <summary>
+    /// §5.8 — verification status for the commit's GPG/SSH signature, as
+    /// reported by <c>git log %G?</c>. Defaults to
+    /// <see cref="CommitSignatureStatus.None"/> for unsigned commits and
+    /// for commits where signature parsing was skipped (test fixtures,
+    /// commits constructed by client code without a git enrich pass).
+    /// </summary>
+    public CommitSignatureStatus SignatureStatus { get; set; } = CommitSignatureStatus.None;
+
+    /// <summary>The signer's name (<c>%GS</c>). Empty for unsigned commits.</summary>
+    public string SignerName { get; set; } = string.Empty;
+
+    /// <summary>The signer's email (<c>%GE</c>). Empty for unsigned commits.</summary>
+    public string SignerEmail { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The signing key's fingerprint (<c>%GF</c>). For GPG this is the
+    /// 40-char hex fingerprint; for SSH it's the algorithm-prefixed
+    /// fingerprint string. Empty for unsigned commits.
+    /// </summary>
+    public string SignerKeyFingerprint { get; set; } = string.Empty;
+
+    /// <summary>True when the commit has any signature regardless of trust.</summary>
+    public bool IsSigned => SignatureStatus != CommitSignatureStatus.None;
+
+    /// <summary>
+    /// Single-line human-readable summary of the signature status, used by
+    /// the graph badge tooltip and the commit detail view. Built lazily
+    /// because the strings only show on hover / focus, not in normal
+    /// rendering.
+    /// </summary>
+    public string SignatureSummary => SignatureStatus switch
+    {
+        CommitSignatureStatus.Valid => string.IsNullOrWhiteSpace(SignerEmail)
+            ? "Verified signature"
+            : $"Verified signature by {SignerEmail}",
+        CommitSignatureStatus.UnknownKey => "Signed, but the signing key isn't in the local keyring",
+        CommitSignatureStatus.UntrustedKey => "Signed by a key the local trust database doesn't trust",
+        CommitSignatureStatus.Expired => "Signature has expired",
+        CommitSignatureStatus.ExpiredKey => "Signing key has expired",
+        CommitSignatureStatus.RevokedKey => "Signing key has been revoked",
+        CommitSignatureStatus.Bad => "Bad signature — content may have been tampered with",
+        CommitSignatureStatus.None => "No signature",
+        _ => "Unknown signature status",
+    };
+}
+
+/// <summary>
+/// §5.8 mapping of <c>git log %G?</c> trust codes to typed values. The
+/// upstream codes (<c>G/U/B/X/Y/R/E/N</c>) collapse a fair amount of
+/// nuance into one byte; this enum keeps each meaningful state distinct
+/// so the UI can pick a colour and message per status.
+/// <list type="bullet">
+/// <item><c>G</c> → <see cref="Valid"/> — good signature with a fully-trusted key.</item>
+/// <item><c>U</c> → <see cref="UnknownKey"/> — good signature, key not in local keyring.</item>
+/// <item><c>X</c> → <see cref="Expired"/> — good signature that has since expired.</item>
+/// <item><c>Y</c> → <see cref="ExpiredKey"/> — good signature made with an expired key.</item>
+/// <item><c>R</c> → <see cref="RevokedKey"/> — good signature made with a revoked key.</item>
+/// <item><c>B</c> → <see cref="Bad"/> — bad (forged or corrupt) signature.</item>
+/// <item><c>E</c> → <see cref="UntrustedKey"/> — couldn't be verified (often missing key); UI treats as unverified.</item>
+/// <item><c>N</c> → <see cref="None"/> — no signature.</item>
+/// </list>
+/// </summary>
+public enum CommitSignatureStatus
+{
+    None = 0,
+    Valid = 1,
+    UnknownKey = 2,
+    UntrustedKey = 3,
+    Expired = 4,
+    ExpiredKey = 5,
+    RevokedKey = 6,
+    Bad = 7,
 }

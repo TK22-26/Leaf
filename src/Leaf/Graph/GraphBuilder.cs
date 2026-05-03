@@ -182,7 +182,14 @@ public class GraphBuilder
                 PrimaryBranch = branchName ?? commit.BranchNames.FirstOrDefault(),
                 IdenticonKey = commit.AvatarKey,
                 IsStash = commit.IsStash,
-                StashIndex = commit.StashIndex
+                StashIndex = commit.StashIndex,
+                // §5.8 carry the signature status onto the visual node so
+                // GitGraphCanvas can render the verification badge without
+                // crossing back to CommitInfo on every paint.
+                SignatureStatus = commit.SignatureStatus,
+                SignerName = commit.SignerName,
+                SignerEmail = commit.SignerEmail,
+                SignerKeyFingerprint = commit.SignerKeyFingerprint,
             };
 
             nodes.Add(node);

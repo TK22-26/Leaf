@@ -51,11 +51,31 @@ internal class TagOperations
     }
 
     /// <summary>
-    /// Create a new tag.
+    /// Create a new tag. When the repo's <c>tag.gpgsign</c> is true and a
+    /// message is supplied, the tag is signed via <c>git tag -s</c> — that
+    /// path goes through the git CLI rather than LibGit2Sharp because
+    /// libgit2 doesn't expose a signing hook compatible with the
+    /// installed GPG/SSH agent. Lightweight tags can't be signed, so the
+    /// signing flag is silently ignored when no message is supplied.
     /// </summary>
-    public Task CreateTagAsync(string repoPath, string tagName, string? message = null, string? targetSha = null, CancellationToken cancellationToken = default)
+    public async Task CreateTagAsync(string repoPath, string tagName, string? message = null, string? targetSha = null, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() =>
+        // Pre-flight: check tag.gpgsign before we decide which code path
+        // to take. Reading config here keeps the decision local to the
+        // operation — callers don't need to know about signing config.
+        var shouldSign = !string.IsNullOrEmpty(message)
+            && await IsTagSigningEnabledAsync(repoPath, cancellationToken).ConfigureAwait(false);
+
+        if (shouldSign)
+        {
+            await CreateSignedAnnotatedTagAsync(repoPath, tagName, message!, targetSha, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        // Unsigned path — keep the existing LibGit2Sharp implementation
+        // for parity with the pre-§5.8 behaviour.
+        await Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
 
@@ -84,7 +104,55 @@ internal class TagOperations
                 // Create lightweight tag
                 repo.ApplyTag(tagName, target.Sha);
             }
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Read <c>tag.gpgsign</c> from the repo's effective config (local
+    /// then global). Returns false on any error — signing should be
+    /// opt-in, never accidentally turned on by a config-read failure.
+    /// </summary>
+    private async Task<bool> IsTagSigningEnabledAsync(string repoPath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _context.CommandRunner.RunAsync(
+                repoPath,
+                ["config", "--get", "--bool", "tag.gpgsign"],
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            return result.Success
+                && string.Equals(result.StandardOutput.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task CreateSignedAnnotatedTagAsync(string repoPath, string tagName, string message, string? targetSha, CancellationToken cancellationToken)
+    {
+        // git tag -s <name> -m <msg> [<sha>]. Putting -m before the
+        // optional positional sha matches git's argument parser (which
+        // is forgiving) and avoids the message-vs-target ambiguity that
+        // a future maintainer might trip on.
+        var args = new List<string> { "tag", "-s", tagName, "-m", message };
+        if (!string.IsNullOrEmpty(targetSha)) args.Add(targetSha);
+
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath,
+            args.ToArray(),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        if (!result.Success)
+        {
+            // git tag -s prints helpful messages on stderr ("gpg: signing
+            // failed: No secret key", "error: gpg failed to sign the
+            // data"). Surface them verbatim — the user can act on them.
+            var detail = string.IsNullOrEmpty(result.StandardError)
+                ? "Failed to create signed tag (unknown error)"
+                : result.StandardError.Trim();
+            throw new InvalidOperationException(detail);
+        }
     }
 
     /// <summary>

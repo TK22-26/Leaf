@@ -351,7 +351,66 @@ public partial class GitGraphCanvas
 
             var fillBrush = IdenticonGenerator.GetIdenticonBrush(key, iconSize, backgroundColor);
             dc.DrawEllipse(fillBrush, null, new Point(x, y), avatarRadius - 1, avatarRadius - 1);
+
+            // §5.8 verification badge — small filled circle anchored at the
+            // bottom-right of the avatar circle. Drawn here (not in a
+            // separate pass) so the badge geometry stays in DPI-correct
+            // coordinates with the avatar; the canvas's existing redraw
+            // model handles invalidation when SignatureStatus changes.
+            DrawSignatureBadge(dc, x, y, avatarRadius, node.SignatureStatus);
         }
+    }
+
+    /// <summary>
+    /// Render a small verification glyph overlay anchored at the lower
+    /// right of an avatar circle. Skips silently for unsigned commits;
+    /// callers don't need to gate.
+    /// </summary>
+    private void DrawSignatureBadge(DrawingContext dc, double x, double y, double avatarRadius, CommitSignatureStatus status)
+    {
+        if (status == CommitSignatureStatus.None) return;
+
+        // Position: ~36° below horizontal at the avatar's edge, badge
+        // radius is ~1/3 of the avatar so two glyphs would touch at most
+        // — keeps the badge visually distinct from the larger circle.
+        // Geometry constants live in GitGraphCanvas.Constants.cs and are
+        // shared with the input-hit-test path.
+        var badgeRadius = Math.Max(SignatureBadgeMinRadius, avatarRadius * SignatureBadgeAvatarRatio);
+        var offset = avatarRadius - badgeRadius * SignatureBadgeAnchorPullback;
+        var bx = x + offset * Math.Cos(SignatureBadgeAngleRadians);
+        var by = y + offset * Math.Sin(SignatureBadgeAngleRadians);
+
+        var (fill, glyph) = status switch
+        {
+            CommitSignatureStatus.Valid       => (Color.FromRgb(0x2E, 0xA0, 0x43), ""), // CheckMark
+            CommitSignatureStatus.UnknownKey  => (Color.FromRgb(0xBF, 0x83, 0x00), ""), // Question
+            CommitSignatureStatus.UntrustedKey=> (Color.FromRgb(0xBF, 0x83, 0x00), ""), // Warning
+            CommitSignatureStatus.Expired     => (Color.FromRgb(0xBF, 0x83, 0x00), ""), // Recent (clock)
+            CommitSignatureStatus.ExpiredKey  => (Color.FromRgb(0xBF, 0x83, 0x00), ""),
+            CommitSignatureStatus.RevokedKey  => (Color.FromRgb(0xC8, 0x35, 0x35), ""), // Cancel
+            CommitSignatureStatus.Bad         => (Color.FromRgb(0xC8, 0x35, 0x35), ""), // ErrorBadge
+            _ => (Color.FromRgb(0x80, 0x80, 0x80), string.Empty),
+        };
+
+        if (string.IsNullOrEmpty(glyph)) return;
+
+        var fillBrush = new SolidColorBrush(fill);
+        fillBrush.Freeze();
+        // White ring around the badge so it reads against any avatar fill.
+        var ringPen = new Pen(Brushes.White, 1.5);
+        ringPen.Freeze();
+        dc.DrawEllipse(fillBrush, ringPen, new Point(bx, by), badgeRadius, badgeRadius);
+
+        var glyphSize = badgeRadius * 1.25;
+        var glyphText = new FormattedText(
+            glyph,
+            System.Globalization.CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            IconTypeface,
+            glyphSize,
+            Brushes.White,
+            VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        dc.DrawText(glyphText, new Point(bx - glyphText.Width / 2, by - glyphText.Height / 2));
     }
 
     private void DrawConnections(DrawingContext dc, GitTreeNode node, IReadOnlyDictionary<string, GitTreeNode> nodesBySha, int rowOffset = 0)

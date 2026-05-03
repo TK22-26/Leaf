@@ -13,6 +13,7 @@ public class GitService : IGitService
     private readonly GitOperationContext _context;
     private readonly RepositoryOperations _repositoryOps;
     private readonly CommitHistoryOperations _commitHistoryOps;
+    private readonly CommitSignatureOperations _commitSignatureOps;
     private readonly CommitOperations _commitOps;
     private readonly DiffOperations _diffOps;
     private readonly BranchOperations _branchOps;
@@ -44,6 +45,7 @@ public class GitService : IGitService
         // Create operations in dependency order
         _repositoryOps = new RepositoryOperations(_context);
         _commitHistoryOps = new CommitHistoryOperations(_context);
+        _commitSignatureOps = new CommitSignatureOperations(_context);
         _commitOps = new CommitOperations(_context);
         _diffOps = new DiffOperations(_context);
         _branchOps = new BranchOperations(_context);
@@ -79,11 +81,59 @@ public class GitService : IGitService
 
     #region Commit History Operations
 
-    public Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0, CancellationToken cancellationToken = default)
-        => _commitHistoryOps.GetCommitHistoryAsync(repoPath, count, branchName, skip, cancellationToken);
+    public async Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0, CancellationToken cancellationToken = default)
+    {
+        var commits = await _commitHistoryOps
+            .GetCommitHistoryAsync(repoPath, count, branchName, skip, cancellationToken)
+            .ConfigureAwait(false);
+        await EnrichSignaturesAsync(repoPath, commits, cancellationToken).ConfigureAwait(false);
+        return commits;
+    }
 
-    public Task<CommitInfo?> GetCommitAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
-        => _commitHistoryOps.GetCommitAsync(repoPath, sha, cancellationToken);
+    public async Task<CommitInfo?> GetCommitAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
+    {
+        var commit = await _commitHistoryOps.GetCommitAsync(repoPath, sha, cancellationToken).ConfigureAwait(false);
+        if (commit != null)
+            await EnrichSignaturesAsync(repoPath, [commit], cancellationToken).ConfigureAwait(false);
+        return commit;
+    }
+
+    /// <summary>
+    /// Stamp <see cref="CommitInfo.SignatureStatus"/> + signer fields on
+    /// each commit by running a chunked <c>git log</c> query. Failures
+    /// are non-fatal — the badges just don't appear.
+    /// </summary>
+    private async Task EnrichSignaturesAsync(string repoPath, IReadOnlyList<CommitInfo> commits, CancellationToken cancellationToken)
+    {
+        if (commits.Count == 0) return;
+        try
+        {
+            var shas = commits.Select(c => c.Sha).ToList();
+            var sigs = await _commitSignatureOps
+                .GetSignaturesAsync(repoPath, shas, cancellationToken)
+                .ConfigureAwait(false);
+            if (sigs.Count == 0) return;
+
+            foreach (var commit in commits)
+            {
+                if (!sigs.TryGetValue(commit.Sha, out var data)) continue;
+                commit.SignatureStatus = data.Status;
+                commit.SignerName = data.SignerName;
+                commit.SignerEmail = data.SignerEmail;
+                commit.SignerKeyFingerprint = data.Fingerprint;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Caller cancelled — let CallerExitTokenException flow up by
+            // not rethrowing here; the partial enrichment that did make
+            // it onto commits stays.
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or InvalidOperationException)
+        {
+            Log.Warn("Signing", $"Signature enrichment failed for {repoPath}: {ex.Message}");
+        }
+    }
 
     public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
         => _commitHistoryOps.GetCommitChangesAsync(repoPath, sha, cancellationToken);

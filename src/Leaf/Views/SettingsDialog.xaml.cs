@@ -98,6 +98,9 @@ public partial class SettingsDialog : Window
             new("Color Palette", "Pick a built-in or custom colour palette for the graph", "BranchColors", Symbol.Color),
             new("Commit Templates", "Manage reusable commit message templates and placeholders", "CommitTemplates", Symbol.DocumentText),
             new("Conventional Commits", "Edit the Conventional Commits preset and built-in templates", "CommitTemplates", Symbol.DocumentText),
+            new("Commit Signing", "Configure GPG / SSH signing for commits and tags", "CommitSigning", Symbol.ShieldCheckmark),
+            new("GPG", "Set up commit signing with GnuPG", "CommitSigning", Symbol.ShieldCheckmark),
+            new("Signing key", "Pick the GPG or SSH key used to sign commits", "CommitSigning", Symbol.Key),
         };
 
         // Configure UserControls
@@ -154,6 +157,7 @@ public partial class SettingsDialog : Window
         KeyboardShortcutsSettings.Visibility = Visibility.Collapsed;
         BranchColorsSettings.Visibility = Visibility.Collapsed;
         CommitTemplatesSettings.Visibility = Visibility.Collapsed;
+        CommitSigningSettings.Visibility = Visibility.Collapsed;
         ContentSearchResults.Visibility = Visibility.Collapsed;
 
         // Show the selected content
@@ -225,6 +229,10 @@ public partial class SettingsDialog : Window
                 break;
             case "CommitTemplates":
                 CommitTemplatesSettings.Visibility = Visibility.Visible;
+                break;
+            case "CommitSigning":
+                CommitSigningSettings.Visibility = Visibility.Visible;
+                CommitSigningSettings.ActiveRepositoryPath = _currentRepoPath;
                 break;
         }
     }
@@ -348,6 +356,7 @@ public partial class SettingsDialog : Window
             "KeyboardShortcuts" => NavKeyboardShortcuts,
             "BranchColors" => NavBranchColors,
             "CommitTemplates" => NavCommitTemplates,
+            "CommitSigning" => NavCommitSigning,
             _ => null
         };
 
@@ -389,6 +398,8 @@ public partial class SettingsDialog : Window
         GitFlowSettings.LoadSettings(_settings, _credentialService);
         BranchColorsSettings.LoadSettings(_settings, _credentialService);
         CommitTemplatesSettings.LoadSettings(_settings, _credentialService);
+        CommitSigningSettings.ActiveRepositoryPath = _currentRepoPath;
+        CommitSigningSettings.LoadSettings(_settings, _credentialService);
     }
 
     private void BrowseClonePath_Click(object sender, RoutedEventArgs e)
@@ -440,6 +451,7 @@ public partial class SettingsDialog : Window
         GitFlowSettings.SaveSettings(_settings, _credentialService);
         BranchColorsSettings.SaveSettings(_settings, _credentialService);
         CommitTemplatesSettings.SaveSettings(_settings, _credentialService);
+        CommitSigningSettings.SaveSettings(_settings, _credentialService);
 
         // Save all settings
         _settingsService.SaveSettings(_settings);

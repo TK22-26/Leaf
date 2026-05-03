@@ -96,4 +96,20 @@ public class GitTreeNode
     /// Defaults to true (all visible when no search active).
     /// </summary>
     public bool IsSearchMatch { get; set; } = true;
+
+    /// <summary>
+    /// §5.8 — verification status copied from the originating CommitInfo
+    /// at graph-build time. Carried on the node so the canvas's render
+    /// path doesn't have to look it up across collections on every paint.
+    /// </summary>
+    public CommitSignatureStatus SignatureStatus { get; set; } = CommitSignatureStatus.None;
+
+    /// <summary>Signer name, mirrored from CommitInfo so the hover tooltip doesn't have to round-trip.</summary>
+    public string SignerName { get; set; } = string.Empty;
+
+    /// <summary>Signer email, mirrored from CommitInfo.</summary>
+    public string SignerEmail { get; set; } = string.Empty;
+
+    /// <summary>Signing key fingerprint, mirrored from CommitInfo.</summary>
+    public string SignerKeyFingerprint { get; set; } = string.Empty;
 }

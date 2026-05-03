@@ -13,6 +13,137 @@ public partial class GitGraphCanvas
     private System.Windows.Controls.Primitives.Popup? _branchTooltipPopup;
     private StackPanel? _branchTooltipPanel;
 
+    // §5.8 signature tooltip — reuses the branch-tooltip's dark Border
+    // styling but is its own Popup so the two can coexist (hovering a
+    // signature badge while a branch overflow indicator is also under
+    // the cursor doesn't replace one with the other).
+    private System.Windows.Controls.Primitives.Popup? _signatureTooltipPopup;
+    private StackPanel? _signatureTooltipPanel;
+    private string? _signatureTooltipSha;
+
+    /// <summary>
+    /// Show the §5.8 signature tooltip near the badge. Idempotent for
+    /// the same SHA — hovering the same badge across frames is the
+    /// common case and we don't want to rebuild children every time.
+    /// </summary>
+    private void ShowSignatureTooltip(GitTreeNode node, Point anchor)
+    {
+        if (string.Equals(_signatureTooltipSha, node.Sha, StringComparison.Ordinal)
+            && _signatureTooltipPopup is { IsOpen: true })
+        {
+            // Already visible for this node — just reposition.
+            _signatureTooltipPopup.HorizontalOffset = anchor.X + 14;
+            _signatureTooltipPopup.VerticalOffset = anchor.Y + 14;
+            return;
+        }
+
+        if (_signatureTooltipPopup == null)
+        {
+            _signatureTooltipPanel = new StackPanel { Orientation = Orientation.Vertical };
+            var border = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(60, 60, 60)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8, 6, 8, 6),
+                Child = _signatureTooltipPanel,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = Colors.Black, BlurRadius = 12, ShadowDepth = 4, Opacity = 0.4
+                },
+            };
+            _signatureTooltipPopup = new System.Windows.Controls.Primitives.Popup
+            {
+                Child = border,
+                AllowsTransparency = true,
+                PlacementTarget = this,
+                Placement = System.Windows.Controls.Primitives.PlacementMode.Relative,
+                StaysOpen = true,
+            };
+        }
+
+        _signatureTooltipPanel!.Children.Clear();
+        _signatureTooltipPanel.Children.Add(BuildSignatureLine(
+            FontWeights.SemiBold, 12, SummariseSignatureStatus(node.SignatureStatus)));
+
+        if (!string.IsNullOrWhiteSpace(node.SignerName) || !string.IsNullOrWhiteSpace(node.SignerEmail))
+        {
+            var ident = string.IsNullOrWhiteSpace(node.SignerEmail)
+                ? node.SignerName
+                : (string.IsNullOrWhiteSpace(node.SignerName)
+                    ? node.SignerEmail
+                    : $"{node.SignerName} <{node.SignerEmail}>");
+            _signatureTooltipPanel.Children.Add(BuildSignatureLine(FontWeights.Normal, 11, ident));
+        }
+        if (!string.IsNullOrWhiteSpace(node.SignerKeyFingerprint))
+        {
+            _signatureTooltipPanel.Children.Add(BuildSignatureLine(
+                FontWeights.Normal, 10, FormatFingerprint(node.SignerKeyFingerprint)));
+        }
+
+        _signatureTooltipPopup.HorizontalOffset = anchor.X + 14;
+        _signatureTooltipPopup.VerticalOffset = anchor.Y + 14;
+        _signatureTooltipPopup.IsOpen = true;
+        _signatureTooltipSha = node.Sha;
+    }
+
+    private void HideSignatureTooltip()
+    {
+        if (_signatureTooltipPopup is { IsOpen: true })
+            _signatureTooltipPopup.IsOpen = false;
+        _signatureTooltipSha = null;
+    }
+
+    /// <summary>
+    /// Build a single text line for the signature tooltip. White on the
+    /// dark background — matches the branch-overflow tooltip's typography
+    /// so the two feel consistent when both are visible briefly.
+    /// </summary>
+    private static TextBlock BuildSignatureLine(FontWeight weight, double size, string text) => new()
+    {
+        Text = text,
+        Foreground = Brushes.White,
+        FontFamily = new FontFamily("Segoe UI"),
+        FontSize = size,
+        FontWeight = weight,
+        Margin = new Thickness(0, 1, 0, 1),
+    };
+
+    private static string SummariseSignatureStatus(CommitSignatureStatus s) => s switch
+    {
+        CommitSignatureStatus.Valid => "Verified signature",
+        CommitSignatureStatus.UnknownKey => "Signed — key not in local keyring",
+        CommitSignatureStatus.UntrustedKey => "Signed — key not trusted locally",
+        CommitSignatureStatus.Expired => "Signed — signature expired",
+        CommitSignatureStatus.ExpiredKey => "Signed — signing key expired",
+        CommitSignatureStatus.RevokedKey => "Signed — signing key revoked",
+        CommitSignatureStatus.Bad => "Bad signature — content may be tampered",
+        _ => "Signature",
+    };
+
+    /// <summary>
+    /// Format a key fingerprint as <c>XXXX XXXX XXXX XXXX</c> blocks of
+    /// four hex chars for readability. SSH fingerprints use a different
+    /// shape (algorithm prefix + base64) and are returned unchanged.
+    /// </summary>
+    private static string FormatFingerprint(string fingerprint)
+    {
+        var trimmed = fingerprint?.Trim() ?? string.Empty;
+        if (trimmed.Length == 0) return string.Empty;
+        // SSH fingerprint: "SHA256:abcd..." — leave as-is.
+        if (trimmed.Contains(':')) return trimmed;
+        // GPG: 40-char hex. Group into blocks of 4.
+        if (trimmed.All(c => c is (>= '0' and <= '9') or (>= 'A' and <= 'F') or (>= 'a' and <= 'f')))
+        {
+            var groups = new List<string>(trimmed.Length / 4 + 1);
+            for (var i = 0; i < trimmed.Length; i += 4)
+                groups.Add(trimmed.Substring(i, Math.Min(4, trimmed.Length - i)));
+            return string.Join(' ', groups).ToUpperInvariant();
+        }
+        return trimmed;
+    }
+
     private void ShowBranchTooltip(List<BranchLabel> branches, Rect tagRect)
     {
         if (_branchTooltipPopup == null)
