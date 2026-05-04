@@ -144,7 +144,11 @@ public partial class GitGraphCanvas
 
         _tagTooltipPanel!.Children.Clear();
 
-        // Header line: tag name (bold) + small kind indicator.
+        // Header line: tag name (bold) + a kind indicator for annotated /
+        // signed tags. Lightweight tags get no suffix — "lightweight" is
+        // git jargon that adds no useful information when there's no
+        // annotation message or tagger to introduce, and the chip itself
+        // already shows the tag name.
         var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
         header.Children.Add(new TextBlock
         {
@@ -154,15 +158,18 @@ public partial class GitGraphCanvas
             FontSize = 13,
             FontWeight = FontWeights.SemiBold,
         });
-        var kind = tag.IsSigned ? "signed" : (tag.IsAnnotated ? "annotated" : "lightweight");
-        header.Children.Add(new TextBlock
+        if (tag.IsAnnotated)
         {
-            Text = $"   {kind}",
-            Foreground = new SolidColorBrush(Color.FromRgb(160, 160, 160)),
-            FontFamily = new FontFamily("Segoe UI"),
-            FontSize = 11,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
+            var kind = tag.IsSigned ? "signed" : "annotated";
+            header.Children.Add(new TextBlock
+            {
+                Text = $"   {kind}",
+                Foreground = new SolidColorBrush(Color.FromRgb(160, 160, 160)),
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
         _tagTooltipPanel.Children.Add(header);
 
         // Annotation message preview (first non-empty line, truncated).
