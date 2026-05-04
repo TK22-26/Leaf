@@ -45,7 +45,6 @@ public partial class MainViewModel
         if (await _dialogService.ShowDialogAsync(dialog) && dialog.Result != null)
         {
             NotifySuccess("GitFlow initialized", "Branch prefixes and base branches configured.");
-            SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
     }
@@ -82,7 +81,6 @@ public partial class MainViewModel
         if (await _dialogService.ShowDialogAsync(dialog))
         {
             NotifySuccess($"{char.ToUpper(statusNoun[0]) + statusNoun[1..]} started", $"Created and checked out {dialog.BranchName}.");
-            SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
     }
@@ -142,8 +140,6 @@ public partial class MainViewModel
         var finished = await _dialogService.ShowDialogAsync(dialog);
 
         // Always refresh to detect conflicts or other state changes
-        if (SelectedRepository != null)
-            SelectedRepository.BranchesLoaded = false;
         await RefreshAsync();
 
         if (finished)
@@ -209,7 +205,6 @@ public partial class MainViewModel
             // Mirrors the GitFlow-finish capitalization fix.
             var typeName = branchType.ToString();
             NotifySuccess($"{typeName} published", $"{typeName} {flowName} pushed to remote.");
-            SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -302,7 +297,6 @@ public partial class MainViewModel
                 throw new ArgumentException($"Unsupported branch type: {branchType}");
         }
 
-        SelectedRepository.BranchesLoaded = false;
         await RefreshAsync();
     }
 

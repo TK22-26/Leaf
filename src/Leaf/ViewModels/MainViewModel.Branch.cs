@@ -135,7 +135,6 @@ public partial class MainViewModel
             // Single refresh covers all three paths. The rename branch
             // previously triggered an inline refresh and then fell through
             // to this one, double-loading the graph.
-            SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -337,7 +336,6 @@ public partial class MainViewModel
             await _gitService.SetUpstreamAsync(SelectedRepository.Path, branch.Name, remoteName, remoteBranchName, cancellationToken: CurrentRepositoryToken);
 
             NotifySuccess("Upstream set", $"Upstream set for {branch.Name}.");
-            SelectedRepository.BranchesLoaded = false;
             await RefreshAsync();
         }
         catch (Exception ex)
