@@ -117,11 +117,24 @@ public partial class MainViewModel
     /// <summary>
     /// Refresh current repository.
     /// </summary>
+    /// <remarks>
+    /// Semantically this is "the user (or an operation that just mutated
+    /// state) is asking for fresh data" — it must bypass the branch-load
+    /// cache. SelectRepositoryAsync's BranchesLoaded short-circuit was
+    /// designed to keep re-selecting the same repo from the sidebar cheap,
+    /// not to gate explicit refreshes; otherwise every mutating caller
+    /// (delete/rename/finish-flow/PR-merge/...) has to remember to set
+    /// BranchesLoaded = false beforehand, and forgetting it leaves the
+    /// sidebar showing phantom branches until the file watcher's debounce
+    /// catches up. Invalidating here makes the contract uniform across
+    /// every call site.
+    /// </remarks>
     [RelayCommand]
     public async Task RefreshAsync()
     {
         if (SelectedRepository != null)
         {
+            SelectedRepository.BranchesLoaded = false;
             await SelectRepositoryAsync(SelectedRepository);
         }
     }
