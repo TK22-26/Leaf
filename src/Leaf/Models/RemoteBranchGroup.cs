@@ -33,9 +33,20 @@ public class RemoteBranchGroup
     public RemoteType RemoteType { get; set; } = RemoteType.Other;
 
     /// <summary>
-    /// Branches from this remote.
+    /// Ungrouped branches from this remote (no "/" prefix in the
+    /// remote-relative name). Branches with a prefix are placed under
+    /// <see cref="DirectoryGroups"/> instead, mirroring the LOCAL/GITFLOW
+    /// tree layout so the sidebar reads consistently across sections.
     /// </summary>
     public ObservableCollection<BranchInfo> Branches { get; set; } = [];
+
+    /// <summary>
+    /// Per-prefix directory groups for branches whose remote-relative
+    /// name contains a "/" (e.g. "feature/foo", "hotfix/bar"). Issue #29:
+    /// without this, the REMOTE section was a flat list while LOCAL and
+    /// GITFLOW were folder-organised.
+    /// </summary>
+    public ObservableCollection<DirectoryBranchGroup> DirectoryGroups { get; set; } = [];
 
     /// <summary>
     /// Whether this remote group is expanded.
