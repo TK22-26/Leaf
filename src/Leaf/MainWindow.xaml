@@ -832,14 +832,26 @@
                                         <DataTrigger Binding="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed" />
                                         </DataTrigger>
-                                        <!--  Hide if MergeInProgress  -->
-                                        <DataTrigger Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                        <!--  Hide if conflicts exist (e.g., squash merge conflicts)  -->
+                                        <!--  Hide when MergeStatusView takes over the pane.
+                                              The two views share this Grid cell and must be
+                                              strictly mutually exclusive — these triggers
+                                              mirror MergeStatusView's three visibility
+                                              conditions above. A paused operation on its own
+                                              (e.g. `git am` mid-stream with no conflict
+                                              files) is NOT enough to hide commit detail; we
+                                              also need MergeStatusView's content (conflicts
+                                              or active resolution VM) to actually exist,
+                                              otherwise the pane goes blank.  -->
                                         <DataTrigger Binding="{Binding DataContext.SelectedRepository.ConflictCount, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed" />
                                         </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
+                                                <Condition Binding="{Binding DataContext.MergeConflictResolutionViewModel.TotalCount, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </MultiDataTrigger>
                                         <!--  §5.17 — hide commit detail when a tag is selected so the tag pane takes over  -->
                                         <DataTrigger Binding="{Binding DataContext.IsTagDetailMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed" />

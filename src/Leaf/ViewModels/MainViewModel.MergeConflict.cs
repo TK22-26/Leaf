@@ -379,12 +379,24 @@ public partial class MainViewModel
         {
             if (MergeConflictResolutionViewModel != null)
             {
-                // Tell any open editor window the merge state vanished beneath
-                // it (external `git merge --abort`, another client wrote
-                // MERGE_HEAD away, etc.) before we drop our reference to the
-                // VM. Surfaces as MergeCompleted(false), which the host's
-                // editor-open subscription handles by closing the window.
-                MergeConflictResolutionViewModel.NotifyMergeAbortedExternally();
+                // Distinguish "merge state vanished beneath us in the same
+                // repo" (external `git merge --abort`, another client wrote
+                // MERGE_HEAD away — fire MergeCompleted(false) so the open
+                // editor closes and the user sees a verb-aware toast) from
+                // "the user just switched to a different repo" (the prior
+                // repo's merge state hasn't changed; firing the toast would
+                // claim the user aborted something they didn't, and reuse
+                // the prior repo's `_activeResolutionOperationType` to pick
+                // the verb — surfacing e.g. "Patch apply aborted" on every
+                // exit from a repo with a paused `git am`).
+                var sameRepoExternalAbort = string.Equals(
+                    _mergeConflictRepoPath,
+                    SelectedRepository.Path,
+                    StringComparison.OrdinalIgnoreCase);
+                if (sameRepoExternalAbort)
+                {
+                    MergeConflictResolutionViewModel.NotifyMergeAbortedExternally();
+                }
                 MergeConflictResolutionViewModel.MergeCompleted -= OnMergeConflictResolutionCompleted;
             }
 

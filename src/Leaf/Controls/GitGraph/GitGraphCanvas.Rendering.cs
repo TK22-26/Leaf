@@ -34,12 +34,75 @@ public partial class GitGraphCanvas
             var branchBrush = ResolveBranchColor(branchName) as SolidColorBrush ?? Brushes.Gray;
             var branchColor = branchBrush.Color;
 
-            var headNode = nodes?.FirstOrDefault(n => n.IsHead);
-            // Target the topmost node in HEAD's lane (may be a stash above HEAD)
-            GitTreeNode? targetNode = null;
-            if (headNode != null && nodes != null)
+            // The WIP row sits directly above HEAD on HEAD's branch. The
+            // only legitimate row that should sit between WIP and HEAD is
+            // a stash pseudo-commit (stashes render above the commit they
+            // were taken on). Three anchor strategies, in order of
+            // preference:
+            //
+            //   1. The actual HEAD node — present when HEAD's commit is in
+            //      the loaded batch.
+            //   2. A node carrying an IsCurrent branch label — covers the
+            //      "HEAD's commit isn't paginated in yet, but its nearest
+            //      visible ancestor was tagged with an IsAncestorFallback
+            //      label" case.
+            //   3. A node carrying a branch label whose Name matches the
+            //      current branch — covers the "HEAD and all its ancestors
+            //      are paginated out, but the corresponding remote-tracking
+            //      branch IS loaded" case. Local "develop" months behind
+            //      "origin/develop" is the canonical example: the remote
+            //      tip has a "develop" label (IsLocal=false, IsCurrent=
+            //      false), which still tells us which lane the develop
+            //      branch occupies.
+            //
+            // Without these, the fallback nodes[0] picks the topmost loaded
+            // commit regardless of branch, which on a repo where the
+            // current branch is far behind another branch anchors the WIP
+            // onto the wrong lane entirely.
+            GitTreeNode? headNode = null;
+            GitTreeNode? currentBranchAnchor = null;
+            GitTreeNode? namedBranchAnchor = null;
+            if (nodes != null)
             {
-                targetNode = nodes.FirstOrDefault(n => n.ColumnIndex == headNode.ColumnIndex) ?? headNode;
+                foreach (var n in nodes)
+                {
+                    if (n.IsHead && headNode == null)
+                        headNode = n;
+                    foreach (var label in n.BranchLabels)
+                    {
+                        if (currentBranchAnchor == null && label.IsCurrent)
+                        {
+                            currentBranchAnchor = n;
+                        }
+                        if (namedBranchAnchor == null
+                            && !string.IsNullOrEmpty(CurrentBranchName)
+                            && string.Equals(label.Name, CurrentBranchName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            namedBranchAnchor = n;
+                        }
+                    }
+                    if (headNode != null && currentBranchAnchor != null && namedBranchAnchor != null)
+                        break;
+                }
+            }
+
+            GitTreeNode? targetNode = headNode ?? currentBranchAnchor ?? namedBranchAnchor;
+            if (targetNode != null && nodes != null && headNode != null)
+            {
+                // Walk for a stash sitting between WIP and HEAD on HEAD's
+                // lane so the visual stack stays correct (WIP → stash →
+                // HEAD). Skipped when only the branch-label anchor is
+                // available — stashes are tied to HEAD's actual row, which
+                // we don't know in that case.
+                foreach (var n in nodes)
+                {
+                    if (n.RowIndex >= headNode.RowIndex) break;
+                    if (n.IsStash && n.ColumnIndex == headNode.ColumnIndex)
+                    {
+                        targetNode = n;
+                        break;
+                    }
+                }
             }
             targetNode ??= nodes != null && nodes.Count > 0 ? nodes[0] : null;
             int wipLane = targetNode?.ColumnIndex ?? 0;
@@ -107,6 +170,7 @@ public partial class GitGraphCanvas
 
         // Pass 0: Draw pass-through lane lines for connections beyond the culling range
         DrawPassThroughLanes(dc, rowOffset, minNodeIndex, viewportTop, viewportBottom);
+        DrawCulledParentStubs(dc, nodes, rowOffset, viewportTop, viewportBottom);
 
         var nodesBySha = _cacheService.GetNodesBySha(nodes);
 
@@ -417,7 +481,18 @@ public partial class GitGraphCanvas
         {
             var parentSha = node.ParentShas[i];
             if (!nodesBySha.TryGetValue(parentSha, out var parentNode))
+            {
+                // First-parent stubs are drawn in DrawCulledParentStubs
+                // (a pre-pass). Doing it there — instead of here, gated
+                // on the visible row range — means the line still runs
+                // through the viewport after the child commit itself
+                // has scrolled above the visible area. Merge parents
+                // (i > 0) with culled targets live in some other lane
+                // we no longer know, so we can't direct a stub at the
+                // right column; leaving those un-drawn is the honest
+                // fallback.
                 continue;
+            }
 
             double parentX = GetXForColumn(parentNode.ColumnIndex);
             double parentY = GetYForRow(parentNode.RowIndex + rowOffset);
@@ -472,6 +547,72 @@ public partial class GitGraphCanvas
         }
     }
 
+    /// <summary>
+    /// Pre-pass: draw a vertical line for every commit whose first parent
+    /// has been paginated out of the loaded set. The line runs from the
+    /// commit's row past the bottom of the loaded content — the lane
+    /// genuinely continues there, so a real connection pen is used (not a
+    /// dashed/faded stub). Runs before the row-culled connection pass so
+    /// the line survives even when the originating commit scrolls above
+    /// the visible row range.
+    /// </summary>
+    private void DrawCulledParentStubs(
+        DrawingContext dc,
+        IReadOnlyList<GitTreeNode> nodes,
+        int rowOffset,
+        double viewportTop,
+        double viewportBottom)
+    {
+        if (_culledParentStubs.Count == 0)
+            return;
+
+        // Extend a hair past the canvas bottom so the line visibly runs
+        // off the loaded area regardless of scroll position. ActualHeight
+        // already covers all loaded rows; the +RowHeight buffer keeps the
+        // line from terminating exactly on the last row's centre.
+        double bottomY = ActualHeight + RowHeight;
+
+        foreach (var stub in _culledParentStubs)
+        {
+            if (stub.Row < 0 || stub.Row >= nodes.Count)
+                continue;
+
+            double topY = GetYForRow(stub.Row + rowOffset);
+
+            // Skip stubs entirely outside the viewport — important for
+            // huge graphs where most stubs (if any) won't be visible.
+            if (bottomY < viewportTop || topY > viewportBottom)
+                continue;
+
+            var node = nodes[stub.Row];
+            double x = GetXForColumn(stub.Column);
+            var pen = _cacheService.GetConnectionPen(stub.Color);
+
+            // Clip the bubble out so the line visually starts at the
+            // bubble edge — matches DrawConnections' convention. For
+            // stubs whose origin row is above the viewport the bubble
+            // is offscreen, so the exclusion is a no-op there.
+            var fullArea = _cacheService.GetFullArea(ActualWidth, ActualHeight);
+            Geometry nodeShape;
+            if (node.IsStash)
+            {
+                double boxSize = NodeRadius * 1.875;
+                nodeShape = new RectangleGeometry(new Rect(x - boxSize, topY - boxSize, boxSize * 2, boxSize * 2), 3, 3);
+            }
+            else
+            {
+                double radius = node.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
+                nodeShape = new EllipseGeometry(new Point(x, topY), radius, radius);
+            }
+            var clip = new CombinedGeometry(GeometryCombineMode.Exclude, fullArea, nodeShape);
+            clip.Freeze();
+
+            dc.PushClip(clip);
+            dc.DrawLine(pen, new Point(x, topY), new Point(x, bottomY));
+            dc.Pop();
+        }
+    }
+
     private void DrawPassThroughLanes(DrawingContext dc, int rowOffset, int minNodeIndex,
         double viewportTop, double viewportBottom)
     {
@@ -506,13 +647,30 @@ public partial class GitGraphCanvas
             if (segBottomY < viewportTop || segTopY > viewportBottom)
                 continue;
 
-            // Draw vertical line clamped to viewport
-            double x = GetXForColumn(seg.Column);
-            double drawTop = Math.Max(segTopY, viewportTop);
-            double drawBottom = Math.Min(segBottomY, viewportBottom);
-
             var pen = _cacheService.GetConnectionPen(seg.Color);
-            dc.DrawLine(pen, new Point(x, drawTop), new Point(x, drawBottom));
+
+            if (seg.ChildColumn == seg.ParentColumn)
+            {
+                // Same-column segments are pure vertical strokes. Fast
+                // path: clamp to viewport and draw a single line.
+                double xVertical = GetXForColumn(seg.ChildColumn);
+                double drawTop = Math.Max(segTopY, viewportTop);
+                double drawBottom = Math.Min(segBottomY, viewportBottom);
+                dc.DrawLine(pen, new Point(xVertical, drawTop), new Point(xVertical, drawBottom));
+            }
+            else
+            {
+                // Cross-column segments need the rounded rail shape so
+                // the pass-through pass matches the in-viewport rendering
+                // of DrawConnections — a hotfix branch's exit into master
+                // shows the same down-arc-horizontal (or horizontal-arc-
+                // down for merges) curve regardless of scroll position.
+                // Geometry overshoot beyond the viewport is clipped by
+                // the parent ScrollViewer.
+                double childX = GetXForColumn(seg.ChildColumn);
+                double parentX = GetXForColumn(seg.ParentColumn);
+                DrawRailConnection(dc, pen, childX, segTopY, parentX, segBottomY, !seg.IsFirstParent);
+            }
         }
     }
 
