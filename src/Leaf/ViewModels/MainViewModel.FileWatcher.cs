@@ -73,17 +73,33 @@ public partial class MainViewModel
         try
         {
             GitGraphViewModel? graphViewModel = null;
+            RepositoryInfo? repository = null;
             string? repoPath = null;
             Task graphTask = Task.CompletedTask;
+            Task branchTask = Task.CompletedTask;
 
             await _dispatcherService.InvokeAsync(() =>
             {
                 graphViewModel = GitGraphViewModel;
-                repoPath = SelectedRepository?.Path;
+                repository = SelectedRepository;
+                repoPath = repository?.Path;
 
                 if (graphViewModel != null && !string.IsNullOrEmpty(repoPath))
                 {
                     graphTask = graphViewModel.LoadRepositoryAsync(repoPath);
+                }
+
+                // Reload the branch sidebar from git too. Without this, an
+                // external `git branch -D` (CLI, AI tooling, another GUI)
+                // updates refs/heads/ or packed-refs but Leaf's sidebar
+                // list stays as-was — the deleted branch lingers as a
+                // phantom and resists deletion from inside Leaf because
+                // git itself no longer knows about it. forceReload=true
+                // bypasses the BranchesLoaded short-circuit so the list
+                // is rebuilt every time the .git dir changes.
+                if (repository != null)
+                {
+                    branchTask = LoadBranchesForRepoAsync(repository, forceReload: true, skipFilterApplication: true);
                 }
             });
 
@@ -93,8 +109,8 @@ public partial class MainViewModel
             }
 
             var infoTask = _gitService.GetRepositoryInfoFastAsync(repoPath, cancellationToken: CurrentRepositoryToken);
-            await Task.WhenAll(graphTask, infoTask).ConfigureAwait(false);
-            Log.Perf("FileWatcher", "GitDir: graph + info parallel", sw.ElapsedMilliseconds);
+            await Task.WhenAll(graphTask, branchTask, infoTask).ConfigureAwait(false);
+            Log.Perf("FileWatcher", "GitDir: graph + branches + info parallel", sw.ElapsedMilliseconds);
 
             var info = await infoTask.ConfigureAwait(false);
             var shouldRefreshMergeUi = false;
