@@ -52,9 +52,26 @@ internal class StagingOperations : IStagingOperations
             // wait on a slow TimerQueue unregister.
             timeoutCts.Cancel();
 
-            // Await instead of .Result so a LibGit2 exception propagates as
-            // itself rather than wrapped in AggregateException.
-            return await libgitTask.ConfigureAwait(false);
+            try
+            {
+                // Await instead of .Result so a LibGit2 exception propagates as
+                // itself rather than wrapped in AggregateException.
+                return await libgitTask.ConfigureAwait(false);
+            }
+            catch (LibGit2SharpException ex)
+            {
+                // libgit2's status walk re-hashes modified working-tree files
+                // and surfaces Win32 sharing violations as exceptions
+                // ("could not open '...': The process cannot access the file
+                // because it is being used by another process"). External
+                // editors, AI tooling, or build processes routinely hold
+                // short-lived locks while writing — turning a refresh into a
+                // hard failure isn't honest. The CLI status path doesn't
+                // re-open files the same way, so it tolerates these locks;
+                // fall through to it as we already do for the timeout case.
+                Log.Warn("Staging", $"LibGit2Sharp status failed for '{repoPath}', falling back to git CLI: {ex.Message}");
+                return await Task.Run(() => GetWorkingChangesViaGitCli(repoPath), cancellationToken).ConfigureAwait(false);
+            }
         }
 
         Log.Warn("Staging", $"LibGit2Sharp status timed out for '{repoPath}', falling back to git CLI");
