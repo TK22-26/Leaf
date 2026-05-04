@@ -21,22 +21,51 @@ public partial class MainViewModel
         {
             await BeginBusyAsync("Fetching all repositories...");
 
+            // Count attempts and capture failed repo names so the toast
+            // doesn't lie. The inner loop swallows per-repo errors into
+            // the log; surfacing the repo names directly in the toast
+            // saves the user from opening the log file for the common
+            // case ("you have 3 broken remotes — these three").
+            int total = 0;
+            int succeeded = 0;
+            var failedNames = new List<string>();
             foreach (var group in RepositoryGroups)
             {
                 foreach (var repo in group.Repositories)
                 {
+                    total++;
                     try
                     {
-                        await _gitService.FetchAsync(repo.Path);
+                        await _gitService.FetchAsync(repo.Path, cancellationToken: CurrentRepositoryToken);
+                        succeeded++;
                     }
                     catch (Exception ex)
                     {
+                        failedNames.Add(repo.Name);
                         Log.Error("Sync", $"Fetch failed for {repo.Name}", ex);
                     }
                 }
             }
 
-            StatusMessage = "Fetch complete";
+            if (succeeded == total)
+            {
+                NotifySuccess("Fetch complete", $"Fetched {succeeded} repositor{(succeeded == 1 ? "y" : "ies")}.");
+            }
+            else
+            {
+                // Cap the listed names so the toast stays readable. The
+                // log has the full picture either way.
+                const int MaxNamesInToast = 5;
+                var displayed = failedNames.Take(MaxNamesInToast);
+                var listed = string.Join(", ", displayed);
+                if (failedNames.Count > MaxNamesInToast)
+                {
+                    listed += $", +{failedNames.Count - MaxNamesInToast} more";
+                }
+                NotifyWarning(
+                    "Fetch finished with errors",
+                    $"Fetched {succeeded} of {total} repositories.\nFailed: {listed}");
+            }
 
             // Refresh current repo if selected
             if (SelectedRepository != null)
@@ -63,27 +92,21 @@ public partial class MainViewModel
         {
             await BeginBusyAsync($"Fetching from {remoteName}...");
 
-            // Get credentials for this remote (map hostname to credential key)
-            string? pat = null;
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            // Resolve credential key from the remote URL only if Leaf has a PAT
+            // stored — otherwise git falls back to GCM. The PAT itself is
+            // looked up in-process by Leaf.AskPass.exe.
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var remoteUrl = remotes.FirstOrDefault(r => r.Name == remoteName)?.Url;
-            if (!string.IsNullOrEmpty(remoteUrl))
-            {
-                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remoteUrl);
-                if (!string.IsNullOrEmpty(credentialKey))
-                {
-                    pat = _credentialService.GetPat(credentialKey);
-                }
-            }
+            var credentialKey = _credentialService.ResolveActiveCredentialKey(remoteUrl);
 
-            await _gitService.FetchAsync(SelectedRepository.Path, remoteName, password: pat);
+            await _gitService.FetchAsync(SelectedRepository.Path, remoteName, credentialKey: credentialKey, cancellationToken: CurrentRepositoryToken);
 
-            StatusMessage = $"Fetched from {remoteName}";
+            NotifySuccess("Fetch complete", $"Fetched from {remoteName}.");
             await SelectRepositoryAsync(SelectedRepository, fetchInBackground: false);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Fetch failed: {ex.Message}";
+            await ReportOperationFailureAsync("Fetch", ex);
         }
         finally
         {
@@ -114,7 +137,7 @@ public partial class MainViewModel
         try
         {
             await BeginBusyAsync("Pulling...");
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
             // Check if SyncAllRemotes is enabled for multi-remote repos
             if (remotes.Count > 1)
@@ -122,23 +145,15 @@ public partial class MainViewModel
                 var settings = _settingsService.LoadSettings();
                 if (settings.SyncAllRemotes)
                 {
-                    // Fetch from all remotes first
-                    StatusMessage = "Fetching from all remotes...";
+                    // Fetch from all remotes first — the busy spinner is
+                    // already up (BeginBusyAsync); no per-remote status.
                     foreach (var remote in remotes)
                     {
-                        string? fetchPat = null;
-                        if (!string.IsNullOrEmpty(remote.Url))
-                        {
-                            var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
-                            if (!string.IsNullOrEmpty(credentialKey))
-                            {
-                                fetchPat = _credentialService.GetPat(credentialKey);
-                            }
-                        }
+                        var fetchCredentialKey = _credentialService.ResolveActiveCredentialKey(remote.Url);
 
                         try
                         {
-                            await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: fetchPat);
+                            await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: fetchCredentialKey, cancellationToken: CurrentRepositoryToken);
                         }
                         catch (Exception ex)
                         {
@@ -148,29 +163,19 @@ public partial class MainViewModel
                 }
             }
 
-            StatusMessage = "Pulling changes...";
-
             // Pull from tracking branch's remote
             var trackingRemoteUrl = remotes.FirstOrDefault(r => r.Name == "origin")?.Url
                                     ?? remotes.FirstOrDefault()?.Url;
-            string? pat = null;
-            if (!string.IsNullOrEmpty(trackingRemoteUrl))
-            {
-                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(trackingRemoteUrl);
-                if (!string.IsNullOrEmpty(credentialKey))
-                {
-                    pat = _credentialService.GetPat(credentialKey);
-                }
-            }
+            var pullCredentialKey = _credentialService.ResolveActiveCredentialKey(trackingRemoteUrl);
 
-            await _gitService.PullAsync(SelectedRepository.Path, null, pat);
+            await _gitService.PullAsync(SelectedRepository.Path, pullCredentialKey, cancellationToken: CurrentRepositoryToken);
 
-            StatusMessage = "Pull complete";
+            NotifySuccess("Pull complete", "Your branch is up to date with the remote.");
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Pull failed: {ex.Message}";
+            await ReportOperationFailureAsync("Pull", ex);
         }
         finally
         {
@@ -189,7 +194,7 @@ public partial class MainViewModel
         try
         {
             await BeginBusyAsync("Pushing...");
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
             // Check if there are multiple remotes
             if (remotes.Count > 1)
@@ -207,45 +212,44 @@ public partial class MainViewModel
                 return;
             }
 
-            StatusMessage = "Pushing changes...";
-
-            // Single remote - push directly
+            // Single remote - push directly. Busy spinner is up via
+            // BeginBusyAsync; no per-stage status update.
             var remote = remotes.FirstOrDefault();
-            string? pat = null;
-            if (!string.IsNullOrEmpty(remote?.Url))
-            {
-                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
-                if (!string.IsNullOrEmpty(credentialKey))
-                {
-                    pat = _credentialService.GetPat(credentialKey);
-                }
-            }
+            var pushCredentialKey = _credentialService.ResolveActiveCredentialKey(remote?.Url);
 
-            await _gitService.PushAsync(SelectedRepository.Path, remote?.Name, null, pat);
+            await _gitService.PushAsync(SelectedRepository.Path, remote?.Name, pushCredentialKey, cancellationToken: CurrentRepositoryToken);
 
             // Fetch to update remote refs in the UI
             if (remote != null)
             {
-                StatusMessage = "Updating remote refs...";
                 try
                 {
-                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: pat);
+                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: pushCredentialKey, cancellationToken: CurrentRepositoryToken);
                 }
-                catch
+                catch (InvalidOperationException ex)
                 {
-                    // Ignore fetch failures - push succeeded
+                    // Post-push fetch is cosmetic; the push itself succeeded.
+                    Log.Info("Sync", $"Post-push fetch {remote.Name} failed: {ex.Message}");
                 }
             }
 
-            StatusMessage = "Push complete";
+            // remote is virtually always non-null at this point: a repo
+            // with zero remotes would have caused PushAsync to fail (no
+            // remote arg = no upstream = "fatal: No configured push
+            // destination") and the catch below would surface that. The
+            // null-arm of the conditional below is a defensive belt for
+            // the rare case where PushAsync succeeded against an
+            // unconfigured push target (e.g. credentials-only-no-fetch
+            // remote we never enumerate); the toast then drops the
+            // target name.
+            NotifySuccess(
+                "Push complete",
+                remote != null ? $"Pushed to {remote.Name}." : "Push completed.");
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Push failed: {ex.Message}";
-            await _dialogService.ShowErrorAsync(
-                $"Failed to push:\n\n{ex.Message}",
-                "Push Failed");
+            await ReportOperationFailureAsync("Push", ex);
         }
         finally
         {
@@ -260,30 +264,20 @@ public partial class MainViewModel
     {
         if (SelectedRepository == null) return;
 
-        IsBusy = true;
+        // IsBusy is already true — caller (PushAsync) did BeginBusyAsync.
         var successCount = 0;
         var failedMessages = new List<string>();
-        var pushedRemotes = new List<(RemoteInfo remote, string? pat)>();
+        var pushedRemotes = new List<(RemoteInfo remote, string? credentialKey)>();
 
         foreach (var remote in remotes)
         {
-            StatusMessage = $"Pushing to {remote.Name}...";
-
-            string? pat = null;
-            if (!string.IsNullOrEmpty(remote.Url))
-            {
-                var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
-                if (!string.IsNullOrEmpty(credentialKey))
-                {
-                    pat = _credentialService.GetPat(credentialKey);
-                }
-            }
+            var credentialKey = _credentialService.ResolveActiveCredentialKey(remote.Url);
 
             try
             {
-                await _gitService.PushAsync(SelectedRepository.Path, remote.Name, null, pat);
+                await _gitService.PushAsync(SelectedRepository.Path, remote.Name, credentialKey, cancellationToken: CurrentRepositoryToken);
                 successCount++;
-                pushedRemotes.Add((remote, pat));
+                pushedRemotes.Add((remote, credentialKey));
             }
             catch (Exception ex)
             {
@@ -293,31 +287,35 @@ public partial class MainViewModel
         }
 
         // Fetch from all pushed remotes to update remote refs in the UI
-        StatusMessage = "Updating remote refs...";
-        foreach (var (remote, pat) in pushedRemotes)
+        foreach (var (remote, credentialKey) in pushedRemotes)
         {
             try
             {
-                await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: pat);
+                await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey, cancellationToken: CurrentRepositoryToken);
             }
-            catch
+            catch (InvalidOperationException ex)
             {
-                // Ignore fetch failures - push succeeded
+                // Post-push fetch is cosmetic; the push itself succeeded.
+                Log.Info("Sync", $"Post-push fetch {remote.Name} failed: {ex.Message}");
             }
         }
-
-        StatusMessage = $"Pushed to {successCount} of {remotes.Count} remotes";
 
         if (failedMessages.Count > 0)
         {
             var errorDetail = string.Join("\n", failedMessages);
-            await _dialogService.ShowErrorAsync(
+            await _dialogService.ShowErrorToastAsync(
                 $"Push failed for {failedMessages.Count} remote(s):\n\n{errorDetail}",
                 "Push Failed");
         }
+        else if (successCount > 0)
+        {
+            NotifySuccess("Push complete",
+                $"Pushed to {successCount} of {remotes.Count} remote(s).");
+        }
 
         await RefreshAsync();
-        IsBusy = false;
+        // IsBusy is dropped by caller (PushAsync) in its finally block —
+        // no need to flip it here.
     }
 
     /// <summary>
@@ -341,7 +339,7 @@ public partial class MainViewModel
     /// </summary>
     private void OnAutoFetchCompleted(object? sender, AutoFetchCompletedEventArgs e)
     {
-        _ = _dispatcherService.InvokeAsync(() =>
+        _dispatcherService.InvokeAsync(() =>
         {
             if (SelectedRepository == null)
                 return;
@@ -350,13 +348,13 @@ public partial class MainViewModel
             SelectedRepository.AheadBy = e.AheadBy;
             SelectedRepository.BehindBy = e.BehindBy;
 
-            // Update status
-            StatusMessage = $"Auto-fetched at {e.FetchTime:HH:mm}" +
-                           (e.AheadBy > 0 ? $" | ↑{e.AheadBy}" : "") +
-                           (e.BehindBy > 0 ? $" | ↓{e.BehindBy}" : "");
+            // No toast on auto-fetch — it runs every N minutes in the
+            // background and would be pure noise. The ahead/behind
+            // counters above and the LastFetchTime indicator below are
+            // the legitimate signals.
 
             // Notify that LastFetchTime changed (property delegates to service)
             OnPropertyChanged(nameof(LastFetchTime));
-        });
+        }).FireAndForget(nameof(OnAutoFetchCompleted), isUserAction: false);
     }
 }

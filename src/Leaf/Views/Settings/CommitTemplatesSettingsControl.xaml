@@ -1,0 +1,172 @@
+<UserControl x:Class="Leaf.Views.Settings.CommitTemplatesSettingsControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <TextBlock Text="Commit Templates"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                   Margin="0,0,0,4"/>
+        <TextBlock Text="Reusable commit message bodies — accessible from the commit panel via Ctrl+T."
+                   FontSize="12"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,16"/>
+
+        <!-- Master toggle — hides the templates icon button in the
+             commit panel + makes Ctrl+T a no-op. Stored templates are
+             preserved either way; flipping the toggle off doesn't lose
+             any user-created entries. -->
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16"
+                Margin="0,0,0,16">
+            <CheckBox x:Name="EnabledCheckBox"
+                      Content="Show the templates button in the commit panel"
+                      ToolTip="When off, the templates icon next to the AI fill button is hidden and Ctrl+T is a no-op. Your stored templates are preserved."
+                      Click="EnabledCheckBox_Click"/>
+        </Border>
+
+        <!-- Two-column layout: list on the left, editor on the right -->
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="0">
+            <Grid Height="500">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left: list + buttons -->
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <ListBox x:Name="TemplatesList"
+                             Grid.Row="0"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             SelectionChanged="TemplatesList_SelectionChanged">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="Padding" Value="8,6"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}"
+                                               FontWeight="SemiBold"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                    <TextBlock FontSize="10"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                        <Run Text="{Binding Badge, Mode=OneWay}"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Grid.Row="1"
+                                Orientation="Horizontal"
+                                Margin="8"
+                                HorizontalAlignment="Stretch">
+                        <Button x:Name="NewButton"
+                                Content="New"
+                                Padding="10,4"
+                                Margin="0,0,4,0"
+                                Click="NewButton_Click"/>
+                        <Button x:Name="DeleteButton"
+                                Content="Delete"
+                                Padding="10,4"
+                                IsEnabled="False"
+                                Click="DeleteButton_Click"/>
+                        <Button x:Name="ResetButton"
+                                Content="Reset all…"
+                                Padding="10,4"
+                                Margin="8,0,0,0"
+                                HorizontalAlignment="Right"
+                                Click="ResetButton_Click"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Right: editor -->
+                <Border Grid.Column="1"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1,0,0,0">
+                    <Grid x:Name="EditorPanel"
+                          Margin="12"
+                          IsEnabled="False">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="Name" Margin="0,0,0,4"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        <TextBox x:Name="NameTextBox"
+                                 Grid.Row="1"
+                                 Margin="0,0,0,12"
+                                 TextChanged="EditorField_Changed"/>
+
+                        <Grid Grid.Row="2" Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Body"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            <Button Grid.Column="1"
+                                    Content="Insert placeholder"
+                                    Padding="8,2"
+                                    FontSize="11"
+                                    Click="InsertPlaceholder_Click"/>
+                        </Grid>
+                        <TextBox x:Name="BodyTextBox"
+                                 Grid.Row="4"
+                                 AcceptsReturn="True"
+                                 AcceptsTab="True"
+                                 TextWrapping="Wrap"
+                                 FontFamily="Consolas, Cascadia Mono"
+                                 FontSize="12"
+                                 VerticalScrollBarVisibility="Auto"
+                                 TextChanged="EditorField_Changed"/>
+
+                        <TextBlock Grid.Row="5" Text="Branch-name regex (extracts {ticket})"
+                                   Margin="0,8,0,4"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        <Grid Grid.Row="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="TicketRegexTextBox"
+                                     FontFamily="Consolas, Cascadia Mono"
+                                     FontSize="12"
+                                     ToolTip="First capture group's value substitutes for {ticket}. Leave blank to skip ticket extraction."
+                                     TextChanged="EditorField_Changed"/>
+                            <ComboBox x:Name="ScopeCombo"
+                                      Grid.Column="1"
+                                      Width="120"
+                                      Margin="6,0,0,0"
+                                      SelectionChanged="ScopeCombo_SelectionChanged">
+                                <ComboBoxItem Content="Global" Tag="Global" IsSelected="True"/>
+                                <ComboBoxItem Content="This repo" Tag="Repository"/>
+                            </ComboBox>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </StackPanel>
+</UserControl>

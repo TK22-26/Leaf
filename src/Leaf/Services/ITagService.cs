@@ -44,14 +44,12 @@ public interface ITagService
     /// <param name="session">Repository session.</param>
     /// <param name="tagName">Name of the tag to push.</param>
     /// <param name="remoteName">Remote name (default: origin).</param>
-    /// <param name="username">Optional username for authentication.</param>
-    /// <param name="password">Optional password/token for authentication.</param>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     Task PushTagAsync(
         IRepositorySession session,
         string tagName,
         string remoteName = "origin",
-        string? username = null,
-        string? password = null);
+        string? credentialKey = null);
 
     /// <summary>
     /// Deletes a tag from a remote.
@@ -59,12 +57,10 @@ public interface ITagService
     /// <param name="session">Repository session.</param>
     /// <param name="tagName">Name of the tag to delete.</param>
     /// <param name="remoteName">Remote name (default: origin).</param>
-    /// <param name="username">Optional username for authentication.</param>
-    /// <param name="password">Optional password/token for authentication.</param>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     Task DeleteRemoteTagAsync(
         IRepositorySession session,
         string tagName,
         string remoteName = "origin",
-        string? username = null,
-        string? password = null);
+        string? credentialKey = null);
 }

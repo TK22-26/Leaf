@@ -191,10 +191,10 @@ public class AiCommitMessageService : IAiCommitMessageService
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    try { process.Kill(); } catch { }
+                    KillSafely(process, "cancelled");
                     throw new OperationCanceledException(cancellationToken);
                 }
-                try { process.Kill(); } catch { }
+                KillSafely(process, "timed out");
                 return (false, string.Empty, $"timed out after {timeoutSeconds}s");
             }
 
@@ -242,6 +242,22 @@ public class AiCommitMessageService : IAiCommitMessageService
         catch (Exception ex)
         {
             return (false, string.Empty, ex.Message);
+        }
+    }
+
+    private static void KillSafely(Process process, string reason)
+    {
+        try
+        {
+            process.Kill();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or System.ComponentModel.Win32Exception
+                                or NotSupportedException
+                                or AggregateException)
+        {
+            // Process may have exited between the decision to kill and the call.
+            Log.Info("AiCommit", $"Kill on {reason} failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -329,11 +345,24 @@ Description:
         if (provider.Equals("Codex", StringComparison.OrdinalIgnoreCase))
         {
             var schemaPath = GetOrCreateCodexSchemaFile();
+            // Don't pin a specific model with -m. OpenAI rotates the
+            // ChatGPT-account-eligible model list (e.g. gpt-5.1-codex-mini
+            // was hard-locked out in late 2026 with "model is not supported
+            // when using Codex with a ChatGPT account"). Letting `codex
+            // exec` fall back to whatever the user's ~/.codex/config.toml
+            // declares as `model = "..."` keeps Leaf's commit-message AI
+            // working across future model rotations without code changes
+            // — the user (or `codex login`) is already the source of
+            // truth for "what model can I use right now".
+            //
+            // model_reasoning_effort=low IS still pinned: this is a
+            // commit-message generation task (one summary, no agentic
+            // tool use), so we want the cheapest/fastest setting
+            // regardless of what the user's interactive default is.
             return ("codex", new List<string>
             {
                 "exec",
                 "-c", "model_reasoning_effort=low",
-                "-m", "gpt-5.1-codex-mini",
                 "--full-auto",
                 "--color", "never",
                 "--output-schema", schemaPath,

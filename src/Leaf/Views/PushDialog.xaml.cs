@@ -1,7 +1,9 @@
+using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
 using Leaf.Models;
+using Leaf.Services;
 
 namespace Leaf.Views;
 
@@ -142,9 +144,10 @@ public class RemoteSelectionItem : INotifyPropertyChanged
                     }
                 }
             }
-            catch
+            catch (Exception ex) when (ex is ArgumentException or IndexOutOfRangeException)
             {
-                // Fall back to full URL
+                // Malformed URL — fall back to showing the full URL (truncated).
+                Log.Info("PushDialog", $"URL display parse failed for '{Url}': {ex.Message}");
             }
 
             return Url.Length > 40 ? Url[..40] + "..." : Url;

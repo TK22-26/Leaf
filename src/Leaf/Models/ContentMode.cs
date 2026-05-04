@@ -7,5 +7,13 @@ public enum ContentMode
 {
     Graph,
     PullRequestDetail,
-    PullRequestCreate
+    PullRequestCreate,
+    /// <summary>
+    /// A <c>git bisect</c> session is active. The center column hosts
+    /// the full bisect detail view (banner + verdict buttons + diff +
+    /// verdict log). Branch tree stays visible; right pane hides
+    /// because the bisect view uses the full content area for the
+    /// diff that drives the verdict decision.
+    /// </summary>
+    Bisect,
 }

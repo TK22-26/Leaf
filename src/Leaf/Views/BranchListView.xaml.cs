@@ -5,12 +5,21 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Leaf.Models;
+using Leaf.Services;
+using Leaf.Utils;
 using Leaf.ViewModels;
 
 namespace Leaf.Views;
 
 /// <summary>
-/// Interaction logic for BranchListView.xaml
+/// Interaction logic for BranchListView.xaml.
+///
+/// Per plan §2.7 this code-behind is intentionally thin: selection state,
+/// GitFlow dispatch, and quick-create orchestration all live in
+/// <see cref="MainViewModel"/> partials (<c>.Selection.cs</c>, <c>.GitFlow.cs</c>,
+/// <c>.Worktree.cs</c>, <c>.Branch.cs</c>). What remains here is the work
+/// that genuinely belongs to the view: popup placement, focus, keyboard
+/// shortcuts, inline progress state, and event-to-command dispatch.
 /// </summary>
 public partial class BranchListView : UserControl
 {
@@ -38,6 +47,8 @@ public partial class BranchListView : UserControl
             OpenBranchCreatePopup(viewModel);
     }
 
+    #region Branch clicks
+
     private void Branch_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (sender is not FrameworkElement element || element.DataContext is not BranchInfo branch)
@@ -49,13 +60,13 @@ public partial class BranchListView : UserControl
         // Double-click to checkout
         if (e.ClickCount == 2 && !branch.IsCurrent)
         {
-            _ = viewModel.CheckoutBranchAsync(branch);
+            viewModel.CheckoutBranchAsync(branch)
+                .FireAndForget(nameof(viewModel.CheckoutBranchAsync), isUserAction: true);
             e.Handled = true;
             return;
         }
 
-        // Single click - select this branch (Ctrl toggles multi-select)
-        SelectBranch(viewModel.SelectedRepository, branch, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        viewModel.SelectBranch(branch, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
 
         // Restore graph mode if in PR view
         if (!viewModel.IsGraphMode)
@@ -63,9 +74,7 @@ public partial class BranchListView : UserControl
 
         // Navigate to branch tip in git graph
         if (!string.IsNullOrEmpty(branch.TipSha))
-        {
             viewModel.GitGraphViewModel?.SelectCommitBySha(branch.TipSha);
-        }
 
         e.Handled = true;
     }
@@ -78,14 +87,15 @@ public partial class BranchListView : UserControl
         if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
             return;
 
-        // If right-clicked branch is not selected, select it
         if (!branch.IsSelected)
-        {
-            SelectBranch(viewModel.SelectedRepository, branch, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
-        }
+            viewModel.SelectBranch(branch, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
 
-        // Don't mark handled - let context menu open
+        // Don't mark handled — let the context menu open.
     }
+
+    #endregion
+
+    #region Tag clicks
 
     private void Tag_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -95,7 +105,7 @@ public partial class BranchListView : UserControl
         if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
             return;
 
-        // Double-click to scroll to commit in graph
+        // Double-click to scroll to the tagged commit in the graph
         if (e.ClickCount == 2)
         {
             viewModel.GitGraphViewModel?.SelectCommitBySha(tag.TargetSha);
@@ -103,10 +113,8 @@ public partial class BranchListView : UserControl
             return;
         }
 
-        // Single click - select this tag (Ctrl toggles multi-select)
-        SelectTag(viewModel.SelectedRepository, tag, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        viewModel.SelectTag(tag, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
 
-        // Restore graph mode if in PR view
         if (!viewModel.IsGraphMode)
             viewModel.ClosePullRequestViewCommand.Execute(null);
 
@@ -121,40 +129,13 @@ public partial class BranchListView : UserControl
         if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
             return;
 
-        // If right-clicked tag is not selected, select it
         if (!tag.IsSelected)
-        {
-            SelectTag(viewModel.SelectedRepository, tag, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
-        }
-
-        // Don't mark handled - let context menu open
+            viewModel.SelectTag(tag, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
     }
 
-    private static void SelectTag(RepositoryInfo repo, TagInfo tag, bool toggle)
-    {
-        // Clear branch and PR selections
-        repo.ClearBranchSelection();
-        repo.ClearPullRequestSelection();
+    #endregion
 
-        if (toggle)
-        {
-            tag.IsSelected = !tag.IsSelected;
-            return;
-        }
-
-        // Clear other tag selections and select this one
-        foreach (var category in repo.BranchCategories)
-        {
-            if (category.IsTagsCategory)
-            {
-                foreach (var t in category.Tags)
-                {
-                    t.IsSelected = false;
-                }
-            }
-        }
-        tag.IsSelected = true;
-    }
+    #region Worktree clicks
 
     private void Worktree_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -164,18 +145,17 @@ public partial class BranchListView : UserControl
         if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
             return;
 
-        // Double-click to switch to worktree
+        // Double-click to switch to the worktree
         if (e.ClickCount == 2 && !worktree.IsCurrent)
         {
-            _ = viewModel.SwitchToWorktreeAsync(worktree);
+            viewModel.SwitchToWorktreeAsync(worktree)
+                .FireAndForget(nameof(viewModel.SwitchToWorktreeAsync), isUserAction: true);
             e.Handled = true;
             return;
         }
 
-        // Single click - select this worktree
-        SelectWorktree(viewModel.SelectedRepository, worktree, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        viewModel.SelectWorktree(worktree, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
 
-        // Restore graph mode if in PR view
         if (!viewModel.IsGraphMode)
             viewModel.ClosePullRequestViewCommand.Execute(null);
 
@@ -190,83 +170,22 @@ public partial class BranchListView : UserControl
         if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
             return;
 
-        // If right-clicked worktree is not selected, select it
         if (!worktree.IsSelected)
-        {
-            SelectWorktree(viewModel.SelectedRepository, worktree, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
-        }
-
-        // Don't mark handled - let context menu open
+            viewModel.SelectWorktree(worktree, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
     }
 
-    private static void SelectWorktree(RepositoryInfo repo, WorktreeInfo worktree, bool toggle)
-    {
-        // Clear branch and PR selections to avoid mixed selections
-        repo.ClearBranchSelection();
-        repo.ClearPullRequestSelection();
+    #endregion
 
-        if (toggle)
-        {
-            worktree.IsSelected = !worktree.IsSelected;
-            return;
-        }
-
-        // Clear other worktree selections and select this one
-        foreach (var category in repo.BranchCategories)
-        {
-            if (category.IsWorktreesCategory)
-            {
-                foreach (var wt in category.Worktrees)
-                {
-                    wt.IsSelected = false;
-                }
-            }
-        }
-        worktree.IsSelected = true;
-    }
-
-    /// <summary>
-    /// Selects the given branch. For local branches (which are shared between GITFLOW and LOCAL
-    /// categories), this automatically shows selection in both places since they're the same instance.
-    /// </summary>
-    private static void SelectBranch(RepositoryInfo repo, BranchInfo branch, bool toggle)
-    {
-        // Clear worktree and PR selections to avoid mixed selections
-        repo.ClearPullRequestSelection();
-        foreach (var category in repo.BranchCategories)
-        {
-            if (category.IsWorktreesCategory)
-            {
-                foreach (var wt in category.Worktrees)
-                {
-                    wt.IsSelected = false;
-                }
-            }
-        }
-
-        if (toggle)
-        {
-            if (branch.IsSelected)
-            {
-                branch.IsSelected = false;
-                repo.SelectedBranches.Remove(branch);
-            }
-            else
-            {
-                branch.IsSelected = true;
-                repo.SelectedBranches.Add(branch);
-            }
-            return;
-        }
-
-        repo.ClearBranchSelection();
-        branch.IsSelected = true;
-        repo.SelectedBranches.Add(branch);
-    }
+    #region GitFlow action menu
 
     private Button? _lastChevronButton;
-
     private bool _isGitFlowMenuBuilding;
+
+    // Snapshot of active GitFlow branches captured when the menu is built.
+    // The Finish handlers read these back when the user clicks a menu item.
+    private string? _activeRelease;
+    private string? _activeHotfix;
+    private List<string> _activeFeatures = new();
 
     private async void GitFlowActionButton_Click(object sender, RoutedEventArgs e)
     {
@@ -283,12 +202,15 @@ public partial class BranchListView : UserControl
         {
             _isGitFlowMenuBuilding = true;
 
-            // Build the context menu dynamically
             await BuildGitFlowContextMenu(button.ContextMenu);
 
             button.ContextMenu.PlacementTarget = button;
             button.ContextMenu.Placement = PlacementMode.Right;
             button.ContextMenu.IsOpen = true;
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(GitFlowActionButton_Click), isUserAction: true);
         }
         finally
         {
@@ -296,17 +218,10 @@ public partial class BranchListView : UserControl
         }
     }
 
-    #region GitFlow Context Menu
-
-    private string? _activeRelease;
-    private string? _activeHotfix;
-    private List<string> _activeFeatures = new();
-
     private async Task BuildGitFlowContextMenu(ContextMenu menu)
     {
         menu.Items.Clear();
 
-        // Get GitFlow status first to determine menu state
         _activeFeatures = new List<string>();
         _activeRelease = null;
         _activeHotfix = null;
@@ -322,7 +237,7 @@ public partial class BranchListView : UserControl
             }
         }
 
-        // Start Feature (purple dot) - always show Start since multiple features allowed
+        // Start Feature (always present — multiple concurrent features allowed)
         var startFeatureItem = new MenuItem
         {
             Header = "Start Feature",
@@ -331,53 +246,53 @@ public partial class BranchListView : UserControl
         startFeatureItem.Click += StartFeature_Click;
         menu.Items.Add(startFeatureItem);
 
-        // Release (yellow/amber dot) - Start or Finish depending on active state
+        // Release — Start or Finish depending on whether one is already active
         if (_activeRelease != null)
         {
-            var finishReleaseItem = new MenuItem
+            var finishRelease = new MenuItem
             {
                 Header = $"Finish Release ({_activeRelease})",
                 Icon = CreateColorDot("#BF8700"),
                 Tag = _activeRelease
             };
-            finishReleaseItem.Click += FinishRelease_Click;
-            menu.Items.Add(finishReleaseItem);
+            finishRelease.Click += FinishRelease_Click;
+            menu.Items.Add(finishRelease);
         }
         else
         {
-            var startReleaseItem = new MenuItem
+            var startRelease = new MenuItem
             {
                 Header = "Start Release",
                 Icon = CreateColorDot("#BF8700")
             };
-            startReleaseItem.Click += StartRelease_Click;
-            menu.Items.Add(startReleaseItem);
+            startRelease.Click += StartRelease_Click;
+            menu.Items.Add(startRelease);
         }
 
-        // Hotfix (red dot) - Start or Finish depending on active state
+        // Hotfix — Start or Finish depending on whether one is already active
         if (_activeHotfix != null)
         {
-            var finishHotfixItem = new MenuItem
+            var finishHotfix = new MenuItem
             {
                 Header = $"Finish Hotfix ({_activeHotfix})",
                 Icon = CreateColorDot("#CF222E"),
                 Tag = _activeHotfix
             };
-            finishHotfixItem.Click += FinishHotfix_Click;
-            menu.Items.Add(finishHotfixItem);
+            finishHotfix.Click += FinishHotfix_Click;
+            menu.Items.Add(finishHotfix);
         }
         else
         {
-            var startHotfixItem = new MenuItem
+            var startHotfix = new MenuItem
             {
                 Header = "Start Hotfix",
                 Icon = CreateColorDot("#CF222E")
             };
-            startHotfixItem.Click += StartHotfix_Click;
-            menu.Items.Add(startHotfixItem);
+            startHotfix.Click += StartHotfix_Click;
+            menu.Items.Add(startHotfix);
         }
 
-        // Finish Feature submenu (if any active features) - features can have multiple
+        // Finish Feature submenu — features are multi-instance so this is always a list
         if (_activeFeatures.Count > 0)
         {
             menu.Items.Add(new Separator());
@@ -397,146 +312,98 @@ public partial class BranchListView : UserControl
         }
     }
 
-    private void FinishFeature_Click(object sender, RoutedEventArgs e)
+    private async void FinishFeature_Click(object sender, RoutedEventArgs e)
     {
         if (sender is MenuItem item && item.Tag is string featureName)
-        {
-            FinishGitFlowBranch(GitFlowBranchType.Feature, featureName);
-        }
+            await DispatchFinishAsync(GitFlowBranchType.Feature, featureName);
     }
 
-    private void FinishRelease_Click(object sender, RoutedEventArgs e)
+    private async void FinishRelease_Click(object sender, RoutedEventArgs e)
     {
         if (_activeRelease != null)
-        {
-            FinishGitFlowBranch(GitFlowBranchType.Release, _activeRelease);
-        }
+            await DispatchFinishAsync(GitFlowBranchType.Release, _activeRelease);
     }
 
-    private void FinishHotfix_Click(object sender, RoutedEventArgs e)
+    private async void FinishHotfix_Click(object sender, RoutedEventArgs e)
     {
         if (_activeHotfix != null)
-        {
-            FinishGitFlowBranch(GitFlowBranchType.Hotfix, _activeHotfix);
-        }
+            await DispatchFinishAsync(GitFlowBranchType.Hotfix, _activeHotfix);
     }
 
-    private async void FinishGitFlowBranch(GitFlowBranchType branchType, string name)
+    private async Task DispatchFinishAsync(GitFlowBranchType type, string flowName)
     {
-        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
-            return;
-
-        var config = await viewModel.GetGitFlowConfigAsync();
-        if (config == null) return;
-
-        // Get the full branch name
-        var prefix = branchType switch
+        try
         {
-            GitFlowBranchType.Feature => config.FeaturePrefix,
-            GitFlowBranchType.Release => config.ReleasePrefix,
-            GitFlowBranchType.Hotfix => config.HotfixPrefix,
-            _ => ""
-        };
-        var branchName = prefix + name;
-
-        // Find the branch
-        var branch = viewModel.SelectedRepository.LocalBranches
-            .FirstOrDefault(b => b.Name.Equals(branchName, StringComparison.OrdinalIgnoreCase));
-
-        if (branch != null)
+            if (DataContext is MainViewModel viewModel)
+                await viewModel.FinishGitFlowBranchByNameAsync(type, flowName);
+        }
+        catch (Exception ex)
         {
-            await viewModel.FinishGitFlowBranchAsync(branch);
+            AsyncErrorHandler.Handle(ex, nameof(DispatchFinishAsync), isUserAction: true);
         }
     }
 
     #endregion
 
-    #region Quick Create Flyout
+    #region GitFlow quick-create popup
 
     private void StartFeature_Click(object sender, RoutedEventArgs e)
-    {
-        OpenQuickCreate(GitFlowBranchType.Feature, "Start Feature", "#8250DF", "feature/");
-    }
+        => OpenQuickCreate(GitFlowBranchType.Feature, "Start Feature", "#8250DF", "feature/");
 
     private void StartRelease_Click(object sender, RoutedEventArgs e)
-    {
-        OpenQuickCreate(GitFlowBranchType.Release, "Start Release", "#BF8700", "release/");
-    }
+        => OpenQuickCreate(GitFlowBranchType.Release, "Start Release", "#BF8700", "release/");
 
     private void StartHotfix_Click(object sender, RoutedEventArgs e)
-    {
-        OpenQuickCreate(GitFlowBranchType.Hotfix, "Start Hotfix", "#CF222E", "hotfix/");
-    }
+        => OpenQuickCreate(GitFlowBranchType.Hotfix, "Start Hotfix", "#CF222E", "hotfix/");
 
     private async void OpenQuickCreate(GitFlowBranchType branchType, string header, string color, string defaultPrefix)
     {
-        _currentBranchType = branchType;
-        _suggestedVersion = null;
-
-        // Get actual prefix from GitFlow config
-        if (DataContext is MainViewModel viewModel && viewModel.SelectedRepository != null)
+        try
         {
-            var config = await viewModel.GetGitFlowConfigAsync();
-            if (config != null)
-            {
-                _currentPrefix = branchType switch
-                {
-                    GitFlowBranchType.Feature => config.FeaturePrefix,
-                    GitFlowBranchType.Release => config.ReleasePrefix,
-                    GitFlowBranchType.Hotfix => config.HotfixPrefix,
-                    _ => defaultPrefix
-                };
+            _currentBranchType = branchType;
 
-                // Get suggested version for release/hotfix
-                if (branchType == GitFlowBranchType.Release || branchType == GitFlowBranchType.Hotfix)
-                {
-                    _suggestedVersion = await viewModel.GetSuggestedVersionAsync(branchType);
-                }
+            // Pull prefix + suggested version from the VM in a single await.
+            var context = DataContext is MainViewModel viewModel
+                ? await viewModel.PrepareGitFlowQuickCreateAsync(branchType, defaultPrefix)
+                : new MainViewModel.GitFlowQuickCreateContext(defaultPrefix, SuggestedVersion: null);
+
+            _currentPrefix = context.Prefix;
+            _suggestedVersion = context.SuggestedVersion;
+
+            QuickCreateHeader.Text = header;
+            QuickCreateTypeIndicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+            QuickCreateNameBox.Text = "";
+            QuickCreateNameBox.IsEnabled = true;
+            QuickCreatePreview.Text = _currentPrefix + "...";
+            QuickCreateStartButton.IsEnabled = false;
+            QuickCreateProgress.Visibility = Visibility.Collapsed;
+
+            if (_suggestedVersion != null)
+            {
+                QuickCreateVersionText.Text = _suggestedVersion.ToString();
+                QuickCreateVersionPanel.Visibility = Visibility.Visible;
             }
             else
             {
-                _currentPrefix = defaultPrefix;
+                QuickCreateVersionPanel.Visibility = Visibility.Collapsed;
             }
-        }
-        else
-        {
-            _currentPrefix = defaultPrefix;
-        }
 
-        // Setup UI - ensure textbox is enabled (may have been disabled from previous use)
-        QuickCreateHeader.Text = header;
-        QuickCreateTypeIndicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
-        QuickCreateNameBox.Text = "";
-        QuickCreateNameBox.IsEnabled = true;
-        QuickCreatePreview.Text = _currentPrefix + "...";
-        QuickCreateStartButton.IsEnabled = false;
-        QuickCreateProgress.Visibility = Visibility.Collapsed;
-
-        // Show/hide version suggestion
-        if (_suggestedVersion != null)
-        {
-            QuickCreateVersionText.Text = _suggestedVersion.ToString();
-            QuickCreateVersionPanel.Visibility = Visibility.Visible;
+            if (_lastChevronButton != null)
+                QuickCreatePopup.PlacementTarget = _lastChevronButton;
+            QuickCreatePopup.IsOpen = true;
+            QuickCreateNameBox.Focus();
         }
-        else
+        catch (Exception ex)
         {
-            QuickCreateVersionPanel.Visibility = Visibility.Collapsed;
+            AsyncErrorHandler.Handle(ex, nameof(OpenQuickCreate), isUserAction: true);
         }
-
-        // Position popup next to the chevron button and show
-        if (_lastChevronButton != null)
-        {
-            QuickCreatePopup.PlacementTarget = _lastChevronButton;
-        }
-        QuickCreatePopup.IsOpen = true;
-        QuickCreateNameBox.Focus();
     }
 
     private void QuickCreateNameBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         var name = QuickCreateNameBox.Text.Trim();
         QuickCreatePreview.Text = string.IsNullOrEmpty(name) ? _currentPrefix + "..." : _currentPrefix + name;
-        QuickCreateStartButton.IsEnabled = !string.IsNullOrWhiteSpace(name) && IsValidBranchName(name);
+        QuickCreateStartButton.IsEnabled = BranchNameValidator.IsValid(name);
     }
 
     private void QuickCreateNameBox_KeyDown(object sender, KeyEventArgs e)
@@ -569,56 +436,31 @@ public partial class BranchListView : UserControl
 
     private async void QuickCreateStart_Click(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
-            return;
-
-        var name = QuickCreateNameBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(name))
-            return;
-
-        // Disable UI
-        QuickCreateNameBox.IsEnabled = false;
-        QuickCreateStartButton.IsEnabled = false;
-        QuickCreateProgress.Visibility = Visibility.Visible;
-        QuickCreateProgressText.Text = "Checking for uncommitted changes...";
-
         try
         {
-            // Check for uncommitted changes
-            var repoInfo = await viewModel.GetRepositoryInfoAsync();
-            if (repoInfo?.IsDirty == true)
-            {
-                var result = MessageBox.Show(
-                    "You have uncommitted changes.\n\nWould you like to stash them first?",
-                    "Uncommitted Changes",
-                    MessageBoxButton.YesNoCancel,
-                    MessageBoxImage.Warning);
+            if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+                return;
 
-                if (result == MessageBoxResult.Cancel)
-                {
-                    ResetQuickCreateUI();
-                    return;
-                }
+            var name = QuickCreateNameBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                return;
 
-                if (result == MessageBoxResult.Yes)
-                {
-                    QuickCreateProgressText.Text = "Stashing changes...";
-                    await viewModel.StashChangesAsync($"Auto-stash before {_currentBranchType.ToString().ToLower()} '{name}'");
-                }
-            }
+            QuickCreateNameBox.IsEnabled = false;
+            QuickCreateStartButton.IsEnabled = false;
+            QuickCreateProgress.Visibility = Visibility.Visible;
 
-            // Create the branch
-            QuickCreateProgressText.Text = $"Creating {_currentBranchType.ToString().ToLower()} branch...";
+            var progress = new Progress<string>(msg => QuickCreateProgressText.Text = msg);
+            var created = await viewModel.StartGitFlowBranchWithStashCheckAsync(_currentBranchType, name, progress);
 
-            await viewModel.CreateGitFlowBranchAsync(_currentBranchType, name);
-
-            QuickCreatePopup.IsOpen = false;
+            if (created)
+                QuickCreatePopup.IsOpen = false;
+            else
+                ResetQuickCreateUI();
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to create branch:\n\n{ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
             ResetQuickCreateUI();
+            AsyncErrorHandler.Handle(ex, nameof(QuickCreateStart_Click), isUserAction: true);
         }
     }
 
@@ -629,19 +471,9 @@ public partial class BranchListView : UserControl
         QuickCreateProgress.Visibility = Visibility.Collapsed;
     }
 
-    private static bool IsValidBranchName(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return false;
-        if (name.Contains(' ')) return false;
-        if (name.Contains("..")) return false;
-        if (name.StartsWith('/') || name.EndsWith('/')) return false;
-        if (name.StartsWith('.') || name.EndsWith('.')) return false;
-        return true;
-    }
-
     #endregion
 
-    #region Worktree Create Popup
+    #region Worktree create popup
 
     private Button? _lastWorktreeButton;
 
@@ -653,14 +485,12 @@ public partial class BranchListView : UserControl
         _lastWorktreeButton = button;
         e.Handled = true;
 
-        // Reset UI
         WorktreeNameBox.Text = "";
         WorktreeNameBox.IsEnabled = true;
         WorktreePathPreview.Text = "Path: ...";
         WorktreeCreateButton.IsEnabled = false;
         WorktreeCreateProgress.Visibility = Visibility.Collapsed;
 
-        // Position and show popup
         WorktreeCreatePopup.PlacementTarget = button;
         WorktreeCreatePopup.IsOpen = true;
         WorktreeNameBox.Focus();
@@ -669,21 +499,13 @@ public partial class BranchListView : UserControl
     private void WorktreeNameBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         var name = WorktreeNameBox.Text.Trim();
-        var isValid = !string.IsNullOrWhiteSpace(name) && IsValidBranchName(name);
-        WorktreeCreateButton.IsEnabled = isValid;
+        WorktreeCreateButton.IsEnabled = BranchNameValidator.IsValid(name);
 
-        if (DataContext is MainViewModel viewModel && viewModel.SelectedRepository != null && isValid)
-        {
-            // Sanitize for path preview
-            var safeName = string.Concat(name.Select(c => c == '/' || System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '-' : c));
-            var repoName = System.IO.Path.GetFileName(viewModel.SelectedRepository.Path.TrimEnd(
-                System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
-            WorktreePathPreview.Text = $"Path: ../{repoName}-{safeName}";
-        }
-        else
-        {
-            WorktreePathPreview.Text = "Path: ...";
-        }
+        // Delegate the preview to the VM so the sanitization rule stays in
+        // one place (WorktreeOperations.SanitizeBranchNameForPath).
+        WorktreePathPreview.Text = DataContext is MainViewModel viewModel
+            ? viewModel.GetWorktreePathPreview(name)
+            : "Path: ...";
     }
 
     private void WorktreeNameBox_KeyDown(object sender, KeyEventArgs e)
@@ -707,29 +529,27 @@ public partial class BranchListView : UserControl
 
     private async void WorktreeCreateConfirm_Click(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
-            return;
-
-        var branchName = WorktreeNameBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(branchName))
-            return;
-
-        // Disable UI
-        WorktreeNameBox.IsEnabled = false;
-        WorktreeCreateButton.IsEnabled = false;
-        WorktreeCreateProgress.Visibility = Visibility.Visible;
-        WorktreeCreateProgressText.Text = "Creating worktree...";
-
         try
         {
+            if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+                return;
+
+            var branchName = WorktreeNameBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(branchName))
+                return;
+
+            WorktreeNameBox.IsEnabled = false;
+            WorktreeCreateButton.IsEnabled = false;
+            WorktreeCreateProgress.Visibility = Visibility.Visible;
+            WorktreeCreateProgressText.Text = "Creating worktree...";
+
             await viewModel.CreateWorktreeWithNewBranchAsync(branchName);
             WorktreeCreatePopup.IsOpen = false;
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to create worktree:\n\n{ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
             ResetWorktreeCreateUI();
+            AsyncErrorHandler.Handle(ex, nameof(WorktreeCreateConfirm_Click), isUserAction: true);
         }
     }
 
@@ -742,7 +562,7 @@ public partial class BranchListView : UserControl
 
     #endregion
 
-    #region Branch Create Popup
+    #region Branch create popup
 
     private Button? _lastBranchButton;
 
@@ -752,7 +572,7 @@ public partial class BranchListView : UserControl
         e.Handled = true;
 
         if (DataContext is MainViewModel viewModel)
-            viewModel.CreateBranch(); // Sets state + IsBranchInputVisible → PropertyChanged opens popup
+            viewModel.CreateBranch(); // VM sets state + IsBranchInputVisible → PropertyChanged opens popup
     }
 
     private void OpenBranchCreatePopup(MainViewModel viewModel)
@@ -784,7 +604,7 @@ public partial class BranchListView : UserControl
     private void BranchNameBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         var name = BranchNameBox.Text.Trim();
-        BranchCreateButton.IsEnabled = !string.IsNullOrWhiteSpace(name) && IsValidBranchName(name);
+        BranchCreateButton.IsEnabled = BranchNameValidator.IsValid(name);
 
         if (DataContext is MainViewModel viewModel)
             viewModel.NewBranchName = BranchNameBox.Text;
@@ -806,11 +626,9 @@ public partial class BranchListView : UserControl
 
     private void BranchNameBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
-        const string invalidChars = " ~^:?*[\\@{}";
-
         foreach (char c in e.Text)
         {
-            if (invalidChars.Contains(c) || char.IsControl(c))
+            if (BranchNameValidator.IsForbiddenCharacter(c))
             {
                 e.Handled = true;
                 return;
@@ -819,13 +637,9 @@ public partial class BranchListView : UserControl
 
         if (sender is TextBox textBox)
         {
-            string newText = textBox.Text.Insert(textBox.CaretIndex, e.Text);
-
-            if (newText.StartsWith('.') || newText.StartsWith('-') ||
-                newText.Contains("..") || newText.Contains("@{"))
-            {
+            var composed = textBox.Text.Insert(textBox.CaretIndex, e.Text);
+            if (BranchNameValidator.HasInvalidStructure(composed))
                 e.Handled = true;
-            }
         }
     }
 
@@ -836,44 +650,43 @@ public partial class BranchListView : UserControl
 
     private async void BranchCreateConfirm_Click(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainViewModel viewModel)
-            return;
-
-        var name = BranchNameBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(name))
-            return;
-
-        // Disable UI and show progress
-        BranchNameBox.IsEnabled = false;
-        BranchCreateButton.IsEnabled = false;
-        BranchCreateProgress.Visibility = Visibility.Visible;
-        BranchCreateProgressText.Text = viewModel.BranchInputActionText == "Rename"
-            ? "Renaming branch..."
-            : "Creating branch...";
-
         try
         {
-            viewModel.NewBranchName = name;
-            await viewModel.ConfirmCreateBranchAsync();
+            if (DataContext is not MainViewModel viewModel)
+                return;
+
+            var name = BranchNameBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            BranchNameBox.IsEnabled = false;
+            BranchCreateButton.IsEnabled = false;
+            BranchCreateProgress.Visibility = Visibility.Visible;
+            BranchCreateProgressText.Text = viewModel.BranchInputActionText == "Rename"
+                ? "Renaming branch..."
+                : "Creating branch...";
+
+            try
+            {
+                viewModel.NewBranchName = name;
+                await viewModel.ConfirmCreateBranchAsync();
+            }
+            finally
+            {
+                BranchCreatePopup.IsOpen = false;
+                ResetBranchCreateUI();
+            }
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed: {ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        finally
-        {
-            BranchCreatePopup.IsOpen = false;
-            ResetBranchCreateUI();
+            AsyncErrorHandler.Handle(ex, nameof(BranchCreateConfirm_Click), isUserAction: true);
         }
     }
 
     private void BranchCreatePopup_Closed(object? sender, EventArgs e)
     {
         if (DataContext is MainViewModel viewModel && viewModel.IsBranchInputVisible)
-        {
             viewModel.CancelBranchInputCommand.Execute(null);
-        }
     }
 
     private void ResetBranchCreateUI()
@@ -885,7 +698,7 @@ public partial class BranchListView : UserControl
 
     #endregion
 
-    #region Pull Requests
+    #region Pull requests
 
     private void PullRequest_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -895,9 +708,8 @@ public partial class BranchListView : UserControl
         if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
             return;
 
-        // Select and open detail view
-        SelectPullRequest(viewModel.SelectedRepository, pr);
-        viewModel.SelectPullRequestCommand.Execute(pr);
+        viewModel.ActivatePullRequestAsync(pr)
+            .FireAndForget(nameof(viewModel.ActivatePullRequestAsync), isUserAction: true);
         e.Handled = true;
     }
 
@@ -910,48 +722,31 @@ public partial class BranchListView : UserControl
             return;
 
         if (!pr.IsSelected)
-        {
-            SelectPullRequest(viewModel.SelectedRepository, pr);
-        }
-
-        // Don't mark handled - let context menu open
-    }
-
-    private static void SelectPullRequest(RepositoryInfo repo, PullRequestInfo pr)
-    {
-        // Clear branch and worktree selections
-        repo.ClearBranchSelection();
-
-        // Clear other PR selections
-        repo.ClearPullRequestSelection();
-
-        pr.IsSelected = true;
-        repo.SelectedPullRequest = pr;
+            viewModel.SelectPullRequestInSidebar(pr);
     }
 
     private void CreatePRButton_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel viewModel)
-        {
             viewModel.OpenCreatePullRequestCommand.Execute(null);
-        }
     }
 
     #endregion
 
-    #region Helpers
+    #region UI helpers
 
-    private static Border CreateColorDot(string hexColor)
+    /// <summary>
+    /// Build a small coloured dot used as a MenuItem icon. Pure UI
+    /// drawing — stays in the code-behind.
+    /// </summary>
+    private static Border CreateColorDot(string hexColor) => new()
     {
-        return new Border
-        {
-            Width = 8,
-            Height = 8,
-            CornerRadius = new CornerRadius(4),
-            Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hexColor)),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-    }
+        Width = 8,
+        Height = 8,
+        CornerRadius = new CornerRadius(4),
+        Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hexColor)),
+        VerticalAlignment = VerticalAlignment.Center
+    };
 
     #endregion
 }

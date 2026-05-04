@@ -1,0 +1,84 @@
+<!--
+    Merge editor motion tokens.
+
+    Plan §D3 called for six named storyboards. Three ship here as Storyboards;
+    the rest are either pure-math tweens (where a Storyboard can't target the
+    surface) or genuinely deferred with documented rationale below.
+
+    SHIPPED STORYBOARDS
+    - Merge.Motion.MinimapJump   — 400 ms smooth scroll of a ScrollViewer via
+      the AnimatedVerticalOffset attached DP on MergeMotionHelpers. Consumed
+      by MergeMotionHelpers.SmoothScrollTo.
+    - Merge.Motion.PaneFocus     — 250 ms border-brush colour pulse. Consumed
+      by MergeMotionHelpers.PulsePaneFocusColour on GotKeyboardFocus.
+    - Merge.Motion.AcceptButton  — 150 ms scale 0.97 → 1.0 ease-out bounce on
+      the clicked SegmentedAcceptPill cell. Consumed by
+      MergeMotionHelpers.PlayAcceptBounce.
+    - Merge.Motion.PopoverShow   — 200 ms fade + 2 px translateY ease-out.
+      Consumed by MergeMotionHelpers.PlayPopoverShow (blame peek, C5).
+    - Merge.Motion.PillCellTransition — 200 ms ColorAnimation crossfade
+      when a SegmentedAcceptPill cell transitions between selected and
+      cleared on a selection change. Replaces plan §D3's CheckboxToggle
+      (the checkbox was deleted in C2); the pill's exclusive-selection
+      cells are the closest analogue and this storyboard animates the
+      Background colour between the accent brush and Transparent.
+
+    DISPATCHER-TIMER TWEENS (not WPF Storyboards — same timing shape)
+    - RangeResolve: 350 ms ease-out-quadratic background crossfade. Lives
+      inside ReadOnlyMergePane because the region tints are painted through
+      DrawingContext, which has no addressable element for a Storyboard
+      to target. Timing parameters mirror this file to keep the motion
+      budget coherent.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <QuadraticEase x:Key="Merge.Motion.Ease" EasingMode="EaseOut"/>
+
+    <Storyboard x:Key="Merge.Motion.MinimapJump">
+        <DoubleAnimation Duration="0:0:0.4"
+                         EasingFunction="{StaticResource Merge.Motion.Ease}"/>
+    </Storyboard>
+
+    <Storyboard x:Key="Merge.Motion.PaneFocus">
+        <ColorAnimation Storyboard.TargetProperty="Color"
+                        Duration="0:0:0.25"
+                        EasingFunction="{StaticResource Merge.Motion.Ease}"/>
+    </Storyboard>
+
+    <!--  AcceptButton: parallel ScaleX + ScaleY animations from 0.97 to 1.0
+          over 150 ms. Helper clones, sets target to a per-pill ScaleTransform,
+          and begins. Two children so one storyboard drives both axes. -->
+    <Storyboard x:Key="Merge.Motion.AcceptButton">
+        <DoubleAnimation Duration="0:0:0.15" From="0.97" To="1.0"
+                         EasingFunction="{StaticResource Merge.Motion.Ease}"/>
+        <DoubleAnimation Duration="0:0:0.15" From="0.97" To="1.0"
+                         EasingFunction="{StaticResource Merge.Motion.Ease}"/>
+    </Storyboard>
+
+    <!--  PopoverShow (C5): 200 ms opacity 0 → 1 paired with a 2 px vertical
+          translate so the popover eases in from slightly below the anchor
+          line. Two children: first is the opacity DoubleAnimation targeting
+          the popover's Opacity, second is the translate DoubleAnimation
+          targeting a per-instance TranslateTransform the helper attaches. -->
+    <Storyboard x:Key="Merge.Motion.PopoverShow">
+        <DoubleAnimation Duration="0:0:0.2" From="0.0" To="1.0"
+                         EasingFunction="{StaticResource Merge.Motion.Ease}"/>
+        <DoubleAnimation Duration="0:0:0.2" From="2.0" To="0.0"
+                         EasingFunction="{StaticResource Merge.Motion.Ease}"/>
+    </Storyboard>
+
+    <!--  PillCellTransition: 200 ms ColorAnimation crossfade applied to the
+          Background Color of a SegmentedAcceptPill cell when selection
+          changes. The helper clones this storyboard per pill-cell
+          transition, sets From/To to the previous and new accent colours,
+          and targets a per-cell SolidColorBrush that the helper installs
+          as the cell's Background. -->
+    <Storyboard x:Key="Merge.Motion.PillCellTransition">
+        <ColorAnimation Storyboard.TargetProperty="Color"
+                        Duration="0:0:0.2"
+                        EasingFunction="{StaticResource Merge.Motion.Ease}"/>
+    </Storyboard>
+
+</ResourceDictionary>

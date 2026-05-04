@@ -39,6 +39,16 @@ public partial class GitGraphCanvas
 
     private const double GhostTagOpacity = 0.4;
 
+    // §5.8 signature badge geometry — shared between rendering
+    // (DrawSignatureBadge) and hit-testing (IsCursorInSignatureBadge).
+    // Single source of truth so a future tweak to the visual won't
+    // silently un-hit-test the glyph.
+    private const double SignatureBadgeAvatarRatio = 0.36;
+    private const double SignatureBadgeMinRadius = 4.5;
+    private const double SignatureBadgeAngleRadians = Math.PI / 5; // ~36°
+    private const double SignatureBadgeAnchorPullback = 0.4;        // multiplied by badge radius
+    private const double SignatureBadgeHitSlackPx = 2.0;
+
     // Animation constants
     private const double AnimationDuration = 100; // milliseconds - snappy expand/collapse
     private const double AnimationStep = 16.67; // ~60fps - standard refresh rate

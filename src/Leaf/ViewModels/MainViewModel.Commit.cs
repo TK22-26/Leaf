@@ -41,18 +41,17 @@ public partial class MainViewModel
 
             try
             {
-                IsBusy = true;
-                StatusMessage = $"Reverting {commit.ShortSha} (parent {parentIndex})...";
+                await BeginBusyAsync($"Reverting {commit.ShortSha} (parent {parentIndex})...");
 
-                await _gitService.RevertMergeCommitAsync(SelectedRepository.Path, commit.Sha, parentIndex);
+                await _gitService.RevertMergeCommitAsync(SelectedRepository.Path, commit.Sha, parentIndex, cancellationToken: CurrentRepositoryToken);
 
-                StatusMessage = $"Reverted {commit.ShortSha}";
+                NotifySuccess("Commit reverted", $"Reverted merge commit {commit.ShortSha} (parent {parentIndex}).");
                 await RefreshAsync();
             }
             catch (Exception ex)
             {
                 Log.Error("Merge", "RevertMergeCommit failed", ex);
-                StatusMessage = $"Revert failed: {ex.Message}";
+                await ReportOperationFailureAsync("Revert", ex);
             }
             finally
             {
@@ -64,19 +63,18 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Reverting {commit.ShortSha}...";
+            await BeginBusyAsync($"Reverting {commit.ShortSha}...");
 
-            await _gitService.RevertCommitAsync(SelectedRepository.Path, commit.Sha);
+            await _gitService.RevertCommitAsync(SelectedRepository.Path, commit.Sha, cancellationToken: CurrentRepositoryToken);
 
             Log.Info("Merge", $"RevertCommit: success sha={commit.ShortSha}");
-            StatusMessage = $"Reverted {commit.ShortSha}";
+            NotifySuccess("Commit reverted", $"Reverted {commit.ShortSha}.");
             await RefreshAsync();
         }
         catch (Exception ex)
         {
             Log.Error("Merge", "RevertCommit failed", ex);
-            StatusMessage = $"Revert failed: {ex.Message}";
+            await ReportOperationFailureAsync("Revert", ex);
         }
         finally
         {
@@ -94,7 +92,7 @@ public partial class MainViewModel
 
         if (string.IsNullOrWhiteSpace(branchName) || SelectedRepository.IsDetachedHead)
         {
-            StatusMessage = "Cannot reset: no branch is checked out";
+            NotifyWarning("Cannot reset", "No branch is checked out.");
             return;
         }
 
@@ -117,19 +115,18 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
             var modeLabel = request.Mode.ToString().ToLower();
-            StatusMessage = $"Resetting {branchName} to {request.Commit.ShortSha} ({modeLabel})...";
+            await BeginBusyAsync($"Resetting {branchName} to {request.Commit.ShortSha} ({modeLabel})...");
 
             await _gitService.ResetCurrentBranchToCommitAsync(
-                SelectedRepository.Path, request.Commit.Sha, request.Mode);
+                SelectedRepository.Path, request.Commit.Sha, request.Mode, cancellationToken: CurrentRepositoryToken);
 
-            StatusMessage = $"Reset {branchName} to {request.Commit.ShortSha} ({modeLabel})";
+            NotifySuccess("Branch reset", $"Reset {branchName} to {request.Commit.ShortSha} ({modeLabel}).");
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Reset failed: {ex.Message}";
+            await ReportOperationFailureAsync("Reset", ex);
         }
         finally
         {
@@ -143,25 +140,24 @@ public partial class MainViewModel
         if (commit == null || SelectedRepository == null)
             return;
 
-        IsBusy = true;
-        StatusMessage = $"Checking out commit {commit.ShortSha}...";
+        await BeginBusyAsync($"Checking out commit {commit.ShortSha}...");
 
         try
         {
-            await _gitService.CheckoutCommitAsync(SelectedRepository.Path, commit.Sha);
+            await _gitService.CheckoutCommitAsync(SelectedRepository.Path, commit.Sha, cancellationToken: CurrentRepositoryToken);
 
             // Refresh the repo info to update detached HEAD state
-            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path);
+            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             SelectedRepository.CurrentBranch = info.CurrentBranch;
             SelectedRepository.IsDetachedHead = info.IsDetachedHead;
             SelectedRepository.DetachedHeadSha = info.DetachedHeadSha;
 
-            StatusMessage = $"Checked out commit {commit.ShortSha} (detached HEAD)";
+            NotifySuccess("Commit checked out", $"Now at {commit.ShortSha} (detached HEAD).");
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Checkout failed: {ex.Message}";
+            await ReportOperationFailureAsync("Checkout", ex);
         }
         finally
         {
@@ -176,7 +172,7 @@ public partial class MainViewModel
             return;
 
         _clipboardService.SetText(commit.Sha);
-        StatusMessage = $"Copied {commit.ShortSha} to clipboard";
+        NotifyInfo("SHA copied", $"Copied {commit.ShortSha} to clipboard.");
     }
 
     [RelayCommand]
@@ -186,34 +182,38 @@ public partial class MainViewModel
             return;
 
         Log.Info("Merge", $"CherryPickCommit: sha={commit.ShortSha}");
-        IsBusy = true;
-        StatusMessage = $"Cherry-picking {commit.ShortSha}...";
+        await BeginBusyAsync($"Cherry-picking {commit.ShortSha}...");
 
         try
         {
-            var result = await _gitService.CherryPickAsync(SelectedRepository.Path, commit.Sha);
+            var result = await _gitService.CherryPickAsync(SelectedRepository.Path, commit.Sha, cancellationToken: CurrentRepositoryToken);
             if (result.Success)
             {
                 Log.Info("Merge", "CherryPickCommit: success");
-                StatusMessage = $"Cherry-picked {commit.ShortSha}";
+                NotifySuccess("Cherry-picked", $"Applied {commit.ShortSha} to current branch.");
                 await RefreshAsync();
             }
             else if (result.HasConflicts)
             {
                 Log.Warn("Merge", "CherryPickCommit: conflicts detected");
-                StatusMessage = $"Cherry-pick has conflicts: {commit.ShortSha}";
+                // Refresh first so MergeStatusView populates in the right
+                // pane, then warn — without the toast the user sees the
+                // command "do nothing" and has to guess where to look.
                 await RefreshAsync();
+                NotifyWarning(
+                    "Cherry-pick has conflicts",
+                    $"{commit.ShortSha} could not apply cleanly. Resolve the conflicts in the merge panel.");
             }
             else
             {
                 Log.Error("Merge", $"CherryPickCommit: {result.ErrorMessage}");
-                StatusMessage = $"Cherry-pick failed: {result.ErrorMessage}";
+                await ReportOperationFailureAsync("Cherry-pick", result.ErrorMessage ?? "unknown error");
             }
         }
         catch (Exception ex)
         {
             Log.Error("Merge", "CherryPickCommit failed", ex);
-            StatusMessage = $"Cherry-pick failed: {ex.Message}";
+            await ReportOperationFailureAsync("Cherry-pick", ex);
         }
         finally
         {
@@ -232,10 +232,10 @@ public partial class MainViewModel
 
         try
         {
-            var diffText = await _gitService.GetCommitToWorkingTreeDiffAsync(SelectedRepository.Path, commit.Sha);
+            var diffText = await _gitService.GetCommitToWorkingTreeDiffAsync(SelectedRepository.Path, commit.Sha, cancellationToken: CurrentRepositoryToken);
             if (string.IsNullOrWhiteSpace(diffText))
             {
-                StatusMessage = "No differences between commit and working directory";
+                NotifyInfo("No differences", "Commit and working directory are identical.");
                 IsDiffViewerVisible = false;
                 return;
             }
@@ -246,7 +246,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Compare failed: {ex.Message}";
+            await ReportOperationFailureAsync("Compare", ex);
             IsDiffViewerVisible = false;
         }
         finally
@@ -261,25 +261,20 @@ public partial class MainViewModel
         if (commit == null || SelectedRepository == null)
             return;
 
-        var dialog = new CreateTagDialog
-        {
-            Owner = _ownerWindow
-        };
-
-        if (dialog.ShowDialog() != true)
+        var dialog = new CreateTagDialog();
+        if (!await _dialogService.ShowDialogAsync(dialog))
             return;
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Creating tag '{dialog.TagName}'...";
-            await _gitService.CreateTagAsync(SelectedRepository.Path, dialog.TagName, dialog.TagMessage, commit.Sha);
-            StatusMessage = $"Created tag '{dialog.TagName}'";
+            await BeginBusyAsync($"Creating tag '{dialog.TagName}'...");
+            await _gitService.CreateTagAsync(SelectedRepository.Path, dialog.TagName, dialog.TagMessage, commit.Sha, cancellationToken: CurrentRepositoryToken);
+            NotifySuccess("Tag created", $"Tagged {commit.ShortSha} as '{dialog.TagName}'.");
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Create tag failed: {ex.Message}";
+            await ReportOperationFailureAsync("Create tag", ex);
         }
         finally
         {
@@ -297,23 +292,22 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = "Undoing last commit...";
+            await BeginBusyAsync("Undoing last commit...");
 
-            var success = await _gitService.UndoCommitAsync(SelectedRepository.Path);
+            var success = await _gitService.UndoCommitAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             if (success)
             {
-                StatusMessage = "Commit undone (changes preserved in working directory)";
+                NotifySuccess("Commit undone", "Changes preserved in working directory.");
                 await RefreshAsync();
             }
             else
             {
-                StatusMessage = "Cannot undo: commit already pushed or no parent commit";
+                NotifyWarning("Cannot undo", "Commit already pushed or no parent commit.");
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Undo failed: {ex.Message}";
+            await ReportOperationFailureAsync("Undo", ex);
         }
         finally
         {
@@ -331,23 +325,22 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = "Redoing last undone commit...";
+            await BeginBusyAsync("Redoing last undone commit...");
 
-            var success = await _gitService.RedoCommitAsync(SelectedRepository.Path);
+            var success = await _gitService.RedoCommitAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             if (success)
             {
-                StatusMessage = "Commit redone";
+                NotifySuccess("Commit redone", "Restored last undone commit.");
                 await RefreshAsync();
             }
             else
             {
-                StatusMessage = "Nothing to redo";
+                NotifyInfo("Nothing to redo", "No undone commit to restore.");
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Redo failed: {ex.Message}";
+            await ReportOperationFailureAsync("Redo", ex);
         }
         finally
         {
@@ -359,7 +352,8 @@ public partial class MainViewModel
     {
         if (CommitDetailViewModel != null && SelectedRepository != null && commit != null)
         {
-            _ = CommitDetailViewModel.LoadCommitAsync(SelectedRepository.Path, commit.Sha);
+            CommitDetailViewModel.LoadCommitAsync(SelectedRepository.Path, commit.Sha)
+                .FireAndForget(nameof(CommitDetailViewModel.LoadCommitAsync), isUserAction: true);
         }
     }
 }

@@ -1,0 +1,74 @@
+<Window x:Class="Leaf.Views.Merge.AiResolutionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AI Proposed Resolution"
+        Width="720"
+        Height="480"
+        MinWidth="520"
+        MinHeight="320"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Orientation="Horizontal">
+            <TextBlock FontWeight="SemiBold" FontSize="14"
+                       Text="AI Proposed Resolution"/>
+            <Border x:Name="ConfidenceChip"
+                    Margin="10,0,0,0"
+                    Padding="6,2"
+                    CornerRadius="3">
+                <TextBlock x:Name="ConfidenceText"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Merge.Text.OnAccent}"/>
+            </Border>
+        </StackPanel>
+
+        <TextBlock x:Name="RationaleText"
+                   Grid.Row="1"
+                   Margin="0,8,0,8"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource Merge.Text.Secondary}"
+                   FontStyle="Italic"/>
+
+        <Border Grid.Row="2"
+                BorderBrush="{DynamicResource Merge.Border.Dialog}"
+                BorderThickness="1"
+                CornerRadius="4">
+            <TextBox x:Name="ProposedTextBox"
+                     FontFamily="Consolas"
+                     FontSize="12"
+                     AcceptsReturn="True"
+                     AcceptsTab="True"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto"
+                     TextWrapping="NoWrap"
+                     SpellCheck.IsEnabled="False"/>
+        </Border>
+
+        <TextBlock Grid.Row="3"
+                   Margin="0,10,0,0"
+                   Foreground="{DynamicResource Merge.Text.Tertiary}"
+                   FontStyle="Italic"
+                   TextWrapping="Wrap"
+                   Text="Edit the text freely before accepting. The accepted text is applied as a manual resolution — same semantics as typing it by hand."/>
+
+        <StackPanel Grid.Row="4" Margin="0,14,0,0"
+                    Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="AcceptButton"
+                    Width="100" Margin="0,0,8,0"
+                    IsDefault="True"
+                    Click="AcceptButton_Click"
+                    Content="Accept"/>
+            <Button Width="90" IsCancel="True"
+                    Click="CancelButton_Click"
+                    Content="Reject"/>
+        </StackPanel>
+    </Grid>
+</Window>

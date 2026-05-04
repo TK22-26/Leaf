@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using Leaf.Graph;
 using Leaf.Models;
 
 namespace Leaf.ViewModels;
@@ -13,12 +14,14 @@ public class MergeCommitTooltipViewModel
         ObservableCollection<CommitInfo> commits,
         ObservableCollection<GitTreeNode> nodes,
         int maxLane,
-        double rowHeight)
+        double rowHeight,
+        IBranchColorResolver colorResolver)
     {
         Commits = commits;
         Nodes = nodes;
         MaxLane = maxLane;
         RowHeight = rowHeight;
+        ColorResolver = colorResolver ?? throw new ArgumentNullException(nameof(colorResolver));
 
         VisibleCommits = new ObservableCollection<CommitInfo>(commits.Take(MaxVisibleCommits));
         HasOverflow = commits.Count > MaxVisibleCommits;
@@ -44,4 +47,9 @@ public class MergeCommitTooltipViewModel
     public double GraphHeight { get; }
 
     public double TotalHeight { get; }
+
+    /// <summary>
+    /// Shared per-repository colour resolver (bound by the tooltip canvas).
+    /// </summary>
+    public IBranchColorResolver ColorResolver { get; }
 }

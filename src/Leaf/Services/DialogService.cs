@@ -66,24 +66,10 @@ public class DialogService : IDialogService
     }
 
     /// <inheritdoc />
-    public Task ShowErrorAsync(string message, string title)
+    public Task ShowErrorToastAsync(string message, string title)
     {
         _notificationService.Show(title, message, NotificationType.Error);
         return Task.CompletedTask;
-    }
-
-    /// <inheritdoc />
-    public async Task<T?> ShowDialogAsync<T>(object viewModel) where T : class
-    {
-        // Note: This is a simplified implementation.
-        // A full implementation would need a dialog type registry or convention-based resolution.
-        // For now, we return null - this method will be enhanced as dialogs are migrated.
-        return await _dispatcher.InvokeAsync<T?>(() =>
-        {
-            // TODO: Implement dialog window creation based on ViewModel type
-            // This will be enhanced in Phase 3 when dialogs are refactored
-            return null;
-        });
     }
 
     /// <inheritdoc />
@@ -97,6 +83,16 @@ public class DialogService : IDialogService
             // TODO: Implement custom input dialog
             // For now, return null to indicate cancellation
             return null;
+        });
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> ShowDialogAsync(Window dialog)
+    {
+        return await _dispatcher.InvokeAsync(() =>
+        {
+            dialog.Owner = _windowService.GetMainWindow();
+            return dialog.ShowDialog() == true;
         });
     }
 }
@@ -149,16 +145,10 @@ public class TestDialogService : IDialogService
     }
 
     /// <inheritdoc />
-    public Task ShowErrorAsync(string message, string title)
+    public Task ShowErrorToastAsync(string message, string title)
     {
         ShownMessages.Add((message, title));
         return Task.CompletedTask;
-    }
-
-    /// <inheritdoc />
-    public Task<T?> ShowDialogAsync<T>(object viewModel) where T : class
-    {
-        return Task.FromResult<T?>(null);
     }
 
     /// <inheritdoc />
@@ -166,5 +156,22 @@ public class TestDialogService : IDialogService
     {
         ShownMessages.Add((prompt, title));
         return Task.FromResult(InputResult);
+    }
+
+    /// <summary>
+    /// The result to return for ShowDialogAsync calls.
+    /// </summary>
+    public bool DialogResult { get; set; } = true;
+
+    /// <summary>
+    /// Record of the dialog windows shown (for test assertions).
+    /// </summary>
+    public List<Window> ShownDialogs { get; } = new();
+
+    /// <inheritdoc />
+    public Task<bool> ShowDialogAsync(Window dialog)
+    {
+        ShownDialogs.Add(dialog);
+        return Task.FromResult(DialogResult);
     }
 }

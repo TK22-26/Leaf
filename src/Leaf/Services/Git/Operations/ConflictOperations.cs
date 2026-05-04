@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using Leaf.Models;
 using Leaf.Services;
@@ -21,21 +20,21 @@ internal class ConflictOperations : IConflictOperations
     }
 
     /// <inheritdoc />
-    public Task<List<string>> GetConflictFilesAsync(string repoPath)
+    public Task<List<string>> GetConflictFilesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() => GitCliHelpers.GetConflictFiles(repoPath));
+        return Task.Run(() => GitCliHelpers.GetConflictFiles(repoPath), cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task<int> GetConflictCountAsync(string repoPath)
+    public Task<int> GetConflictCountAsync(string repoPath, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() => GitCliHelpers.GetConflictCount(repoPath));
+        return Task.Run(() => GitCliHelpers.GetConflictCount(repoPath), cancellationToken);
     }
 
     /// <summary>
     /// Get list of conflicting files with detailed information.
     /// </summary>
-    public Task<List<ConflictInfo>> GetConflictsAsync(string repoPath)
+    public Task<List<ConflictInfo>> GetConflictsAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -44,7 +43,7 @@ internal class ConflictOperations : IConflictOperations
             var conflictPaths = new List<string>();
 
             // Use git diff to find unmerged files
-            var result = GitCliHelpers.RunGit(repoPath, "diff --name-only --diff-filter=U");
+            var result = GitCliHelpers.RunGitArgs(repoPath, "diff", "--name-only", "--diff-filter=U");
             if (result.ExitCode == 0)
             {
                 conflictPaths.AddRange(result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries));
@@ -53,7 +52,7 @@ internal class ConflictOperations : IConflictOperations
 
             if (conflictPaths.Count == 0)
             {
-                var statusResult = GitCliHelpers.RunGit(repoPath, "status --porcelain");
+                var statusResult = GitCliHelpers.RunGitArgs(repoPath, "status", "--porcelain");
                 if (statusResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(statusResult.Output))
                 {
                     conflictPaths.AddRange(_context.OutputParser.ParseConflictFilesFromPorcelain(statusResult.Output));
@@ -143,17 +142,99 @@ internal class ConflictOperations : IConflictOperations
                     catch (Exception ex) { Log.Warn("Merge", $"Failed to read HEAD version: {ex.Message}"); }
                 }
 
+                // Set the real per-file conflict-region count by counting
+                // "<<<<<<<" markers in the working-tree file. Without this the
+                // file tree's progress stripe (and any other consumer of
+                // ConflictInfo.ConflictCount) would treat every conflicted
+                // file as a single region until its merge document was built
+                // in the editor — meaning a folder of 4 files showed Total=4
+                // even when those files actually contained dozens of regions.
+                // Binary conflicts have no markers; the default of 1 is fine
+                // there because they resolve via Use Ours / Use Theirs paths
+                // that don't consult region counts. The marker scan is also
+                // robust to a partially-resolved working tree (user removed
+                // some markers manually) — it reports what's still left.
+                conflictInfo.ConflictCount = CountConflictMarkers(repoPath, trimmedPath);
+
                 conflicts.Add(conflictInfo);
             }
 
             return conflicts;
-        });
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Counts the number of conflict regions in the working-tree copy of
+    /// <paramref name="filePath"/> by scanning for lines that start with the
+    /// canonical 7-char "&lt;&lt;&lt;&lt;&lt;&lt;&lt;" begin marker. Returns 1 for binary files
+    /// (which have no markers) and for read failures (defensive: a file we
+    /// can't introspect is still at least one conflict). The scan reads the
+    /// file as bytes and walks newline-terminated chunks itself instead of
+    /// using <see cref="File.ReadAllLines(string)"/> so a giant generated
+    /// file (lock files, minified bundles) doesn't allocate one string per
+    /// line just to count markers.
+    /// </summary>
+    private static int CountConflictMarkers(string repoPath, string filePath)
+    {
+        try
+        {
+            var fullPath = Path.Combine(repoPath, filePath);
+            if (!File.Exists(fullPath)) return 1;
+            // Heuristic: skip files larger than 16 MB. A real source-code
+            // conflict file is well under that; anything bigger is most
+            // likely a generated artefact that shouldn't be merged
+            // line-by-line anyway, and the cost of scanning isn't worth
+            // the marginal accuracy on the file-tree progress stripe.
+            var info = new FileInfo(fullPath);
+            if (info.Length > 16 * 1024 * 1024) return 1;
+
+            int count = 0;
+            using var stream = File.OpenRead(fullPath);
+            // Conflict markers must start at column 0; track whether we're
+            // currently at the start of a line. Begin true so a marker at
+            // file offset 0 is counted.
+            bool atLineStart = true;
+            // 7 bytes for the marker + 1 lookahead for the trailing space
+            // git always writes after the run of '<' characters. The
+            // lookahead is what disambiguates a real conflict-begin marker
+            // from a stray run of '<' in source content (e.g. a TypeScript
+            // generic).
+            Span<byte> probe = stackalloc byte[8];
+            int b;
+            while ((b = stream.ReadByte()) >= 0)
+            {
+                if (atLineStart && b == (byte)'<')
+                {
+                    probe[0] = (byte)b;
+                    int read = stream.Read(probe[1..]);
+                    bool isMarker = read == 7
+                        && probe[1] == (byte)'<' && probe[2] == (byte)'<'
+                        && probe[3] == (byte)'<' && probe[4] == (byte)'<'
+                        && probe[5] == (byte)'<' && probe[6] == (byte)'<'
+                        && (probe[7] == (byte)' ' || probe[7] == (byte)'\r' || probe[7] == (byte)'\n');
+                    if (isMarker) count++;
+                    // Whether or not it was a marker, advance to the next
+                    // newline so we don't double-count or mis-match the
+                    // remainder of the current line.
+                    while ((b = stream.ReadByte()) >= 0 && b != (byte)'\n') { }
+                    atLineStart = true;
+                    continue;
+                }
+                atLineStart = b == (byte)'\n';
+            }
+            return Math.Max(1, count);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Merge", $"Failed to count conflict markers in {filePath}: {ex.Message}");
+            return 1;
+        }
     }
 
     /// <summary>
     /// Resolve a conflict by using the current branch version (ours).
     /// </summary>
-    public Task ResolveConflictWithOursAsync(string repoPath, string filePath)
+    public Task ResolveConflictWithOursAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -161,13 +242,13 @@ internal class ConflictOperations : IConflictOperations
 
             GitCliHelpers.RunGitArgs(repoPath, "checkout", "--ours", filePath);
             Commands.Stage(repo, filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Resolve a conflict by using the incoming branch version (theirs).
     /// </summary>
-    public Task ResolveConflictWithTheirsAsync(string repoPath, string filePath)
+    public Task ResolveConflictWithTheirsAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -175,31 +256,31 @@ internal class ConflictOperations : IConflictOperations
 
             GitCliHelpers.RunGitArgs(repoPath, "checkout", "--theirs", filePath);
             Commands.Stage(repo, filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Mark a conflict as resolved (after manual edit).
     /// </summary>
-    public Task MarkConflictResolvedAsync(string repoPath, string filePath)
+    public Task MarkConflictResolvedAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             Commands.Stage(repo, filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Reopen a resolved conflict by restoring the conflict state.
     /// </summary>
-    public Task ReopenConflictAsync(string repoPath, string filePath, string baseContent, string oursContent, string theirsContent)
+    public Task ReopenConflictAsync(string repoPath, string filePath, string baseContent, string oursContent, string theirsContent, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
-            var baseResult = GitCliHelpers.RunGitWithInput(repoPath, "hash-object -w --stdin", baseContent ?? string.Empty);
-            var oursResult = GitCliHelpers.RunGitWithInput(repoPath, "hash-object -w --stdin", oursContent ?? string.Empty);
-            var theirsResult = GitCliHelpers.RunGitWithInput(repoPath, "hash-object -w --stdin", theirsContent ?? string.Empty);
+            var baseResult = GitCliHelpers.RunGitWithInputArgs(repoPath, baseContent ?? string.Empty, "hash-object", "-w", "--stdin");
+            var oursResult = GitCliHelpers.RunGitWithInputArgs(repoPath, oursContent ?? string.Empty, "hash-object", "-w", "--stdin");
+            var theirsResult = GitCliHelpers.RunGitWithInputArgs(repoPath, theirsContent ?? string.Empty, "hash-object", "-w", "--stdin");
 
             if (baseResult.ExitCode != 0 || oursResult.ExitCode != 0 || theirsResult.ExitCode != 0)
             {
@@ -215,7 +296,7 @@ internal class ConflictOperations : IConflictOperations
                             $"100644 {oursSha} 2\t{filePath}\n" +
                             $"100644 {theirsSha} 3\t{filePath}\n";
 
-            var indexResult = GitCliHelpers.RunGitWithInput(repoPath, "update-index --index-info", indexInfo);
+            var indexResult = GitCliHelpers.RunGitWithInputArgs(repoPath, indexInfo, "update-index", "--index-info");
             if (indexResult.ExitCode != 0)
             {
                 Log.Error("Merge", $"ReopenConflict: failed to restore index: {indexResult.Error}");
@@ -223,24 +304,24 @@ internal class ConflictOperations : IConflictOperations
             }
 
             GitCliHelpers.RunGitArgs(repoPath, "checkout", "--conflict=merge", filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get files that have been resolved during a merge.
     /// </summary>
-    public Task<List<ConflictInfo>> GetResolvedMergeFilesAsync(string repoPath)
+    public Task<List<ConflictInfo>> GetResolvedMergeFilesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
-            var unresolvedResult = GitCliHelpers.RunGit(repoPath, "diff --name-only --diff-filter=U");
+            var unresolvedResult = GitCliHelpers.RunGitArgs(repoPath, "diff", "--name-only", "--diff-filter=U");
             var unresolved = unresolvedResult.Output
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(f => f.Trim())
                 .Where(f => !string.IsNullOrEmpty(f))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var stagedResult = GitCliHelpers.RunGit(repoPath, "diff --name-only --cached");
+            var stagedResult = GitCliHelpers.RunGitArgs(repoPath, "diff", "--name-only", "--cached");
             var stagedFiles = stagedResult.Output
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(f => f.Trim())
@@ -270,15 +351,26 @@ internal class ConflictOperations : IConflictOperations
             }
 
             return resolvedFiles;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
-    /// Open a conflict in VS Code for resolution.
+    /// Drive a three-way merge through an external tool. The caller
+    /// supplies a <paramref name="launch"/> delegate that knows how to
+    /// invoke the tool and returns the tool's exit code — we handle the
+    /// git-side concerns (extracting base/ours/theirs, writing temp files,
+    /// copying the tool's output back, staging) so callers don't have to
+    /// know about index stages or libgit2sharp. Returns true when the
+    /// merge was accepted and staged; false when the tool reported
+    /// failure or the user discarded the merge.
     /// </summary>
-    public async Task OpenConflictInVsCodeAsync(string repoPath, string filePath)
+    public async Task<bool> OpenConflictInMergeToolAsync(
+        string repoPath,
+        string filePath,
+        Func<string, string, string, string, CancellationToken, Task<int>> launch,
+        CancellationToken cancellationToken = default)
     {
-        var conflicts = await GetConflictsAsync(repoPath);
+        var conflicts = await GetConflictsAsync(repoPath, cancellationToken);
         var conflict = conflicts.FirstOrDefault(c => c.FilePath == filePath);
 
         if (conflict == null)
@@ -289,72 +381,47 @@ internal class ConflictOperations : IConflictOperations
         var tempDir = Path.Combine(Path.GetTempPath(), "LeafMerge", Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDir);
 
-        var fileName = Path.GetFileName(filePath);
-        var extension = Path.GetExtension(filePath);
-
-        var basePath = Path.Combine(tempDir, $"{fileName}.base{extension}");
-        var localPath = Path.Combine(tempDir, $"{fileName}.local{extension}");
-        var remotePath = Path.Combine(tempDir, $"{fileName}.remote{extension}");
-        var mergedPath = Path.Combine(tempDir, $"{fileName}{extension}");
-
-        await File.WriteAllTextAsync(basePath, conflict.BaseContent);
-        await File.WriteAllTextAsync(localPath, conflict.OursContent);
-        await File.WriteAllTextAsync(remotePath, conflict.TheirsContent);
-
-        var repoFilePath = Path.Combine(repoPath, filePath);
-        if (File.Exists(repoFilePath))
-        {
-            File.Copy(repoFilePath, mergedPath, true);
-        }
-        else
-        {
-            await File.WriteAllTextAsync(mergedPath, conflict.OursContent);
-        }
-
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "code",
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            startInfo.ArgumentList.Add("-n");
-            startInfo.ArgumentList.Add("--wait");
-            startInfo.ArgumentList.Add("--merge");
-            startInfo.ArgumentList.Add(basePath);
-            startInfo.ArgumentList.Add(localPath);
-            startInfo.ArgumentList.Add(remotePath);
-            startInfo.ArgumentList.Add(mergedPath);
+            var fileName = Path.GetFileName(filePath);
+            var extension = Path.GetExtension(filePath);
 
-            using var process = Process.Start(startInfo);
-            if (process == null)
+            var basePath = Path.Combine(tempDir, $"{fileName}.base{extension}");
+            var localPath = Path.Combine(tempDir, $"{fileName}.local{extension}");
+            var remotePath = Path.Combine(tempDir, $"{fileName}.remote{extension}");
+            var mergedPath = Path.Combine(tempDir, $"{fileName}{extension}");
+
+            await File.WriteAllTextAsync(basePath, conflict.BaseContent, cancellationToken);
+            await File.WriteAllTextAsync(localPath, conflict.OursContent, cancellationToken);
+            await File.WriteAllTextAsync(remotePath, conflict.TheirsContent, cancellationToken);
+
+            var repoFilePath = Path.Combine(repoPath, filePath);
+            if (File.Exists(repoFilePath))
             {
-                throw new InvalidOperationException("Failed to launch VS Code.");
+                File.Copy(repoFilePath, mergedPath, true);
+            }
+            else
+            {
+                await File.WriteAllTextAsync(mergedPath, conflict.OursContent, cancellationToken);
             }
 
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
-            try
+            var exitCode = await launch(basePath, localPath, remotePath, mergedPath, cancellationToken);
+            if (exitCode != 0 || !File.Exists(mergedPath))
             {
-                await process.WaitForExitAsync(timeoutCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                process.Kill();
-                throw new InvalidOperationException("VS Code merge timed out after 30 minutes.");
+                return false;
             }
 
-            if (process.ExitCode == 0)
-            {
-                if (File.Exists(mergedPath))
-                {
-                    var mergedContent = await File.ReadAllTextAsync(mergedPath);
-                    await File.WriteAllTextAsync(repoFilePath, mergedContent);
+            var mergedContent = await File.ReadAllTextAsync(mergedPath, cancellationToken);
+            await File.WriteAllTextAsync(repoFilePath, mergedContent, cancellationToken);
 
-                    using var repo = new Repository(repoPath);
-                    Commands.Stage(repo, filePath);
-                }
-            }
+            // Stage through libgit2sharp on the thread pool — the API is
+            // synchronous and touches the index.
+            await Task.Run(() =>
+            {
+                using var repo = new Repository(repoPath);
+                Commands.Stage(repo, filePath);
+            }, cancellationToken);
+            return true;
         }
         finally
         {
@@ -362,7 +429,10 @@ internal class ConflictOperations : IConflictOperations
             {
                 Directory.Delete(tempDir, true);
             }
-            catch (Exception ex) { Log.Warn("Merge", $"Failed to clean up temp directory: {ex.Message}"); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Warn("Merge", $"Failed to clean up temp directory: {ex.Message}");
+            }
         }
     }
 
@@ -371,23 +441,23 @@ internal class ConflictOperations : IConflictOperations
     /// <summary>
     /// Get stored merge conflict files.
     /// </summary>
-    public Task<List<string>> GetStoredMergeConflictFilesAsync(string repoPath)
+    public Task<List<string>> GetStoredMergeConflictFilesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() => GetStoredMergeConflictFiles(repoPath));
+        return Task.Run(() => GetStoredMergeConflictFiles(repoPath), cancellationToken);
     }
 
     /// <summary>
     /// Save merge conflict files to storage.
     /// </summary>
-    public Task SaveStoredMergeConflictFilesAsync(string repoPath, IEnumerable<string> files)
+    public Task SaveStoredMergeConflictFilesAsync(string repoPath, IEnumerable<string> files, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() => SaveStoredMergeConflictFiles(repoPath, files));
+        return Task.Run(() => SaveStoredMergeConflictFiles(repoPath, files), cancellationToken);
     }
 
     /// <summary>
     /// Clear stored merge conflict files.
     /// </summary>
-    public Task ClearStoredMergeConflictFilesAsync(string repoPath)
+    public Task ClearStoredMergeConflictFilesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -396,7 +466,7 @@ internal class ConflictOperations : IConflictOperations
             {
                 File.Delete(path);
             }
-        });
+        }, cancellationToken);
     }
 
     private static string GetStoredMergeConflictPath(string repoPath)

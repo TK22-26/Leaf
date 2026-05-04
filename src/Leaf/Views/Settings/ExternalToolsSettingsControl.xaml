@@ -1,0 +1,140 @@
+<UserControl
+    x:Class="Leaf.Views.Settings.ExternalToolsSettingsControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <StackPanel>
+        <TextBlock Text="External Tools"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                   Margin="0,0,0,4" />
+        <TextBlock Text="Select an external diff or merge tool, or leave blank to use Leaf's built-in viewer. Changes apply globally across every repository."
+                   FontSize="12"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,16" />
+
+        <!-- Diff Tool -->
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16"
+                Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Diff Tool"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           Margin="0,0,0,12" />
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Preset:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <ComboBox x:Name="DiffToolCombo"
+                              Grid.Column="1"
+                              DisplayMemberPath="DisplayName"
+                              SelectionChanged="DiffToolCombo_SelectionChanged" />
+                </Grid>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Command:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="DiffCommandBox" Grid.Column="1" FontFamily="Consolas" />
+                </Grid>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Args:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="DiffArgsBox" Grid.Column="1" FontFamily="Consolas" />
+                </Grid>
+                <TextBlock Text="Template placeholders: $LOCAL, $REMOTE"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                           Margin="100,6,0,0" />
+            </StackPanel>
+        </Border>
+
+        <!-- Merge Tool -->
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16"
+                Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Merge Tool"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           Margin="0,0,0,12" />
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Preset:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <ComboBox x:Name="MergeToolCombo"
+                              Grid.Column="1"
+                              DisplayMemberPath="DisplayName"
+                              SelectionChanged="MergeToolCombo_SelectionChanged" />
+                </Grid>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Command:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="MergeCommandBox" Grid.Column="1" FontFamily="Consolas" />
+                </Grid>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Args:"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="MergeArgsBox" Grid.Column="1" FontFamily="Consolas" />
+                </Grid>
+                <TextBlock Text="Template placeholders: $LOCAL, $REMOTE, $BASE, $MERGED"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                           Margin="100,6,0,0" />
+            </StackPanel>
+        </Border>
+
+        <!-- Buttons -->
+        <StackPanel Orientation="Horizontal">
+            <Button x:Name="DetectButton"
+                    Padding="12,6"
+                    Margin="0,0,8,0"
+                    Click="DetectButton_Click"
+                    Content="Detect installed tools" />
+            <Button x:Name="ApplyButton"
+                    Padding="12,6"
+                    Click="ApplyButton_Click"
+                    Content="Apply" />
+            <TextBlock x:Name="StatusText"
+                       VerticalAlignment="Center"
+                       Margin="12,0,0,0"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       FontSize="12" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

@@ -36,11 +36,21 @@ public partial class MainViewModel
     /// </summary>
     public bool IsPullRequestCreateMode => ContentMode == ContentMode.PullRequestCreate;
 
+    /// <summary>
+    /// True when a <c>git bisect</c> session is active and the center
+    /// column has been taken over by the bisect detail view. Right
+    /// pane hides so the bisect diff has the full content area to
+    /// breathe — the diff is the primary information the user needs to
+    /// decide a verdict.
+    /// </summary>
+    public bool IsBisectMode => ContentMode == ContentMode.Bisect;
+
     partial void OnContentModeChanged(ContentMode value)
     {
         OnPropertyChanged(nameof(IsGraphMode));
         OnPropertyChanged(nameof(IsPullRequestDetailMode));
         OnPropertyChanged(nameof(IsPullRequestCreateMode));
+        OnPropertyChanged(nameof(IsBisectMode));
     }
 
     private bool HasActivePullRequestScreen() =>
@@ -56,6 +66,26 @@ public partial class MainViewModel
         viewModel.CreateCompleted -= OnCreatePullRequestCompleted;
         viewModel.CreateCancelled -= OnCreatePullRequestCancelled;
         viewModel.PullRequestCreated -= OnPullRequestCreated;
+    }
+
+    private void DetachPullRequestDetailViewModel(PullRequestDetailViewModel? viewModel)
+    {
+        if (viewModel == null)
+            return;
+
+        viewModel.FileSelected -= OnPullRequestFileSelected;
+        viewModel.MutationCompleted -= OnPullRequestMutationCompleted;
+    }
+
+    private void OnPullRequestMutationCompleted(object? sender, EventArgs e)
+    {
+        // Refresh PR list after merge/close/update
+        if (SelectedRepository != null)
+        {
+            SelectedRepository.PullRequestsLoaded = false;
+            LoadBranchesForRepoAsync(SelectedRepository, forceReload: true)
+                .FireAndForget(nameof(LoadBranchesForRepoAsync), isUserAction: true);
+        }
     }
 
     private void ResetPullRequestViewState(RepositoryInfo? repositoryToClearSelection = null)
@@ -158,7 +188,10 @@ public partial class MainViewModel
             DetachCreatePullRequestViewModel(CreatePullRequestViewModel);
         }
 
-        var vm = new CreatePullRequestViewModel(_pullRequestService, _gitService, _notificationService);
+        var vm = new CreatePullRequestViewModel(_pullRequestService, _gitService, _notificationService)
+        {
+            GetSessionToken = () => CurrentRepositoryToken
+        };
         vm.CreateCompleted += OnCreatePullRequestCompleted;
         vm.CreateCancelled += OnCreatePullRequestCancelled;
         vm.PullRequestCreated += OnPullRequestCreated;
@@ -180,7 +213,8 @@ public partial class MainViewModel
         if (SelectedRepository != null)
         {
             SelectedRepository.PullRequestsLoaded = false;
-            _ = LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
+            LoadBranchesForRepoAsync(SelectedRepository, forceReload: true)
+                .FireAndForget(nameof(LoadBranchesForRepoAsync), isUserAction: true);
         }
     }
 
@@ -205,7 +239,7 @@ public partial class MainViewModel
             }),
             new NotificationAction("View in Leaf", () =>
             {
-                _ = SelectPullRequestAsync(pr);
+                SelectPullRequestAsync(pr).FireAndForget(nameof(SelectPullRequestAsync), isUserAction: true);
             }));
     }
 
@@ -296,7 +330,7 @@ public partial class MainViewModel
 
         try
         {
-            StatusMessage = "Searching for pull request...";
+            await BeginBusyAsync("Searching for pull request...");
 
             var pr = await _pullRequestService.FindPullRequestForCommitAsync(
                 SelectedRepository.Path, commit.Sha);
@@ -309,24 +343,20 @@ public partial class MainViewModel
 
             if (pr == null)
             {
-                _notificationService?.Show(
-                    "No pull request found",
-                    $"No pull request is associated with commit {commit.ShortSha}.",
-                    NotificationType.Information);
-                StatusMessage = "Ready";
+                NotifyInfo("No pull request found",
+                    $"No pull request is associated with commit {commit.ShortSha}.");
                 return;
             }
 
-            StatusMessage = "Ready";
             await SelectPullRequestAsync(pr);
         }
         catch (Exception ex)
         {
-            StatusMessage = "Ready";
-            _notificationService?.Show(
-                "Error",
-                $"Failed to find pull request: {ex.Message}",
-                NotificationType.Error);
+            await ReportOperationFailureAsync("Find pull request", ex);
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
@@ -360,9 +390,14 @@ public partial class MainViewModel
                     if (details != null)
                         return details.Summary;
                 }
-                catch
+                catch (Exception ex) when (ex is System.Net.Http.HttpRequestException
+                                        or TaskCanceledException
+                                        or InvalidOperationException)
                 {
-                    // Heuristic failed — continue trying other patterns
+                    // Heuristic failed (network, auth, wrong ID) — continue
+                    // trying other patterns. Log so auth/network issues that
+                    // mask the feature are diagnosable.
+                    Log.Info("PR", $"PR lookup for #{prNumber} failed: {ex.GetType().Name}: {ex.Message}");
                 }
             }
         }
@@ -377,15 +412,7 @@ public partial class MainViewModel
     {
         var vm = new PullRequestDetailViewModel(_pullRequestService, _notificationService);
         vm.FileSelected += OnPullRequestFileSelected;
-        vm.MutationCompleted += (_, _) =>
-        {
-            // Refresh PR list after merge/close/update
-            if (SelectedRepository != null)
-            {
-                SelectedRepository.PullRequestsLoaded = false;
-                _ = LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
-            }
-        };
+        vm.MutationCompleted += OnPullRequestMutationCompleted;
         return vm;
     }
 

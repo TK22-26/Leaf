@@ -1,19 +1,22 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Graph;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
 /// <summary>
 /// ViewModel for the Git graph and commit list view.
 /// </summary>
-public partial class GitGraphViewModel : ObservableObject
+public partial class GitGraphViewModel : ObservableObject, IDisposable
 {
     /// <summary>
     /// Special SHA value indicating working changes are selected.
@@ -21,9 +24,70 @@ public partial class GitGraphViewModel : ObservableObject
     public const string WorkingChangesSha = "WORKING_CHANGES";
 
     private readonly IGitService _gitService;
-    private readonly GraphBuilder _graphBuilder = new();
-    private readonly Dictionary<string, Task<MergeCommitTooltipViewModel?>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _branchTips = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SettingsService _settingsService;
+    private readonly IRepositoryManagementService _repositoryService;
+    private readonly IBranchColorPaletteRegistry _paletteRegistry;
+
+    /// <summary>
+    /// Returns the current repository's cancellation token. Set by
+    /// MainViewModel so this VM's background git calls abort when the
+    /// session is disposed on repo switch.
+    /// </summary>
+    public Func<CancellationToken>? GetSessionToken { get; set; }
+
+    /// <summary>
+    /// Returns the active <see cref="RepositoryInfo"/> for the repo
+    /// currently being shown — used by §5.14 branch-colour overrides
+    /// which live on the RepositoryInfo and need to round-trip through
+    /// <see cref="SettingsService.SaveRepositories"/>. Set by
+    /// MainViewModel; null only at startup before any repo is selected.
+    /// </summary>
+    public Func<RepositoryInfo?>? GetActiveRepositoryInfo { get; set; }
+
+    private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
+
+    // The active builder that owns layout state for the currently-displayed
+    // graph. Swapped atomically with <see cref="Nodes"/> and
+    // <see cref="ColorResolver"/> at the end of a background build so the
+    // canvas can never render nodes from one repository against another
+    // repository's colour context.
+    //
+    // §5.14: GraphBuilder no longer owns colour resolution — _branchColorService
+    // does. The builder reads colours through the resolver at build time;
+    // colour-only changes are applied via _graphBuilder.RecolorNodes.
+    private GraphBuilder _graphBuilder;
+    private BranchColorService? _branchColorService;
+
+    // Context deferred from SetGitFlowContext until the next LoadRepositoryAsync
+    // consumes it and atomically swaps the builder. _hasPendingContext
+    // distinguishes "caller hasn't set context yet" from "caller explicitly
+    // set context to null" (which happens on every non-GitFlow repo).
+    private bool _hasPendingContext;
+    private GitFlowConfig? _pendingGitFlowConfig;
+    private IReadOnlyList<string>? _pendingRemoteNames;
+
+    // The context currently baked into _graphBuilder. Used by pagination and
+    // tooltip preview builders so they inherit the same context without racing
+    // with SetGitFlowContext stores.
+    private GitFlowConfig? _activeGitFlowConfig;
+    private IReadOnlyList<string>? _activeRemoteNames;
+
+    // ConcurrentDictionary instead of Dictionary — plan §2.3. Today every
+    // access happens on the UI thread so there is no active race, but
+    // upcoming §2.1 work (CancellationToken plumbing) and tooltip background
+    // builders both push some logic off the dispatcher. A plain Dictionary
+    // is unsafe even for concurrent reads while another thread writes;
+    // ConcurrentDictionary has the same cost profile for the low write
+    // volumes here.
+    //
+    // Lazy<Task<…>> wrapper on the tooltip cache: ConcurrentDictionary.GetOrAdd
+    // can invoke its factory multiple times under contention (only one result
+    // wins the slot, the others are discarded). For tooltip previews the
+    // "others" are full git-service calls — not acceptable. Lazy guarantees
+    // the inner factory runs at most once per key regardless of how many
+    // Lazy wrappers GetOrAdd ends up creating and discarding.
+    private readonly ConcurrentDictionary<string, Lazy<Task<MergeCommitTooltipViewModel?>>> _mergeTooltipTasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _branchTips = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _hiddenBranchNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _soloBranchNames = new(StringComparer.OrdinalIgnoreCase);
     private List<CommitInfo> _allCommits = [];
@@ -34,8 +98,37 @@ public partial class GitGraphViewModel : ObservableObject
     private bool _hasMoreCommits = true;
     private HashSet<string> _loadedCommitShas = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? _graphBuildCts;
+
+    /// <summary>
+    /// Cancels any in-flight graph build and returns a token for the new one.
+    /// Delegates to the shared <see cref="CancellationTokenSourceExtensions"/>
+    /// helper so every CTS-replace site in the codebase leaks consistently — or,
+    /// rather, doesn't.
+    /// </summary>
+    private CancellationToken BeginGraphBuild()
+        => CancellationTokenSourceExtensions.ReplaceAndCancel(ref _graphBuildCts).Token;
     private const int BatchSize = 1000;  // Large batch to minimize O(n) skip cost
     private const int InitialBatchSize = 200;
+
+    /// <summary>
+    /// Per-repository colour resolver. Bound by <c>GitGraphCanvas</c> and the
+    /// tooltip canvas; updated atomically with <see cref="Nodes"/> when a new
+    /// repository load completes so the canvas never resolves colours against
+    /// the wrong context.
+    /// </summary>
+    [ObservableProperty]
+    private IBranchColorResolver _colorResolver;
+
+    /// <summary>
+    /// §5.17 — tag-name → <see cref="TagInfo"/> lookup the graph canvas
+    /// reads when rendering tag-chip badges and surfacing hover tooltips.
+    /// Populated by <see cref="MainViewModel"/> after every branch
+    /// reload (where tags are also loaded). Empty until the first reload
+    /// completes; the canvas tolerates absence by falling back to a
+    /// basic chip with no annotation / signature info.
+    /// </summary>
+    [ObservableProperty]
+    private IReadOnlyDictionary<string, TagInfo> _tagsByName = new Dictionary<string, TagInfo>(StringComparer.Ordinal);
 
     [ObservableProperty]
     private string? _repositoryPath;
@@ -127,10 +220,30 @@ public partial class GitGraphViewModel : ObservableObject
     /// </summary>
     public bool HasStashes => Stashes.Count > 0;
 
-    public GitGraphViewModel(IGitService gitService)
+    public GitGraphViewModel(
+        IGitService gitService,
+        SettingsService settingsService,
+        IRepositoryManagementService repositoryService,
+        IBranchColorPaletteRegistry paletteRegistry)
     {
-        _gitService = gitService;
+        _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
+        _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
+        _repositoryService = repositoryService ?? throw new ArgumentNullException(nameof(repositoryService));
+        _paletteRegistry = paletteRegistry ?? throw new ArgumentNullException(nameof(paletteRegistry));
+
+        // Initial state has no repo loaded — use a no-op resolver so the
+        // builder + canvas are valid before LoadRepositoryAsync runs.
+        _graphBuilder = new GraphBuilder(NullBranchColorResolver.Instance);
+        _colorResolver = NullBranchColorResolver.Instance;
     }
+
+    /// <summary>
+    /// Active per-repo branch colour service (§5.14). Null until the first
+    /// LoadRepositoryAsync completes. Exposed so the right-click colour
+    /// picker on the graph can call SetOverride / ClearOverride against
+    /// the current repository's authority.
+    /// </summary>
+    public IBranchColorService? BranchColorService => _branchColorService;
 
     /// <summary>
     /// Creates synthetic CommitInfo entries for stashes.
@@ -223,10 +336,20 @@ public partial class GitGraphViewModel : ObservableObject
         return result;
     }
 
+    /// <summary>
+    /// Stores new GitFlow + remote-name context for the next graph build to
+    /// consume. Does NOT mutate the active builder — if it did, the canvas
+    /// would briefly render still-displayed nodes against the new colour
+    /// context. The pending values are applied atomically inside
+    /// <see cref="LoadRepositoryAsync"/> together with the new node list.
+    /// </summary>
     public void SetGitFlowContext(GitFlowConfig? config, IReadOnlyCollection<string> remoteNames)
     {
-        GraphBuilder.SetGitFlowContext(config, remoteNames);
-        // Graph rebuild deferred to LoadRepositoryAsync or ApplyBranchFilters
+        // Defensive copy — the config we receive may be long-lived and
+        // mutated by its owner before LoadRepositoryAsync runs.
+        _pendingGitFlowConfig = config?.Clone();
+        _pendingRemoteNames = remoteNames != null ? remoteNames.ToList() : null;
+        _hasPendingContext = true;
     }
 
     /// <summary>
@@ -269,9 +392,9 @@ public partial class GitGraphViewModel : ObservableObject
             RepositoryPath = path;
 
             // Load working changes, commits, and stashes in parallel
-            var workingChangesTask = _gitService.GetWorkingChangesAsync(path);
-            var commitsTask = _gitService.GetCommitHistoryAsync(path, InitialBatchSize);
-            var stashesTask = _gitService.GetStashesAsync(path);
+            var workingChangesTask = _gitService.GetWorkingChangesAsync(path, cancellationToken: SessionToken);
+            var commitsTask = _gitService.GetCommitHistoryAsync(path, InitialBatchSize, cancellationToken: SessionToken);
+            var stashesTask = _gitService.GetStashesAsync(path, cancellationToken: SessionToken);
 
             await Task.WhenAll(workingChangesTask, commitsTask, stashesTask);
 
@@ -318,14 +441,66 @@ public partial class GitGraphViewModel : ObservableObject
             var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
             var currentBranch = _currentBranchName;
 
+            // Cancel any in-flight build; if a second LoadRepositoryAsync
+            // starts before the first completes, only the most recent one
+            // will swap its results into the UI.
+            var ct = BeginGraphBuild();
+
+            // Consume pending GitFlow/remote context for the new builder.
+            // If SetGitFlowContext has been called since the last load,
+            // adopt those values (even when they are null — that's the
+            // correct context for a repository without GitFlow). Otherwise
+            // stay on whatever the previous load applied.
+            GitFlowConfig? effectiveConfig;
+            IReadOnlyList<string>? effectiveRemotes;
+            if (_hasPendingContext)
+            {
+                effectiveConfig = _pendingGitFlowConfig;
+                effectiveRemotes = _pendingRemoteNames;
+                _pendingGitFlowConfig = null;
+                _pendingRemoteNames = null;
+                _hasPendingContext = false;
+            }
+            else
+            {
+                effectiveConfig = _activeGitFlowConfig;
+                effectiveRemotes = _activeRemoteNames;
+            }
+
+            // Build the per-repo colour service first — the builder needs
+            // a resolver, and the resolver carries this repo's GitFlow +
+            // remote-name + override state. Constructed on the UI thread
+            // so its initial palette read happens synchronously and the
+            // service is fully formed before any background reads from it.
+            var repoInfo = GetActiveRepositoryInfo?.Invoke();
+            var newColorService = repoInfo != null
+                ? new BranchColorService(repoInfo, _settingsService, _repositoryService, _paletteRegistry, effectiveConfig, effectiveRemotes)
+                : null;
+
+            // Build the new layout builder against the new resolver.
+            IBranchColorResolver resolver = (IBranchColorResolver?)newColorService ?? NullBranchColorResolver.Instance;
+            var newBuilder = new GraphBuilder(resolver);
+
             var (graphNodes, graphMaxLane) = await Task.Run(() =>
             {
-                var builder = new GraphBuilder();
-                var builtNodes = builder.BuildGraph(commitsWithStashes, currentBranch);
-                return (builtNodes, builder.MaxLane);
-            });
+                ct.ThrowIfCancellationRequested();
+                var builtNodes = newBuilder.BuildGraph(commitsWithStashes, currentBranch);
+                return (builtNodes, newBuilder.MaxLane);
+            }, ct);
 
-            // Fast UI property updates (pointer swaps only)
+            ct.ThrowIfCancellationRequested();
+
+            // Atomic swap: builder + resolver + colour service + nodes flip
+            // together so the canvas can never render new nodes against the
+            // old resolver or old nodes against the new resolver.
+            DetachColorService();
+            _branchColorService = newColorService;
+            AttachColorService();
+
+            _graphBuilder = newBuilder;
+            _activeGitFlowConfig = effectiveConfig;
+            _activeRemoteNames = effectiveRemotes;
+            ColorResolver = resolver;
             Nodes = new ObservableCollection<GitTreeNode>(graphNodes);
             Commits = new ObservableCollection<CommitInfo>(commitsWithStashes);
             MaxLane = graphMaxLane;
@@ -366,6 +541,11 @@ public partial class GitGraphViewModel : ObservableObject
 
             ApplySearchFilter(SearchText);
         }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a later LoadRepositoryAsync — drop our results
+            // silently; the newer call will update the UI.
+        }
         catch (Exception ex)
         {
             ErrorMessage = $"Failed to load repository: {ex.Message}";
@@ -400,7 +580,7 @@ public partial class GitGraphViewModel : ObservableObject
 
         try
         {
-            WorkingChanges = await _gitService.GetWorkingChangesAsync(RepositoryPath);
+            WorkingChanges = await _gitService.GetWorkingChangesAsync(RepositoryPath, cancellationToken: SessionToken);
 
             // Recalculate total height (stashes are included in Commits)
             int rowCount = Commits.Count;
@@ -410,9 +590,22 @@ public partial class GitGraphViewModel : ObservableObject
             }
             TotalHeight = rowCount * RowHeight;
         }
-        catch
+        catch (OperationCanceledException)
         {
-            // Silently fail - don't disrupt the UI
+            // Caller cancelled — not a failure.
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or LibGit2Sharp.LibGit2SharpException
+                                or IOException
+                                or UnauthorizedAccessException)
+        {
+            // Git command failure, libgit2 internal error, or filesystem
+            // issue during the status read. Don't disrupt the UI, but leave
+            // a breadcrumb so silent status-refresh failures are diagnosable.
+            // Per plan §2.2: narrow instead of catch-all — unknown exception
+            // types should escape to AsyncErrorHandler rather than be
+            // swallowed here.
+            Log.Warn("Graph", $"RefreshWorkingChanges failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -488,17 +681,16 @@ public partial class GitGraphViewModel : ObservableObject
 
         IsLoadingMore = true;
 
-        // Cancel any pending graph build
-        _graphBuildCts?.Cancel();
-        _graphBuildCts = new CancellationTokenSource();
-        var ct = _graphBuildCts.Token;
+        // Cancel any in-flight graph build and dispose its CTS (prevents the
+        // leak flagged in §1.5).
+        var ct = BeginGraphBuild();
 
         try
         {
             var moreCommits = await _gitService.GetCommitHistoryAsync(
                 RepositoryPath,
                 BatchSize,
-                skip: _loadedCommitCount);
+                skip: _loadedCommitCount, cancellationToken: SessionToken);
 
             // Check if we've reached the end
             if (moreCommits.Count < BatchSize)
@@ -542,19 +734,29 @@ public partial class GitGraphViewModel : ObservableObject
             var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
             var currentBranch = _currentBranchName;
 
-            // Build graph on background thread with new GraphBuilder instance
-            // (avoids race on instance state like MaxLane)
+            // Build graph on background thread with a fresh GraphBuilder
+            // bound to the currently-active resolver (pagination never
+            // changes colour context — only LoadRepositoryAsync does).
+            // Isolated builder instance means MaxLane mutation cannot race
+            // the UI-thread builder. Resolver itself stays the same: pagination
+            // appending more rows of the same repo's history must keep the
+            // exact same colour authority.
+            IBranchColorResolver paginationResolver =
+                (IBranchColorResolver?)_branchColorService ?? NullBranchColorResolver.Instance;
+            var tempBuilder = new GraphBuilder(paginationResolver);
             var (nodes, maxLane) = await Task.Run(() =>
             {
                 ct.ThrowIfCancellationRequested();
-                var tempBuilder = new GraphBuilder();
                 var graphNodes = tempBuilder.BuildGraph(commitsWithStashes, currentBranch);
                 return (graphNodes, tempBuilder.MaxLane);
             }, ct);
 
             ct.ThrowIfCancellationRequested();
 
-            // Fast UI update (pointer swaps only)
+            // Atomic swap of builder + resolver + nodes keeps rendering
+            // consistent even though the context itself did not change.
+            _graphBuilder = tempBuilder;
+            ColorResolver = paginationResolver;
             Nodes = new ObservableCollection<GitTreeNode>(nodes);
             Commits = new ObservableCollection<CommitInfo>(commitsWithStashes);
             MaxLane = maxLane;
@@ -925,9 +1127,14 @@ public partial class GitGraphViewModel : ObservableObject
 
     public bool TryGetMergeTooltip(string sha, out MergeCommitTooltipViewModel? tooltip)
     {
-        if (_mergeTooltipTasks.TryGetValue(sha, out var task) && task.IsCompletedSuccessfully)
+        // IsValueCreated guards us from triggering the Lazy's factory from a
+        // polling read — it only returns a tooltip once GetMergeTooltipAsync
+        // has actually started the build.
+        if (_mergeTooltipTasks.TryGetValue(sha, out var lazy) &&
+            lazy.IsValueCreated &&
+            lazy.Value.IsCompletedSuccessfully)
         {
-            tooltip = task.Result;
+            tooltip = lazy.Value.Result;
             return tooltip != null;
         }
 
@@ -942,19 +1149,25 @@ public partial class GitGraphViewModel : ObservableObject
             return Task.FromResult<MergeCommitTooltipViewModel?>(null);
         }
 
-        if (_mergeTooltipTasks.TryGetValue(commit.Sha, out var existing))
-        {
-            return existing;
-        }
+        // Capture RepositoryPath defensively so the Lazy's factory doesn't
+        // observe a later change to the property.
+        var repoPath = RepositoryPath;
 
-        var task = BuildMergeTooltipAsync(commit, RepositoryPath);
-        _mergeTooltipTasks[commit.Sha] = task;
-        return task;
+        // GetOrAdd + Lazy: under concurrent hovers, GetOrAdd may construct
+        // multiple Lazy wrappers (only one wins the slot). Lazy guarantees
+        // that BuildMergeTooltipAsync itself runs at most once per key —
+        // the losing Lazy wrappers are discarded without their factory
+        // ever running.
+        var lazy = _mergeTooltipTasks.GetOrAdd(
+            commit.Sha,
+            _ => new Lazy<Task<MergeCommitTooltipViewModel?>>(
+                () => BuildMergeTooltipAsync(commit, repoPath)));
+        return lazy.Value;
     }
 
     private async Task<MergeCommitTooltipViewModel?> BuildMergeTooltipAsync(CommitInfo commit, string repoPath)
     {
-        var mergeCommits = await _gitService.GetMergeCommitsAsync(repoPath, commit.Sha);
+        var mergeCommits = await _gitService.GetMergeCommitsAsync(repoPath, commit.Sha, cancellationToken: SessionToken);
         if (mergeCommits.Count == 0)
         {
             return null;
@@ -971,7 +1184,12 @@ public partial class GitGraphViewModel : ObservableObject
             }
         }
 
-        var tooltipGraphBuilder = new GraphBuilder();
+        // Tooltip preview shares the active repo's colour service so the
+        // preview matches the main graph exactly — overrides, palette,
+        // GitFlow semantics all line up.
+        IBranchColorResolver tooltipResolver =
+            (IBranchColorResolver?)_branchColorService ?? NullBranchColorResolver.Instance;
+        var tooltipGraphBuilder = new GraphBuilder(tooltipResolver);
         var visibleCommits = mergeCommits.Take(10).ToList();
         var nodes = tooltipGraphBuilder.BuildGraph(visibleCommits);
 
@@ -979,6 +1197,72 @@ public partial class GitGraphViewModel : ObservableObject
             new ObservableCollection<CommitInfo>(mergeCommits),
             new ObservableCollection<GitTreeNode>(nodes),
             tooltipGraphBuilder.MaxLane,
-            RowHeight);
+            RowHeight,
+            tooltipResolver);
+    }
+
+    /// <summary>
+    /// Wire up the active colour service so override / palette changes
+    /// flow through to the canvas as in-place re-paints. No-op when the
+    /// service is null (no repo loaded). Calls
+    /// <see cref="BranchColorService.Attach"/> so the service subscribes
+    /// to the registry only once it's the live resolver — see the comment
+    /// on Attach for why we don't subscribe from the constructor.
+    /// </summary>
+    private void AttachColorService()
+    {
+        if (_branchColorService != null)
+        {
+            _branchColorService.Attach();
+            _branchColorService.ColorsChanged += OnBranchColorsChanged;
+        }
+    }
+
+    private void DetachColorService()
+    {
+        if (_branchColorService != null)
+        {
+            _branchColorService.ColorsChanged -= OnBranchColorsChanged;
+            _branchColorService.Dispose();
+            _branchColorService = null;
+        }
+    }
+
+    /// <summary>
+    /// Re-paint already-built nodes against the resolver's new state. Used
+    /// for colour-only changes (override edit, palette swap, custom-palette
+    /// edit) — avoids re-running the lane allocator for what is purely a
+    /// rendering change. Re-publishes Nodes so the canvas's
+    /// <c>OnNodesChanged</c> hook rebuilds its lane-segment colour cache.
+    /// </summary>
+    private void OnBranchColorsChanged(object? sender, EventArgs e)
+    {
+        if (_graphBuilder is null) return;
+        var current = Nodes;
+        if (current.Count == 0) return;
+
+        _graphBuilder.RecolorNodes(current);
+        Nodes = new ObservableCollection<GitTreeNode>(current);
+    }
+
+    /// <summary>
+    /// Pull the latest palette id out of <see cref="AppSettings"/> and
+    /// republish if it changed. Called by MainViewModel after the Settings
+    /// dialog closes.
+    /// </summary>
+    public void RefreshBranchColorsFromSettings()
+    {
+        _branchColorService?.RefreshFromSettings();
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        // Cancel + dispose the last in-flight graph build CTS so the handle
+        // is released at VM end-of-life (pickup from plan §1.5).
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _graphBuildCts);
+        // Detach §5.14 colour-service event subscription so the registry
+        // doesn't keep this VM alive past its repo's lifetime.
+        DetachColorService();
     }
 }

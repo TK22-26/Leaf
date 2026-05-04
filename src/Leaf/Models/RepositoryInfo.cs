@@ -1,3 +1,4 @@
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text.Json.Serialization;
@@ -7,6 +8,25 @@ namespace Leaf.Models;
 
 /// <summary>
 /// Metadata about a tracked Git repository.
+///
+/// <para><b>Threading contract</b> (plan §3.7): every mutation of an
+/// <c>[ObservableProperty]</c> backing field on this type, and every
+/// mutation of the <c>ObservableCollection</c> properties
+/// (<see cref="LocalBranches"/>, <see cref="RemoteBranches"/>,
+/// <see cref="BranchCategories"/>, <see cref="Worktrees"/>,
+/// <see cref="SelectedBranches"/>), must happen on the WPF UI thread.
+/// Services and background tasks that compute new values must marshal
+/// the assignment through <c>IDispatcherService.InvokeAsync</c> before
+/// touching this object, or build a replacement collection off-thread
+/// and publish the reference inside a dispatcher call. An audit of all
+/// current mutation sites confirms this invariant is upheld — the
+/// <c>_dispatcherService.InvokeAsync</c> wraps in <c>MainViewModel</c>'s
+/// <c>BranchLoading</c>, <c>Worktree</c>, <c>FileWatcher</c>,
+/// <c>Repository</c>, and <c>Sync</c> partials are the canonical pattern.</para>
+///
+/// <para>Collection mutations in particular are non-negotiable: WPF's
+/// <c>CollectionView</c> requires UI-thread access and raises
+/// <c>NotSupportedException</c> otherwise.</para>
 /// </summary>
 public partial class RepositoryInfo : ObservableObject
 {
@@ -34,6 +54,17 @@ public partial class RepositoryInfo : ObservableObject
     /// Branch names soloed in the graph.
     /// </summary>
     public List<string> SoloBranchNames { get; set; } = [];
+
+    /// <summary>
+    /// User-overridden colours for branches in this repository (plan §5.14).
+    /// Key is the normalised branch name (remote prefix stripped — see
+    /// <see cref="Services.BranchColorService"/>). Value is a hex colour
+    /// string (<c>#RRGGBB</c> or <c>#AARRGGBB</c>). Branches without an
+    /// entry resolve through the GitFlow / palette layers in
+    /// <see cref="Services.IBranchColorService"/>.
+    /// </summary>
+    public Dictionary<string, string> BranchColorOverrides { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Last time this repository was accessed in the app.
@@ -145,7 +176,15 @@ public partial class RepositoryInfo : ObservableObject
                     }
                 }
             }
-            catch { /* Ignore read errors */ }
+            catch (Exception ex) when (ex is IOException
+                                    or UnauthorizedAccessException
+                                    or ArgumentException
+                                    or NotSupportedException)
+            {
+                // .git pointer unreadable or malformed — treat as a detached
+                // worktree with no discoverable main repo.
+                Leaf.Services.Log.Info("RepoInfo", $"MainWorktreePath read failed: {ex.GetType().Name}: {ex.Message}");
+            }
             return null;
         }
     }

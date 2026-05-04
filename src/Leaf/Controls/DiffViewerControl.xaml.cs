@@ -3,10 +3,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using ICSharpCode.AvalonEdit;
-using ICSharpCode.AvalonEdit.Highlighting;
+using Leaf.TextEdit;
+using Leaf.TextEdit.Highlighting;
 using Leaf.Helpers;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.ViewModels;
 using System.Linq;
 
@@ -110,7 +111,7 @@ public partial class DiffViewerControl : UserControl
             DiffEditor.SyntaxHighlighting = highlighting;
             DiffEditor.Text = _viewModel.InlineContent;
             _renderer.SetLines(_viewModel.Lines);
-            DiffEditor.TextArea.TextView.InvalidateLayer(ICSharpCode.AvalonEdit.Rendering.KnownLayer.Background);
+            DiffEditor.TextArea.TextView.InvalidateLayer(Leaf.TextEdit.Rendering.KnownLayer.Background);
             DiffEditor.ScrollToHome();
         }
         else
@@ -157,9 +158,16 @@ public partial class DiffViewerControl : UserControl
 
     private async void HunkItem_RevertHunkRequested(object? sender, DiffHunk hunk)
     {
-        if (_viewModel != null)
+        try
         {
-            await _viewModel.RevertHunkAsync(hunk);
+            if (_viewModel != null)
+            {
+                await _viewModel.RevertHunkAsync(hunk);
+            }
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(HunkItem_RevertHunkRequested), isUserAction: true);
         }
     }
 

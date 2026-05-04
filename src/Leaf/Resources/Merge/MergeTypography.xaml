@@ -1,0 +1,45 @@
+<!--
+    Merge editor type ramp (Fluent 2).
+
+    Chrome uses Segoe UI Variable (shipping in Win11, falls back to Segoe UI on
+    older systems). Code panes use JetBrains Mono (embedded under Resources/Fonts),
+    with Consolas and Courier New as fallbacks for environments where the embed
+    fails to register.
+
+    JetBrains Mono ships under SIL OFL 1.1; attribution lives in
+    Resources/Fonts/OFL.txt and the consolidated THIRD_PARTY_LICENSES.txt.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <!--  Font families  -->
+    <FontFamily x:Key="Merge.FontFamily.Chrome">Segoe UI Variable, Segoe UI</FontFamily>
+    <FontFamily x:Key="Merge.FontFamily.Code">pack://application:,,,/Leaf;component/Resources/Fonts/#JetBrains Mono, Consolas, Courier New</FontFamily>
+
+    <!--  Type ramp (sizes in device-independent pixels)  -->
+    <sys:Double x:Key="Merge.Type.Display.Size">28</sys:Double>
+    <sys:Double x:Key="Merge.Type.Title.Size">20</sys:Double>
+    <sys:Double x:Key="Merge.Type.Subtitle.Size">16</sys:Double>
+    <sys:Double x:Key="Merge.Type.BodyStrong.Size">14</sys:Double>
+    <sys:Double x:Key="Merge.Type.Body.Size">14</sys:Double>
+    <sys:Double x:Key="Merge.Type.Caption.Size">12</sys:Double>
+    <sys:Double x:Key="Merge.Type.CaptionStrong.Size">12</sys:Double>
+
+    <!--  Code ramp (monospace panes and preview surfaces)  -->
+    <sys:Double x:Key="Merge.Code.Normal.Size">13</sys:Double>
+    <sys:Double x:Key="Merge.Code.Small.Size">11</sys:Double>
+
+    <!--  Weights  -->
+    <FontWeight x:Key="Merge.Type.Display.Weight">SemiBold</FontWeight>
+    <FontWeight x:Key="Merge.Type.Title.Weight">SemiBold</FontWeight>
+    <FontWeight x:Key="Merge.Type.Subtitle.Weight">SemiBold</FontWeight>
+    <FontWeight x:Key="Merge.Type.BodyStrong.Weight">SemiBold</FontWeight>
+    <FontWeight x:Key="Merge.Type.Body.Weight">Normal</FontWeight>
+    <FontWeight x:Key="Merge.Type.Caption.Weight">Normal</FontWeight>
+    <FontWeight x:Key="Merge.Type.CaptionStrong.Weight">SemiBold</FontWeight>
+    <FontWeight x:Key="Merge.Code.Normal.Weight">Normal</FontWeight>
+    <FontWeight x:Key="Merge.Code.Small.Weight">Normal</FontWeight>
+
+</ResourceDictionary>

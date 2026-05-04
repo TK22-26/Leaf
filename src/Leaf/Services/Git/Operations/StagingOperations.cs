@@ -19,23 +19,51 @@ internal class StagingOperations : IStagingOperations
     /// <summary>
     /// Get working directory changes (staged and unstaged files).
     /// </summary>
-    public Task<WorkingChangesInfo> GetWorkingChangesAsync(string repoPath)
+    /// <remarks>
+    /// LibGit2Sharp's <c>RetrieveStatus</c> supports rename detection, which
+    /// we prefer for UX, but it can effectively hang on repos with many
+    /// renames (O(n²) matching). We race it against a timeout and fall back
+    /// to git CLI if it doesn't finish within 5 seconds.
+    ///
+    /// Plan §2.4: the previous implementation used
+    /// <c>libgitTask.Wait(TimeSpan.FromSeconds(5))</c> inside an outer
+    /// <c>Task.Run</c>, which blocked a thread-pool thread for up to five
+    /// seconds per call. Under load that starves the pool and cascades into
+    /// all other async git operations. <see cref="Task.WhenAny(Task[])"/>
+    /// with a <see cref="Task.Delay(TimeSpan)"/> sentinel gives the same
+    /// timeout semantics without blocking any thread — Task.Delay is
+    /// timer-driven, not thread-bound.
+    /// </remarks>
+    public async Task<WorkingChangesInfo> GetWorkingChangesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() =>
+        var libgitTask = Task.Run(() => GetWorkingChangesViaLibGit2(repoPath), cancellationToken);
+
+        // The timeout CTS is cancelled as soon as we're done with it so the
+        // underlying timer is released promptly even when libgit wins the
+        // race — otherwise each abandoned Task.Delay holds a timer slot
+        // until its 5 s elapse, which accumulates under high call frequency.
+        using var timeoutCts = new CancellationTokenSource();
+        var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5), timeoutCts.Token);
+
+        var completed = await Task.WhenAny(libgitTask, timeoutTask).ConfigureAwait(false);
+        if (completed == libgitTask)
         {
-            // Try LibGit2Sharp first (supports rename detection for better UX).
-            // Fall back to git CLI if it takes too long — LibGit2Sharp's RetrieveStatus
-            // can block indefinitely on repos with many renames (O(n²) matching).
-            var libgitTask = Task.Run(() => GetWorkingChangesViaLibGit2(repoPath));
+            // Cancel the timer first so the `using` disposal doesn't have to
+            // wait on a slow TimerQueue unregister.
+            timeoutCts.Cancel();
 
-            if (libgitTask.Wait(TimeSpan.FromSeconds(5)))
-            {
-                return libgitTask.Result;
-            }
+            // Await instead of .Result so a LibGit2 exception propagates as
+            // itself rather than wrapped in AggregateException.
+            return await libgitTask.ConfigureAwait(false);
+        }
 
-            Log.Warn("Staging", $"LibGit2Sharp status timed out for '{repoPath}', falling back to git CLI");
-            return GetWorkingChangesViaGitCli(repoPath);
-        });
+        Log.Warn("Staging", $"LibGit2Sharp status timed out for '{repoPath}', falling back to git CLI");
+
+        // The LibGit2 task keeps running in the background until it finishes
+        // (LibGit2Sharp RetrieveStatus doesn't honour cancellation). We
+        // discard its eventual result; the CLI fallback runs in parallel
+        // and is what we hand back to the caller.
+        return await Task.Run(() => GetWorkingChangesViaGitCli(repoPath), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -124,14 +152,14 @@ internal class StagingOperations : IStagingOperations
     private static WorkingChangesInfo GetWorkingChangesViaGitCli(string repoPath)
     {
         // Get branch info
-        var headResult = GitCliHelpers.RunGit(repoPath, "symbolic-ref --short HEAD");
+        var headResult = GitCliHelpers.RunGitArgs(repoPath, "symbolic-ref", "--short", "HEAD");
         bool isDetached = headResult.ExitCode != 0;
         string? headSha = null;
         string branchName;
 
         if (isDetached)
         {
-            var shaResult = GitCliHelpers.RunGit(repoPath, "rev-parse HEAD");
+            var shaResult = GitCliHelpers.RunGitArgs(repoPath, "rev-parse", "HEAD");
             headSha = shaResult.ExitCode == 0 ? shaResult.Output.Trim() : null;
             branchName = $"HEAD detached at {headSha?[..7] ?? "unknown"}";
         }
@@ -148,7 +176,7 @@ internal class StagingOperations : IStagingOperations
         };
 
         // Parse porcelain status output
-        var statusResult = GitCliHelpers.RunGit(repoPath, "status --porcelain -uall");
+        var statusResult = GitCliHelpers.RunGitArgs(repoPath, "status", "--porcelain", "-uall");
         if (statusResult.ExitCode != 0)
             return workingChanges;
 
@@ -221,12 +249,12 @@ internal class StagingOperations : IStagingOperations
     /// <summary>
     /// Get the combined diff of staged and unstaged changes.
     /// </summary>
-    public Task<string> GetWorkingChangesPatchAsync(string repoPath)
+    public Task<string> GetWorkingChangesPatchAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
-            var staged = GitCliHelpers.RunGit(repoPath, "diff --cached");
-            var unstaged = GitCliHelpers.RunGit(repoPath, "diff");
+            var staged = GitCliHelpers.RunGitArgs(repoPath, "diff", "--cached");
+            var unstaged = GitCliHelpers.RunGitArgs(repoPath, "diff");
 
             var builder = new StringBuilder();
 
@@ -248,20 +276,20 @@ internal class StagingOperations : IStagingOperations
             }
 
             return builder.ToString();
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get a compact summary of staged changes including diff content.
     /// </summary>
-    public Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100, int maxDiffChars = 50000)
+    public Task<string> GetStagedSummaryAsync(string repoPath, int maxFiles = 100, int maxDiffChars = 50000, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
-            var status = GitCliHelpers.RunGit(repoPath, "status -sb");
-            var stat = GitCliHelpers.RunGit(repoPath, "diff --cached --stat");
-            var names = GitCliHelpers.RunGit(repoPath, "diff --cached --name-only");
-            var diff = GitCliHelpers.RunGit(repoPath, "diff --cached");
+            var status = GitCliHelpers.RunGitArgs(repoPath, "status", "-sb");
+            var stat = GitCliHelpers.RunGitArgs(repoPath, "diff", "--cached", "--stat");
+            var names = GitCliHelpers.RunGitArgs(repoPath, "diff", "--cached", "--name-only");
+            var diff = GitCliHelpers.RunGitArgs(repoPath, "diff", "--cached");
 
             var builder = new StringBuilder();
 
@@ -322,33 +350,33 @@ internal class StagingOperations : IStagingOperations
             }
 
             return builder.ToString().TrimEnd();
-        });
+        }, cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task StageFileAsync(string repoPath, string filePath)
+    public Task StageFileAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             Commands.Stage(repo, filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task UnstageFileAsync(string repoPath, string filePath)
+    public Task UnstageFileAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             Commands.Unstage(repo, filePath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Remove a tracked file from the index (git rm --cached) without deleting it from disk.
     /// </summary>
-    public Task UntrackFileAsync(string repoPath, string filePath)
+    public Task UntrackFileAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -358,48 +386,48 @@ internal class StagingOperations : IStagingOperations
 
             repo.Index.Remove(filePath);
             repo.Index.Write();
-        });
+        }, cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task StageAllAsync(string repoPath)
+    public Task StageAllAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             Commands.Stage(repo, "*");
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Unstage all files (remove all from staging area).
     /// </summary>
-    public Task UnstageAllAsync(string repoPath)
+    public Task UnstageAllAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             repo.Reset(ResetMode.Mixed);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Discard all working directory changes (destructive - cannot be undone).
     /// </summary>
-    public Task DiscardAllChangesAsync(string repoPath)
+    public Task DiscardAllChangesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             using var repo = new Repository(repoPath);
             repo.Reset(ResetMode.Hard);
             repo.RemoveUntrackedFiles();
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Discard changes to a single file.
     /// </summary>
-    public Task DiscardFileChangesAsync(string repoPath, string filePath)
+    public Task DiscardFileChangesAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -427,7 +455,7 @@ internal class StagingOperations : IStagingOperations
                     CheckoutModifiers = CheckoutModifiers.Force
                 });
             }
-        });
+        }, cancellationToken);
     }
 
     private static FileChangeStatus MapFileStatus(FileStatus status, bool staged)

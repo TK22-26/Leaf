@@ -1,3 +1,4 @@
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using Leaf.Models;
@@ -63,8 +64,7 @@ public partial class StartBranchDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to load GitFlow configuration:\n\n{ex.Message}",
-                "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            AsyncErrorHandler.Handle(ex, nameof(LoadConfigAndSetDefaults), isUserAction: true);
             Close();
         }
     }
@@ -76,55 +76,62 @@ public partial class StartBranchDialog : Window
 
     private async void UpdateUI()
     {
-        if (_config == null) return;
-
-        GitFlowBranchType type = GetSelectedBranchType();
-
-        switch (type)
+        try
         {
-            case GitFlowBranchType.Feature:
-                HeaderText.Text = "Start Feature";
-                SubheaderText.Text = "Create a new feature branch from develop";
-                NameLabel.Text = "Feature Name";
-                NameHint.Text = "Enter a descriptive name (e.g., user-authentication)";
-                BaseBranchInfoText.Text = $"This branch will be created from {_config.DevelopBranch}.";
-                BaseBranchSection.Visibility = Visibility.Collapsed;
-                VersionSuggestionPanel.Visibility = Visibility.Collapsed;
-                break;
+            if (_config == null) return;
 
-            case GitFlowBranchType.Release:
-                HeaderText.Text = "Start Release";
-                SubheaderText.Text = "Create a new release branch from develop";
-                NameLabel.Text = "Version";
-                NameHint.Text = "Enter the release version (e.g., 1.2.0)";
-                BaseBranchInfoText.Text = $"This branch will be created from {_config.DevelopBranch}.";
-                BaseBranchSection.Visibility = Visibility.Collapsed;
-                await LoadSuggestedVersion(GitFlowBranchType.Release);
-                break;
+            GitFlowBranchType type = GetSelectedBranchType();
 
-            case GitFlowBranchType.Hotfix:
-                HeaderText.Text = "Start Hotfix";
-                SubheaderText.Text = "Create a hotfix branch from main";
-                NameLabel.Text = "Version";
-                NameHint.Text = "Enter the hotfix version (e.g., 1.1.1)";
-                BaseBranchInfoText.Text = $"This branch will be created from {_config.MainBranch}.";
-                BaseBranchSection.Visibility = Visibility.Collapsed;
-                await LoadSuggestedVersion(GitFlowBranchType.Hotfix);
-                break;
+            switch (type)
+            {
+                case GitFlowBranchType.Feature:
+                    HeaderText.Text = "Start Feature";
+                    SubheaderText.Text = "Create a new feature branch from develop";
+                    NameLabel.Text = "Feature Name";
+                    NameHint.Text = "Enter a descriptive name (e.g., user-authentication)";
+                    BaseBranchInfoText.Text = $"This branch will be created from {_config.DevelopBranch}.";
+                    BaseBranchSection.Visibility = Visibility.Collapsed;
+                    VersionSuggestionPanel.Visibility = Visibility.Collapsed;
+                    break;
 
-            case GitFlowBranchType.Support:
-                HeaderText.Text = "Start Support";
-                SubheaderText.Text = "Create a support branch for a previous version";
-                NameLabel.Text = "Support Name";
-                NameHint.Text = "Enter the support branch name (e.g., 1.x)";
-                BaseBranchInfoText.Text = "This branch will be created from the specified tag or commit.";
-                BaseBranchSection.Visibility = Visibility.Visible;
-                VersionSuggestionPanel.Visibility = Visibility.Collapsed;
-                break;
+                case GitFlowBranchType.Release:
+                    HeaderText.Text = "Start Release";
+                    SubheaderText.Text = "Create a new release branch from develop";
+                    NameLabel.Text = "Version";
+                    NameHint.Text = "Enter the release version (e.g., 1.2.0)";
+                    BaseBranchInfoText.Text = $"This branch will be created from {_config.DevelopBranch}.";
+                    BaseBranchSection.Visibility = Visibility.Collapsed;
+                    await LoadSuggestedVersion(GitFlowBranchType.Release);
+                    break;
+
+                case GitFlowBranchType.Hotfix:
+                    HeaderText.Text = "Start Hotfix";
+                    SubheaderText.Text = "Create a hotfix branch from main";
+                    NameLabel.Text = "Version";
+                    NameHint.Text = "Enter the hotfix version (e.g., 1.1.1)";
+                    BaseBranchInfoText.Text = $"This branch will be created from {_config.MainBranch}.";
+                    BaseBranchSection.Visibility = Visibility.Collapsed;
+                    await LoadSuggestedVersion(GitFlowBranchType.Hotfix);
+                    break;
+
+                case GitFlowBranchType.Support:
+                    HeaderText.Text = "Start Support";
+                    SubheaderText.Text = "Create a support branch for a previous version";
+                    NameLabel.Text = "Support Name";
+                    NameHint.Text = "Enter the support branch name (e.g., 1.x)";
+                    BaseBranchInfoText.Text = "This branch will be created from the specified tag or commit.";
+                    BaseBranchSection.Visibility = Visibility.Visible;
+                    VersionSuggestionPanel.Visibility = Visibility.Collapsed;
+                    break;
+            }
+
+            UpdateBranchPreview();
+            ValidateInput();
         }
-
-        UpdateBranchPreview();
-        ValidateInput();
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(UpdateUI), isUserAction: true);
+        }
     }
 
     private async Task LoadSuggestedVersion(GitFlowBranchType type)
@@ -135,8 +142,14 @@ public partial class StartBranchDialog : Window
             SuggestedVersionText.Text = _suggestedVersion.ToString();
             VersionSuggestionPanel.Visibility = Visibility.Visible;
         }
-        catch
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or System.IO.IOException
+                                or UnauthorizedAccessException
+                                or FormatException)
         {
+            // No tags yet, unparseable tag, or repo access issue — suggestion
+            // is a nicety; the user can type a version manually.
+            Log.Info("StartBranch", $"SuggestNextVersion failed: {ex.GetType().Name}: {ex.Message}");
             VersionSuggestionPanel.Visibility = Visibility.Collapsed;
         }
     }
@@ -191,72 +204,85 @@ public partial class StartBranchDialog : Window
 
     private async void ValidateInput()
     {
-        if (_config == null) return;
-
-        var name = NameTextBox.Text.Trim();
-        var type = GetSelectedBranchType();
-
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            StartButton.IsEnabled = false;
-            ValidationErrorBorder.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        // Check for invalid characters
-        if (name.Contains(" ") || name.Contains("..") || name.StartsWith("/") || name.EndsWith("/"))
-        {
-            ValidationErrorBorder.Visibility = Visibility.Visible;
-            ValidationErrorText.Text = "Branch name contains invalid characters.";
-            StartButton.IsEnabled = false;
-            return;
-        }
-
-        // For support branches, check base ref
-        if (type == GitFlowBranchType.Support && string.IsNullOrWhiteSpace(BaseRefTextBox.Text))
-        {
-            ValidationErrorBorder.Visibility = Visibility.Visible;
-            ValidationErrorText.Text = "Please specify a base tag or commit for the support branch.";
-            StartButton.IsEnabled = false;
-            return;
-        }
-
-        // Validate with service
         try
         {
-            (bool isValid, string? error) result;
+            if (_config == null) return;
 
-            switch (type)
+            var name = NameTextBox.Text.Trim();
+            var type = GetSelectedBranchType();
+
+            if (string.IsNullOrWhiteSpace(name))
             {
-                case GitFlowBranchType.Feature:
-                    result = await _gitFlowService.ValidateStartFeatureAsync(_repoPath, name);
-                    break;
-                case GitFlowBranchType.Release:
-                    result = await _gitFlowService.ValidateStartReleaseAsync(_repoPath, name);
-                    break;
-                case GitFlowBranchType.Hotfix:
-                    result = await _gitFlowService.ValidateStartHotfixAsync(_repoPath, name);
-                    break;
-                default:
-                    result = (true, null);
-                    break;
+                StartButton.IsEnabled = false;
+                ValidationErrorBorder.Visibility = Visibility.Collapsed;
+                return;
             }
 
-            if (!result.isValid)
+            // Check for invalid characters
+            if (name.Contains(" ") || name.Contains("..") || name.StartsWith("/") || name.EndsWith("/"))
             {
                 ValidationErrorBorder.Visibility = Visibility.Visible;
-                ValidationErrorText.Text = result.error ?? "Invalid branch name.";
+                ValidationErrorText.Text = "Branch name contains invalid characters.";
                 StartButton.IsEnabled = false;
                 return;
             }
-        }
-        catch
-        {
-            // If validation fails, allow user to proceed (will fail on actual creation)
-        }
 
-        ValidationErrorBorder.Visibility = Visibility.Collapsed;
-        StartButton.IsEnabled = true;
+            // For support branches, check base ref
+            if (type == GitFlowBranchType.Support && string.IsNullOrWhiteSpace(BaseRefTextBox.Text))
+            {
+                ValidationErrorBorder.Visibility = Visibility.Visible;
+                ValidationErrorText.Text = "Please specify a base tag or commit for the support branch.";
+                StartButton.IsEnabled = false;
+                return;
+            }
+
+            // Validate with service
+            try
+            {
+                (bool isValid, string? error) result;
+
+                switch (type)
+                {
+                    case GitFlowBranchType.Feature:
+                        result = await _gitFlowService.ValidateStartFeatureAsync(_repoPath, name);
+                        break;
+                    case GitFlowBranchType.Release:
+                        result = await _gitFlowService.ValidateStartReleaseAsync(_repoPath, name);
+                        break;
+                    case GitFlowBranchType.Hotfix:
+                        result = await _gitFlowService.ValidateStartHotfixAsync(_repoPath, name);
+                        break;
+                    default:
+                        result = (true, null);
+                        break;
+                }
+
+                if (!result.isValid)
+                {
+                    ValidationErrorBorder.Visibility = Visibility.Visible;
+                    ValidationErrorText.Text = result.error ?? "Invalid branch name.";
+                    StartButton.IsEnabled = false;
+                    return;
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException
+                                    or System.IO.IOException
+                                    or UnauthorizedAccessException
+                                    or ArgumentException)
+            {
+                // Pre-flight validation is advisory — if the check itself
+                // fails we let the user proceed and surface any real error
+                // at branch-creation time.
+                Log.Info("StartBranch", $"Pre-validation failed: {ex.GetType().Name}: {ex.Message}");
+            }
+
+            ValidationErrorBorder.Visibility = Visibility.Collapsed;
+            StartButton.IsEnabled = true;
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(ValidateInput), isUserAction: true);
+        }
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -267,14 +293,14 @@ public partial class StartBranchDialog : Window
 
     private async void Start_Click(object sender, RoutedEventArgs e)
     {
-        var name = NameTextBox.Text.Trim();
-        var type = GetSelectedBranchType();
-
-        ProgressSection.Visibility = Visibility.Visible;
-        StartButton.IsEnabled = false;
-
         try
         {
+            var name = NameTextBox.Text.Trim();
+            var type = GetSelectedBranchType();
+
+            ProgressSection.Visibility = Visibility.Visible;
+            StartButton.IsEnabled = false;
+
             var progress = new Progress<string>(msg => ProgressText.Text = msg);
 
             // Check for uncommitted changes before starting
@@ -342,11 +368,9 @@ public partial class StartBranchDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to create branch:\n\n{ex.Message}",
-                "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-
             ProgressSection.Visibility = Visibility.Collapsed;
             StartButton.IsEnabled = true;
+            AsyncErrorHandler.Handle(ex, nameof(Start_Click), isUserAction: true);
         }
     }
 }

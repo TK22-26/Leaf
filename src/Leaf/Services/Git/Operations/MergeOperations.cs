@@ -20,20 +20,21 @@ internal class MergeOperations
     /// <summary>
     /// Merge a branch into the current branch.
     /// </summary>
-    public Task<Models.MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false)
+    public Task<Models.MergeResult> MergeBranchAsync(string repoPath, string branchName, bool allowUnrelatedHistories = false, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             // Always use --no-ff to create merge commit with visible merge lines in git graph
-            var args = $"merge --no-ff \"{branchName}\"";
+            var args = new List<string> { "merge", "--no-ff" };
             if (allowUnrelatedHistories)
             {
-                args += " --allow-unrelated-histories";
+                args.Add("--allow-unrelated-histories");
             }
+            args.Add(branchName);
 
             Log.Info("Merge", $"MergeBranch: branch={branchName} allowUnrelatedHistories={allowUnrelatedHistories}");
             MergeDebugHelper.LogMergeState("BeforeMerge", repoPath);
-            var result = GitCliHelpers.RunGit(repoPath, args);
+            var result = GitCliHelpers.RunGitArgs(repoPath, args.ToArray());
             Log.Info("Merge", $"MergeBranch: exitCode={result.ExitCode} output={result.Output}");
             if (!string.IsNullOrEmpty(result.Error))
                 Log.Error("Merge", $"MergeBranch: {result.Error}");
@@ -71,21 +72,19 @@ internal class MergeOperations
                 Success = false,
                 ErrorMessage = result.Error
             };
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Fast-forward the current branch to match a target branch.
     /// </summary>
-    public Task<Models.MergeResult> FastForwardAsync(string repoPath, string targetBranchName)
+    public Task<Models.MergeResult> FastForwardAsync(string repoPath, string targetBranchName, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
-            // Use --ff-only to ensure we only fast-forward (no merge commit)
-            var args = $"merge --ff-only \"{targetBranchName}\"";
-
             Log.Info("Merge", $"FastForward: target={targetBranchName}");
-            var result = GitCliHelpers.RunGit(repoPath, args);
+            // Use --ff-only to ensure we only fast-forward (no merge commit)
+            var result = GitCliHelpers.RunGitArgs(repoPath, "merge", "--ff-only", targetBranchName);
             Log.Info("Merge", $"FastForward: exitCode={result.ExitCode} output={result.Output}");
             if (!string.IsNullOrEmpty(result.Error))
                 Log.Error("Merge", $"FastForward: {result.Error}");
@@ -111,13 +110,13 @@ internal class MergeOperations
                 Success = false,
                 ErrorMessage = string.IsNullOrEmpty(result.Error) ? result.Output : result.Error
             };
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Perform a squash merge of a branch into the current branch.
     /// </summary>
-    public Task<Models.MergeResult> SquashMergeAsync(string repoPath, string branchName)
+    public Task<Models.MergeResult> SquashMergeAsync(string repoPath, string branchName, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -139,13 +138,13 @@ internal class MergeOperations
             }
 
             return new Models.MergeResult { Success = true };
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Complete a merge by creating the merge commit.
     /// </summary>
-    public Task CompleteMergeAsync(string repoPath, string commitMessage)
+    public Task CompleteMergeAsync(string repoPath, string commitMessage, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -192,49 +191,49 @@ internal class MergeOperations
             var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
             repo.Commit(commitMessage, signature, signature);
             MergeDebugHelper.LogMergeState("AfterCompleteMerge", repoPath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Abort an in-progress merge and return to pre-merge state.
     /// </summary>
-    public Task AbortMergeAsync(string repoPath)
+    public Task AbortMergeAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             Log.Info("Merge", "AbortMerge: running git merge --abort");
             MergeDebugHelper.LogMergeState("BeforeAbortMerge", repoPath);
-            GitCliHelpers.RunGit(repoPath, "merge --abort");
+            GitCliHelpers.RunGitArgs(repoPath, "merge", "--abort");
             MergeDebugHelper.LogMergeState("AfterAbortMerge", repoPath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Abort an in-progress cherry-pick.
     /// </summary>
-    public Task AbortCherryPickAsync(string repoPath)
+    public Task AbortCherryPickAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             Log.Info("Merge", "AbortCherryPick: running git cherry-pick --abort");
             MergeDebugHelper.LogMergeState("BeforeAbortCherryPick", repoPath);
-            GitCliHelpers.RunGit(repoPath, "cherry-pick --abort");
+            GitCliHelpers.RunGitArgs(repoPath, "cherry-pick", "--abort");
             MergeDebugHelper.LogMergeState("AfterAbortCherryPick", repoPath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Abort an in-progress revert.
     /// </summary>
-    public Task AbortRevertAsync(string repoPath)
+    public Task AbortRevertAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             Log.Info("Merge", "AbortRevert: running git revert --abort");
             MergeDebugHelper.LogMergeState("BeforeAbortRevert", repoPath);
-            GitCliHelpers.RunGit(repoPath, "revert --abort");
+            GitCliHelpers.RunGitArgs(repoPath, "revert", "--abort");
             MergeDebugHelper.LogMergeState("AfterAbortRevert", repoPath);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -242,7 +241,7 @@ internal class MergeOperations
     /// This occurs when the index has unmerged entries (conflicts) but no operation sentinel exists.
     /// This can happen after a failed checkout operation.
     /// </summary>
-    public Task<bool> IsOrphanedConflictStateAsync(string repoPath)
+    public Task<bool> IsOrphanedConflictStateAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -261,7 +260,7 @@ internal class MergeOperations
             // Check if there are unmerged entries in the index
             var conflictCount = GitCliHelpers.GetConflictCount(repoPath);
             return conflictCount > 0;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -269,10 +268,10 @@ internal class MergeOperations
     /// </summary>
     /// <param name="repoPath">Path to the repository</param>
     /// <param name="discardWorkingChanges">If true, also discards all working directory changes</param>
-    public async Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges)
+    public async Task ResetOrphanedConflictsAsync(string repoPath, bool discardWorkingChanges, CancellationToken cancellationToken = default)
     {
         // Reset the index to HEAD to clear unmerged entries
-        var resetResult = await _context.CommandRunner.RunAsync(repoPath, ["reset", "HEAD"]);
+        var resetResult = await _context.CommandRunner.RunAsync(repoPath, ["reset", "HEAD"], cancellationToken: cancellationToken);
         if (!resetResult.Success && !string.IsNullOrEmpty(resetResult.StandardError))
         {
             // Ignore "Unstaged changes after reset" which is expected
@@ -285,7 +284,7 @@ internal class MergeOperations
         if (discardWorkingChanges)
         {
             // Discard all working directory changes
-            var checkoutResult = await _context.CommandRunner.RunAsync(repoPath, ["checkout", "--", "."]);
+            var checkoutResult = await _context.CommandRunner.RunAsync(repoPath, ["checkout", "--", "."], cancellationToken: cancellationToken);
             if (!checkoutResult.Success && !string.IsNullOrEmpty(checkoutResult.StandardError))
             {
                 throw new InvalidOperationException(checkoutResult.StandardError);
@@ -296,14 +295,14 @@ internal class MergeOperations
     /// <summary>
     /// Cherry-pick a commit onto the current branch.
     /// </summary>
-    public async Task<Models.MergeResult> CherryPickAsync(string repoPath, string commitSha)
+    public async Task<Models.MergeResult> CherryPickAsync(string repoPath, string commitSha, CancellationToken cancellationToken = default)
     {
         Log.Info("Merge", $"CherryPick: commit={commitSha}");
         MergeDebugHelper.LogMergeState("BeforeCherryPick", repoPath);
 
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["cherry-pick", commitSha]);
+            ["cherry-pick", commitSha], cancellationToken: cancellationToken);
 
         if (result.Success)
         {

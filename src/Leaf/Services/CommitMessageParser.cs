@@ -52,9 +52,9 @@ public class CommitMessageParser : ICommitMessageParser
                     return textEl.GetString() ?? jsonlOutput;
                 }
             }
-            catch
+            catch (JsonException)
             {
-                // Skip invalid JSON lines
+                // Non-JSON line in JSONL stream — ignored by design.
             }
         }
 
@@ -77,9 +77,9 @@ public class CommitMessageParser : ICommitMessageParser
                 return structuredEl.GetRawText();
             }
         }
-        catch
+        catch (JsonException)
         {
-            // Fall through to return original
+            // Malformed JSON — caller falls back to the raw output.
         }
 
         return jsonOutput;
@@ -105,9 +105,9 @@ public class CommitMessageParser : ICommitMessageParser
                     return responseEl.GetRawText();
             }
         }
-        catch
+        catch (JsonException)
         {
-            // Fall through to return original
+            // Malformed JSON — caller falls back to the raw output.
         }
 
         return jsonOutput;

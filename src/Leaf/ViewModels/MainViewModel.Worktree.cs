@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Services;
 using Leaf.Services.Git.Operations;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -24,6 +25,9 @@ public partial class MainViewModel
         var sw = Log.StartTimer();
         try
         {
+            // No session token: this method is callable for any repo
+            // (LoadWorktreesForAllReposAsync iterates all) — a repo-switch
+            // cancellation would drop worktree data for unrelated repos.
             var worktrees = await _gitService.GetWorktreesAsync(repo.Path).ConfigureAwait(false);
 
             // Mark the current worktree
@@ -99,8 +103,7 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Switching to worktree {worktree.DisplayName}...";
+            await BeginBusyAsync($"Switching to worktree {worktree.DisplayName}...");
 
             // Capture category expanded states from the current repo before switching
             Dictionary<string, bool>? previousCategoryStates = null;
@@ -119,7 +122,10 @@ public partial class MainViewModel
             }
             else
             {
-                // Add worktree as a repository
+                // Add worktree as a repository. No session token: we're about
+                // to SelectRepositoryAsync this target, which creates its own
+                // session. Using the current-repo token would cancel this
+                // probe the moment SelectRepositoryAsync rotates the session.
                 targetRepo = await _gitService.GetRepositoryInfoFastAsync(worktree.Path);
                 _repositoryService.AddRepository(targetRepo);
             }
@@ -138,11 +144,11 @@ public partial class MainViewModel
             // Update IsCurrent flags on all worktree collections so the checkmark moves
             UpdateWorktreeCurrentFlags(worktree.Path);
 
-            StatusMessage = $"Switched to {worktree.DisplayName}";
+            NotifySuccess("Worktree switched", $"Now viewing {worktree.DisplayName}.");
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Switch to worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Switch to worktree", ex);
         }
         finally
         {
@@ -191,21 +197,19 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
             var defaultPath = WorktreeOperations.GenerateDefaultWorktreePath(SelectedRepository.Path, branch.Name);
-
-            StatusMessage = $"Creating worktree for {branch.Name}...";
+            await BeginBusyAsync($"Creating worktree for {branch.Name}...");
 
             try
             {
                 // If the branch is currently checked out, detach HEAD first so the branch is free
                 if (branch.IsCurrent && !string.IsNullOrEmpty(branch.TipSha))
                 {
-                    await _gitService.CheckoutCommitAsync(SelectedRepository.Path, branch.TipSha);
+                    await _gitService.CheckoutCommitAsync(SelectedRepository.Path, branch.TipSha, cancellationToken: CurrentRepositoryToken);
                 }
 
-                await _gitService.CreateWorktreeAsync(SelectedRepository.Path, defaultPath, branch.Name);
-                StatusMessage = $"Created worktree at {defaultPath}";
+                await _gitService.CreateWorktreeAsync(SelectedRepository.Path, defaultPath, branch.Name, cancellationToken: CurrentRepositoryToken);
+                NotifySuccess("Worktree created", $"Created at {defaultPath}.");
 
                 // Reload branches to show new worktree
                 SelectedRepository.BranchesLoaded = false;
@@ -226,30 +230,52 @@ public partial class MainViewModel
                     var tipSha = branch.TipSha;
                     if (string.IsNullOrEmpty(tipSha))
                     {
-                        StatusMessage = "Cannot determine branch tip SHA";
+                        NotifyWarning("Cannot create worktree", "Cannot determine branch tip SHA.");
                         return;
                     }
 
-                    await _gitService.CreateWorktreeDetachedAsync(SelectedRepository.Path, defaultPath, tipSha);
-                    StatusMessage = $"Created detached worktree at {defaultPath}";
+                    await _gitService.CreateWorktreeDetachedAsync(SelectedRepository.Path, defaultPath, tipSha, cancellationToken: CurrentRepositoryToken);
+                    NotifySuccess("Worktree created", $"Detached worktree created at {defaultPath}.");
 
                     SelectedRepository.BranchesLoaded = false;
                     await LoadBranchesForRepoAsync(SelectedRepository);
                 }
                 else
                 {
-                    StatusMessage = "Worktree creation cancelled";
+                    NotifyInfo("Worktree cancelled", "Worktree creation cancelled.");
                 }
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Create worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Create worktree", ex);
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Build a user-facing preview of where a new worktree would be placed
+    /// for the given branch name. Reuses the same sanitization rule as
+    /// <see cref="WorktreeOperations.GenerateDefaultWorktreePath"/> so the
+    /// preview can't drift from what actually lands on disk. Returns the
+    /// fallback string when no repo is selected, when the name is invalid,
+    /// or when the name is empty.
+    /// </summary>
+    public string GetWorktreePathPreview(string branchName)
+    {
+        const string placeholder = "Path: ...";
+        if (SelectedRepository == null) return placeholder;
+
+        var trimmed = branchName?.Trim() ?? string.Empty;
+        if (!BranchNameValidator.IsValid(trimmed)) return placeholder;
+
+        var repoName = System.IO.Path.GetFileName(SelectedRepository.Path.TrimEnd(
+            System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+        var safeName = WorktreeOperations.SanitizeBranchNameForPath(trimmed);
+        return $"Path: ../{repoName}-{safeName}";
     }
 
     /// <summary>
@@ -262,12 +288,10 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
             var defaultPath = WorktreeOperations.GenerateDefaultWorktreePath(SelectedRepository.Path, newBranchName);
-
-            StatusMessage = $"Creating worktree with new branch {newBranchName}...";
-            await _gitService.CreateWorktreeWithNewBranchAsync(SelectedRepository.Path, defaultPath, newBranchName, startPoint);
-            StatusMessage = $"Created worktree at {defaultPath}";
+            await BeginBusyAsync($"Creating worktree with new branch {newBranchName}...");
+            await _gitService.CreateWorktreeWithNewBranchAsync(SelectedRepository.Path, defaultPath, newBranchName, startPoint, cancellationToken: CurrentRepositoryToken);
+            NotifySuccess("Worktree created", $"Created at {defaultPath} on new branch {newBranchName}.");
 
             // Reload branches to show new worktree
             SelectedRepository.BranchesLoaded = false;
@@ -275,7 +299,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Create worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Create worktree", ex);
         }
         finally
         {
@@ -294,13 +318,11 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
             var shortSha = commit.Sha.Length >= 7 ? commit.Sha[..7] : commit.Sha;
             var defaultPath = WorktreeOperations.GenerateDefaultWorktreePath(SelectedRepository.Path, shortSha);
-
-            StatusMessage = $"Creating detached worktree at {shortSha}...";
-            await _gitService.CreateWorktreeDetachedAsync(SelectedRepository.Path, defaultPath, commit.Sha);
-            StatusMessage = $"Created detached worktree at {defaultPath}";
+            await BeginBusyAsync($"Creating detached worktree at {shortSha}...");
+            await _gitService.CreateWorktreeDetachedAsync(SelectedRepository.Path, defaultPath, commit.Sha, cancellationToken: CurrentRepositoryToken);
+            NotifySuccess("Worktree created", $"Detached worktree created at {defaultPath}.");
 
             // Reload branches to show new worktree
             SelectedRepository.BranchesLoaded = false;
@@ -308,7 +330,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Create worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Create worktree", ex);
         }
         finally
         {
@@ -325,45 +347,52 @@ public partial class MainViewModel
         if (SelectedRepository == null || worktree == null || worktree.IsMainWorktree || worktree.IsCurrent)
             return;
 
-        // If worktree is locked, go directly to force confirmation
-        if (worktree.IsLocked)
+        // Single try/finally wraps the whole flow so IsBusy is always
+        // cleared on every exit path. The previous structure had two
+        // inner try/catch blocks each with its own `return;` on the
+        // failure path, leaking IsBusy=true on any of three branches:
+        //   1. force-remove on locked worktree threw
+        //   2. normal-remove threw a non-InvalidOperationException
+        //   3. user declined the force-remove escalation prompt
+        // The cleanup-block try/finally at the end was unreachable from
+        // those paths.
+        bool removed = false;
+        try
         {
-            var forceConfirmed = await _dialogService.ShowConfirmationAsync(
-                $"Worktree '{worktree.DisplayName}' is locked.\n\nForce remove anyway?\n\nThis will delete the worktree directory at:\n{worktree.Path}",
-                "Force Remove Worktree");
-
-            if (!forceConfirmed)
-                return;
-
-            try
+            // If worktree is locked, go directly to force confirmation
+            if (worktree.IsLocked)
             {
-                IsBusy = true;
-                StatusMessage = $"Force removing worktree {worktree.DisplayName}...";
-                await _gitService.RemoveWorktreeAsync(SelectedRepository.Path, worktree.Path, force: true);
-            }
-            catch (Exception ex)
-            {
-                StatusMessage = $"Remove worktree failed: {ex.Message}";
-                return;
-            }
-        }
-        else
-        {
-            var confirmed = await _dialogService.ShowConfirmationAsync(
-                $"Remove worktree '{worktree.DisplayName}'?\n\nThis will delete the worktree directory at:\n{worktree.Path}",
-                "Remove Worktree");
+                var forceConfirmed = await _dialogService.ShowConfirmationAsync(
+                    $"Worktree '{worktree.DisplayName}' is locked.\n\nForce remove anyway?\n\nThis will delete the worktree directory at:\n{worktree.Path}",
+                    "Force Remove Worktree");
 
-            if (!confirmed)
-                return;
+                if (!forceConfirmed) return;
 
-            try
-            {
-                IsBusy = true;
-                StatusMessage = $"Removing worktree {worktree.DisplayName}...";
-
+                await BeginBusyAsync($"Force removing worktree {worktree.DisplayName}...");
                 try
                 {
-                    await _gitService.RemoveWorktreeAsync(SelectedRepository.Path, worktree.Path, force: false);
+                    await _gitService.RemoveWorktreeAsync(SelectedRepository.Path, worktree.Path, force: true, cancellationToken: CurrentRepositoryToken);
+                    removed = true;
+                }
+                catch (Exception ex)
+                {
+                    await ReportOperationFailureAsync("Remove worktree", ex);
+                    return;
+                }
+            }
+            else
+            {
+                var confirmed = await _dialogService.ShowConfirmationAsync(
+                    $"Remove worktree '{worktree.DisplayName}'?\n\nThis will delete the worktree directory at:\n{worktree.Path}",
+                    "Remove Worktree");
+
+                if (!confirmed) return;
+
+                await BeginBusyAsync($"Removing worktree {worktree.DisplayName}...");
+                try
+                {
+                    await _gitService.RemoveWorktreeAsync(SelectedRepository.Path, worktree.Path, force: false, cancellationToken: CurrentRepositoryToken);
+                    removed = true;
                 }
                 catch (InvalidOperationException)
                 {
@@ -374,41 +403,40 @@ public partial class MainViewModel
 
                     if (forceConfirmed)
                     {
-                        await _gitService.RemoveWorktreeAsync(SelectedRepository.Path, worktree.Path, force: true);
+                        await _gitService.RemoveWorktreeAsync(SelectedRepository.Path, worktree.Path, force: true, cancellationToken: CurrentRepositoryToken);
+                        removed = true;
                     }
                     else
                     {
-                        StatusMessage = "Remove worktree cancelled";
+                        NotifyInfo("Worktree remove cancelled", "Worktree was not removed.");
                         return;
                     }
                 }
+                catch (Exception ex)
+                {
+                    await ReportOperationFailureAsync("Remove worktree", ex);
+                    return;
+                }
             }
-            catch (Exception ex)
+
+            // Successful-removal cleanup: toast + repo-list pruning + branch reload.
+            if (removed)
             {
-                StatusMessage = $"Remove worktree failed: {ex.Message}";
-                return;
+                NotifySuccess("Worktree removed", $"Removed worktree {worktree.DisplayName}.");
+
+                var repoInList = _repositoryService.FindRepository(worktree.Path);
+                if (repoInList != null)
+                {
+                    _repositoryService.RemoveRepository(repoInList);
+                }
+
+                SelectedRepository.BranchesLoaded = false;
+                await LoadBranchesForRepoAsync(SelectedRepository);
             }
-        }
-
-        // Cleanup after successful removal
-        try
-        {
-            StatusMessage = $"Removed worktree {worktree.DisplayName}";
-
-            // Also remove from repo list if it was added
-            var repoInList = _repositoryService.FindRepository(worktree.Path);
-            if (repoInList != null)
-            {
-                _repositoryService.RemoveRepository(repoInList);
-            }
-
-            // Reload branches to update worktree list
-            SelectedRepository.BranchesLoaded = false;
-            await LoadBranchesForRepoAsync(SelectedRepository);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Remove worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Remove worktree", ex);
         }
         finally
         {
@@ -427,17 +455,16 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Locking worktree {worktree.DisplayName}...";
+            await BeginBusyAsync($"Locking worktree {worktree.DisplayName}...");
 
-            await _gitService.LockWorktreeAsync(SelectedRepository.Path, worktree.Path);
+            await _gitService.LockWorktreeAsync(SelectedRepository.Path, worktree.Path, cancellationToken: CurrentRepositoryToken);
             worktree.IsLocked = true;
 
-            StatusMessage = $"Locked worktree {worktree.DisplayName}";
+            NotifySuccess("Worktree locked", $"Locked {worktree.DisplayName}.");
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Lock worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Lock worktree", ex);
         }
         finally
         {
@@ -456,17 +483,16 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Unlocking worktree {worktree.DisplayName}...";
+            await BeginBusyAsync($"Unlocking worktree {worktree.DisplayName}...");
 
-            await _gitService.UnlockWorktreeAsync(SelectedRepository.Path, worktree.Path);
+            await _gitService.UnlockWorktreeAsync(SelectedRepository.Path, worktree.Path, cancellationToken: CurrentRepositoryToken);
             worktree.IsLocked = false;
 
-            StatusMessage = $"Unlocked worktree {worktree.DisplayName}";
+            NotifySuccess("Worktree unlocked", $"Unlocked {worktree.DisplayName}.");
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Unlock worktree failed: {ex.Message}";
+            await ReportOperationFailureAsync("Unlock worktree", ex);
         }
         finally
         {
@@ -485,12 +511,11 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = "Pruning stale worktree references...";
+            await BeginBusyAsync("Pruning stale worktree references...");
 
-            await _gitService.PruneWorktreesAsync(SelectedRepository.Path);
+            await _gitService.PruneWorktreesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
-            StatusMessage = "Pruned stale worktree references";
+            NotifySuccess("Worktrees pruned", "Stale worktree references removed.");
 
             // Reload branches to update worktree list
             SelectedRepository.BranchesLoaded = false;
@@ -498,7 +523,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Prune worktrees failed: {ex.Message}";
+            await ReportOperationFailureAsync("Prune worktrees", ex);
         }
         finally
         {

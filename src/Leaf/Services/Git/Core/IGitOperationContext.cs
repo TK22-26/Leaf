@@ -12,11 +12,6 @@ internal interface IGitOperationContext
     IGitCommandRunner CommandRunner { get; }
 
     /// <summary>
-    /// Helper utilities for common git CLI operations.
-    /// </summary>
-    GitCliHelpers CliHelpers { get; }
-
-    /// <summary>
     /// Parser for git command output.
     /// </summary>
     IGitOutputParser OutputParser { get; }

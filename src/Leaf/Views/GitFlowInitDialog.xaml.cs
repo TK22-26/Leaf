@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -65,10 +67,13 @@ public partial class GitFlowInitDialog : Window
                 LoadDefaultsFromSettings();
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Load defaults from settings on error
+            // Recoverable: we still want a populated dialog, so fall back to
+            // defaults. Log the failure for diagnostics but don't interrupt
+            // the user — the dialog is fully functional from defaults.
             LoadDefaultsFromSettings();
+            AsyncErrorHandler.Handle(ex, nameof(LoadExistingConfigOrDefaults), isUserAction: false);
         }
     }
 
@@ -109,20 +114,27 @@ public partial class GitFlowInitDialog : Window
 
     private async void Next_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentStep < TotalSteps)
+        try
         {
-            _currentStep++;
-            UpdateStepVisuals();
-
-            if (_currentStep == TotalSteps)
+            if (_currentStep < TotalSteps)
             {
-                UpdateSummary();
-                await CheckDevelopBranchExists();
+                _currentStep++;
+                UpdateStepVisuals();
+
+                if (_currentStep == TotalSteps)
+                {
+                    UpdateSummary();
+                    await CheckDevelopBranchExists();
+                }
+            }
+            else
+            {
+                await InitializeGitFlow();
             }
         }
-        else
+        catch (Exception ex)
         {
-            await InitializeGitFlow();
+            AsyncErrorHandler.Handle(ex, nameof(Next_Click), isUserAction: true);
         }
     }
 
@@ -216,9 +228,14 @@ public partial class GitFlowInitDialog : Window
             var status = await _gitFlowService.GetStatusAsync(_repoPath);
             CreateDevelopWarning.Visibility = !status.IsInitialized ? Visibility.Visible : Visibility.Collapsed;
         }
-        catch
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or IOException
+                                or UnauthorizedAccessException)
         {
+            // GitFlow status read failed — err on the side of warning the
+            // user so they know they may need to create develop.
             CreateDevelopWarning.Visibility = Visibility.Visible;
+            Log.Info("GitFlowInit", $"GetStatus failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

@@ -3,9 +3,11 @@ using System.IO;
 using System.Threading;
 using System.Windows;
 using CommunityToolkit.Mvvm.Input;
+using Leaf.Composition;
 using Leaf.Models;
 using Leaf.Services;
 using Leaf.Views;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
 
 namespace Leaf.ViewModels;
@@ -93,9 +95,12 @@ public partial class MainViewModel
         {
             var path = dialog.FolderName;
 
+            // No session token: the path being validated is not the current
+            // repo yet, and cancelling this check on repo switch would drop
+            // the user's add-repo action mid-flight.
             if (!await _gitService.IsValidRepositoryAsync(path))
             {
-                StatusMessage = "Selected folder is not a valid Git repository";
+                NotifyWarning("Not a Git repository", "Selected folder is not a valid Git repository.");
                 return;
             }
 
@@ -139,6 +144,8 @@ public partial class MainViewModel
                     if (_repositoryService.ContainsRepository(repoPath))
                         continue;
 
+                    // No session token: scanning other paths is independent
+                    // of the current repo session.
                     if (await _gitService.IsValidRepositoryAsync(repoPath))
                     {
                         var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
@@ -148,13 +155,14 @@ public partial class MainViewModel
                 }
 
                 Log.Info("Repository", $"Folder scan complete: added {addedCount} of {gitDirs.Length} found");
-                StatusMessage = addedCount > 0
-                    ? $"Added {addedCount} repositor{(addedCount == 1 ? "y" : "ies")}"
-                    : "No new repositories found";
+                if (addedCount > 0)
+                    NotifySuccess("Repositories added", $"Added {addedCount} repositor{(addedCount == 1 ? "y" : "ies")}.");
+                else
+                    NotifyInfo("Scan complete", "No new repositories found.");
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Error scanning: {ex.Message}";
+                await ReportOperationFailureAsync("Scan folder", ex);
             }
             finally
             {
@@ -168,30 +176,40 @@ public partial class MainViewModel
     /// </summary>
     private async void OnRepositoryDiscovered(object? sender, string repoPath)
     {
-        await _dispatcherService.InvokeAsync(async () =>
+        try
         {
-            if (_repositoryService.ContainsRepository(repoPath))
-                return;
-
-            if (await _gitService.IsValidRepositoryAsync(repoPath))
+            await _dispatcherService.InvokeAsync(async () =>
             {
-                var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
-                _repositoryService.AddRepository(repoInfo);
-                Log.Info("Repository", $"Discovered repository: {repoInfo.Name} ({repoPath})");
+                if (_repositoryService.ContainsRepository(repoPath))
+                    return;
 
-                // Mark the parent folder group as watched
-                var parentFolder = Path.GetDirectoryName(repoPath);
-                foreach (var group in RepositoryGroups)
+                // No session token: validating a discovered repo is
+                // independent of which repo is currently selected.
+                if (await _gitService.IsValidRepositoryAsync(repoPath))
                 {
-                    if (group.Type == Models.GroupType.Folder &&
-                        repoPath.StartsWith(Path.GetDirectoryName(group.Repositories.FirstOrDefault()?.Path ?? "") ?? "", StringComparison.OrdinalIgnoreCase))
+                    var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
+                    _repositoryService.AddRepository(repoInfo);
+                    Log.Info("Repository", $"Discovered repository: {repoInfo.Name} ({repoPath})");
+
+                    // Mark the parent folder group as watched
+                    var parentFolder = Path.GetDirectoryName(repoPath);
+                    foreach (var group in RepositoryGroups)
                     {
-                        group.IsWatched = true;
-                        break;
+                        if (group.Type == Models.GroupType.Folder &&
+                            repoPath.StartsWith(Path.GetDirectoryName(group.Repositories.FirstOrDefault()?.Path ?? "") ?? "", StringComparison.OrdinalIgnoreCase))
+                        {
+                            group.IsWatched = true;
+                            break;
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
+        catch (Exception ex)
+        {
+            // Background discovery — log-only by default, surface only if user opted in.
+            AsyncErrorHandler.Handle(ex, nameof(OnRepositoryDiscovered), isUserAction: false);
+        }
     }
 
     /// <summary>
@@ -207,6 +225,8 @@ public partial class MainViewModel
                 if (_repositoryService.ContainsRepository(repoPath))
                     continue;
 
+                // No session token: scan-watched-folders runs on startup
+                // and isn't tied to the current repo.
                 if (await _gitService.IsValidRepositoryAsync(repoPath))
                 {
                     var repoInfo = await _gitService.GetRepositoryInfoFastAsync(repoPath);
@@ -239,18 +259,17 @@ public partial class MainViewModel
     public async Task CloneRepositoryAsync()
     {
         var settings = _settingsService.LoadSettings();
-        var dialog = new CloneDialog(_gitService, _credentialService, _settingsService, settings.DefaultClonePath)
-        {
-            Owner = _ownerWindow
-        };
+        var dialog = new CloneDialog(_gitService, _credentialService, _settingsService, _externalToolConfig, _externalToolDetector, settings.DefaultClonePath);
 
-        if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.ClonedRepositoryPath))
+        if (await _dialogService.ShowDialogAsync(dialog) && !string.IsNullOrEmpty(dialog.ClonedRepositoryPath))
         {
-            // Add the cloned repo to the list
+            // Add the cloned repo to the list. No session token: the cloned
+            // path isn't the current repo yet, and we're about to SelectRepositoryAsync
+            // it which creates its own session.
             var repoInfo = await _gitService.GetRepositoryInfoFastAsync(dialog.ClonedRepositoryPath);
             _repositoryService.AddRepository(repoInfo);
             await SelectRepositoryAsync(repoInfo);
-            StatusMessage = $"Cloned {repoInfo.Name} successfully";
+            NotifySuccess("Repository cloned", $"Cloned {repoInfo.Name} successfully.");
         }
     }
 
@@ -286,6 +305,48 @@ public partial class MainViewModel
             var previousRepository = SelectedRepository;
             bool isRepositorySwitch = previousRepository != null &&
                 !string.Equals(previousRepository.Path, repository.Path, StringComparison.OrdinalIgnoreCase);
+
+            // Rotate the repository scope: dispose the old one (cascading
+            // to IRepositorySession, which cancels its token and any
+            // in-flight git operations that received it) and create a
+            // fresh scope bound to this repo. Refreshes of the same repo
+            // keep the existing scope so callers don't get spuriously
+            // cancelled.
+            if (_currentScope == null ||
+                !string.Equals(_currentScopeRepoPath, repository.Path, StringComparison.OrdinalIgnoreCase))
+            {
+                var previousScope = _currentScope;
+                _currentScope = null;
+                _currentSession = null;
+                _currentScopeRepoPath = null;
+
+                var newScope = _scopeFactory.CreateScope();
+                try
+                {
+                    newScope.ServiceProvider.GetRequiredService<RepositoryScopeContext>().Path = repository.Path;
+                    // Force-resolve now so a bad path throws here rather
+                    // than on the first git operation deeper in the UI.
+                    // Caching the reference keeps CurrentRepositoryToken
+                    // a field read instead of a per-call container lookup.
+                    var session = newScope.ServiceProvider.GetRequiredService<IRepositorySession>();
+
+                    _currentScope = newScope;
+                    _currentSession = session;
+                    _currentScopeRepoPath = repository.Path;
+                }
+                catch (ArgumentException ex)
+                {
+                    // Path is no longer a valid git repo — scrub the
+                    // half-built scope and let downstream code surface the
+                    // error through normal channels.
+                    newScope.Dispose();
+                    Log.Warn("SelectRepo", $"Scope create failed for {repository.Path}: {ex.Message}");
+                }
+                finally
+                {
+                    previousScope?.Dispose();
+                }
+            }
             if (isRepositorySwitch && HasActivePullRequestScreen())
             {
                 ResetPullRequestViewState(previousRepository);
@@ -298,6 +359,13 @@ public partial class MainViewModel
 
             _repositoryService.MarkAsRecentlyAccessed(repository);
             _fileWatcherService.WatchRepository(repository.Path);
+
+            // Probe the merge-tool config for this repo so the "Resolve
+            // in External Tool" button enables/disables correctly.
+            // Fire-and-forget: the check is quick and the button stays
+            // disabled until the probe lands.
+            RefreshExternalMergeToolAvailabilityAsync()
+                .FireAndForget(nameof(RefreshExternalMergeToolAvailabilityAsync), isUserAction: false);
 
             var settings = _settingsService.LoadSettings();
             settings.LastSelectedRepositoryPath = repository.Path;
@@ -319,7 +387,7 @@ public partial class MainViewModel
               // visible branch/dirty state we need to make the app usable immediately.
               stepSw.Restart();
               var graphTask = GitGraphViewModel?.LoadRepositoryAsync(repository.Path) ?? Task.CompletedTask;
-              var infoTask = _gitService.GetRepositoryInfoFastAsync(repository.Path);
+              var infoTask = _gitService.GetRepositoryInfoFastAsync(repository.Path, cancellationToken: CurrentRepositoryToken);
               var worktreeTask = LoadWorktreesForRepoAsync(repository);
 
               await Task.WhenAll(graphTask, worktreeTask);
@@ -337,7 +405,8 @@ public partial class MainViewModel
               if (!await TryApplyRepositoryInfoAsync(repository, infoTask, TimeSpan.FromMilliseconds(750)))
               {
                   ApplyRepositoryInfoFromGraph(repository);
-                  _ = ContinueApplyingRepositoryInfoAsync(repository, infoTask);
+                  ContinueApplyingRepositoryInfoAsync(repository, infoTask)
+                      .FireAndForget(nameof(ContinueApplyingRepositoryInfoAsync), isUserAction: false);
               }
               Log.Perf("SelectRepo", "ApplyRepositoryInfo", stepSw.ElapsedMilliseconds);
 
@@ -362,22 +431,28 @@ public partial class MainViewModel
             await RefreshMergeConflictResolutionAsync();
             Log.Perf("SelectRepo", "RefreshMergeConflictResolutionAsync", stepSw.ElapsedMilliseconds);
 
-              UpdateRepositoryStatusMessage(repository);
+            // Pick up bisect state from disk so the bisect banner reflects
+            // an in-progress session even after a repo switch / cold open.
+            stepSw.Restart();
+            await RefreshBisectStateAsync();
+            Log.Perf("SelectRepo", "RefreshBisectStateAsync", stepSw.ElapsedMilliseconds);
 
             if (fetchInBackground)
-                _ = _autoFetchService.FetchAsync(repository.Path);
+                _autoFetchService.FetchAsync(repository.Path)
+                    .FireAndForget(nameof(_autoFetchService.FetchAsync), isUserAction: false);
 
             if (!needsBranchFilters && needsBranchSidebarLoad)
             {
-                _ = LoadBranchesForRepoAsync(repository, forceReload: false, skipFilterApplication: true);
+                LoadBranchesForRepoAsync(repository, forceReload: false, skipFilterApplication: true)
+                    .FireAndForget(nameof(LoadBranchesForRepoAsync), isUserAction: false);
             }
 
             Log.Perf("SelectRepo", $"TOTAL for {repository.Name}", totalSw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Error: {ex.Message}";
             Log.Error("SelectRepo", $"FAILED after {totalSw.ElapsedMilliseconds}ms", ex);
+            await ReportOperationFailureAsync("Select repository", ex);
         }
         finally
         {
@@ -424,7 +499,6 @@ public partial class MainViewModel
                 }
 
                 ApplyRepositoryInfo(repository, info);
-                UpdateRepositoryStatusMessage(repository);
             });
         }
         catch (Exception ex)
@@ -447,14 +521,6 @@ public partial class MainViewModel
         repository.IsDirty = workingChanges.HasChanges;
         repository.IsDetachedHead = workingChanges.IsDetachedHead;
         repository.DetachedHeadSha = workingChanges.DetachedHeadSha;
-    }
-
-    private void UpdateRepositoryStatusMessage(RepositoryInfo repository)
-    {
-        StatusMessage = $"{repository.Name} | {repository.CurrentBranch}" +
-                       (repository.IsDirty ? " | Modified" : "") +
-                       (repository.AheadBy > 0 ? $" | {repository.AheadBy}" : "") +
-                       (repository.BehindBy > 0 ? $" | {repository.BehindBy}" : "");
     }
 
     [RelayCommand]
@@ -539,7 +605,7 @@ public partial class MainViewModel
         }
 
         group.IsWatched = true;
-        StatusMessage = $"Now watching {group.Name} for new repositories";
+        NotifySuccess("Watching folder", $"Now watching {group.Name} for new repositories.");
     }
 
     /// <summary>
@@ -567,6 +633,6 @@ public partial class MainViewModel
         _folderWatcherService.RemoveWatchedFolder(folderPath);
 
         group.IsWatched = false;
-        StatusMessage = $"Stopped watching {group.Name}";
+        NotifyInfo("Watch stopped", $"Stopped watching {group.Name}.");
     }
 }

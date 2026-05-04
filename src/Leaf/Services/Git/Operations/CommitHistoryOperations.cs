@@ -21,7 +21,7 @@ internal class CommitHistoryOperations
     /// <summary>
     /// Get commit history for a repository.
     /// </summary>
-    public Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0)
+    public Task<List<CommitInfo>> GetCommitHistoryAsync(string repoPath, int count = 500, string? branchName = null, int skip = 0, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -162,13 +162,13 @@ internal class CommitHistoryOperations
             }
 
             return commitList;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get details for a specific commit.
     /// </summary>
-    public Task<CommitInfo?> GetCommitAsync(string repoPath, string sha)
+    public Task<CommitInfo?> GetCommitAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -177,25 +177,88 @@ internal class CommitHistoryOperations
             if (commit == null) return null;
 
             var headSha = repo.Head?.Tip?.Sha;
-
-            return new CommitInfo
-            {
-                Sha = commit.Sha,
-                Message = commit.Message,
-                MessageShort = commit.MessageShort,
-                Author = commit.Author.Name,
-                AuthorEmail = commit.Author.Email,
-                Date = commit.Author.When,
-                ParentShas = commit.Parents.Select(p => p.Sha).ToList(),
-                IsHead = commit.Sha == headSha
-            };
-        });
+            var (branchTips, tagTips) = BuildRefTipMaps(repo);
+            return ToCommitInfo(commit, headSha, branchTips, tagTips);
+        }, cancellationToken);
     }
+
+    /// <summary>
+    /// Get HEAD's commit without requiring the caller to resolve its SHA
+    /// first. Returns null in an unborn/empty repository (HEAD has no tip).
+    /// </summary>
+    public Task<CommitInfo?> GetHeadCommitAsync(string repoPath, CancellationToken cancellationToken = default)
+    {
+        return Task.Run(() =>
+        {
+            using var repo = new Repository(repoPath);
+            var tip = repo.Head?.Tip;
+            if (tip == null) return null;
+            var (branchTips, tagTips) = BuildRefTipMaps(repo);
+            return ToCommitInfo(tip, tip.Sha, branchTips, tagTips);
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Pre-compute SHA → branch-names and SHA → tag-names lookup tables
+    /// for the repository. Mirrors the bulk maps the graph builder
+    /// constructs (lines 53-60) — extracted so single-commit callers
+    /// (<see cref="GetCommitAsync"/>, <see cref="GetHeadCommitAsync"/>)
+    /// don't each re-implement the ref-walking logic. Future batch
+    /// callers can lift the call out of a loop and pay the O(refs)
+    /// cost once.
+    /// </summary>
+    /// <remarks>
+    /// Local-only branches: <see cref="CommitInfo.BranchNames"/> is
+    /// rendered as branch chips on commit cards; remote branches show
+    /// up via the graph's <see cref="CommitInfo.BranchLabels"/> path,
+    /// not as chips. Filtering to <c>!IsRemote</c> here matches the
+    /// graph builder's <c>allBranchTips</c> dict (line 53).
+    /// </remarks>
+    private static (Dictionary<string, List<string>> BranchTips, Dictionary<string, List<string>> TagTips) BuildRefTipMaps(Repository repo)
+    {
+        var branchTips = repo.Branches
+            .Where(b => !b.IsRemote && b.Tip != null)
+            .GroupBy(b => b.Tip!.Sha)
+            .ToDictionary(g => g.Key, g => g.Select(b => b.FriendlyName).ToList());
+
+        var tagTips = repo.Tags
+            .Where(t => t.Target != null)
+            .GroupBy(t => t.Target!.Sha)
+            .ToDictionary(g => g.Key, g => g.Select(t => t.FriendlyName).ToList());
+
+        return (branchTips, tagTips);
+    }
+
+    /// <summary>
+    /// Build a <see cref="CommitInfo"/> from a libgit2 commit using
+    /// pre-computed ref-tip maps. Single-commit callers build the
+    /// maps inline via <see cref="BuildRefTipMaps"/>; batch callers
+    /// can build once and reuse. Without the BranchNames/TagNames
+    /// the bisect header's branch/tag chips render empty even when
+    /// refs do point at the commit.
+    /// </summary>
+    private static CommitInfo ToCommitInfo(
+        Commit commit,
+        string? headSha,
+        Dictionary<string, List<string>> branchTips,
+        Dictionary<string, List<string>> tagTips) => new()
+    {
+        Sha = commit.Sha,
+        Message = commit.Message,
+        MessageShort = commit.MessageShort,
+        Author = commit.Author.Name,
+        AuthorEmail = commit.Author.Email,
+        Date = commit.Author.When,
+        ParentShas = commit.Parents.Select(p => p.Sha).ToList(),
+        BranchNames = branchTips.TryGetValue(commit.Sha, out var branches) ? branches : [],
+        TagNames = tagTips.TryGetValue(commit.Sha, out var tags) ? tags : [],
+        IsHead = commit.Sha == headSha,
+    };
 
     /// <summary>
     /// Get file changes for a commit.
     /// </summary>
-    public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha)
+    public Task<List<FileChangeInfo>> GetCommitChangesAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -212,27 +275,78 @@ internal class CommitHistoryOperations
             var diff = repo.Diff.Compare<TreeChanges>(parentTree, tree,
                 new LibGit2Sharp.CompareOptions { Similarity = SimilarityOptions.Renames });
 
+            // Compute per-file line stats via Diff.Compare<Patch>. The
+            // TreeChanges projection above gives us the file metadata
+            // (path, status, rename detection, submodule mode) but NOT
+            // the line counts — those live on PatchEntryChange. Without
+            // this, every consumer (bisect detail view, commit detail
+            // view, etc.) sees +0/-0 even on files with real changes.
+            // Indexed by Path so we can pair each tree change with its
+            // patch stats below.
+            var lineStats = new Dictionary<string, (int added, int deleted, bool binary)>(StringComparer.Ordinal);
+            try
+            {
+                var patch = repo.Diff.Compare<Patch>(parentTree, tree,
+                    new LibGit2Sharp.CompareOptions { Similarity = SimilarityOptions.Renames });
+                foreach (var entry in patch)
+                {
+                    lineStats[entry.Path] = (entry.LinesAdded, entry.LinesDeleted, entry.IsBinaryComparison);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Patch generation can fail on huge / pathological diffs;
+                // we'd rather lose the line counts than the whole change
+                // list, so we swallow and fall through to zeros. Logged
+                // for diagnosability.
+                Log.Info("CommitHistory", $"Patch line-count probe failed for {sha}: {ex.Message}");
+            }
+
             foreach (var change in diff)
             {
+                // libgit2sharp reports submodule pointers as tree entries
+                // in git-link mode (0160000). The line-diff machinery
+                // doesn't apply to these — we carry the commit SHAs so
+                // the commit detail view can render them directly.
+                var isSubmodule = change.Mode == Mode.GitLink
+                                  || change.OldMode == Mode.GitLink;
+
+                var oldSha = string.Empty;
+                var newSha = string.Empty;
+                if (isSubmodule)
+                {
+                    oldSha = change.OldOid?.Sha ?? string.Empty;
+                    newSha = change.Oid?.Sha ?? string.Empty;
+                    // When a submodule is added or removed the "empty"
+                    // side reports an all-zero oid that libgit2sharp
+                    // surfaces literally — suppress it for cleaner UI.
+                    if (oldSha == new string('0', 40)) oldSha = string.Empty;
+                    if (newSha == new string('0', 40)) newSha = string.Empty;
+                }
+
+                lineStats.TryGetValue(change.Path, out var stats);
                 changes.Add(new FileChangeInfo
                 {
                     Path = change.Path,
                     OldPath = change.OldPath != change.Path ? change.OldPath : null,
                     Status = MapChangeStatus(change.Status),
-                    LinesAdded = 0,
-                    LinesDeleted = 0,
-                    IsBinary = false
+                    LinesAdded = stats.added,
+                    LinesDeleted = stats.deleted,
+                    IsBinary = stats.binary,
+                    IsSubmodule = isSubmodule,
+                    SubmoduleOldSha = oldSha,
+                    SubmoduleNewSha = newSha,
                 });
             }
 
             return changes;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get commits that were merged in a merge commit.
     /// </summary>
-    public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha)
+    public Task<List<CommitInfo>> GetMergeCommitsAsync(string repoPath, string mergeSha, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -270,13 +384,13 @@ internal class CommitHistoryOperations
                     ParentShas = commit.Parents.Select(p => p.Sha).ToList()
                 })
                 .ToList();
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get commits between two references (for changelog generation).
     /// </summary>
-    public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null)
+    public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -339,13 +453,13 @@ internal class CommitHistoryOperations
             }
 
             return commits;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Search commits by message or SHA.
     /// </summary>
-    public Task<List<CommitInfo>> SearchCommitsAsync(string repoPath, string searchText, int maxResults = 100)
+    public Task<List<CommitInfo>> SearchCommitsAsync(string repoPath, string searchText, int maxResults = 100, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -374,16 +488,16 @@ internal class CommitHistoryOperations
             }
 
             return results;
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get blame information for a file.
     /// </summary>
-    public async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath)
+    public async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
-            repoPath, ["blame", "--line-porcelain", "--", filePath]);
+            repoPath, ["blame", "--line-porcelain", "--", filePath], cancellationToken: cancellationToken);
 
         if (!result.Success)
             throw new InvalidOperationException(result.StandardError);
@@ -391,6 +505,7 @@ internal class CommitHistoryOperations
         var lines = new List<FileBlameLine>();
         string currentSha = string.Empty;
         string currentAuthor = string.Empty;
+        string currentSubject = string.Empty;
         DateTimeOffset currentDate = DateTimeOffset.MinValue;
         int currentLineNumber = 0;
 
@@ -407,6 +522,7 @@ internal class CommitHistoryOperations
                     Sha = currentSha,
                     Author = currentAuthor,
                     Date = currentDate,
+                    Subject = currentSubject,
                     Content = line[1..]
                 });
                 continue;
@@ -431,6 +547,16 @@ internal class CommitHistoryOperations
             {
                 if (long.TryParse(line["author-time ".Length..], out var seconds))
                     currentDate = DateTimeOffset.FromUnixTimeSeconds(seconds);
+                continue;
+            }
+
+            // 'summary' = the commit subject line. Porcelain emits it once per
+            // commit (cached by sha) so the same subject applies to every
+            // subsequent "\t"-prefixed content line for that commit until a
+            // new sha header appears.
+            if (line.StartsWith("summary ", StringComparison.Ordinal))
+            {
+                currentSubject = line["summary ".Length..];
             }
         }
 
@@ -440,12 +566,12 @@ internal class CommitHistoryOperations
     /// <summary>
     /// Get history for a file.
     /// </summary>
-    public async Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200)
+    public async Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
             ["log", "--follow", "--date=iso", $"--max-count={maxCount}",
-             "--pretty=format:%H%x1f%an%x1f%ad%x1f%s", "--", filePath]);
+             "--pretty=format:%H%x1f%an%x1f%ad%x1f%s", "--", filePath], cancellationToken: cancellationToken);
 
         if (!result.Success)
             throw new InvalidOperationException(result.StandardError);
@@ -478,7 +604,7 @@ internal class CommitHistoryOperations
     /// <summary>
     /// Get all files in the repository at a given commit, with changed files marked with their status.
     /// </summary>
-    public Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha)
+    public Task<List<FileChangeInfo>> GetCommitAllFilesAsync(string repoPath, string sha, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -524,7 +650,7 @@ internal class CommitHistoryOperations
             }
 
             return allFiles;
-        });
+        }, cancellationToken);
     }
 
     private static IEnumerable<string> EnumerateTreeEntries(TreeEntry entry, Tree root)

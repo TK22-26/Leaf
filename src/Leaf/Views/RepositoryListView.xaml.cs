@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.ViewModels;
 
 namespace Leaf.Views;
@@ -95,16 +96,19 @@ public partial class RepositoryListView : UserControl
             case RepositoryInfo repo:
                 if (string.Equals(viewModel.SelectedRepository?.Path, repo.Path, StringComparison.OrdinalIgnoreCase))
                     return;
-                _ = viewModel.SelectRepositoryAsync(repo);
+                viewModel.SelectRepositoryAsync(repo)
+                    .FireAndForget(nameof(viewModel.SelectRepositoryAsync), isUserAction: true);
                 break;
             case QuickAccessItem qa:
                 if (string.Equals(viewModel.SelectedRepository?.Path, qa.Repository.Path, StringComparison.OrdinalIgnoreCase))
                     return;
-                _ = viewModel.SelectRepositoryAsync(qa.Repository);
+                viewModel.SelectRepositoryAsync(qa.Repository)
+                    .FireAndForget(nameof(viewModel.SelectRepositoryAsync), isUserAction: true);
                 break;
             case WorktreeInfo worktree:
                 // Switch to the worktree when selected
-                _ = viewModel.SwitchToWorktreeAsync(worktree);
+                viewModel.SwitchToWorktreeAsync(worktree)
+                    .FireAndForget(nameof(viewModel.SwitchToWorktreeAsync), isUserAction: true);
                 break;
         }
     }

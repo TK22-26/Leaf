@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using Leaf.Controls.GitGraph.Services;
+using Leaf.Graph;
 using Leaf.Models;
 
 namespace Leaf.Controls.GitGraph;
@@ -24,10 +25,34 @@ public partial class GitGraphCanvas : FrameworkElement
 
     private Dictionary<string, BranchLabel> _branchLabelLookup = new(StringComparer.OrdinalIgnoreCase);
 
-    // Pass-through lane segments for drawing branch lines beyond the culling range
-    private readonly record struct LaneSegment(int Column, int ChildRow, int ParentRow, Brush Color);
+    // Pass-through lane segments for drawing branch lines beyond the
+    // culling range. ChildColumn / ParentColumn record the bubble columns
+    // at each end; for same-column connections they're equal and the
+    // pass-through draws a single vertical. For cross-column connections
+    // the renderer also draws the horizontal jog at the row dictated by
+    // IsFirstParent — at ParentRow for first-parent (commit-style:
+    // down-then-horizontal) and at ChildRow for merges (merge-style:
+    // horizontal-then-down).
+    private readonly record struct LaneSegment(
+        int ChildColumn,
+        int ParentColumn,
+        int ChildRow,
+        int ParentRow,
+        bool IsFirstParent,
+        Brush Color);
     private readonly List<LaneSegment> _laneSegments = [];
     private readonly Dictionary<string, GitTreeNode> _segmentNodeLookup = new(StringComparer.OrdinalIgnoreCase);
+
+    // Stubs for nodes whose first parent is paginated out of the loaded
+    // set. Stored as a separate list (rather than baked into LaneSegment
+    // with a sentinel ParentRow) so DrawCulledParentStubs can use the
+    // node's actual row + ActualHeight at render time, not whatever the
+    // canvas height happened to be when the data changed. Built once per
+    // Nodes change so the stub survives row-based render culling — the
+    // child commit can scroll above the viewport while the line still
+    // runs through it on its way off the bottom.
+    private readonly record struct CulledParentStub(int Column, int Row, Brush Color);
+    private readonly List<CulledParentStub> _culledParentStubs = [];
 
     #region Dependency Properties
 
@@ -122,6 +147,27 @@ public partial class GitGraphCanvas : FrameworkElement
             typeof(GitGraphCanvas),
             new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public static readonly DependencyProperty ColorResolverProperty =
+        DependencyProperty.Register(
+            nameof(ColorResolver),
+            typeof(IBranchColorResolver),
+            typeof(GitGraphCanvas),
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    /// <summary>
+    /// §5.17 tag info lookup. Bound from GitGraphViewModel.TagsByName so
+    /// the canvas can render signature badges on tag chips and surface
+    /// tooltip / right-click context with rich annotation data — without
+    /// inflating GitTreeNode with TagInfo references the layout pass
+    /// doesn't need.
+    /// </summary>
+    public static readonly DependencyProperty TagsByNameProperty =
+        DependencyProperty.Register(
+            nameof(TagsByName),
+            typeof(IReadOnlyDictionary<string, TagInfo>),
+            typeof(GitGraphCanvas),
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
 
     private static void OnNodesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -131,6 +177,7 @@ public partial class GitGraphCanvas : FrameworkElement
 
             canvas._branchLabelLookup.Clear();
             canvas._laneSegments.Clear();
+            canvas._culledParentStubs.Clear();
             canvas._segmentNodeLookup.Clear();
 
             var newNodes = e.NewValue as IReadOnlyList<GitTreeNode>;
@@ -149,11 +196,21 @@ public partial class GitGraphCanvas : FrameworkElement
 
                 foreach (var node in newNodes)
                 {
+                    // First parent paginated out → stub running off the
+                    // bottom of the loaded content. Recorded here (not
+                    // inside DrawConnections) so it survives the visible-
+                    // row culling that DrawConnections is gated on.
+                    if (node.ParentShas.Count > 0
+                        && !canvas._segmentNodeLookup.ContainsKey(node.ParentShas[0]))
+                    {
+                        var stubColor = node.NodeColor ?? Brushes.Gray;
+                        canvas._culledParentStubs.Add(new CulledParentStub(
+                            node.ColumnIndex, node.RowIndex, stubColor));
+                    }
+
                     for (int i = 0; i < node.ParentShas.Count; i++)
                     {
                         if (!canvas._segmentNodeLookup.TryGetValue(node.ParentShas[i], out var parent))
-                            continue;
-                        if (parent.ColumnIndex != node.ColumnIndex)
                             continue;
 
                         // Match DrawConnections color: child color for first parent, parent color for merges
@@ -161,9 +218,21 @@ public partial class GitGraphCanvas : FrameworkElement
                             ? (parent.NodeColor ?? Brushes.Gray)
                             : (node.NodeColor ?? Brushes.Gray);
 
+                        // Cross-column connections used to be skipped here,
+                        // which made e.g. a hotfix branch's exit into master
+                        // vanish whenever both endpoints scrolled out of the
+                        // visible row range — neither DrawConnections (gated
+                        // on the visible range) nor pass-through covered the
+                        // diagonal.
                         int childRow = Math.Min(node.RowIndex, parent.RowIndex);
                         int parentRow = Math.Max(node.RowIndex, parent.RowIndex);
-                        canvas._laneSegments.Add(new LaneSegment(node.ColumnIndex, childRow, parentRow, color));
+                        canvas._laneSegments.Add(new LaneSegment(
+                            ChildColumn: node.ColumnIndex,
+                            ParentColumn: parent.ColumnIndex,
+                            ChildRow: childRow,
+                            ParentRow: parentRow,
+                            IsFirstParent: i == 0,
+                            Color: color));
                     }
                 }
 
@@ -256,6 +325,34 @@ public partial class GitGraphCanvas : FrameworkElement
     {
         get => (string?)GetValue(CurrentBranchNameProperty);
         set => SetValue(CurrentBranchNameProperty, value);
+    }
+
+    /// <summary>
+    /// Per-repository resolver for branch / tag label colours. Null when the
+    /// canvas is wired up before a repository is selected (or in design-time);
+    /// rendering falls back to a neutral grey so nothing crashes in that case.
+    /// </summary>
+    public IBranchColorResolver? ColorResolver
+    {
+        get => (IBranchColorResolver?)GetValue(ColorResolverProperty);
+        set => SetValue(ColorResolverProperty, value);
+    }
+
+    /// <summary>§5.17 — tag-name → <see cref="TagInfo"/> lookup for badge / tooltip rendering.</summary>
+    public IReadOnlyDictionary<string, TagInfo>? TagsByName
+    {
+        get => (IReadOnlyDictionary<string, TagInfo>?)GetValue(TagsByNameProperty);
+        set => SetValue(TagsByNameProperty, value);
+    }
+
+    /// <summary>
+    /// Resolves a branch colour via the active <see cref="ColorResolver"/>,
+    /// falling back to gray when no resolver is set yet. Used by all render
+    /// paths (main rendering, labels, tooltips, expanded rows).
+    /// </summary>
+    internal Brush ResolveBranchColor(string branchName)
+    {
+        return ColorResolver?.GetBranchColor(branchName) ?? Brushes.Gray;
     }
 
 

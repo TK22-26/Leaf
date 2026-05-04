@@ -12,7 +12,7 @@ namespace Leaf.Services;
 public class AutoFetchService : IAutoFetchService
 {
     private readonly IGitService _gitService;
-    private readonly CredentialService _credentialService;
+    private readonly ICredentialService _credentialService;
     private DispatcherTimer? _timer;
     private Func<string?>? _getRepoPath;
 
@@ -20,7 +20,7 @@ public class AutoFetchService : IAutoFetchService
 
     public event EventHandler<AutoFetchCompletedEventArgs>? FetchCompleted;
 
-    public AutoFetchService(IGitService gitService, CredentialService credentialService)
+    public AutoFetchService(IGitService gitService, ICredentialService credentialService)
     {
         _gitService = gitService;
         _credentialService = credentialService;
@@ -69,8 +69,6 @@ public class AutoFetchService : IAutoFetchService
 
             foreach (var remote in remotes)
             {
-                string? pat = null;
-
                 if (!string.IsNullOrEmpty(remote.Url))
                 {
                     // Check if host is reachable before attempting fetch
@@ -80,25 +78,24 @@ public class AutoFetchService : IAutoFetchService
                         {
                             await Dns.GetHostAddressesAsync(host);
                         }
-                        catch
+                        catch (Exception ex) when (ex is System.Net.Sockets.SocketException
+                                                or ArgumentException
+                                                or InvalidOperationException)
                         {
-                            // Skip this remote when host cannot be resolved
-                            Log.Warn("AutoFetch", $"Skipping {remote.Name} - host {host} unreachable");
+                            // Offline, DNS down, or malformed host — skip this remote.
+                            Log.Warn("AutoFetch", $"Skipping {remote.Name} - {host} unreachable: {ex.GetType().Name}: {ex.Message}");
                             continue;
                         }
                     }
-
-                    // Get credentials for this remote using URL-based lookup
-                    var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
-                    if (!string.IsNullOrEmpty(credentialKey))
-                    {
-                        pat = _credentialService.GetPat(credentialKey);
-                    }
                 }
+
+                // Resolve credential key only when Leaf has a stored PAT;
+                // otherwise rely on GCM fallback.
+                var credentialKey = _credentialService.ResolveActiveCredentialKey(remote.Url);
 
                 try
                 {
-                    await _gitService.FetchAsync(repoPath, remote.Name, password: pat);
+                    await _gitService.FetchAsync(repoPath, remote.Name, credentialKey: credentialKey);
                 }
                 catch (Exception ex)
                 {

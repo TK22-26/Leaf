@@ -236,9 +236,12 @@ public class FileWatcherService : IDisposable
         var fileName = Path.GetFileName(path);
         var extension = Path.GetExtension(path).ToLowerInvariant();
 
-        // Ignore common temporary/build artifacts
+        // Ignore common editor temp / build artifacts. We deliberately do
+        // NOT filter "anything starting with a dot" — that would drop
+        // legitimate tracked files like .gitignore, .gitattributes,
+        // .editorconfig, .env, .dockerignore, .npmrc, .babelrc, etc.,
+        // making edits to them invisible until the user manually refreshes.
         return fileName.EndsWith("~") ||
-               fileName.StartsWith(".") ||
                extension == ".tmp" ||
                extension == ".swp" ||
                extension == ".bak" ||
@@ -278,6 +281,15 @@ public class FileWatcherService : IDisposable
 
         // Tag changes
         if (relativePath.Contains("\\refs\\tags\\") || relativePath.Contains("/refs/tags/"))
+            return true;
+
+        // Packed refs — branches/tags that have been packed into a single
+        // file. `git branch -D <name>` rewrites this file when the ref
+        // exists only in packed form (no loose ref under refs/heads/),
+        // so without this watch the deletion fires no events at all and
+        // the branch stays in Leaf's list as a phantom until the next
+        // manual refresh or repo switch.
+        if (relativePath.EndsWith("\\packed-refs") || relativePath.EndsWith("/packed-refs"))
             return true;
 
         // FETCH_HEAD, ORIG_HEAD, etc.

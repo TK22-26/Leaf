@@ -12,17 +12,17 @@ namespace Leaf.Services;
 /// </summary>
 public class AutoCommitService
 {
-    private readonly GitService _gitService;
+    private readonly IGitService _gitService;
     private readonly SettingsService _settingsService;
-    private readonly RepositoryManagementService _repositoryService;
+    private readonly IRepositoryManagementService _repositoryService;
 
     private const int MaxSummaryChars = 16000;
     private const int MaxMessageLength = 72;
 
     public AutoCommitService(
-        GitService gitService,
+        IGitService gitService,
         SettingsService settingsService,
-        RepositoryManagementService repositoryService)
+        IRepositoryManagementService repositoryService)
     {
         _gitService = gitService;
         _settingsService = settingsService;

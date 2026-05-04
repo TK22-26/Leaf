@@ -2,7 +2,9 @@
     x:Class="Leaf.Controls.CommitInputControl"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="clr-namespace:Leaf.Controls"
     xmlns:converters="clr-namespace:Leaf.Converters"
+    xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
     x:Name="Root">
 
     <UserControl.Resources>
@@ -23,6 +25,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Combined commit message control with Fluent styling -->
@@ -32,7 +35,8 @@
             Background="{DynamicResource TextControlBackground}"
             BorderBrush="{DynamicResource TextControlElevationBorderBrush}"
             BorderThickness="{DynamicResource TextControlBorderThemeThickness}"
-            CornerRadius="{DynamicResource ControlCornerRadius}">
+            CornerRadius="{DynamicResource ControlCornerRadius}"
+            Visibility="{Binding UseConventionalCommitsForm, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -88,21 +92,57 @@
                         Foreground="{DynamicResource TextFillColorTertiaryBrush}">
                         <Run Text="{Binding RemainingChars, ElementName=Root, Mode=OneWay}" />
                     </TextBlock>
-                    <!-- Auto-fill button (hidden when no AI provider is connected) -->
-                    <Button
-                        Grid.Column="1"
-                        Width="32"
-                        Height="32"
-                        Padding="0"
-                        VerticalAlignment="Center"
-                        HorizontalContentAlignment="Center"
-                        VerticalContentAlignment="Center"
-                        Background="Transparent"
-                        BorderBrush="Transparent"
-                        Command="{Binding AutoFillCommand, ElementName=Root}"
-                        IsEnabled="{Binding IsLoading, ElementName=Root, Converter={StaticResource InverseBoolConverter}}"
-                        ToolTip="Auto fill commit message"
-                        Visibility="{Binding IsAiAvailable, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <!-- Right-side button group: templates picker + AI auto-fill.
+                         Both buttons are 32×32 transparent rounds visually, each
+                         with a Fluent icon. The templates button is always visible;
+                         the AI button only renders when a provider is configured.
+                         §5.15 Phase 2 plan: "small icon button next to existing AI
+                         fill button — same visual weight/pattern". -->
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center">
+                        <!-- Commit template picker button (§5.15) — hidden
+                             when the master toggle is off. The Ctrl+T
+                             command also no-ops at the code-behind level
+                             so a stray keystroke doesn't pop the picker. -->
+                        <Button x:Name="TemplatesButton"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                ToolTip="Insert commit template (Ctrl+T)"
+                                Click="TemplatesButton_Click"
+                                Visibility="{Binding IsTemplatesEnabled, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ic:SymbolIcon Symbol="DocumentText" FontSize="14"/>
+                        </Button>
+                        <Popup x:Name="TemplatesPopup"
+                               PlacementTarget="{Binding ElementName=TemplatesButton}"
+                               Placement="Bottom"
+                               StaysOpen="False"
+                               AllowsTransparency="True"
+                               PopupAnimation="Slide"
+                               Closed="TemplatesPopup_Closed">
+                            <controls:CommitTemplatePicker x:Name="TemplatesPicker"
+                                                           Templates="{Binding Templates, ElementName=Root}"
+                                                           ApplyTemplateCommand="{Binding ApplyTemplateCommand, ElementName=Root}"
+                                                           CloseRequested="TemplatesPicker_CloseRequested"
+                                                           ApplyRequested="TemplatesPicker_ApplyRequested"/>
+                        </Popup>
+
+                        <!-- Auto-fill button (hidden when no AI provider is connected) -->
+                        <Button
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            Command="{Binding AutoFillCommand, ElementName=Root}"
+                            IsEnabled="{Binding IsLoading, ElementName=Root, Converter={StaticResource InverseBoolConverter}}"
+                            ToolTip="Auto fill commit message"
+                            Visibility="{Binding IsAiAvailable, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid Width="18" Height="18">
                             <!-- Sparkle icon when not loading -->
                             <TextBlock
@@ -167,6 +207,7 @@
                             </Grid>
                         </Grid>
                     </Button>
+                    </StackPanel>
                 </Grid>
 
                 <!-- Separator line -->
@@ -181,7 +222,7 @@
                     <TextBox
                         x:Name="CommitDescriptionBox"
                         Padding="10,6"
-                        VerticalContentAlignment="Top"
+                        VerticalContentAlignment="Center"
                         AcceptsReturn="True"
                         Background="Transparent"
                         BorderThickness="0"
@@ -193,8 +234,8 @@
                         VerticalScrollBarVisibility="Auto" />
                     <!-- Placeholder -->
                     <TextBlock
-                        Margin="12,6,0,0"
-                        VerticalAlignment="Top"
+                        Margin="12,0,0,0"
+                        VerticalAlignment="Center"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                         IsHitTestVisible="False"
@@ -214,14 +255,223 @@
             </Grid>
         </Border>
 
-        <!-- Commit button -->
+        <!-- §5.15 Phase 4: Conventional Commits structured form. Sits in
+             Grid.Row=0 alongside the freeform border; the two are mutually
+             exclusive via opposite Visibility bindings. The form drives
+             the same CommitMessage / CommitDescription DPs the freeform
+             path uses, so the existing commit pipeline (validation,
+             button enablement, AI auto-fill, amend) keeps working
+             without a parallel code path. -->
+        <Border
+            Grid.Row="0"
+            Padding="8"
+            Background="{DynamicResource TextControlBackground}"
+            BorderBrush="{DynamicResource TextControlElevationBorderBrush}"
+            BorderThickness="{DynamicResource TextControlBorderThemeThickness}"
+            CornerRadius="{DynamicResource ControlCornerRadius}"
+            Visibility="{Binding UseConventionalCommitsForm, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Type / Scope / Description row.
+                     The Conventional Commits fields live on the parent
+                     WorkingChangesViewModel, not on CommitInputControl
+                     itself — CommitInputControl was designed to be a
+                     reusable control fed entirely via DPs, but adding
+                     8+ DPs just to forward the structured-form state
+                     would be heavy. These bindings drop ElementName=Root
+                     so they resolve against the inherited DataContext
+                     (the VM) directly. The CommitMessage / CommitDescription
+                     bindings above keep ElementName=Root because those
+                     ARE real DPs on this control. -->
+                <Grid Grid.Row="0" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="160"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox Grid.Column="0"
+                              Margin="0,0,4,0"
+                              ItemsSource="{Binding ConventionalCommitTypes}"
+                              SelectedItem="{Binding ConventionalType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              ToolTip="Conventional Commits type"/>
+                    <ComboBox Grid.Column="1"
+                              Margin="0,0,4,0"
+                              IsEditable="True"
+                              ItemsSource="{Binding ConventionalScopeHistory}"
+                              Text="{Binding ConventionalScope, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              ToolTip="Optional scope (e.g. api, ui)"/>
+                    <TextBox Grid.Column="2"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             VerticalContentAlignment="Center"
+                             Padding="6,4"
+                             Tag="Description"
+                             Text="{Binding ConventionalDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Grid.Column="3"
+                               Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               FontSize="10"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Text="{Binding ConventionalDescriptionRemaining, Mode=OneWay, FallbackValue=72}"/>
+                </Grid>
+
+                <!-- Body (multiline) -->
+                <Expander Grid.Row="1"
+                          Margin="0,4,0,0"
+                          Header="Body"
+                          IsExpanded="False"
+                          FontSize="11">
+                    <TextBox Margin="0,4,0,0"
+                             AcceptsReturn="True"
+                             MinHeight="60"
+                             MaxHeight="120"
+                             VerticalScrollBarVisibility="Auto"
+                             TextWrapping="Wrap"
+                             Text="{Binding ConventionalBody, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                </Expander>
+
+                <!-- Breaking change toggle -->
+                <CheckBox Grid.Row="2"
+                          Margin="0,4,0,0"
+                          FontSize="11"
+                          Content="Breaking change"
+                          ToolTip="Mark as a backwards-incompatible change. Adds a ! before the colon and a BREAKING CHANGE: footer."
+                          IsChecked="{Binding ConventionalIsBreaking, Mode=TwoWay}"/>
+
+                <!-- Footer (multiline) -->
+                <Expander Grid.Row="3"
+                          Margin="0,4,0,0"
+                          Header="Footer"
+                          IsExpanded="False"
+                          FontSize="11">
+                    <TextBox Margin="0,4,0,0"
+                             AcceptsReturn="True"
+                             MinHeight="40"
+                             MaxHeight="80"
+                             VerticalScrollBarVisibility="Auto"
+                             TextWrapping="Wrap"
+                             ToolTip="Trailers like 'Refs: TICKET-123' or 'Co-authored-by: …'"
+                             Text="{Binding ConventionalFooter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                </Expander>
+            </Grid>
+        </Border>
+
+        <!-- Collapsible "Options" row. The chevron toggle keeps the
+             default layout compact — the amend checkbox only renders
+             when the user chooses to see it. IsOptionsExpanded is
+             two-way to the VM, which persists it so the state survives
+             across launches. -->
+        <StackPanel Grid.Row="1" Margin="0,6,0,0">
+            <ToggleButton
+                x:Name="OptionsToggle"
+                HorizontalAlignment="Left"
+                Padding="2,1"
+                Background="Transparent"
+                BorderThickness="0"
+                Cursor="Hand"
+                Focusable="False"
+                IsChecked="{Binding IsOptionsExpanded, ElementName=Root, Mode=TwoWay}">
+                <ToggleButton.Template>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="Transparent">
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon
+                                    x:Name="Chevron"
+                                    Margin="0,0,4,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="10"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Symbol="ChevronRight" />
+                                <TextBlock
+                                    x:Name="Label"
+                                    VerticalAlignment="Center"
+                                    FontSize="11"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="Options" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chevron" Property="Symbol" Value="ChevronDown" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chevron" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </ToggleButton.Template>
+            </ToggleButton>
+
+            <!-- Amend row — revealed only when options are expanded. -->
+            <Grid
+                Margin="0,6,0,0"
+                Visibility="{Binding IsOptionsExpanded, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <CheckBox
+                    x:Name="AmendCheckBox"
+                    Grid.Column="0"
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    IsChecked="{Binding IsAmendMode, ElementName=Root, Mode=TwoWay}"
+                    IsEnabled="{Binding CanAmend, ElementName=Root}"
+                    Content="Amend previous commit">
+                    <CheckBox.Style>
+                        <Style BasedOn="{StaticResource {x:Type CheckBox}}" TargetType="CheckBox">
+                            <Setter Property="ToolTip" Value="Replace the HEAD commit with a new one using the message and staged changes below." />
+                            <Style.Triggers>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="ToolTip" Value="Amend is unavailable: HEAD is already pushed or the repository has no commits." />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </CheckBox.Style>
+                </CheckBox>
+
+                <TextBlock
+                    Grid.Column="1"
+                    Margin="8,0,0,0"
+                    VerticalAlignment="Center"
+                    FontSize="11"
+                    FontStyle="Italic"
+                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                    Text="Will replace HEAD — staged changes fold into the previous commit."
+                    TextTrimming="CharacterEllipsis"
+                    Visibility="{Binding IsAmendMode, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}" />
+            </Grid>
+
+            <!-- §5.15 Phase 4: Conventional Commits structured form toggle.
+                 Lives next to Amend in the Options row so the same chevron
+                 reveals both — keeps the default panel compact. -->
+            <CheckBox
+                x:Name="ConventionalCheckBox"
+                Margin="0,6,0,0"
+                FontSize="12"
+                Content="Conventional Commits"
+                ToolTip="Replace the freeform input with a structured Conventional Commits form (type, scope, description, body, breaking change, footer)."
+                IsChecked="{Binding UseConventionalCommitsForm, ElementName=Root, Mode=TwoWay}"
+                Visibility="{Binding IsOptionsExpanded, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}"/>
+        </StackPanel>
+
+        <!-- Commit / Amend button -->
         <Button
-            Grid.Row="1"
+            Grid.Row="2"
             Margin="0,8,0,0"
             Padding="12,6"
             HorizontalAlignment="Stretch"
             Command="{Binding CommitCommand, ElementName=Root}"
-            Content="Commit"
+            Content="{Binding CommitButtonLabel, ElementName=Root}"
             FontSize="12"
             FontWeight="SemiBold">
             <Button.Style>

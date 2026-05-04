@@ -45,17 +45,10 @@
         </Style>
     </Window.Resources>
 
-    <Window.InputBindings>
-        <KeyBinding
-            Key="Oem3"
-            Command="{Binding ToggleTerminalCommand}"
-            Modifiers="Control" />
-        <KeyBinding Key="F1" Command="{Binding ReportIssueCommand}" />
-        <KeyBinding
-            Key="Space"
-            Command="{Binding ToggleCommandPaletteCommand}"
-            Modifiers="Alt" />
-    </Window.InputBindings>
+    <!-- Window.InputBindings are populated at runtime by
+         MainWindow.ApplyShortcuts() so the user's customisations from
+         IShortcutService take effect (and live-update on rebind). -->
+
 
     <Grid>
         <Grid.RowDefinitions>
@@ -79,6 +72,12 @@
                     <MenuItem Header="_File">
                         <MenuItem Command="{Binding AddRepositoryCommand}" Header="_Add Repository..." />
                         <MenuItem Command="{Binding AddAllReposInFolderCommand}" Header="Add All Repos in _Folder..." />
+                        <Separator />
+                        <MenuItem Command="{Binding ApplyPatchCommand}" Header="Apply _Patch...">
+                            <MenuItem.Icon>
+                                <ic:SymbolIcon FontSize="14" Symbol="ArrowImport" />
+                            </MenuItem.Icon>
+                        </MenuItem>
                         <Separator />
                         <MenuItem Command="{Binding OpenSettingsCommand}" Header="_Settings" />
                     </MenuItem>
@@ -133,6 +132,10 @@
                             InputGestureText="Ctrl+`"
                             IsCheckable="True"
                             IsChecked="{Binding IsTerminalVisible, Mode=TwoWay}" />
+                        <Separator />
+                        <MenuItem
+                            Command="{Binding ShowReflogCommand}"
+                            Header="_Reflog..." />
                     </MenuItem>
                     <MenuItem Header="_Help">
                         <MenuItem Command="{Binding CheckForUpdatesCommand}" Header="Check for _Updates...">
@@ -152,6 +155,12 @@
                             InputGestureText="F1">
                             <MenuItem.Icon>
                                 <ic:SymbolIcon FontSize="14" Symbol="Bug" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <Separator />
+                        <MenuItem Command="{Binding ShowAboutCommand}" Header="_About Leaf">
+                            <MenuItem.Icon>
+                                <ic:SymbolIcon FontSize="14" Symbol="Info" />
                             </MenuItem.Icon>
                         </MenuItem>
                     </MenuItem>
@@ -669,7 +678,12 @@
                     <views:BranchListView DataContext="{Binding}" />
                 </Border>
 
-                <!--  Center panel: Git graph / PR detail / PR create  -->
+                <!--  Center panel: Git graph / PR detail / PR create /
+                      Bisect detail. The bisect banner used to live above
+                      this Grid as a separate strip but the BisectDetailView
+                      header now carries the same information (mode,
+                      current sha, steps, End Bisect), so the banner was
+                      removed as redundant.  -->
                 <Grid Grid.Column="2">
                     <!--  Git graph: visible when in Graph mode and diff viewer not active  -->
                     <views:GitGraphView DataContext="{Binding GitGraphViewModel}">
@@ -681,6 +695,12 @@
                                         <Setter Property="Visibility" Value="Collapsed" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding DataContext.IsGraphMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <!--  Bisect mode replaces the graph entirely with
+                                          the bisect detail view (full content takeover,
+                                          like PR mode).  -->
+                                    <DataTrigger Binding="{Binding DataContext.IsBisectMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
                                         <Setter Property="Visibility" Value="Collapsed" />
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -715,6 +735,24 @@
                             </Style>
                         </views:CreatePullRequestView.Style>
                     </views:CreatePullRequestView>
+
+                    <!--  Bisect detail view: takes over the full center
+                          column when CurrentBisectState is non-null. The
+                          right pane hides too, so the bisect view has
+                          the full content area for verdict UI + diff —
+                          mirrors how PR detail/create mode work.  -->
+                    <views:BisectDetailView DataContext="{Binding}">
+                        <views:BisectDetailView.Style>
+                            <Style TargetType="views:BisectDetailView">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding DataContext.IsBisectMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </views:BisectDetailView.Style>
+                    </views:BisectDetailView>
                 </Grid>
 
                 <!--  Right panel: Commit details / Working changes / Merge Status (hidden in PR mode)  -->
@@ -726,6 +764,11 @@
                         <Style TargetType="Border">
                             <Setter Property="Visibility" Value="{Binding IsCommitDetailVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
                             <Style.Triggers>
+                                <!--  IsGraphMode is false for PR detail / PR create
+                                      / Bisect — all three take over the center
+                                      column. The right pane hides for the same
+                                      reason in each: the takeover view uses the
+                                      full content area.  -->
                                 <DataTrigger Binding="{Binding IsGraphMode}" Value="False">
                                     <Setter Property="Visibility" Value="Collapsed" />
                                 </DataTrigger>
@@ -733,7 +776,10 @@
                         </Style>
                     </Border.Style>
                     <Grid>
-                        <!--  Priority 1: Merge Status View  -->
+                        <!--  Priority 1: Merge Status View. The whole right
+                              pane hides during bisect (parent Border's
+                              IsGraphMode trigger), so no per-view bisect
+                              suppression needed here.  -->
                         <views:MergeStatusView DataContext="{Binding}">
                             <views:MergeStatusView.Style>
                                 <Style TargetType="views:MergeStatusView">
@@ -792,18 +838,59 @@
                                         <DataTrigger Binding="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed" />
                                         </DataTrigger>
-                                        <!--  Hide if MergeInProgress  -->
-                                        <DataTrigger Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <!--  Hide when MergeStatusView takes over the pane.
+                                              The two views share this Grid cell and must be
+                                              strictly mutually exclusive — these triggers
+                                              mirror MergeStatusView's three visibility
+                                              conditions above. A paused operation on its own
+                                              (e.g. `git am` mid-stream with no conflict
+                                              files) is NOT enough to hide commit detail; we
+                                              also need MergeStatusView's content (conflicts
+                                              or active resolution VM) to actually exist,
+                                              otherwise the pane goes blank.  -->
+                                        <DataTrigger Binding="{Binding DataContext.SelectedRepository.ConflictCount, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed" />
                                         </DataTrigger>
-                                        <!--  Hide if conflicts exist (e.g., squash merge conflicts)  -->
-                                        <DataTrigger Binding="{Binding DataContext.SelectedRepository.ConflictCount, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True">
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
+                                                <Condition Binding="{Binding DataContext.MergeConflictResolutionViewModel.TotalCount, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </MultiDataTrigger>
+                                        <!--  §5.17 — hide commit detail when a tag is selected so the tag pane takes over  -->
+                                        <DataTrigger Binding="{Binding DataContext.IsTagDetailMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </views:CommitDetailView.Style>
                         </views:CommitDetailView>
+
+                        <!--  §5.17 Tag Detail View — visible only when a tag is selected
+                              AND no higher-priority right-pane mode is active. Working
+                              changes / merge / conflict states share the same Grid cell
+                              and would otherwise overlap; this MultiDataTrigger keeps
+                              TagDetailView strictly mutually exclusive with the higher-
+                              priority panes via the same conditions CommitDetailView uses.  -->
+                        <views:TagDetailView DataContext="{Binding TagDetailViewModel}">
+                            <views:TagDetailView.Style>
+                                <Style TargetType="views:TagDetailView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding DataContext.IsTagDetailMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"/>
+                                                <Condition Binding="{Binding DataContext.IsWorkingChangesSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="False"/>
+                                                <Condition Binding="{Binding DataContext.SelectedRepository.IsMergeInProgress, RelativeSource={RelativeSource AncestorType=Window}}" Value="False"/>
+                                                <Condition Binding="{Binding DataContext.SelectedRepository.ConflictCount, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource IntGreaterThanZeroConverter}}" Value="False"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </views:TagDetailView.Style>
+                        </views:TagDetailView>
                     </Grid>
                 </Border>
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace Leaf.Services;
@@ -93,9 +94,25 @@ public static class Log
         Enqueue("ERR ", $"[{area ?? "?"}] {message}{detail}");
     }
 
+    /// <summary>
+    /// Matches credentials embedded in HTTP(S) URLs: scheme://user:secret@host...
+    /// The password portion is redacted in place so URL shape is preserved for
+    /// debugging. Defense-in-depth: Leaf does not intentionally emit such URLs
+    /// (PATs are now resolved via Leaf.AskPass.exe), but git error messages can
+    /// echo back credential-bearing URLs and we must never persist the token.
+    /// </summary>
+    private static readonly Regex CredentialUrlPattern = new(
+        @"(?<scheme>https?://)(?<user>[^:/@\s]+):(?<secret>[^@\s]+)@",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static string Redact(string message)
+    {
+        return CredentialUrlPattern.Replace(message, "${scheme}${user}:***@");
+    }
+
     private static void Enqueue(string level, string message)
     {
-        var line = $"{DateTime.Now:HH:mm:ss.fff} +{AppTimer.ElapsedMilliseconds,6}ms {level} {message}";
+        var line = $"{DateTime.Now:HH:mm:ss.fff} +{AppTimer.ElapsedMilliseconds,6}ms {level} {Redact(message)}";
         Queue.Enqueue(line);
     }
 
@@ -109,9 +126,13 @@ public static class Log
             while (Queue.TryDequeue(out var line))
                 writer.WriteLine(line);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Don't crash the app over logging
+            // Don't crash the app over logging — but leave a breadcrumb in
+            // the debugger so silent log-flush failures are diagnosable.
+            // Using Debug.WriteLine (rather than recursing through Log.*)
+            // avoids a log→flush→fail→log loop.
+            Debug.WriteLine($"[LogService] Flush failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -126,7 +147,12 @@ public static class Log
                 File.WriteAllText(LogPath, "");
             }
         }
-        catch { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Rotation is best-effort — if it fails, the log will just keep
+            // growing past MaxLogSize. Report via Debug for diagnostics.
+            Debug.WriteLine($"[LogService] Rotate failed: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     /// <summary>

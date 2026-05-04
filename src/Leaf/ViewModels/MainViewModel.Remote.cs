@@ -24,31 +24,30 @@ public partial class MainViewModel
         try
         {
             // Get existing remote names
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var existingNames = remotes.Select(r => r.Name);
 
-            var dialog = new RemoteDialog(existingNames) { Owner = _ownerWindow };
+            var dialog = new RemoteDialog(existingNames);
 
-            if (dialog.ShowDialog() != true) return;
+            if (!await _dialogService.ShowDialogAsync(dialog)) return;
 
-            IsBusy = true;
-            StatusMessage = $"Adding remote '{dialog.RemoteName}'...";
+            await BeginBusyAsync($"Adding remote '{dialog.RemoteName}'...");
 
             await _gitService.AddRemoteAsync(
                 SelectedRepository.Path,
                 dialog.RemoteName,
                 dialog.FetchUrl,
-                dialog.PushUrl);
+                dialog.PushUrl, cancellationToken: CurrentRepositoryToken);
 
             // Refresh branches to show the new remote
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            StatusMessage = $"Added remote '{dialog.RemoteName}'";
+            NotifySuccess("Remote added", $"Added '{dialog.RemoteName}' ({dialog.FetchUrl}).");
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Add remote failed: {ex.Message}";
+            await ReportOperationFailureAsync("Add remote", ex);
         }
         finally
         {
@@ -67,50 +66,46 @@ public partial class MainViewModel
         try
         {
             // Get existing remote names and the full remote info
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             var remoteInfo = remotes.FirstOrDefault(r => r.Name == remote.Name);
 
             if (remoteInfo == null)
             {
-                StatusMessage = $"Remote '{remote.Name}' not found";
+                NotifyWarning("Remote not found", $"Remote '{remote.Name}' no longer exists in this repository.");
                 return;
             }
 
             var existingNames = remotes.Select(r => r.Name);
-            var dialog = new RemoteDialog(existingNames, remoteInfo.Name, remoteInfo.Url, remoteInfo.PushUrl)
-            {
-                Owner = _ownerWindow
-            };
+            var dialog = new RemoteDialog(existingNames, remoteInfo.Name, remoteInfo.Url, remoteInfo.PushUrl);
 
-            if (dialog.ShowDialog() != true) return;
+            if (!await _dialogService.ShowDialogAsync(dialog)) return;
 
-            IsBusy = true;
-            StatusMessage = $"Updating remote '{remote.Name}'...";
+            await BeginBusyAsync($"Updating remote '{remote.Name}'...");
 
             // Check if name changed - rename first
             if (!string.Equals(remote.Name, dialog.RemoteName, StringComparison.OrdinalIgnoreCase))
             {
-                await _gitService.RenameRemoteAsync(SelectedRepository.Path, remote.Name, dialog.RemoteName);
+                await _gitService.RenameRemoteAsync(SelectedRepository.Path, remote.Name, dialog.RemoteName, cancellationToken: CurrentRepositoryToken);
             }
 
             // Update URLs
             var currentRemoteName = dialog.RemoteName; // Use new name if renamed
-            await _gitService.SetRemoteUrlAsync(SelectedRepository.Path, currentRemoteName, dialog.FetchUrl, isPushUrl: false);
+            await _gitService.SetRemoteUrlAsync(SelectedRepository.Path, currentRemoteName, dialog.FetchUrl, isPushUrl: false, cancellationToken: CurrentRepositoryToken);
 
             if (dialog.PushUrl != null)
             {
-                await _gitService.SetRemoteUrlAsync(SelectedRepository.Path, currentRemoteName, dialog.PushUrl, isPushUrl: true);
+                await _gitService.SetRemoteUrlAsync(SelectedRepository.Path, currentRemoteName, dialog.PushUrl, isPushUrl: true, cancellationToken: CurrentRepositoryToken);
             }
 
             // Refresh branches
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            StatusMessage = $"Updated remote '{currentRemoteName}'";
+            NotifySuccess("Remote updated", $"Updated remote '{currentRemoteName}'.");
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Edit remote failed: {ex.Message}";
+            await ReportOperationFailureAsync("Edit remote", ex);
         }
         finally
         {
@@ -134,20 +129,19 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            StatusMessage = $"Removing remote '{remoteName}'...";
+            await BeginBusyAsync($"Removing remote '{remoteName}'...");
 
-            await _gitService.RemoveRemoteAsync(SelectedRepository.Path, remoteName);
+            await _gitService.RemoveRemoteAsync(SelectedRepository.Path, remoteName, cancellationToken: CurrentRepositoryToken);
 
             // Refresh branches
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            StatusMessage = $"Removed remote '{remoteName}'";
+            NotifySuccess("Remote removed", $"Removed remote '{remoteName}'.");
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Remove remote failed: {ex.Message}";
+            await ReportOperationFailureAsync("Remove remote", ex);
         }
         finally
         {
@@ -165,17 +159,17 @@ public partial class MainViewModel
 
         try
         {
-            await _gitService.SetConfigAsync(SelectedRepository.Path, "leaf.defaultremote", remoteName);
+            await _gitService.SetConfigAsync(SelectedRepository.Path, "leaf.defaultremote", remoteName, cancellationToken: CurrentRepositoryToken);
 
             // Refresh branches to update the default indicator
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            StatusMessage = $"Set '{remoteName}' as default remote";
+            NotifySuccess("Default remote set", $"'{remoteName}' is now the default remote for push.");
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Set default remote failed: {ex.Message}";
+            await ReportOperationFailureAsync("Set default remote", ex);
         }
     }
 
@@ -183,18 +177,24 @@ public partial class MainViewModel
     /// Copy a remote's URL to the clipboard.
     /// </summary>
     [RelayCommand]
-    public void CopyRemoteUrl(string url)
+    public async Task CopyRemoteUrlAsync(string url)
     {
         if (string.IsNullOrEmpty(url)) return;
 
         try
         {
             Clipboard.SetText(url);
-            StatusMessage = "Copied URL to clipboard";
+            NotifyInfo("URL copied", "Remote URL copied to clipboard.");
         }
-        catch
+        catch (System.Runtime.InteropServices.COMException ex)
         {
-            StatusMessage = "Failed to copy URL";
+            // WPF Clipboard uses OLE which occasionally throws
+            // CLIPBRD_E_CANT_OPEN when another process is holding the
+            // clipboard open. Surface the failure through the policy
+            // pipeline so users see both a toast and the status-bar line,
+            // and log the underlying HRESULT for diagnostics.
+            await ReportOperationFailureAsync("Copy URL", ex);
+            Log.Warn("Remote", $"Clipboard.SetText failed: {ex.Message}");
         }
     }
 
@@ -208,28 +208,19 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            await BeginBusyAsync("Fetching from all remotes...");
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
             var successCount = 0;
             foreach (var remote in remotes)
             {
-                StatusMessage = $"Fetching {remote.Name}...";
-
-                // Get credentials for this remote
-                string? pat = null;
-                if (!string.IsNullOrEmpty(remote.Url))
-                {
-                    var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remote.Url);
-                    if (!string.IsNullOrEmpty(credentialKey))
-                    {
-                        pat = _credentialService.GetPat(credentialKey);
-                    }
-                }
+                // Resolve credential key only when Leaf has a stored PAT;
+                // otherwise git uses its default helpers (GCM).
+                var credentialKey = _credentialService.ResolveActiveCredentialKey(remote.Url);
 
                 try
                 {
-                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: pat);
+                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey, cancellationToken: CurrentRepositoryToken);
                     successCount++;
                 }
                 catch (Exception ex)
@@ -239,12 +230,12 @@ public partial class MainViewModel
                 }
             }
 
-            StatusMessage = $"Fetched from {successCount} of {remotes.Count} remotes";
+            NotifySuccess("Fetch complete", $"Fetched from {successCount} of {remotes.Count} remotes.");
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Fetch all failed: {ex.Message}";
+            await ReportOperationFailureAsync("Fetch all", ex);
         }
         finally
         {
@@ -261,7 +252,7 @@ public partial class MainViewModel
 
         try
         {
-            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path);
+            var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
             if (remotes.Count <= 1)
             {
@@ -271,43 +262,30 @@ public partial class MainViewModel
             }
 
             // Multiple remotes - show selection dialog
-            var defaultRemote = await _gitService.GetConfigAsync(SelectedRepository.Path, "leaf.defaultremote") ?? "origin";
+            var defaultRemote = await _gitService.GetConfigAsync(SelectedRepository.Path, "leaf.defaultremote", cancellationToken: CurrentRepositoryToken) ?? "origin";
 
-            var dialog = new PushDialog(SelectedRepository.CurrentBranch, remotes, defaultRemote)
-            {
-                Owner = _ownerWindow
-            };
+            var dialog = new PushDialog(SelectedRepository.CurrentBranch, remotes, defaultRemote);
 
-            if (dialog.ShowDialog() != true) return;
+            if (!await _dialogService.ShowDialogAsync(dialog)) return;
 
-            IsBusy = true;
+            await BeginBusyAsync("Pushing to selected remotes...");
             var selectedRemotes = dialog.SelectedRemoteNames.ToList();
-            var pushedRemotes = new List<(RemoteInfo remote, string? pat)>();
+            var pushedRemotes = new List<(RemoteInfo remote, string? credentialKey)>();
             var failedMessages = new List<string>();
 
             foreach (var remoteName in selectedRemotes)
             {
-                StatusMessage = $"Pushing to {remoteName}...";
-
-                // Get credentials for this remote
+                // Resolve credential key from the remote URL only when a PAT
+                // is stored; otherwise rely on GCM fallback.
                 var remoteInfo = remotes.FirstOrDefault(r => r.Name == remoteName);
-                string? pat = null;
-
-                if (!string.IsNullOrEmpty(remoteInfo?.Url))
-                {
-                    var credentialKey = CredentialHelper.GetCredentialKeyForUrl(remoteInfo.Url);
-                    if (!string.IsNullOrEmpty(credentialKey))
-                    {
-                        pat = _credentialService.GetPat(credentialKey);
-                    }
-                }
+                var credentialKey = _credentialService.ResolveActiveCredentialKey(remoteInfo?.Url);
 
                 try
                 {
-                    await _gitService.PushAsync(SelectedRepository.Path, remoteName, null, pat);
+                    await _gitService.PushAsync(SelectedRepository.Path, remoteName, credentialKey, cancellationToken: CurrentRepositoryToken);
                     if (remoteInfo != null)
                     {
-                        pushedRemotes.Add((remoteInfo, pat));
+                        pushedRemotes.Add((remoteInfo, credentialKey));
                     }
                 }
                 catch (Exception ex)
@@ -317,38 +295,38 @@ public partial class MainViewModel
             }
 
             // Fetch from all pushed remotes to update remote refs in the UI
-            StatusMessage = "Updating remote refs...";
-            foreach (var (remote, pat) in pushedRemotes)
+            foreach (var (remote, credentialKey) in pushedRemotes)
             {
                 try
                 {
-                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, password: pat);
+                    await _gitService.FetchAsync(SelectedRepository.Path, remote.Name, credentialKey: credentialKey, cancellationToken: CurrentRepositoryToken);
                 }
-                catch
+                catch (InvalidOperationException ex)
                 {
-                    // Ignore fetch failures - push succeeded
+                    // Post-push fetch is cosmetic (updating local refs view);
+                    // the push itself succeeded. Log so persistent refresh
+                    // failures are diagnosable.
+                    Log.Info("Remote", $"Post-push fetch {remote.Name} failed: {ex.Message}");
                 }
             }
 
-            StatusMessage = $"Pushed to {pushedRemotes.Count} remotes";
-
             if (failedMessages.Count > 0)
             {
-                StatusMessage = $"Pushed to {pushedRemotes.Count} of {selectedRemotes.Count} remotes";
                 var errorDetail = string.Join("\n", failedMessages);
-                await _dialogService.ShowErrorAsync(
+                await _dialogService.ShowErrorToastAsync(
                     $"Push failed for {failedMessages.Count} remote(s):\n\n{errorDetail}",
                     "Push Failed");
+            }
+            else
+            {
+                NotifySuccess("Push complete", $"Pushed to {pushedRemotes.Count} remote{(pushedRemotes.Count == 1 ? "" : "s")}.");
             }
 
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Push failed: {ex.Message}";
-            await _dialogService.ShowErrorAsync(
-                $"Failed to push:\n\n{ex.Message}",
-                "Push Failed");
+            await ReportOperationFailureAsync("Push", ex);
         }
         finally
         {

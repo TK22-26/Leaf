@@ -8,6 +8,7 @@ using Leaf.Models;
 using Leaf.Services;
 using Leaf.Services.Git.Core;
 using Leaf.Services.PullRequests;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -54,6 +55,15 @@ public partial class CreatePullRequestViewModel : ObservableObject
     public event EventHandler? CreateCancelled; // Fired on cancel
     public event EventHandler<PullRequestInfo>? PullRequestCreated; // Passes the newly created PR
 
+    /// <summary>
+    /// Returns the current repository's cancellation token. Set by the
+    /// parent view when the PR flow opens, so git queries tied to the
+    /// current repo abort on repo switch.
+    /// </summary>
+    public Func<CancellationToken>? GetSessionToken { get; set; }
+
+    private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
+
     public CreatePullRequestViewModel(
         IPullRequestService pullRequestService,
         IGitService gitService,
@@ -88,7 +98,7 @@ public partial class CreatePullRequestViewModel : ObservableObject
         try
         {
             // Load branches
-            var branches = await _gitService.GetBranchesAsync(repoPath);
+            var branches = await _gitService.GetBranchesAsync(repoPath, cancellationToken: SessionToken);
             var branchNames = branches
                 .Where(b => !b.IsRemote)
                 .Select(b => b.Name)
@@ -277,7 +287,7 @@ public partial class CreatePullRequestViewModel : ObservableObject
 
     private async Task<bool> IsAzureDevOpsRepositoryAsync(string repoPath)
     {
-        var remotes = await _gitService.GetRemotesAsync(repoPath);
+        var remotes = await _gitService.GetRemotesAsync(repoPath, cancellationToken: SessionToken);
         var defaultRemote = remotes.FirstOrDefault(r => r.Name == "origin") ?? remotes.FirstOrDefault();
         return defaultRemote?.IsAzureDevOps == true;
     }
@@ -350,13 +360,9 @@ public partial class CreatePullRequestViewModel : ObservableObject
 
     private void ScheduleReviewerSearch(ReviewerBucket bucket, string searchText)
     {
-        var cts = new CancellationTokenSource();
-        var previous = bucket == ReviewerBucket.Required
-            ? Interlocked.Exchange(ref _requiredReviewerSearchCts, cts)
-            : Interlocked.Exchange(ref _optionalReviewerSearchCts, cts);
-
-        previous?.Cancel();
-        previous?.Dispose();
+        var cts = bucket == ReviewerBucket.Required
+            ? CancellationTokenSourceExtensions.ReplaceAndCancel(ref _requiredReviewerSearchCts)
+            : CancellationTokenSourceExtensions.ReplaceAndCancel(ref _optionalReviewerSearchCts);
 
         if (string.IsNullOrWhiteSpace(searchText) || string.IsNullOrWhiteSpace(_repoPath))
         {
@@ -364,7 +370,8 @@ public partial class CreatePullRequestViewModel : ObservableObject
             return;
         }
 
-        _ = RunDebouncedReviewerSearchAsync(bucket, searchText.Trim(), cts.Token);
+        RunDebouncedReviewerSearchAsync(bucket, searchText.Trim(), cts.Token)
+            .FireAndForget(nameof(RunDebouncedReviewerSearchAsync), isUserAction: false);
     }
 
     private async Task RunDebouncedReviewerSearchAsync(ReviewerBucket bucket, string searchText, CancellationToken cancellationToken)
@@ -485,13 +492,8 @@ public partial class CreatePullRequestViewModel : ObservableObject
 
     private void CancelReviewerSearches()
     {
-        _requiredReviewerSearchCts?.Cancel();
-        _requiredReviewerSearchCts?.Dispose();
-        _requiredReviewerSearchCts = null;
-
-        _optionalReviewerSearchCts?.Cancel();
-        _optionalReviewerSearchCts?.Dispose();
-        _optionalReviewerSearchCts = null;
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _requiredReviewerSearchCts);
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _optionalReviewerSearchCts);
     }
 
     private enum ReviewerBucket

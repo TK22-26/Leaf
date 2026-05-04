@@ -1,5 +1,7 @@
 using System.Windows;
+using Leaf.Composition;
 using Leaf.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Leaf;
 
@@ -13,6 +15,17 @@ public partial class App : Application
     /// </summary>
     internal static string? InitialRepoPath { get; private set; }
 
+    /// <summary>
+    /// The app-wide DI provider. Built once in <see cref="OnStartup"/> and
+    /// disposed in <see cref="OnExit"/>. Every service and view model in the
+    /// app resolves through this root — the CLI path, the GUI path, and
+    /// (once Phase 4 lands) per-repo scopes.
+    /// </summary>
+    internal static IServiceProvider Services => _provider
+        ?? throw new InvalidOperationException("Service provider requested before App.OnStartup built it.");
+
+    private static ServiceProvider? _provider;
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -20,13 +33,57 @@ public partial class App : Application
 
         if (TryGetStartupSplashArgs(e.Args, out var splashCloseEventName, out var splashReadyEventName))
         {
+            // The splash subprocess is a UI shell with no services to
+            // inject — keep it off the DI path to avoid paying container
+            // build cost for a bounce window.
             RunStartupSplashMode(splashCloseEventName, splashReadyEventName);
             return;
         }
 
-        var settings = new SettingsService().LoadSettings();
-        var logLevel = Enum.TryParse<LogLevel>(settings.LogLevel, true, out var parsed) ? parsed : LogLevel.Normal;
+        // Logging must be live before the container exists, because
+        // container construction may emit log messages. Read log level
+        // off disk with a throwaway SettingsService — the DI-owned
+        // SettingsService is created when the provider is built.
+        var logLevelSettings = new SettingsService().LoadSettings();
+        var logLevel = Enum.TryParse<LogLevel>(logLevelSettings.LogLevel, true, out var parsed) ? parsed : LogLevel.Normal;
         Log.Init(logLevel);
+
+        _provider = new ServiceCollection()
+            .AddLeafServices()
+            .BuildServiceProvider(new ServiceProviderOptions
+            {
+                ValidateOnBuild = true,
+                ValidateScopes = true
+            });
+
+        // One-time composition-level wiring. Both concerns (async error
+        // sink + credential migration) want the canonical instances from
+        // the container, not ad-hoc copies.
+        var settingsService = _provider.GetRequiredService<SettingsService>();
+        var credentialService = _provider.GetRequiredService<CredentialService>();
+        var notificationService = _provider.GetRequiredService<INotificationService>();
+
+        AsyncErrorHandler.Init(
+            notificationService,
+            () => settingsService.LoadSettings().ShowBackgroundOperationErrors);
+
+        settingsService.MigrateCredentialsIfNeeded(credentialService);
+
+        // V8: keep the merge-editor palette in lockstep with the OS theme.
+        // Must run before the first merge editor window renders so its
+        // bindings resolve against the correct palette on first paint.
+        // The settings-driven custom palette path (post-V8 closeout) is
+        // passed in so an override, when present, is layered atop the
+        // Dark/Light base on first paint too.
+        var startupSettings = settingsService.LoadSettings();
+        MergeThemeSwitcher.Initialize(startupSettings.CustomMergePalettePath);
+
+        // Post-V8 motion closeout: push the persisted ReduceMotion preference
+        // into the static gate on MergeMotionHelpers so the first merge
+        // editor interaction already honours it. A future settings UI can
+        // assign to MergeMotionHelpers.ReduceMotion for runtime toggles.
+        Leaf.Controls.Merge.MergeMotionHelpers.ReduceMotion =
+            startupSettings.ReduceMotion;
 
         // Check for command-line arguments
         if (e.Args.Length > 0)
@@ -46,7 +103,7 @@ public partial class App : Application
             splashHost = new StartupSplashHost();
             await splashHost.ShowAsync();
 
-            var mainWindow = new MainWindow();
+            var mainWindow = new MainWindow(_provider);
 
             MainWindow = mainWindow;
             await mainWindow.InitializeStartupAsync();
@@ -211,11 +268,9 @@ public partial class App : Application
 
         try
         {
-            var gitService = new GitService();
-            var settingsService = new SettingsService();
-            var repositoryService = new RepositoryManagementService(settingsService);
-
-            var autoCommitService = new AutoCommitService(gitService, settingsService, repositoryService);
+            // Resolves the same singletons the GUI path uses — killing the
+            // old hand-wired duplicate composition that lived here before.
+            var autoCommitService = Services.GetRequiredService<AutoCommitService>();
             return await autoCommitService.AutoCommitAsync(repoNameOrPath);
         }
         catch (Exception ex)
@@ -226,6 +281,12 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // Dispose the container first so anything the container owns
+        // (singletons implementing IDisposable) winds down before the
+        // process-global Log is shut down.
+        _provider?.Dispose();
+        _provider = null;
+
         Log.Shutdown();
         base.OnExit(e);
     }

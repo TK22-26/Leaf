@@ -64,9 +64,8 @@ public partial class GitGraphView : UserControl
                     var currentBranchName = viewModel.WorkingChanges?.BranchName;
                     if (currentBranchName == label.Name)
                     {
-                        _ = mainViewModel.FastForwardBranchLabelAsync(label).ContinueWith(
-                            t => Log.Error("Checkout", $"FastForward failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
-                            TaskContinuationOptions.OnlyOnFaulted);
+                        mainViewModel.FastForwardBranchLabelAsync(label)
+                            .FireAndForget(nameof(mainViewModel.FastForwardBranchLabelAsync), isUserAction: true);
                         return;
                     }
                 }
@@ -79,16 +78,14 @@ public partial class GitGraphView : UserControl
                 : label.Name;
             var tipShaToUse = label.TipSha ?? e.TipSha ?? string.Empty;
             Log.Info("Checkout", $"Calling CheckoutBranchAsync: branchName={branchName}, tipShaToUse={tipShaToUse}");
-            _ = mainViewModel.CheckoutBranchAsync(new BranchInfo
+            mainViewModel.CheckoutBranchAsync(new BranchInfo
             {
                 Name = branchName,
                 IsRemote = label.IsRemote,
                 RemoteName = label.RemoteName,
                 IsCurrent = label.IsCurrent,
                 TipSha = tipShaToUse
-            }).ContinueWith(
-                t => Log.Error("Checkout", $"Checkout failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
-                TaskContinuationOptions.OnlyOnFaulted);
+            }).FireAndForget(nameof(mainViewModel.CheckoutBranchAsync), isUserAction: true);
         }
     }
 
@@ -278,9 +275,8 @@ public partial class GitGraphView : UserControl
                     if (currentBranchName == label.Name)
                     {
                         // Fast-forward current branch to this remote
-                        _ = mainViewModel.FastForwardBranchLabelAsync(label).ContinueWith(
-                            t => Log.Error("Checkout", $"FastForward failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
-                            TaskContinuationOptions.OnlyOnFaulted);
+                        mainViewModel.FastForwardBranchLabelAsync(label)
+                            .FireAndForget(nameof(mainViewModel.FastForwardBranchLabelAsync), isUserAction: true);
                         e.Handled = true;
                         return;
                     }
@@ -292,16 +288,14 @@ public partial class GitGraphView : UserControl
                     ? $"{label.RemoteName}/{label.Name}"
                     : label.Name;
                 Log.Info("Checkout", $"GraphCanvas calling CheckoutBranchAsync: name={name}, TipSha={label.TipSha ?? "NULL"}");
-                _ = mainViewModel.CheckoutBranchAsync(new BranchInfo
+                mainViewModel.CheckoutBranchAsync(new BranchInfo
                 {
                     Name = name,
                     IsRemote = label.IsRemote,
                     RemoteName = label.RemoteName,
                     IsCurrent = label.IsCurrent,
                     TipSha = label.TipSha ?? string.Empty
-                }).ContinueWith(
-                    t => Log.Error("Checkout", $"Checkout failed: {t.Exception?.InnerException?.Message}", t.Exception?.InnerException),
-                    TaskContinuationOptions.OnlyOnFaulted);
+                }).FireAndForget(nameof(mainViewModel.CheckoutBranchAsync), isUserAction: true);
                 e.Handled = true;
                 return;
             }
@@ -459,6 +453,53 @@ public partial class GitGraphView : UserControl
         };
         menu.Items.Add(cherryPickItem);
 
+        // Interactive rebase from this commit. We don't gate visibility
+        // on detached-HEAD here — the command handler routes the user to
+        // a clear "rebase already in progress" or initialisation message
+        // when the precondition fails, which is more discoverable than
+        // a silently missing menu entry.
+        var rebaseInteractiveItem = new MenuItem
+        {
+            Header = "Rebase Interactively from Here…",
+            Command = mainViewModel.RebaseInteractivelyFromCommitCommand,
+            CommandParameter = commit,
+            Icon = new SymbolIcon { Symbol = Symbol.ArrowSwap, FontSize = 14 }
+        };
+        menu.Items.Add(rebaseInteractiveItem);
+
+        // Patch creation entries. These sit just under the rebase entry
+        // because both are "rewrite this commit's worth of work" tools —
+        // mentally they group together. Quick-clipboard sits next to the
+        // file-write variant for muscle-memory.
+        var createPatchItem = new MenuItem
+        {
+            Header = "Create Patch File…",
+            Command = mainViewModel.CreatePatchFromCommitCommand,
+            CommandParameter = commit,
+            Icon = new SymbolIcon { Symbol = Symbol.Save, FontSize = 14 }
+        };
+        menu.Items.Add(createPatchItem);
+
+        var copyPatchItem = new MenuItem
+        {
+            Header = "Copy as Patch",
+            Command = mainViewModel.CopyCommitAsPatchCommand,
+            CommandParameter = commit,
+            Icon = new SymbolIcon { Symbol = Symbol.Copy, FontSize = 14 }
+        };
+        menu.Items.Add(copyPatchItem);
+
+        // Bisect: pre-fill the right-clicked commit as the known-good
+        // ancestor so the user only has to confirm/adjust the bad ref.
+        var startBisectItem = new MenuItem
+        {
+            Header = "Start Bisect (this commit is good)…",
+            Command = mainViewModel.StartBisectFromCommitCommand,
+            CommandParameter = commit,
+            Icon = new SymbolIcon { Symbol = Symbol.Search, FontSize = 14 }
+        };
+        menu.Items.Add(startBisectItem);
+
         menu.Items.Add(new Separator());
 
         var copyShaItem = new MenuItem
@@ -524,46 +565,61 @@ public partial class GitGraphView : UserControl
 
     private async void CommitItem_ToolTipOpening(object sender, ToolTipEventArgs e)
     {
-        if (sender is not FrameworkElement element || element.DataContext is not CommitInfo commit)
-            return;
-
-        var toolTip = GetOrCreateTooltip(element);
-        if (!commit.IsMerge)
+        try
         {
-            toolTip.Content = null;
-            e.Handled = true;
-            return;
-        }
+            if (sender is not FrameworkElement element || element.DataContext is not CommitInfo commit)
+                return;
 
-        await ShowMergeTooltipAsync(element, commit);
+            var toolTip = GetOrCreateTooltip(element);
+            if (!commit.IsMerge)
+            {
+                toolTip.Content = null;
+                e.Handled = true;
+                return;
+            }
+
+            await ShowMergeTooltipAsync(element, commit);
+        }
+        catch (Exception ex)
+        {
+            // Tooltip opening is a passive user hover — silent log by default.
+            AsyncErrorHandler.Handle(ex, nameof(CommitItem_ToolTipOpening), isUserAction: false);
+        }
     }
 
     private async void GraphCanvas_ToolTipOpening(object sender, ToolTipEventArgs e)
     {
-        if (sender is not FrameworkElement element)
-            return;
-
-        if (DataContext is not GitGraphViewModel viewModel)
-            return;
-
-        var toolTip = GetOrCreateTooltip(element);
-        var hoveredCommit = GetCommitAtMousePosition(viewModel);
-        if (hoveredCommit == null)
+        try
         {
-            toolTip.Content = null;
-            e.Handled = true;
-            return;
-        }
+            if (sender is not FrameworkElement element)
+                return;
 
-        if (!hoveredCommit.IsMerge)
+            if (DataContext is not GitGraphViewModel viewModel)
+                return;
+
+            var toolTip = GetOrCreateTooltip(element);
+            var hoveredCommit = GetCommitAtMousePosition(viewModel);
+            if (hoveredCommit == null)
+            {
+                toolTip.Content = null;
+                e.Handled = true;
+                return;
+            }
+
+            if (!hoveredCommit.IsMerge)
+            {
+                toolTip.Content = null;
+                e.Handled = true;
+                return;
+            }
+
+            _graphTooltipSha = hoveredCommit.Sha;
+            await ShowMergeTooltipAsync(element, hoveredCommit);
+        }
+        catch (Exception ex)
         {
-            toolTip.Content = null;
-            e.Handled = true;
-            return;
+            AsyncErrorHandler.Handle(ex, nameof(GraphCanvas_ToolTipOpening), isUserAction: false);
         }
-
-        _graphTooltipSha = hoveredCommit.Sha;
-        await ShowMergeTooltipAsync(element, hoveredCommit);
     }
 
     private async Task ShowMergeTooltipAsync(FrameworkElement element, CommitInfo commit)
@@ -681,25 +737,33 @@ public partial class GitGraphView : UserControl
 
     private async void GraphCanvas_MouseMove(object sender, MouseEventArgs e)
     {
-        if (sender is not FrameworkElement element)
-            return;
-
-        if (DataContext is not GitGraphViewModel viewModel)
-            return;
-
-        var commit = GetCommitAtMousePosition(viewModel);
-        if (commit == null || !commit.IsMerge)
+        try
         {
-            CloseTooltip(element);
-            _graphTooltipSha = null;
-            return;
+            if (sender is not FrameworkElement element)
+                return;
+
+            if (DataContext is not GitGraphViewModel viewModel)
+                return;
+
+            var commit = GetCommitAtMousePosition(viewModel);
+            if (commit == null || !commit.IsMerge)
+            {
+                CloseTooltip(element);
+                _graphTooltipSha = null;
+                return;
+            }
+
+            if (string.Equals(_graphTooltipSha, commit.Sha, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            _graphTooltipSha = commit.Sha;
+            await ShowMergeTooltipAsync(element, commit);
         }
-
-        if (string.Equals(_graphTooltipSha, commit.Sha, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        _graphTooltipSha = commit.Sha;
-        await ShowMergeTooltipAsync(element, commit);
+        catch (Exception ex)
+        {
+            // MouseMove fires continuously — toasting every frame would spam.
+            AsyncErrorHandler.Handle(ex, nameof(GraphCanvas_MouseMove), isUserAction: false);
+        }
     }
 
     private void CloseTooltip(FrameworkElement element)
@@ -739,6 +803,20 @@ public partial class GitGraphView : UserControl
             return;
 
         var pos = e.GetPosition(GraphCanvas);
+
+        // §5.17 — tag chip right-click takes precedence over a branch
+        // label hit-test in the same area (rare overlap, but tag chips
+        // are explicit while branch labels share the wider label band).
+        var tagName = GraphCanvas.GetTagAt(pos);
+        if (tagName is not null
+            && Window.GetWindow(this)?.DataContext is MainViewModel mainVm
+            && DataContext is GitGraphViewModel graphVm)
+        {
+            ShowTagContextMenu(tagName, mainVm, graphVm);
+            e.Handled = true;
+            return;
+        }
+
         var label = GraphCanvas.GetBranchLabelAt(pos);
         if (label == null)
             return;
@@ -821,6 +899,49 @@ public partial class GitGraphView : UserControl
 
         menu.Items.Add(new Separator());
 
+        // §5.14 — Branch colour overrides. Resolved against the active
+        // GitGraphViewModel's IBranchColorService; the menu items are
+        // disabled when no colour service is bound (no repo loaded)
+        // rather than hidden, so the existence of the feature is
+        // discoverable from any branch right-click.
+        var colorService = (DataContext as GitGraphViewModel)?.BranchColorService;
+        var normalizedBranchName = label.Name; // service does its own remote-prefix normalisation
+        var hasOverride = colorService?.HasOverride(normalizedBranchName) ?? false;
+        var hasAnyOverrides = colorService?.HasAnyOverrides ?? false;
+
+        var changeColorItem = new MenuItem
+        {
+            Header = "Change colour…",
+            IsEnabled = colorService != null,
+            Icon = new SymbolIcon { Symbol = Symbol.Color, FontSize = 14 },
+        };
+        changeColorItem.Click += (_, _) => OpenBranchColorPicker(label);
+        menu.Items.Add(changeColorItem);
+
+        var resetItem = new MenuItem
+        {
+            Header = "Reset to auto",
+            IsEnabled = hasOverride,
+            ToolTip = hasOverride
+                ? null
+                : "This branch has no override — its colour already comes from the active palette.",
+        };
+        resetItem.Click += (_, _) => colorService?.ClearOverride(normalizedBranchName);
+        menu.Items.Add(resetItem);
+
+        var resetAllItem = new MenuItem
+        {
+            Header = "Reset all branch colours…",
+            IsEnabled = hasAnyOverrides,
+            ToolTip = hasAnyOverrides
+                ? "Remove every per-branch colour override on this repository."
+                : "No colour overrides set on this repository.",
+        };
+        resetAllItem.Click += (_, _) => ConfirmAndResetAllBranchColors(colorService);
+        menu.Items.Add(resetAllItem);
+
+        menu.Items.Add(new Separator());
+
         // Delete branch
         var deleteItem = new MenuItem
         {
@@ -833,6 +954,61 @@ public partial class GitGraphView : UserControl
 
         menu.IsOpen = true;
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// Open the §5.14 colour picker for the right-clicked branch label.
+    /// Pre-fills the picker with the branch's currently-resolved colour
+    /// (override or palette-derived) and routes the result back through
+    /// the active <see cref="IBranchColorService"/>.
+    /// </summary>
+    private void OpenBranchColorPicker(BranchLabel label)
+    {
+        if (DataContext is not GitGraphViewModel viewModel) return;
+        var service = viewModel.BranchColorService;
+        if (service is null) return;
+
+        var initial = service.GetColor(label.Name);
+        var dialog = new Branch.BranchColorPickerDialog(label.Name, initial, service.ActivePalette)
+        {
+            Owner = Window.GetWindow(this),
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        switch (dialog.Result)
+        {
+            case Branch.BranchColorPickerDialog.PickerResult.OverrideSet:
+                service.SetOverride(label.Name, dialog.SelectedColor);
+                break;
+            case Branch.BranchColorPickerDialog.PickerResult.ResetToAuto:
+                service.ClearOverride(label.Name);
+                break;
+            case Branch.BranchColorPickerDialog.PickerResult.Cancelled:
+                // User dismissed — leave existing state alone.
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Confirm before wiping every branch override on the repo. The
+    /// "Reset all" affordance is destructive enough that an accidental
+    /// click in a busy graph context should be recoverable, so a yes/no
+    /// dialog gates the call.
+    /// </summary>
+    private void ConfirmAndResetAllBranchColors(IBranchColorService? service)
+    {
+        if (service is null) return;
+        var owner = Window.GetWindow(this);
+        var result = MessageBox.Show(
+            owner,
+            "Remove every per-branch colour override on this repository?\n\n" +
+            "Branches will go back to using the active palette.",
+            "Reset all branch colours",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (result == MessageBoxResult.Yes)
+            service.ClearAllOverrides();
     }
 
     private void MainScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -878,4 +1054,74 @@ public partial class GitGraphView : UserControl
         }
     }
 
+    /// <summary>
+    /// §5.17 — surface the tag context menu for the chip the user
+    /// right-clicked. Resolves <see cref="TagInfo"/> via the graph VM's
+    /// TagsByName lookup; falls back to a name-only menu when the
+    /// lookup hasn't been populated (very brief window after panel open).
+    /// </summary>
+    private void ShowTagContextMenu(string tagName, MainViewModel mainVm, GitGraphViewModel graphVm)
+    {
+        TagInfo? tag = null;
+        graphVm.TagsByName?.TryGetValue(tagName, out tag);
+
+        var menu = new ContextMenu();
+
+        // Header line: tag name + a "signed/annotated/lightweight" pill so
+        // users see what they're acting on without re-reading the chip.
+        var header = new MenuItem
+        {
+            Header = tag is null
+                ? tagName
+                : $"{tag.Name}  ·  {(tag.IsSigned ? "signed" : tag.IsAnnotated ? "annotated" : "lightweight")}",
+            IsEnabled = false,
+            FontWeight = FontWeights.SemiBold,
+        };
+        menu.Items.Add(header);
+        menu.Items.Add(new Separator());
+
+        var checkoutItem = new MenuItem
+        {
+            Header = $"Checkout {tagName} (detached HEAD)",
+            Command = mainVm.CheckoutTagCommand,
+            CommandParameter = tag,
+            IsEnabled = tag is not null,
+            Icon = new SymbolIcon { Symbol = Symbol.ArrowDownload, FontSize = 14 },
+        };
+        menu.Items.Add(checkoutItem);
+
+        var pushItem = new MenuItem
+        {
+            Header = "Push tag to origin",
+            Command = mainVm.PushTagCommand,
+            CommandParameter = tag,
+            IsEnabled = tag is not null,
+            Icon = new SymbolIcon { Symbol = Symbol.ArrowUpload, FontSize = 14 },
+        };
+        menu.Items.Add(pushItem);
+
+        var copyItem = new MenuItem
+        {
+            Header = "Copy tag name",
+            Command = mainVm.CopyTagNameCommand,
+            CommandParameter = tag,
+            IsEnabled = tag is not null,
+            Icon = new SymbolIcon { Symbol = Symbol.Copy, FontSize = 14 },
+        };
+        menu.Items.Add(copyItem);
+
+        menu.Items.Add(new Separator());
+
+        var deleteItem = new MenuItem
+        {
+            Header = "Delete tag…",
+            Command = mainVm.DeleteTagCommand,
+            CommandParameter = tag,
+            IsEnabled = tag is not null,
+            Foreground = new SolidColorBrush(Color.FromRgb(232, 89, 89)),
+        };
+        menu.Items.Add(deleteItem);
+
+        menu.IsOpen = true;
+    }
 }

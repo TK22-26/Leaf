@@ -1,0 +1,29 @@
+<!--
+    WPF default-theme entry point for the Leaf assembly.
+
+    Leaf's `[ThemeInfo(ResourceDictionaryLocation.SourceAssembly)]` attribute
+    (declared in src/Leaf/AssemblyInfo.cs) tells WPF to look for generic
+    default styles at this exact path: `Themes/Generic.xaml` in the source
+    assembly. Without this file, no Control whose default style lives in the
+    Leaf assembly gets its template applied — which silently blanked every
+    consumer of the vendored AvalonEdit `TextEditor` (ResultPane, DiffViewer,
+    Blame editor) because the inner `Border > ScrollViewer > TextArea` visual
+    tree never got built.
+
+    The vendored AvalonEdit's own theme dictionary lives at
+    `TextEdit/themes/generic.xaml` (lowercase, in the TextEdit folder rather
+    than the assembly root) — that's where AvalonEdit upstream put it. We
+    re-export it from here so WPF's discovery contract is satisfied without
+    moving the vendored sources around.
+
+    Anything Leaf adds at the assembly level later — its own custom Controls
+    with default styles — would be merged in via additional ResourceDictionary
+    entries below.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/Leaf;component/TextEdit/themes/generic.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
+</ResourceDictionary>

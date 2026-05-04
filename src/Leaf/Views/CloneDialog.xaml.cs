@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Leaf.Services;
+using Leaf.Utils;
 using Microsoft.Win32;
 
 namespace Leaf.Views;
@@ -17,6 +18,8 @@ public partial class CloneDialog : Window
     private readonly AzureDevOpsService _azureDevOpsService;
     private readonly GitHubService _gitHubService;
     private readonly SettingsService _settingsService;
+    private readonly IExternalToolConfigService _externalToolConfig;
+    private readonly IExternalToolDetectorService _externalToolDetector;
     private bool _isCloning;
 
     // Azure DevOps repos
@@ -35,13 +38,21 @@ public partial class CloneDialog : Window
     /// </summary>
     public string? ClonedRepositoryPath { get; private set; }
 
-    public CloneDialog(IGitService gitService, CredentialService credentialService, SettingsService settingsService, string defaultClonePath)
+    public CloneDialog(
+        IGitService gitService,
+        CredentialService credentialService,
+        SettingsService settingsService,
+        IExternalToolConfigService externalToolConfig,
+        IExternalToolDetectorService externalToolDetector,
+        string defaultClonePath)
     {
         InitializeComponent();
 
         _gitService = gitService;
         _credentialService = credentialService;
         _settingsService = settingsService;
+        _externalToolConfig = externalToolConfig;
+        _externalToolDetector = externalToolDetector;
         _azureDevOpsService = new AzureDevOpsService(credentialService);
         _gitHubService = new GitHubService(credentialService);
 
@@ -89,9 +100,12 @@ public partial class CloneDialog : Window
             _allRepos = _allRepos.OrderBy(r => r.DisplayName).ToList();
             AzureSourceStatus.Text = $"{_allRepos.Count} repos";
         }
-        catch
+        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException
+                                or TaskCanceledException
+                                or InvalidOperationException)
         {
             AzureSourceStatus.Text = "Error";
+            Log.Warn("CloneDialog", $"Azure DevOps background load failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -114,63 +128,70 @@ public partial class CloneDialog : Window
 
     private async void SwitchToSource(int source)
     {
-        _currentSource = source;
-        UpdateSourceButtonStates();
-
-        // Update content visibility
-        GitHubContent.Visibility = source == 0 ? Visibility.Visible : Visibility.Collapsed;
-        AzureContent.Visibility = source == 1 ? Visibility.Visible : Visibility.Collapsed;
-        UrlContent.Visibility = source == 2 ? Visibility.Visible : Visibility.Collapsed;
-
-        // Update selected URL based on source
-        switch (source)
+        try
         {
-            case 0: // GitHub
-                if (GitHubRepoListBox.SelectedItem is GitHubRepo ghRepo)
-                {
-                    _selectedUrl = ghRepo.RemoteUrl;
-                }
-                else
-                {
-                    _selectedUrl = string.Empty;
-                }
-                // Load GitHub repos if not already loaded
-                if (_allGitHubRepos.Count == 0)
-                {
-                    await LoadGitHubRepositoriesAsync();
-                }
-                break;
+            _currentSource = source;
+            UpdateSourceButtonStates();
 
-            case 1: // Azure DevOps
-                if (RepoListBox.SelectedItem is AzureDevOpsRepo adoRepo)
-                {
-                    _selectedUrl = adoRepo.RemoteUrl;
-                }
-                else
-                {
-                    _selectedUrl = string.Empty;
-                }
-                // Load Azure DevOps repos if not already loaded, otherwise just display them
-                if (_allRepos.Count == 0)
-                {
-                    await LoadRepositoriesAsync();
-                }
-                else
-                {
-                    // Repos already loaded in background, just display them
-                    FilterRepositories();
-                    var settings = _settingsService.LoadSettings();
-                    AzureStatusText.Text = $"{_allRepos.Count} repositories in {settings.AzureDevOpsOrganization}";
-                }
-                break;
+            // Update content visibility
+            GitHubContent.Visibility = source == 0 ? Visibility.Visible : Visibility.Collapsed;
+            AzureContent.Visibility = source == 1 ? Visibility.Visible : Visibility.Collapsed;
+            UrlContent.Visibility = source == 2 ? Visibility.Visible : Visibility.Collapsed;
 
-            case 2: // URL
-                _selectedUrl = UrlTextBox.Text.Trim();
-                break;
+            // Update selected URL based on source
+            switch (source)
+            {
+                case 0: // GitHub
+                    if (GitHubRepoListBox.SelectedItem is GitHubRepo ghRepo)
+                    {
+                        _selectedUrl = ghRepo.RemoteUrl;
+                    }
+                    else
+                    {
+                        _selectedUrl = string.Empty;
+                    }
+                    // Load GitHub repos if not already loaded
+                    if (_allGitHubRepos.Count == 0)
+                    {
+                        await LoadGitHubRepositoriesAsync();
+                    }
+                    break;
+
+                case 1: // Azure DevOps
+                    if (RepoListBox.SelectedItem is AzureDevOpsRepo adoRepo)
+                    {
+                        _selectedUrl = adoRepo.RemoteUrl;
+                    }
+                    else
+                    {
+                        _selectedUrl = string.Empty;
+                    }
+                    // Load Azure DevOps repos if not already loaded, otherwise just display them
+                    if (_allRepos.Count == 0)
+                    {
+                        await LoadRepositoriesAsync();
+                    }
+                    else
+                    {
+                        // Repos already loaded in background, just display them
+                        FilterRepositories();
+                        var settings = _settingsService.LoadSettings();
+                        AzureStatusText.Text = $"{_allRepos.Count} repositories in {settings.AzureDevOpsOrganization}";
+                    }
+                    break;
+
+                case 2: // URL
+                    _selectedUrl = UrlTextBox.Text.Trim();
+                    break;
+            }
+
+            UpdateSelectedRepoDisplay();
+            UpdateCloneButtonState();
         }
-
-        UpdateSelectedRepoDisplay();
-        UpdateCloneButtonState();
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(SwitchToSource), isUserAction: true);
+        }
     }
 
     private void UpdateSourceButtonStates()
@@ -282,7 +303,14 @@ public partial class CloneDialog : Window
 
     private async void Refresh_Click(object sender, RoutedEventArgs e)
     {
-        await LoadRepositoriesAsync();
+        try
+        {
+            await LoadRepositoriesAsync();
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(Refresh_Click), isUserAction: true);
+        }
     }
 
     private void RepoListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -389,7 +417,14 @@ public partial class CloneDialog : Window
 
     private async void GitHubRefresh_Click(object sender, RoutedEventArgs e)
     {
-        await LoadGitHubRepositoriesAsync();
+        try
+        {
+            await LoadGitHubRepositoriesAsync();
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(GitHubRefresh_Click), isUserAction: true);
+        }
     }
 
     private void GitHubRepoListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -493,7 +528,12 @@ public partial class CloneDialog : Window
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
-        var settingsDialog = new SettingsDialog(_credentialService, _settingsService)
+        var settingsDialog = new SettingsDialog(
+            _credentialService,
+            _settingsService,
+            _externalToolConfig,
+            _externalToolDetector,
+            currentRepoPath: null)
         {
             Owner = this
         };
@@ -502,97 +542,87 @@ public partial class CloneDialog : Window
         // Refresh current source after settings close
         if (_currentSource == 0)
         {
-            _ = LoadGitHubRepositoriesAsync();
+            LoadGitHubRepositoriesAsync().FireAndForget(nameof(LoadGitHubRepositoriesAsync), isUserAction: true);
         }
         else if (_currentSource == 1)
         {
-            _ = LoadRepositoriesAsync();
+            LoadRepositoriesAsync().FireAndForget(nameof(LoadRepositoriesAsync), isUserAction: true);
         }
     }
 
     private async void Clone_Click(object sender, RoutedEventArgs e)
     {
-        if (_isCloning) return;
-
-        var url = _selectedUrl;
-        var destination = DestinationTextBox.Text.Trim();
-        var repoName = ExtractRepoName(url);
-
-        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(destination) || string.IsNullOrEmpty(repoName))
-        {
-            MessageBox.Show("Please select a repository and destination.", "Invalid Input",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var localPath = Path.Combine(destination, repoName);
-
-        if (Directory.Exists(localPath))
-        {
-            MessageBox.Show($"The folder '{localPath}' already exists.", "Folder Exists",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
         try
         {
-            _isCloning = true;
-            CloneButton.IsEnabled = false;
-            CloneProgressSection.Visibility = Visibility.Visible;
-            ProgressText.Text = "Cloning repository...";
+            if (_isCloning) return;
 
-            // Get credentials based on URL - extract org from URL for multi-org support
-            string? username = null;
-            string? password = null;
+            var url = _selectedUrl;
+            var destination = DestinationTextBox.Text.Trim();
+            var repoName = ExtractRepoName(url);
 
-            var credentialKey = Utils.CredentialHelper.GetCredentialKeyForUrl(url);
-            if (!string.IsNullOrEmpty(credentialKey))
+            if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(destination) || string.IsNullOrEmpty(repoName))
             {
-                password = _credentialService.GetPat(credentialKey);
-                if (!string.IsNullOrEmpty(password))
-                {
-                    // Set username based on provider
-                    if (credentialKey.StartsWith("GitHub:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        username = "x-access-token";
-                    }
-                    else if (credentialKey.StartsWith("AzureDevOps:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        username = "git";
-                    }
-                }
+                MessageBox.Show("Please select a repository and destination.", "Invalid Input",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
             }
 
-            var progress = new Progress<string>(msg =>
+            var localPath = Path.Combine(destination, repoName);
+
+            if (Directory.Exists(localPath))
             {
-                ProgressText.Text = msg;
-            });
+                MessageBox.Show($"The folder '{localPath}' already exists.", "Folder Exists",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
-            await _gitService.CloneAsync(url, localPath, username, password, progress);
+            try
+            {
+                _isCloning = true;
+                CloneButton.IsEnabled = false;
+                CloneProgressSection.Visibility = Visibility.Visible;
+                ProgressText.Text = "Cloning repository...";
 
-            ClonedRepositoryPath = localPath;
-            DialogResult = true;
-            Close();
+                // Resolve credential key from URL only when Leaf has a stored PAT;
+                // otherwise rely on GCM fallback. PAT lookup itself happens inside
+                // Leaf.AskPass.exe so this process never holds the secret.
+                var credentialKey = _credentialService.ResolveActiveCredentialKey(url);
+
+                var progress = new Progress<string>(msg =>
+                {
+                    ProgressText.Text = msg;
+                });
+
+                await _gitService.CloneAsync(url, localPath, credentialKey, progress);
+
+                ClonedRepositoryPath = localPath;
+                DialogResult = true;
+                Close();
+            }
+            catch (Exception ex)
+            {
+                ProgressText.Text = "";
+                CloneProgressSection.Visibility = Visibility.Collapsed;
+
+                var message = ex.Message;
+                if (message.Contains("401") || message.Contains("403") || message.Contains("Authentication"))
+                {
+                    message = "Authentication failed. Check your credentials in Settings.\n\n" + message;
+                }
+
+                MessageBox.Show($"Clone failed:\n\n{message}", "Clone Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _isCloning = false;
+                CloneButton.IsEnabled = true;
+                CloneProgressSection.Visibility = Visibility.Collapsed;
+            }
         }
         catch (Exception ex)
         {
-            ProgressText.Text = "";
-            CloneProgressSection.Visibility = Visibility.Collapsed;
-
-            var message = ex.Message;
-            if (message.Contains("401") || message.Contains("403") || message.Contains("Authentication"))
-            {
-                message = "Authentication failed. Check your credentials in Settings.\n\n" + message;
-            }
-
-            MessageBox.Show($"Clone failed:\n\n{message}", "Clone Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        finally
-        {
-            _isCloning = false;
-            CloneButton.IsEnabled = true;
-            CloneProgressSection.Visibility = Visibility.Collapsed;
+            AsyncErrorHandler.Handle(ex, nameof(Clone_Click), isUserAction: true);
         }
     }
 
@@ -658,9 +688,11 @@ public partial class CloneDialog : Window
                 return url[(lastSlash + 1)..];
             }
         }
-        catch
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
-            // Ignore parsing errors
+            // Malformed URL — caller handles null by disabling the Clone
+            // button. No user-visible action needed.
+            Log.Info("CloneDialog", $"ExtractRepoName failed for '{url}': {ex.Message}");
         }
 
         return null;

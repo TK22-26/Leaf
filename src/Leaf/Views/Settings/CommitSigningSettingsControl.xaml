@@ -1,0 +1,206 @@
+<UserControl x:Class="Leaf.Views.Settings.CommitSigningSettingsControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:Leaf.Converters">
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </UserControl.Resources>
+    <StackPanel>
+        <TextBlock Text="Commit Signing"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                   Margin="0,0,0,4"/>
+        <TextBlock Text="Configure GPG / SSH signing for commits and tags. Settings are written through `git config`."
+                   FontSize="12"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,16"/>
+
+        <!-- Tooling availability -->
+        <Border x:Name="ToolingPanel"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16"
+                Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Detected tooling"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,8"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="80"/>
+                        <ColumnDefinition Width="80"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="GPG"
+                               Grid.Row="0" Grid.Column="0"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock x:Name="GpgStatusText"
+                               Grid.Row="0" Grid.Column="1"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock x:Name="GpgVersionText"
+                               Grid.Row="0" Grid.Column="2"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+
+                    <TextBlock Text="SSH"
+                               Grid.Row="1" Grid.Column="0"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,4,0,0"/>
+                    <TextBlock x:Name="SshStatusText"
+                               Grid.Row="1" Grid.Column="1"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               Margin="0,4,0,0"/>
+                    <TextBlock x:Name="SshVersionText"
+                               Grid.Row="1" Grid.Column="2"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,4,0,0"/>
+                </Grid>
+                <TextBlock x:Name="MissingHelpText"
+                           Margin="0,8,0,0"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                           Visibility="Collapsed"
+                           Text="Neither GPG nor SSH appears to be on PATH. Install GnuPG (https://gnupg.org) for GPG signing or use Windows OpenSSH (Optional Features) for SSH signing, then re-open Settings."/>
+            </StackPanel>
+        </Border>
+
+        <!-- Method + key picker -->
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16"
+                Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Signing"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,12"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+
+                <!-- Scope row — labelled like Method / Key so all three
+                     ComboBoxes share a column and align at the same X. -->
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Scope"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <ComboBox x:Name="ScopeCombo"
+                              Grid.Column="1"
+                              Width="380"
+                              HorizontalAlignment="Left"
+                              SelectionChanged="ScopeCombo_SelectionChanged"
+                              ToolTip="Choose whether these settings apply globally or only to the current repository.">
+                        <ComboBoxItem Content="Global" Tag="Global"/>
+                        <ComboBoxItem Content="This repo" Tag="Local"/>
+                    </ComboBox>
+                </Grid>
+
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Method"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <ComboBox x:Name="MethodCombo"
+                              Grid.Column="1"
+                              Width="380"
+                              HorizontalAlignment="Left"
+                              SelectionChanged="MethodCombo_SelectionChanged">
+                        <ComboBoxItem Content="None — no signing" Tag="None"/>
+                        <ComboBoxItem Content="GPG" Tag="openpgp"/>
+                        <ComboBoxItem Content="SSH" Tag="ssh"/>
+                    </ComboBox>
+                </Grid>
+
+                <!-- GPG key dropdown -->
+                <Grid x:Name="GpgKeyRow"
+                      Margin="0,0,0,8"
+                      Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Key"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <ComboBox x:Name="GpgKeyCombo"
+                              Grid.Column="1"
+                              Width="380"
+                              HorizontalAlignment="Left"
+                              SelectionChanged="GpgKeyCombo_SelectionChanged"
+                              ToolTip="GPG secret keys available on this machine. The selected key id is written to user.signingkey.">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding PrimaryUid}"
+                                               FontWeight="SemiBold"/>
+                                    <TextBlock FontSize="10"
+                                               FontFamily="Consolas, Cascadia Mono"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                               Text="{Binding LongKeyId}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+
+                <!-- SSH key path. Width on the TextBox + a left-aligned
+                     Browse button keep the input pinned to the same X
+                     as the other rows' value columns. -->
+                <Grid x:Name="SshKeyRow"
+                      Margin="0,0,0,8"
+                      Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Key file"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <TextBox x:Name="SshKeyPathTextBox"
+                                 Width="380"
+                                 FontFamily="Consolas, Cascadia Mono"
+                                 FontSize="11"
+                                 ToolTip="Absolute path to the SSH public key (typically ~/.ssh/id_ed25519.pub) or its private key counterpart, written to user.signingkey."
+                                 LostFocus="SshKeyPathTextBox_LostFocus"
+                                 KeyDown="SshKeyPathTextBox_KeyDown"/>
+                        <Button Margin="6,0,0,0"
+                                Padding="8,2"
+                                Content="Browse…"
+                                Click="BrowseSshKey_Click"/>
+                    </StackPanel>
+                </Grid>
+
+                <CheckBox x:Name="SignCommitsCheckBox"
+                          Margin="0,8,0,4"
+                          Content="Sign all commits"
+                          ToolTip="Writes commit.gpgsign = true. Each commit (and amend) will be signed automatically."
+                          Click="SignCommitsCheckBox_Click"/>
+                <CheckBox x:Name="SignTagsCheckBox"
+                          Content="Sign all tags"
+                          ToolTip="Writes tag.gpgsign = true. Annotated tags are signed automatically; lightweight tags can't be signed."
+                          Click="SignTagsCheckBox_Click"/>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using Leaf.Models;
 using Leaf.Services;
@@ -21,7 +22,7 @@ internal class RepositoryOperations
     /// <summary>
     /// Check if a path contains a valid Git repository.
     /// </summary>
-    public Task<bool> IsValidRepositoryAsync(string path)
+    public Task<bool> IsValidRepositoryAsync(string path, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -29,11 +30,16 @@ internal class RepositoryOperations
             {
                 return Repository.IsValid(path);
             }
-            catch
+            catch (Exception ex) when (ex is LibGit2SharpException
+                                    or IOException
+                                    or UnauthorizedAccessException
+                                    or ArgumentException)
             {
+                // Path is missing, unreadable, or not a git working tree.
+                Leaf.Services.Log.Info("Repo", $"IsValid({path}) failed: {ex.GetType().Name}: {ex.Message}");
                 return false;
             }
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -41,7 +47,7 @@ internal class RepositoryOperations
     /// Prefer <see cref="GetRepositoryInfoFastAsync"/> for performance-critical paths.
     /// </summary>
     [System.Obsolete("Use GetRepositoryInfoFastAsync for performance-critical paths.")]
-    public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath)
+    public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -68,44 +74,10 @@ internal class RepositoryOperations
                 : (repo.Head?.FriendlyName ?? "HEAD");
             var tracking = repo.Head?.TrackingDetails;
 
-            // Detect operation type from .git/ sentinel files
-            var operationType = Models.GitOperationType.None;
-            string mergingBranch = string.Empty;
+            // Detect operation type via the shared sentinel ladder.
+            (var operationType, var mergingBranch) =
+                DetectInProgressOperation(Path.Combine(repoPath, ".git"));
             int conflictCount = 0;
-
-            var gitDir = Path.Combine(repoPath, ".git");
-            if (File.Exists(Path.Combine(gitDir, "MERGE_HEAD")))
-            {
-                operationType = Models.GitOperationType.Merge;
-                mergingBranch = "Incoming";
-
-                var mergeMsgPath = Path.Combine(gitDir, "MERGE_MSG");
-                if (File.Exists(mergeMsgPath))
-                {
-                    try
-                    {
-                        var msg = File.ReadAllText(mergeMsgPath);
-                        mergingBranch = _context.OutputParser.ParseMergingBranch(msg);
-                    }
-                    catch { /* ignore */ }
-                }
-            }
-            else if (Directory.Exists(Path.Combine(gitDir, "rebase-merge"))
-                     || Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
-            {
-                operationType = Models.GitOperationType.Rebase;
-                mergingBranch = "rebase";
-            }
-            else if (File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")))
-            {
-                operationType = Models.GitOperationType.CherryPick;
-                mergingBranch = "cherry-pick";
-            }
-            else if (File.Exists(Path.Combine(gitDir, "REVERT_HEAD")))
-            {
-                operationType = Models.GitOperationType.Revert;
-                mergingBranch = "revert";
-            }
 
             bool isMergeInProgress = operationType != Models.GitOperationType.None;
 
@@ -149,20 +121,20 @@ internal class RepositoryOperations
                 IsDetachedHead = isDetached,
                 DetachedHeadSha = isDetached ? headSha : null
             };
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get repository status information using fast git CLI commands instead of LibGit2Sharp.
     /// ~20x faster than <see cref="GetRepositoryInfoAsync"/> on large repos.
     /// </summary>
-    public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath)
+    public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             var sw = Log.StartTimer();
             // Check if bare repo via git CLI
-            var revParseResult = GitCliHelpers.RunGit(repoPath, "rev-parse --is-bare-repository");
+            var revParseResult = GitCliHelpers.RunGitArgs(repoPath, "rev-parse", "--is-bare-repository");
             if (revParseResult.ExitCode == 0 && revParseResult.Output.Trim() == "true")
             {
                 return new RepositoryInfo
@@ -175,14 +147,14 @@ internal class RepositoryOperations
             }
 
             // Get current branch, detached HEAD state, and HEAD SHA — all from git CLI
-            var headResult = GitCliHelpers.RunGit(repoPath, "symbolic-ref --short HEAD");
+            var headResult = GitCliHelpers.RunGitArgs(repoPath, "symbolic-ref", "--short", "HEAD");
             bool isDetached = headResult.ExitCode != 0;
             string? headSha = null;
             string currentBranch;
 
             if (isDetached)
             {
-                var shaResult = GitCliHelpers.RunGit(repoPath, "rev-parse HEAD");
+                var shaResult = GitCliHelpers.RunGitArgs(repoPath, "rev-parse", "HEAD");
                 headSha = shaResult.ExitCode == 0 ? shaResult.Output.Trim() : null;
                 currentBranch = $"HEAD ({headSha?[..7] ?? "detached"})";
             }
@@ -195,7 +167,7 @@ internal class RepositoryOperations
             int aheadBy = 0, behindBy = 0;
             if (!isDetached)
             {
-                var abResult = GitCliHelpers.RunGit(repoPath, "rev-list --left-right --count HEAD...@{upstream}");
+                var abResult = GitCliHelpers.RunGitArgs(repoPath, "rev-list", "--left-right", "--count", "HEAD...@{upstream}");
                 if (abResult.ExitCode == 0)
                 {
                     var parts = abResult.Output.Trim().Split('\t');
@@ -210,45 +182,10 @@ internal class RepositoryOperations
             // Check dirty state via fast porcelain status
             bool isDirty = GitCliHelpers.HasUncommittedChanges(repoPath);
 
-            // Detect operation type from .git/ sentinel files (already fast — file existence checks)
-            var operationType = Models.GitOperationType.None;
-            string mergingBranch = string.Empty;
+            // Detect operation type via the shared sentinel ladder.
+            (var operationType, var mergingBranch) =
+                DetectInProgressOperation(Path.Combine(repoPath, ".git"));
             int conflictCount = 0;
-
-            var gitDir = Path.Combine(repoPath, ".git");
-            if (File.Exists(Path.Combine(gitDir, "MERGE_HEAD")))
-            {
-                operationType = Models.GitOperationType.Merge;
-                mergingBranch = "Incoming";
-
-                var mergeMsgPath = Path.Combine(gitDir, "MERGE_MSG");
-                if (File.Exists(mergeMsgPath))
-                {
-                    try
-                    {
-                        var msg = File.ReadAllText(mergeMsgPath);
-                        mergingBranch = _context.OutputParser.ParseMergingBranch(msg);
-                    }
-                    catch { /* ignore */ }
-                }
-            }
-            else if (Directory.Exists(Path.Combine(gitDir, "rebase-merge"))
-                     || Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
-            {
-                operationType = Models.GitOperationType.Rebase;
-                mergingBranch = "rebase";
-            }
-            else if (File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")))
-            {
-                operationType = Models.GitOperationType.CherryPick;
-                mergingBranch = "cherry-pick";
-            }
-            else if (File.Exists(Path.Combine(gitDir, "REVERT_HEAD")))
-            {
-                operationType = Models.GitOperationType.Revert;
-                mergingBranch = "revert";
-            }
-
             bool isMergeInProgress = operationType != Models.GitOperationType.None;
 
             // Count conflicts via git CLI (only when a merge-like operation is in progress)
@@ -275,6 +212,77 @@ internal class RepositoryOperations
                 IsDetachedHead = isDetached,
                 DetachedHeadSha = isDetached ? headSha : null
             };
-        });
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Walk the standard <c>.git</c> sentinel files / directories to figure
+    /// out which long-running git operation (if any) is paused on this
+    /// repo. Shared by <see cref="GetRepositoryInfoAsync"/> and
+    /// <see cref="GetRepositoryInfoFastAsync"/> so the detection ladder
+    /// lives in one place — keeps the am-vs-rebase disambiguator in lockstep
+    /// with the rest of the rules. Returns the operation type and the label
+    /// the UI uses for the "[verb] [preposition] [label]" banner; merge
+    /// reads <c>MERGE_MSG</c> for a richer label, others fall back to a
+    /// generic word.
+    /// </summary>
+    /// <param name="gitDir">
+    /// The repo's resolved git directory. The current callers pass
+    /// <c>Path.Combine(repoPath, ".git")</c> — fine for non-worktree repos;
+    /// linked worktrees would need the actual gitdir from
+    /// <c>git rev-parse --absolute-git-dir</c>, which is a pre-existing
+    /// limitation tracked outside this feature.
+    /// </param>
+    private (Models.GitOperationType Type, string Label) DetectInProgressOperation(string gitDir)
+    {
+        if (File.Exists(Path.Combine(gitDir, "MERGE_HEAD")))
+        {
+            var label = "Incoming";
+            var mergeMsgPath = Path.Combine(gitDir, "MERGE_MSG");
+            if (File.Exists(mergeMsgPath))
+            {
+                try
+                {
+                    var msg = File.ReadAllText(mergeMsgPath);
+                    label = _context.OutputParser.ParseMergingBranch(msg);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // MERGE_MSG may be locked or removed by a concurrent git
+                    // operation — fall back to the generic label.
+                    Log.Info("Repository", $"Skipped MERGE_MSG read at {mergeMsgPath}: {ex.Message}");
+                }
+            }
+            return (Models.GitOperationType.Merge, label);
+        }
+        if (File.Exists(Path.Combine(gitDir, "rebase-apply", "applying")))
+        {
+            // git am shares rebase-apply/ with the rebase-apply rebase
+            // backend; the `applying` file is the am-only marker. Routing
+            // to Am here is what lets the merge editor / abort path call
+            // `git am --continue/--abort` instead of the rebase verbs.
+            return (Models.GitOperationType.Am, "patch apply");
+        }
+        if (Directory.Exists(Path.Combine(gitDir, "rebase-merge"))
+            || Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
+        {
+            return (Models.GitOperationType.Rebase, "rebase");
+        }
+        if (File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")))
+        {
+            return (Models.GitOperationType.CherryPick, "cherry-pick");
+        }
+        if (File.Exists(Path.Combine(gitDir, "REVERT_HEAD")))
+        {
+            return (Models.GitOperationType.Revert, "revert");
+        }
+        if (File.Exists(Path.Combine(gitDir, "BISECT_START")))
+        {
+            // BISECT_START is the canonical bisect-in-progress marker
+            // (BISECT_LOG can linger after a crashed bisect; START is
+            // written on `git bisect start` and removed on `reset`).
+            return (Models.GitOperationType.Bisect, "bisect");
+        }
+        return (Models.GitOperationType.None, string.Empty);
     }
 }

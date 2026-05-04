@@ -1,0 +1,268 @@
+#nullable enable
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media;
+using Leaf.Models.Merge;
+using Leaf.TextEdit;
+
+namespace Leaf.Controls.Merge;
+
+/// <summary>
+/// 12 px vertical tick-strip rendered alongside a <see cref="ReadOnlyMergePane"/>'s
+/// scrollbar, surfacing the file's conflict landscape at a glance as
+/// colour-coded ticks. Plan §V6 renamed this control from ConflictMinimap
+/// once the research confirmed the 12 px width + tick-only rendering is
+/// semantically an "overview ruler" (per VS Code / JetBrains terminology)
+/// rather than a content-preview minimap. The C6 ConflictMinimapPreview
+/// is the companion 60–80 px text-rendering surface that mirrors VS Code's
+/// editor.minimap.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Colour legend:
+/// <list type="bullet">
+/// <item><description>Grey — unchanged or non-conflict content</description></item>
+/// <item><description>Side tint (blue = ours, green = theirs) — lines inside a
+///   conflict region on this side that hasn't been resolved yet</description></item>
+/// <item><description>Amber — AI-proposed resolution pending review (reserved
+///   for Phase 5)</description></item>
+/// <item><description>Red — unresolved conflict</description></item>
+/// <item><description>Bright green — resolved conflict</description></item>
+/// </list>
+/// </para>
+/// <para>
+/// Click to jump: sets the paired ScrollViewer's <c>VerticalOffset</c> so the
+/// clicked line scrolls into view in the companion pane. Drag-to-scroll is
+/// implemented by continuing to treat pointer moves while the left button is
+/// held as additional click events.
+/// </para>
+/// </remarks>
+public sealed class ConflictOverviewRuler : FrameworkElement
+{
+    public static readonly DependencyProperty LayoutProperty = DependencyProperty.Register(
+        nameof(Layout), typeof(MergePaneGlyphLayout), typeof(ConflictOverviewRuler),
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty LineCountProperty = DependencyProperty.Register(
+        nameof(LineCount), typeof(int), typeof(ConflictOverviewRuler),
+        new FrameworkPropertyMetadata(0,
+            FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty RegionsProperty = DependencyProperty.Register(
+        nameof(Regions), typeof(IReadOnlyList<ModifiedBaseRange>), typeof(ConflictOverviewRuler),
+        new FrameworkPropertyMetadata(Array.Empty<ModifiedBaseRange>(),
+            FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty RangeStatesProperty = DependencyProperty.Register(
+        nameof(RangeStates), typeof(IReadOnlyDictionary<int, ResolutionState>), typeof(ConflictOverviewRuler),
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty SideProperty = DependencyProperty.Register(
+        nameof(Side), typeof(MergePaneSide), typeof(ConflictOverviewRuler),
+        new FrameworkPropertyMetadata(MergePaneSide.Ours, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public MergePaneGlyphLayout? Layout
+    {
+        get => (MergePaneGlyphLayout?)GetValue(LayoutProperty);
+        set => SetValue(LayoutProperty, value);
+    }
+
+    public int LineCount
+    {
+        get => (int)GetValue(LineCountProperty);
+        set => SetValue(LineCountProperty, value);
+    }
+
+    public IReadOnlyList<ModifiedBaseRange> Regions
+    {
+        get => (IReadOnlyList<ModifiedBaseRange>)GetValue(RegionsProperty);
+        set => SetValue(RegionsProperty, value);
+    }
+
+    public IReadOnlyDictionary<int, ResolutionState>? RangeStates
+    {
+        get => (IReadOnlyDictionary<int, ResolutionState>?)GetValue(RangeStatesProperty);
+        set => SetValue(RangeStatesProperty, value);
+    }
+
+    public MergePaneSide Side
+    {
+        get => (MergePaneSide)GetValue(SideProperty);
+        set => SetValue(SideProperty, value);
+    }
+
+    /// <summary>
+    /// Fires when the user clicks or drags on the overview ruler.
+    /// <see cref="MinimapJumpEventArgs.LineNumber"/> is the 1-based line
+    /// the pointer addressed; the consumer scrolls the paired pane. The
+    /// event-args type keeps the neutral "Minimap" name because it's
+    /// shared with <see cref="ConflictMinimapPreview"/> — both surfaces
+    /// raise the same shape for the same downstream handler.
+    /// </summary>
+    public event EventHandler<MinimapJumpEventArgs>? JumpRequested;
+
+    /// <summary>
+    /// Explicit refresh entry point for hosts that mutate RangeStates in
+    /// place. AffectsRender on the DP alone doesn't fire for in-place
+    /// dictionary mutations — without this, an AcceptOurs click would
+    /// leave the minimap still painting the range as unresolved-red.
+    /// Mirrors the SegmentedAcceptPillOverlay.RefreshPillStates /
+    /// StickyConflictHeader.RefreshState pattern.
+    /// </summary>
+    public void Refresh() => InvalidateVisual();
+
+    // Palette-derived ruler swatches. V8 theme-swap support: wrapped in
+    // a ThemeBrushes bundle so MergeThemeSwitcher.PaletteChanged can
+    // swap the cache atomically and each live instance can repaint.
+    private sealed class ThemeBrushes
+    {
+        public Brush Unchanged = null!;
+        public Brush Ours = null!;
+        public Brush Theirs = null!;
+        public Brush Unresolved = null!;
+        public Brush Resolved = null!;
+
+        public static ThemeBrushes Build() => new()
+        {
+            Unchanged = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Text.Tertiary.Color"), 0x22))),
+            Ours = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Ours.Border.Color"), 0xAA))),
+            Theirs = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.Theirs.Border.Color"), 0xAA))),
+            Unresolved = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.State.Unresolved.Color"), 0xDD))),
+            Resolved = FreezeBrush(new SolidColorBrush(MergePaletteResources.WithAlpha(
+                MergePaletteResources.ResolveColor("Merge.State.Resolved.Color"), 0xDD))),
+        };
+    }
+
+    private static volatile ThemeBrushes _brushes = ThemeBrushes.Build();
+
+    static ConflictOverviewRuler()
+    {
+        Leaf.Services.MergeThemeSwitcher.PaletteChanged += (_, _) =>
+            _brushes = ThemeBrushes.Build();
+    }
+
+    private static SolidColorBrush FreezeBrush(SolidColorBrush b) { b.Freeze(); return b; }
+    private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
+
+    public ConflictOverviewRuler()
+    {
+        ClipToBounds = true;
+        Focusable = false;
+        Width = 12;
+        Cursor = Cursors.Hand;
+        Leaf.Services.MergeThemeSwitcher.PaletteChanged += OnPaletteChanged;
+        Unloaded += (_, _) =>
+            Leaf.Services.MergeThemeSwitcher.PaletteChanged -= OnPaletteChanged;
+    }
+
+    private void OnPaletteChanged(object? sender, EventArgs e) => InvalidateVisual();
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        var h = double.IsPositiveInfinity(availableSize.Height) ? 0 : availableSize.Height;
+        return new Size(Width, h);
+    }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        base.OnRender(dc);
+        if (LineCount <= 0 || ActualHeight <= 0) return;
+
+        // Base fill: unchanged grey.
+        var br = _brushes;
+        dc.DrawRectangle(br.Unchanged, pen: null, new Rect(0, 0, ActualWidth, ActualHeight));
+
+        // One pixel row per document line, scaled to the available height.
+        var rowHeight = Math.Max(1.0, ActualHeight / LineCount);
+
+        foreach (var range in Regions)
+        {
+            if (!range.IsConflicting) continue;
+            var sideRange = Side switch
+            {
+                MergePaneSide.Ours => range.Ours,
+                MergePaneSide.Theirs => range.Theirs,
+                MergePaneSide.Base => range.Base,
+                _ => LineRange.Empty,
+            };
+            if (sideRange.IsEmpty) continue;
+
+            var y0 = (sideRange.StartLine - 1) * rowHeight;
+            var y1 = (sideRange.EndLineExclusive - 1) * rowHeight;
+            var h = Math.Max(1.0, y1 - y0);
+
+            var resolved = RangeStates is not null
+                && RangeStates.TryGetValue(range.Index, out var state)
+                && state is not ResolutionState.Unresolved;
+
+            var brush = resolved
+                ? br.Resolved
+                : (Side == MergePaneSide.Ours ? br.Ours : br.Theirs);
+            dc.DrawRectangle(brush, pen: null, new Rect(0, y0, ActualWidth, h));
+
+            // Add a small red top-marker for unresolved ranges so they stand out
+            // at a glance even against a dense resolved-but-theirs tint.
+            if (!resolved)
+            {
+                dc.DrawRectangle(br.Unresolved, pen: null, new Rect(0, y0, ActualWidth, Math.Min(2.0, h)));
+            }
+        }
+    }
+
+    protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonDown(e);
+        CaptureMouse();
+        RaiseJumpForPointer(e.GetPosition(this));
+        e.Handled = true;
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (IsMouseCaptured && e.LeftButton == MouseButtonState.Pressed)
+        {
+            RaiseJumpForPointer(e.GetPosition(this));
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonUp(e);
+        if (IsMouseCaptured) ReleaseMouseCapture();
+    }
+
+    private void RaiseJumpForPointer(Point pos)
+    {
+        if (LineCount <= 0 || ActualHeight <= 0) return;
+        var line = PointerYToLine(pos.Y, ActualHeight, LineCount);
+        JumpRequested?.Invoke(this, new MinimapJumpEventArgs(line));
+    }
+
+    /// <summary>
+    /// Map a pointer Y-coordinate to a 1-based line number. Uses the same
+    /// row-height math the renderer uses so a click on a visible marker
+    /// lands on the line that marker represents. In the dense case
+    /// (<paramref name="actualHeight"/> &lt; <paramref name="lineCount"/>)
+    /// row height pins to 1 px, matching the renderer. Exposed as
+    /// <c>internal</c> for unit testing — pure function, no WPF deps.
+    /// </summary>
+    internal static int PointerYToLine(double y, double actualHeight, int lineCount)
+    {
+        if (lineCount <= 0 || actualHeight <= 0) return 1;
+        var rowHeight = Math.Max(1.0, actualHeight / lineCount);
+        var clamped = Math.Max(0, y);
+        return (int)Math.Clamp(Math.Floor(clamped / rowHeight) + 1, 1, lineCount);
+    }
+}
+
+public sealed class MinimapJumpEventArgs : EventArgs
+{
+    public MinimapJumpEventArgs(int lineNumber) { LineNumber = lineNumber; }
+    public int LineNumber { get; }
+}

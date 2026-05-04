@@ -1,12 +1,14 @@
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Diagnostics;
 using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using ICSharpCode.AvalonEdit.Highlighting;
+using Leaf.TextEdit.Highlighting;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Utils;
 using System.Linq;
 
 namespace Leaf.ViewModels;
@@ -14,7 +16,7 @@ namespace Leaf.ViewModels;
 /// <summary>
 /// ViewModel for the diff viewer control.
 /// </summary>
-public partial class DiffViewerViewModel : ObservableObject
+public partial class DiffViewerViewModel : ObservableObject, IDisposable
 {
     public enum ViewerMode
     {
@@ -27,6 +29,15 @@ public partial class DiffViewerViewModel : ObservableObject
     private readonly IHunkService _hunkService;
     private CancellationTokenSource? _loadCts;
     private int _loadSequence;
+
+    /// <summary>
+    /// Returns the current repository's cancellation token. Set by
+    /// MainViewModel so this VM's background git calls abort when the
+    /// session is disposed on repo switch.
+    /// </summary>
+    public Func<CancellationToken>? GetSessionToken { get; set; }
+
+    private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
 
     public DiffViewerViewModel(IGitService gitService)
         : this(gitService, new HunkService())
@@ -65,6 +76,16 @@ public partial class DiffViewerViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isLoading;
+
+    /// <summary>
+    /// Whether the X close button on the diff viewer's header is shown.
+    /// Default true (matches the historical behaviour the standalone
+    /// IsDiffViewerVisible takeover relies on). Embedded callers — like
+    /// the bisect detail pane — set this to false because the diff
+    /// viewer is part of a larger view, not a closeable overlay.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isCloseable = true;
 
     [ObservableProperty]
     private ObservableCollection<FileBlameLine> _blameLines = [];
@@ -251,7 +272,7 @@ public partial class DiffViewerViewModel : ObservableObject
         {
             IsLoading = true;
             var patch = _hunkService.GenerateHunkPatch(FilePath, hunk);
-            await _gitService.RevertHunkAsync(RepositoryPath, patch);
+            await _gitService.RevertHunkAsync(RepositoryPath, patch, cancellationToken: SessionToken);
             HunkReverted?.Invoke(this, hunk);
         }
         catch (Exception ex)
@@ -280,7 +301,7 @@ public partial class DiffViewerViewModel : ObservableObject
             var sw = Stopwatch.StartNew();
             Log.Info("DiffViewer", $"Blame start #{loadId} path={FilePath}");
 
-            var lines = await _gitService.GetFileBlameAsync(RepositoryPath, FilePath);
+            var lines = await _gitService.GetFileBlameAsync(RepositoryPath, FilePath, cancellationToken: SessionToken);
             if (token.IsCancellationRequested)
             {
                 Log.Info("DiffViewer", $"Blame canceled #{loadId}");
@@ -319,7 +340,7 @@ public partial class DiffViewerViewModel : ObservableObject
             var sw = Stopwatch.StartNew();
             Log.Info("DiffViewer", $"History start #{loadId} path={FilePath}");
 
-            var commits = await _gitService.GetFileHistoryAsync(RepositoryPath, FilePath);
+            var commits = await _gitService.GetFileHistoryAsync(RepositoryPath, FilePath, cancellationToken: SessionToken);
             if (token.IsCancellationRequested)
             {
                 Log.Info("DiffViewer", $"History canceled #{loadId}");
@@ -390,23 +411,24 @@ public partial class DiffViewerViewModel : ObservableObject
 
     private CancellationToken ResetActiveLoad()
     {
-        CancelActiveLoad();
-        _loadCts = new CancellationTokenSource();
-        return _loadCts.Token;
+        return CancellationTokenSourceExtensions.ReplaceAndCancel(ref _loadCts).Token;
     }
 
     private void CancelActiveLoad()
     {
-        if (_loadCts != null)
-        {
-            _loadCts.Cancel();
-            _loadCts.Dispose();
-            _loadCts = null;
-        }
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _loadCts);
     }
 
     private bool IsActiveToken(CancellationToken token)
     {
         return _loadCts != null && _loadCts.Token == token;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        // No finalizer on this type, so no GC.SuppressFinalize — the
+        // standard pattern only requires it when a finalizer is present.
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _loadCts);
     }
 }

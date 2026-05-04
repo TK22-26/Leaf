@@ -53,6 +53,26 @@ public class FileChangeInfo
     public bool IsBinary { get; set; }
 
     /// <summary>
+    /// True when this "file" is actually a submodule pointer
+    /// (git-link mode). The traditional line-diff has no meaning for
+    /// these entries — the interesting change is the commit SHA the
+    /// parent records for the submodule.
+    /// </summary>
+    public bool IsSubmodule { get; set; }
+
+    /// <summary>
+    /// Submodule commit SHA recorded in the parent tree before this
+    /// commit. Empty for submodules being added.
+    /// </summary>
+    public string SubmoduleOldSha { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Submodule commit SHA recorded in the parent tree at this commit.
+    /// Empty for submodules being removed.
+    /// </summary>
+    public string SubmoduleNewSha { get; set; } = string.Empty;
+
+    /// <summary>
     /// File name (without path).
     /// </summary>
     public string FileName => System.IO.Path.GetFileName(Path);

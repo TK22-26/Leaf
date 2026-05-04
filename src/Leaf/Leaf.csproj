@@ -6,7 +6,16 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- Vendored AvalonEdit uses System.Windows.Forms.Clipboard for cross-process
+         clipboard copies. The dependency is tiny (AvalonEdit accesses only the
+         Clipboard class) and enabling UseWindowsForms here is cheap. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- SYSLIB0050 (BinaryFormatter / [NonSerialized] deprecation) fires in the
+         vendored AvalonEdit TextEditorOptions which uses [field:NonSerialized].
+         The attribute is harmless on modern runtimes — demote to warning rather
+         than patching every vendored file. -->
+    <NoWarn>$(NoWarn);SYSLIB0050</NoWarn>
     <ApplicationIcon>Assets\Leaf.ico</ApplicationIcon>
     <!-- Version is overridden by CI/CD pipeline with date-based version (e.g., 2025.01.15.720) -->
     <Version>1.0.0.0</Version>
@@ -18,13 +27,27 @@
     <InternalsVisibleTo Include="Leaf.Tests" />
   </ItemGroup>
 
+  <!-- UseWindowsForms=true adds System.Drawing to ImplicitUsings, which clashes
+       with System.Windows.Media.* used throughout the WPF codebase. Remove the
+       WinForms-side global usings so source files must qualify WinForms types
+       (only the vendored AvalonEdit CompletionWindow / TextArea cursor code
+       actually uses them, and those callsites already qualify fully). -->
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
   <ItemGroup>
     <Resource Include="Assets\Leaf.png" />
     <Resource Include="Assets\Leaf.ico" />
+    <Resource Include="Resources\Fonts\JetBrainsMono-Regular.ttf" />
+    <Resource Include="Resources\Fonts\JetBrainsMono-Italic.ttf" />
+    <Resource Include="Resources\Fonts\JetBrainsMono-Bold.ttf" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="THIRD_PARTY_LICENSES.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Resources\Fonts\OFL.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -32,7 +55,55 @@
     <PackageReference Include="FluentIcons.Wpf" Version="2.0.316" />
     <PackageReference Include="LibGit2Sharp" Version="0.31.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.6" />
   </ItemGroup>
+
+  <!-- Vendored AvalonEdit resources (MIT, see LICENSE-AvalonEdit.txt).
+       The source tree under TextEdit/ is picked up automatically by the SDK;
+       this group routes non-.cs/.xaml files through the correct build actions.
+       NOTE: Phase 2b stripped TextEdit\Search (find/replace dialog), so
+       next.png / prev.png are gone. themes\RightArrow.cur survives because
+       the caret / scroll behaviour uses it. -->
+  <ItemGroup>
+    <None Remove="TextEdit\themes\RightArrow.cur" />
+    <Resource Include="TextEdit\themes\RightArrow.cur" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="TextEdit\Highlighting\Resources\**" />
+    <EmbeddedResource Include="TextEdit\Highlighting\Resources\**" />
+    <EmbeddedResource Remove="TextEdit\Highlighting\Resources\Resources.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Leaf.Core\Leaf.Core.csproj" />
+    <!-- Build-only reference: ensures Leaf.AskPass builds before Leaf but does not
+         import its assembly. The MSBuild target below copies the helper exe into
+         Leaf's output so git can locate it via GIT_ASKPASS. -->
+    <ProjectReference Include="..\Leaf.AskPass\Leaf.AskPass.csproj" ReferenceOutputAssembly="false" />
+    <!-- Same pattern for the interactive-rebase helper invoked via
+         GIT_SEQUENCE_EDITOR / GIT_EDITOR. -->
+    <ProjectReference Include="..\Leaf.SequenceEditor\Leaf.SequenceEditor.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Copy Leaf.AskPass.exe (and its runtime deps) into Leaf's output directory
+       so GIT_ASKPASS can resolve via AppContext.BaseDirectory. Runs after build
+       and after publish so both flows get the helper next to Leaf.exe. -->
+  <Target Name="CopyLeafAskPassToOutput" AfterTargets="Build;Publish" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_LeafAskPassOutputs Include="$(MSBuildThisFileDirectory)..\Leaf.AskPass\bin\$(Configuration)\$(TargetFramework)\Leaf.AskPass*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LeafAskPassOutputs)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('%(Identity)')" />
+    <Copy SourceFiles="@(_LeafAskPassOutputs)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' And Exists('%(Identity)')" />
+  </Target>
+
+  <!-- Same copy pattern for Leaf.SequenceEditor.exe so GIT_SEQUENCE_EDITOR
+       resolves via AppContext.BaseDirectory at runtime. -->
+  <Target Name="CopyLeafSequenceEditorToOutput" AfterTargets="Build;Publish" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_LeafSequenceEditorOutputs Include="$(MSBuildThisFileDirectory)..\Leaf.SequenceEditor\bin\$(Configuration)\$(TargetFramework)\Leaf.SequenceEditor*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LeafSequenceEditorOutputs)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('%(Identity)')" />
+    <Copy SourceFiles="@(_LeafSequenceEditorOutputs)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' And Exists('%(Identity)')" />
+  </Target>
 
 </Project>

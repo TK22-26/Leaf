@@ -72,14 +72,12 @@ public interface IBranchService
     /// <param name="session">Repository session.</param>
     /// <param name="remoteName">Name of the remote (e.g., "origin").</param>
     /// <param name="branchName">Name of the branch to delete.</param>
-    /// <param name="username">Optional username for authentication.</param>
-    /// <param name="password">Optional password/token for authentication.</param>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     Task DeleteRemoteBranchAsync(
         IRepositorySession session,
         string remoteName,
         string branchName,
-        string? username = null,
-        string? password = null);
+        string? credentialKey = null);
 
     /// <summary>
     /// Sets the upstream tracking branch for a local branch.

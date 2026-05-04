@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -43,6 +44,12 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
         // Load timeout
         AiTimeoutTextBox.Text = settings.AiCliTimeoutSeconds.ToString();
+
+        // Load AI Merge (Phase 5)
+        AiMergeEnabledCheckBox.IsChecked = settings.AiMergeEnabled;
+        AiMergeMcpServerPathTextBox.Text = settings.AiMergeMcpServerPath ?? string.Empty;
+        // Reset button is only meaningful when consent has been given.
+        AiMergeResetConsentButton.IsEnabled = settings.AiMergeConsentGiven;
 
         // Load connection states
         _isClaudeConnected = settings.IsClaudeConnected;
@@ -105,6 +112,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         ContentGemini.Visibility = Visibility.Collapsed;
         ContentCodex.Visibility = Visibility.Collapsed;
         ContentOllama.Visibility = Visibility.Collapsed;
+        ContentAiMerge.Visibility = Visibility.Collapsed;
 
         // Show requested section
         switch (section)
@@ -125,18 +133,68 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             case "Ollama":
                 ContentOllama.Visibility = Visibility.Visible;
                 break;
+            case "AiMerge":
+                ContentAiMerge.Visibility = Visibility.Visible;
+                break;
         }
     }
+
+    #region AI Merge (Phase 5)
+
+    private void AiMergeEnabled_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_settings is null || _settingsService is null) return;
+        _settings.AiMergeEnabled = AiMergeEnabledCheckBox.IsChecked == true;
+        _settingsService.SaveSettings(_settings);
+    }
+
+    private void AiMergeMcpServerPath_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (_settings is null || _settingsService is null) return;
+        _settings.AiMergeMcpServerPath = AiMergeMcpServerPathTextBox.Text.Trim();
+        _settingsService.SaveSettings(_settings);
+    }
+
+    private void AiMergeMcpServerPathBrowse_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select MCP server executable",
+            Filter = "Executables (*.exe;*.bat;*.cmd;*.ps1)|*.exe;*.bat;*.cmd;*.ps1|All files (*.*)|*.*",
+        };
+        if (dlg.ShowDialog(Window.GetWindow(this)) == true)
+        {
+            AiMergeMcpServerPathTextBox.Text = dlg.FileName;
+            // TextChanged handler persists the change.
+        }
+    }
+
+    private void AiMergeResetConsent_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings is null || _settingsService is null) return;
+        _settings.AiMergeConsentGiven = false;
+        _settingsService.SaveSettings(_settings);
+        AiMergeResetConsentButton.IsEnabled = false;
+    }
+
+    #endregion
 
     #region Claude
 
     private async void ClaudeConnect_Click(object sender, RoutedEventArgs e)
     {
-        await CheckCliIntegrationAsync("claude", ClaudeStatusText, ClaudeConnectButton, () =>
+        try
         {
-            _isClaudeConnected = true;
-            ClaudeDisconnectButton.IsEnabled = true;
-        });
+            await CheckCliIntegrationAsync("claude", ClaudeStatusText, ClaudeConnectButton, () =>
+            {
+                _isClaudeConnected = true;
+                ClaudeDisconnectButton.IsEnabled = true;
+            });
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(ClaudeConnect_Click), isUserAction: true);
+        }
     }
 
     private void ClaudeDisconnect_Click(object sender, RoutedEventArgs e)
@@ -159,11 +217,18 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
     private async void GeminiConnect_Click(object sender, RoutedEventArgs e)
     {
-        await CheckCliIntegrationAsync("gemini", GeminiStatusText, GeminiConnectButton, () =>
+        try
         {
-            _isGeminiConnected = true;
-            GeminiDisconnectButton.IsEnabled = true;
-        });
+            await CheckCliIntegrationAsync("gemini", GeminiStatusText, GeminiConnectButton, () =>
+            {
+                _isGeminiConnected = true;
+                GeminiDisconnectButton.IsEnabled = true;
+            });
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(GeminiConnect_Click), isUserAction: true);
+        }
     }
 
     private void GeminiDisconnect_Click(object sender, RoutedEventArgs e)
@@ -186,11 +251,18 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
     private async void CodexConnect_Click(object sender, RoutedEventArgs e)
     {
-        await CheckCliIntegrationAsync("codex", CodexStatusText, CodexConnectButton, () =>
+        try
         {
-            _isCodexConnected = true;
-            CodexDisconnectButton.IsEnabled = true;
-        });
+            await CheckCliIntegrationAsync("codex", CodexStatusText, CodexConnectButton, () =>
+            {
+                _isCodexConnected = true;
+                CodexDisconnectButton.IsEnabled = true;
+            });
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(CodexConnect_Click), isUserAction: true);
+        }
     }
 
     private void CodexDisconnect_Click(object sender, RoutedEventArgs e)
@@ -213,116 +285,132 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
     private async void OllamaRefreshModels_Click(object sender, RoutedEventArgs e)
     {
-        if (_settings == null) return;
-
-        var baseUrl = OllamaBaseUrlTextBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(baseUrl))
+        try
         {
-            baseUrl = "http://localhost:11434";
-            OllamaBaseUrlTextBox.Text = baseUrl;
-        }
+            if (_settings == null) return;
 
-        OllamaRefreshModelsButton.IsEnabled = false;
-        OllamaStatusText.Text = "Fetching models...";
-        OllamaStatusText.Foreground = new SolidColorBrush(Colors.Gray);
-
-        var (success, models, error) = await _ollamaService.GetAvailableModelsAsync(baseUrl);
-
-        if (success && models.Count > 0)
-        {
-            OllamaModelComboBox.Items.Clear();
-            foreach (var model in models)
+            var baseUrl = OllamaBaseUrlTextBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(baseUrl))
             {
-                OllamaModelComboBox.Items.Add(model);
+                baseUrl = "http://localhost:11434";
+                OllamaBaseUrlTextBox.Text = baseUrl;
             }
 
-            // Auto-select first model or restore previous selection
-            var savedModel = _settings.OllamaSelectedModel;
-            if (!string.IsNullOrEmpty(savedModel) && models.Contains(savedModel))
-            {
-                OllamaModelComboBox.SelectedItem = savedModel;
-            }
-            else if (models.Count > 0)
-            {
-                OllamaModelComboBox.SelectedIndex = 0;
-            }
-
-            OllamaStatusText.Text = $"Found {models.Count} model(s)";
-            OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
-        }
-        else
-        {
-            OllamaModelComboBox.Items.Clear();
-            OllamaStatusText.Text = error ?? "Failed to connect";
-            OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
-        }
-
-        OllamaRefreshModelsButton.IsEnabled = true;
-    }
-
-    private async void OllamaConnect_Click(object sender, RoutedEventArgs e)
-    {
-        if (_settings == null || _settingsService == null) return;
-
-        var baseUrl = OllamaBaseUrlTextBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(baseUrl))
-        {
-            baseUrl = "http://localhost:11434";
-            OllamaBaseUrlTextBox.Text = baseUrl;
-        }
-
-        var selectedModel = OllamaModelComboBox.SelectedItem as string;
-        if (string.IsNullOrWhiteSpace(selectedModel))
-        {
-            // Try to fetch models first
-            OllamaConnectButton.IsEnabled = false;
-            OllamaStatusText.Text = "Connecting...";
+            OllamaRefreshModelsButton.IsEnabled = false;
+            OllamaStatusText.Text = "Fetching models...";
             OllamaStatusText.Foreground = new SolidColorBrush(Colors.Gray);
 
             var (success, models, error) = await _ollamaService.GetAvailableModelsAsync(baseUrl);
 
-            if (!success || models.Count == 0)
+            if (success && models.Count > 0)
             {
-                OllamaStatusText.Text = error ?? "No models available";
+                OllamaModelComboBox.Items.Clear();
+                foreach (var model in models)
+                {
+                    OllamaModelComboBox.Items.Add(model);
+                }
+
+                // Auto-select first model or restore previous selection
+                var savedModel = _settings.OllamaSelectedModel;
+                if (!string.IsNullOrEmpty(savedModel) && models.Contains(savedModel))
+                {
+                    OllamaModelComboBox.SelectedItem = savedModel;
+                }
+                else if (models.Count > 0)
+                {
+                    OllamaModelComboBox.SelectedIndex = 0;
+                }
+
+                OllamaStatusText.Text = $"Found {models.Count} model(s)";
+                OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            }
+            else
+            {
+                OllamaModelComboBox.Items.Clear();
+                OllamaStatusText.Text = error ?? "Failed to connect";
+                OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+            }
+
+            OllamaRefreshModelsButton.IsEnabled = true;
+        }
+        catch (Exception ex)
+        {
+            OllamaRefreshModelsButton.IsEnabled = true;
+            AsyncErrorHandler.Handle(ex, nameof(OllamaRefreshModels_Click), isUserAction: true);
+        }
+    }
+
+    private async void OllamaConnect_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_settings == null || _settingsService == null) return;
+
+            var baseUrl = OllamaBaseUrlTextBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                baseUrl = "http://localhost:11434";
+                OllamaBaseUrlTextBox.Text = baseUrl;
+            }
+
+            var selectedModel = OllamaModelComboBox.SelectedItem as string;
+            if (string.IsNullOrWhiteSpace(selectedModel))
+            {
+                // Try to fetch models first
+                OllamaConnectButton.IsEnabled = false;
+                OllamaStatusText.Text = "Connecting...";
+                OllamaStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+
+                var (success, models, error) = await _ollamaService.GetAvailableModelsAsync(baseUrl);
+
+                if (!success || models.Count == 0)
+                {
+                    OllamaStatusText.Text = error ?? "No models available";
+                    OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                    OllamaConnectButton.IsEnabled = true;
+                    return;
+                }
+
+                OllamaModelComboBox.Items.Clear();
+                foreach (var model in models)
+                {
+                    OllamaModelComboBox.Items.Add(model);
+                }
+                OllamaModelComboBox.SelectedIndex = 0;
+                selectedModel = models[0];
+            }
+
+            // Validate connection by fetching models
+            OllamaConnectButton.IsEnabled = false;
+            OllamaStatusText.Text = "Validating connection...";
+            OllamaStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+
+            var (validateSuccess, _, validateError) = await _ollamaService.GetAvailableModelsAsync(baseUrl);
+
+            if (validateSuccess)
+            {
+                _isOllamaConnected = true;
+                _settings.OllamaBaseUrl = baseUrl;
+                _settings.OllamaSelectedModel = selectedModel;
+                _settingsService.SaveSettings(_settings);
+
+                OllamaStatusText.Text = $"Connected - {selectedModel}";
+                OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+                OllamaConnectButton.IsEnabled = false;
+                OllamaDisconnectButton.IsEnabled = true;
+                UpdateAiDefaults();
+            }
+            else
+            {
+                OllamaStatusText.Text = validateError ?? "Connection failed";
                 OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
                 OllamaConnectButton.IsEnabled = true;
-                return;
             }
-
-            OllamaModelComboBox.Items.Clear();
-            foreach (var model in models)
-            {
-                OllamaModelComboBox.Items.Add(model);
-            }
-            OllamaModelComboBox.SelectedIndex = 0;
-            selectedModel = models[0];
         }
-
-        // Validate connection by fetching models
-        OllamaConnectButton.IsEnabled = false;
-        OllamaStatusText.Text = "Validating connection...";
-        OllamaStatusText.Foreground = new SolidColorBrush(Colors.Gray);
-
-        var (validateSuccess, _, validateError) = await _ollamaService.GetAvailableModelsAsync(baseUrl);
-
-        if (validateSuccess)
+        catch (Exception ex)
         {
-            _isOllamaConnected = true;
-            _settings.OllamaBaseUrl = baseUrl;
-            _settings.OllamaSelectedModel = selectedModel;
-            _settingsService.SaveSettings(_settings);
-
-            OllamaStatusText.Text = $"Connected - {selectedModel}";
-            OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
-            OllamaConnectButton.IsEnabled = false;
-            OllamaDisconnectButton.IsEnabled = true;
-            UpdateAiDefaults();
-        }
-        else
-        {
-            OllamaStatusText.Text = validateError ?? "Connection failed";
-            OllamaStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
             OllamaConnectButton.IsEnabled = true;
+            AsyncErrorHandler.Handle(ex, nameof(OllamaConnect_Click), isUserAction: true);
         }
     }
 
@@ -511,7 +599,17 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
                 if (!process.WaitForExit(Math.Max(1, timeoutSeconds) * 1000))
                 {
-                    try { process.Kill(); } catch { }
+                    try
+                    {
+                        process.Kill();
+                    }
+                    catch (Exception killEx) when (killEx is InvalidOperationException
+                                                or System.ComponentModel.Win32Exception
+                                                or NotSupportedException)
+                    {
+                        // Process may have exited between timeout and Kill call.
+                        Log.Info("AiSettings", $"Kill after timeout failed: {killEx.GetType().Name}: {killEx.Message}");
+                    }
                     return (CliCheckResult.Unknown, $"timed out after {Math.Max(1, timeoutSeconds)}s");
                 }
 
@@ -541,9 +639,13 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             {
                 return (CliCheckResult.NotInstalled, "command not found on PATH");
             }
-            catch
+            catch (Exception ex) when (ex is InvalidOperationException
+                                    or System.IO.IOException
+                                    or UnauthorizedAccessException
+                                    or System.Security.SecurityException)
             {
-                return (CliCheckResult.Unknown, "exception");
+                Log.Info("AiSettings", $"CLI probe failed: {ex.GetType().Name}: {ex.Message}");
+                return (CliCheckResult.Unknown, $"exception: {ex.GetType().Name}");
             }
         }
 

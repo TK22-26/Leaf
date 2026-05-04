@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Leaf.Controls;
+using Leaf.Services;
 using Leaf.ViewModels;
 
 namespace Leaf.Views;
@@ -75,7 +76,8 @@ public partial class CommitDetailView : UserControl
         // Get MainViewModel from Window
         if (Window.GetWindow(this)?.DataContext is MainViewModel mainVm)
         {
-            _ = mainVm.ShowFileDiffAsync(file, commitVm.Commit.Sha);
+            mainVm.ShowFileDiffAsync(file, commitVm.Commit.Sha)
+                .FireAndForget(nameof(mainVm.ShowFileDiffAsync), isUserAction: true);
         }
     }
 

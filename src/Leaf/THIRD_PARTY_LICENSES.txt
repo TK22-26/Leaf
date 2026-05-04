@@ -32,7 +32,9 @@ AvalonEdit
 
 License: MIT License
 Project URL: https://github.com/icsharpcode/AvalonEdit
-NuGet Package: AvalonEdit
+Source: Vendored at src/Leaf/TextEdit/ (from upstream tag v6.3.1).
+        See src/Leaf/TextEdit/UPSTREAM.md for provenance and re-import
+        procedure.
 
 Copyright (c) AvalonEdit Contributors
 
@@ -81,6 +83,22 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+================================================================================
+JetBrains Mono
+================================================================================
+
+License: SIL Open Font License 1.1
+Project URL: https://github.com/JetBrains/JetBrainsMono
+Source: Embedded at src/Leaf/Resources/Fonts/ (Regular, Italic, Bold variants).
+        Full license text: src/Leaf/Resources/Fonts/OFL.txt
+
+Copyright 2020 The JetBrains Mono Project Authors
+(https://github.com/JetBrains/JetBrainsMono)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
 
 ================================================================================
 CommunityToolkit.Mvvm

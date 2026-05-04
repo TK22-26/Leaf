@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Services;
 using Leaf.Services.PullRequests;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -762,13 +763,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
 
     private void ScheduleReviewerSearch(ReviewerBucket bucket, string searchText)
     {
-        var cts = new CancellationTokenSource();
-        var previous = bucket == ReviewerBucket.Required
-            ? Interlocked.Exchange(ref _requiredReviewerSearchCts, cts)
-            : Interlocked.Exchange(ref _optionalReviewerSearchCts, cts);
-
-        previous?.Cancel();
-        previous?.Dispose();
+        var cts = bucket == ReviewerBucket.Required
+            ? CancellationTokenSourceExtensions.ReplaceAndCancel(ref _requiredReviewerSearchCts)
+            : CancellationTokenSourceExtensions.ReplaceAndCancel(ref _optionalReviewerSearchCts);
 
         if (string.IsNullOrWhiteSpace(searchText) || !CanManageReviewers)
         {
@@ -776,16 +773,13 @@ public partial class PullRequestDetailViewModel : ObservableObject
             return;
         }
 
-        _ = RunDebouncedReviewerSearchAsync(bucket, searchText.Trim(), cts.Token);
+        RunDebouncedReviewerSearchAsync(bucket, searchText.Trim(), cts.Token)
+            .FireAndForget(nameof(RunDebouncedReviewerSearchAsync), isUserAction: false);
     }
 
     private void ScheduleAssigneeSearch(string searchText)
     {
-        var cts = new CancellationTokenSource();
-        var previous = Interlocked.Exchange(ref _assigneeSearchCts, cts);
-
-        previous?.Cancel();
-        previous?.Dispose();
+        var cts = CancellationTokenSourceExtensions.ReplaceAndCancel(ref _assigneeSearchCts);
 
         if (string.IsNullOrWhiteSpace(searchText) || !CanManageAssignees)
         {
@@ -793,7 +787,8 @@ public partial class PullRequestDetailViewModel : ObservableObject
             return;
         }
 
-        _ = RunDebouncedAssigneeSearchAsync(searchText.Trim(), cts.Token);
+        RunDebouncedAssigneeSearchAsync(searchText.Trim(), cts.Token)
+            .FireAndForget(nameof(RunDebouncedAssigneeSearchAsync), isUserAction: false);
     }
 
     private async Task RunDebouncedReviewerSearchAsync(ReviewerBucket bucket, string searchText, CancellationToken cancellationToken)
@@ -969,17 +964,9 @@ public partial class PullRequestDetailViewModel : ObservableObject
 
     private void CancelReviewerSearches()
     {
-        _requiredReviewerSearchCts?.Cancel();
-        _requiredReviewerSearchCts?.Dispose();
-        _requiredReviewerSearchCts = null;
-
-        _optionalReviewerSearchCts?.Cancel();
-        _optionalReviewerSearchCts?.Dispose();
-        _optionalReviewerSearchCts = null;
-
-        _assigneeSearchCts?.Cancel();
-        _assigneeSearchCts?.Dispose();
-        _assigneeSearchCts = null;
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _requiredReviewerSearchCts);
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _optionalReviewerSearchCts);
+        CancellationTokenSourceExtensions.DisposeAndClear(ref _assigneeSearchCts);
     }
 
     partial void OnDetailsChanged(PullRequestDetails? value)

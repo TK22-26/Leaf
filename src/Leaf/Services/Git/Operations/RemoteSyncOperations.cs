@@ -7,6 +7,8 @@ namespace Leaf.Services.Git.Operations;
 
 /// <summary>
 /// Operations for remote synchronization (clone, fetch, pull, push).
+/// Authentication is routed through GIT_ASKPASS (see <see cref="GitCommandRunner"/>)
+/// — PATs never enter git URLs or command lines.
 /// </summary>
 internal class RemoteSyncOperations
 {
@@ -20,7 +22,7 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Get all remotes in the repository.
     /// </summary>
-    public Task<List<RemoteInfo>> GetRemotesAsync(string repoPath)
+    public Task<List<RemoteInfo>> GetRemotesAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -34,15 +36,15 @@ internal class RemoteSyncOperations
                     PushUrl = r.PushUrl != r.Url ? r.PushUrl : null
                 })
                 .ToList();
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Add a new remote to the repository.
     /// </summary>
-    public async Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null)
+    public async Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null, CancellationToken cancellationToken = default)
     {
-        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "add", remoteName, url]);
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "add", remoteName, url], cancellationToken: cancellationToken);
         if (!result.Success)
         {
             throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
@@ -54,7 +56,7 @@ internal class RemoteSyncOperations
         if (!string.IsNullOrEmpty(pushUrl))
         {
             var pushResult = await _context.CommandRunner.RunAsync(repoPath,
-                ["remote", "set-url", "--push", remoteName, pushUrl]);
+                ["remote", "set-url", "--push", remoteName, pushUrl], cancellationToken: cancellationToken);
             if (!pushResult.Success)
             {
                 throw new InvalidOperationException(string.IsNullOrEmpty(pushResult.StandardError)
@@ -67,9 +69,9 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Remove a remote from the repository.
     /// </summary>
-    public async Task RemoveRemoteAsync(string repoPath, string remoteName)
+    public async Task RemoveRemoteAsync(string repoPath, string remoteName, CancellationToken cancellationToken = default)
     {
-        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "remove", remoteName]);
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "remove", remoteName], cancellationToken: cancellationToken);
         if (!result.Success)
         {
             throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
@@ -81,9 +83,9 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Rename a remote.
     /// </summary>
-    public async Task RenameRemoteAsync(string repoPath, string oldName, string newName)
+    public async Task RenameRemoteAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default)
     {
-        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "rename", oldName, newName]);
+        var result = await _context.CommandRunner.RunAsync(repoPath, ["remote", "rename", oldName, newName], cancellationToken: cancellationToken);
         if (!result.Success)
         {
             throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
@@ -95,13 +97,13 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Set a remote's URL.
     /// </summary>
-    public async Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false)
+    public async Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false, CancellationToken cancellationToken = default)
     {
         var args = isPushUrl
             ? new[] { "remote", "set-url", "--push", remoteName, url }
             : new[] { "remote", "set-url", remoteName, url };
 
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
         if (!result.Success)
         {
             throw new InvalidOperationException(string.IsNullOrEmpty(result.StandardError)
@@ -113,14 +115,17 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Clone a remote repository.
     /// </summary>
-    public async Task<string> CloneAsync(string url, string localPath, string? username = null,
-        string? password = null, IProgress<string>? progress = null)
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
+    public async Task<string> CloneAsync(string url, string localPath, string? credentialKey = null,
+        IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         progress?.Report("Cloning repository...");
 
         var result = await _context.CommandRunner.RunAsync(
             Path.GetDirectoryName(localPath) ?? ".",
-            ["clone", "--progress", url, localPath]);
+            ["clone", "--progress", url, localPath],
+            input: null,
+            credentialKey: credentialKey, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -135,44 +140,17 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Fetch from remote.
     /// </summary>
-    public async Task FetchAsync(string repoPath, string remoteName = "origin", string? username = null,
-        string? password = null, IProgress<string>? progress = null)
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
+    public async Task FetchAsync(string repoPath, string remoteName = "origin", string? credentialKey = null,
+        IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         progress?.Report("Fetching...");
 
-        string[] args;
-
-        // If password provided, use authenticated URL with explicit refspec
-        // so git knows which remote's tracking branches to update
-        if (!string.IsNullOrEmpty(password))
-        {
-            var remotes = await GetRemotesAsync(repoPath);
-            var remote = remotes.FirstOrDefault(r => r.Name.Equals(remoteName, StringComparison.OrdinalIgnoreCase));
-            if (remote != null && !string.IsNullOrEmpty(remote.Url))
-            {
-                var authUrl = BuildAuthenticatedUrl(remote.Url, password);
-                if (authUrl != null)
-                {
-                    // Use authenticated URL with explicit refspec to update remote tracking branches
-                    // Format: git fetch <url> +refs/heads/*:refs/remotes/<remote>/*
-                    args = ["fetch", "--prune", authUrl, $"+refs/heads/*:refs/remotes/{remoteName}/*"];
-                }
-                else
-                {
-                    args = ["fetch", "--prune", remoteName];
-                }
-            }
-            else
-            {
-                args = ["fetch", "--prune", remoteName];
-            }
-        }
-        else
-        {
-            args = ["fetch", "--prune", remoteName];
-        }
-
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath,
+            ["fetch", "--prune", remoteName],
+            input: null,
+            credentialKey: credentialKey, cancellationToken: cancellationToken);
 
         if (!result.Success && !string.IsNullOrEmpty(result.StandardError))
         {
@@ -183,51 +161,17 @@ internal class RemoteSyncOperations
     /// <summary>
     /// Pull from remote.
     /// </summary>
-    public async Task PullAsync(string repoPath, string? username = null, string? password = null,
-        IProgress<string>? progress = null)
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
+    public async Task PullAsync(string repoPath, string? credentialKey = null,
+        IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         progress?.Report("Pulling...");
 
-        string[] args = ["pull"];
-
-        // If password provided, try to use authenticated URL
-        if (!string.IsNullOrEmpty(password))
-        {
-            // Determine which remote to use (from tracking branch)
-            string? trackingRemoteName = null;
-            string? trackingBranchName = null;
-
-            using (var repo = new Repository(repoPath))
-            {
-                if (repo.Head.TrackedBranch != null)
-                {
-                    // Extract remote name from tracking branch (e.g., "origin/main" -> "origin")
-                    var tracking = repo.Head.TrackedBranch.FriendlyName;
-                    var slashIndex = tracking.IndexOf('/');
-                    if (slashIndex > 0)
-                    {
-                        trackingRemoteName = tracking[..slashIndex];
-                        trackingBranchName = tracking[(slashIndex + 1)..];
-                    }
-                }
-            }
-
-            if (!string.IsNullOrEmpty(trackingRemoteName))
-            {
-                var remotes = await GetRemotesAsync(repoPath);
-                var remote = remotes.FirstOrDefault(r => r.Name.Equals(trackingRemoteName, StringComparison.OrdinalIgnoreCase));
-                if (remote != null && !string.IsNullOrEmpty(remote.Url))
-                {
-                    var authUrl = BuildAuthenticatedUrl(remote.Url, password);
-                    if (authUrl != null && !string.IsNullOrEmpty(trackingBranchName))
-                    {
-                        args = ["pull", authUrl, trackingBranchName];
-                    }
-                }
-            }
-        }
-
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath,
+            ["pull"],
+            input: null,
+            credentialKey: credentialKey, cancellationToken: cancellationToken);
 
         if (!result.Success && !string.IsNullOrEmpty(result.StandardError))
         {
@@ -240,11 +184,10 @@ internal class RemoteSyncOperations
     /// </summary>
     /// <param name="repoPath">Path to the repository</param>
     /// <param name="remoteName">Optional remote name (uses tracking branch's remote or default if not specified)</param>
-    /// <param name="username">Optional username for authentication</param>
-    /// <param name="password">Optional password/token for authentication</param>
+    /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     /// <param name="progress">Optional progress reporter</param>
-    public async Task PushAsync(string repoPath, string? remoteName = null, string? username = null,
-        string? password = null, IProgress<string>? progress = null)
+    public async Task PushAsync(string repoPath, string? remoteName = null, string? credentialKey = null,
+        IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         // Check if we're in detached HEAD state
         string branchName;
@@ -262,50 +205,19 @@ internal class RemoteSyncOperations
         // Determine the target remote
         var targetRemote = remoteName ?? await GetDefaultRemoteAsync(repoPath);
 
-        // Build push arguments
-        string[] args;
-        string pushTarget = targetRemote;
-
-        // If password provided, try to use authenticated URL
-        if (!string.IsNullOrEmpty(password))
-        {
-            var remotes = await GetRemotesAsync(repoPath);
-            var remote = remotes.FirstOrDefault(r => r.Name.Equals(targetRemote, StringComparison.OrdinalIgnoreCase));
-            if (remote != null)
-            {
-                // Use push URL if available, otherwise fetch URL
-                var url = remote.PushUrl ?? remote.Url;
-                if (!string.IsNullOrEmpty(url))
-                {
-                    var authUrl = BuildAuthenticatedUrl(url, password);
-                    if (authUrl != null)
-                    {
-                        pushTarget = authUrl;
-                    }
-                }
-            }
-        }
-
-        if (!hasTrackingBranch)
-        {
-            // No tracking branch - need to set upstream
-            // When using URL, we can't use -u (upstream setting requires remote name)
-            // So push with refspec instead
-            args = pushTarget == targetRemote
-                ? ["push", "-u", targetRemote, branchName]
-                : ["push", pushTarget, $"{branchName}:{branchName}"];
-        }
-        else
-        {
-            // Has tracking branch - push to that remote
-            args = pushTarget == targetRemote
-                ? ["push"]
-                : ["push", pushTarget, branchName];
-        }
+        // Build push arguments. With GIT_ASKPASS there is no need to mutate the
+        // URL; pushing by remote name preserves upstream tracking semantics.
+        string[] args = hasTrackingBranch
+            ? ["push"]
+            : ["push", "-u", targetRemote, branchName];
 
         progress?.Report("Pushing...");
 
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath,
+            args,
+            input: null,
+            credentialKey: credentialKey, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -328,52 +240,16 @@ internal class RemoteSyncOperations
     }
 
     /// <summary>
-    /// Builds a URL with embedded credentials for authentication.
-    /// For HTTPS URLs: https://user:token@host/path
-    /// </summary>
-    /// <param name="url">The remote URL</param>
-    /// <param name="password">The PAT/password to embed</param>
-    /// <returns>URL with credentials embedded, or null if URL format not supported</returns>
-    private static string? BuildAuthenticatedUrl(string url, string password)
-    {
-        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(password))
-            return null;
-
-        // Only works with HTTPS URLs
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-            return null;
-
-        if (uri.Scheme != "https" && uri.Scheme != "http")
-            return null;
-
-        // Build URL with credentials
-        // Use "x-access-token" as username for GitHub, or existing username if present
-        var existingUser = !string.IsNullOrEmpty(uri.UserInfo) && uri.UserInfo.Contains('@')
-            ? uri.UserInfo.Split('@')[0]
-            : null;
-
-        // Azure DevOps and GitHub both accept PAT as password with any username
-        var username = existingUser ?? "x-access-token";
-
-        // Encode password in case it contains special characters
-        var encodedPassword = Uri.EscapeDataString(password);
-
-        // Reconstruct URL with credentials
-        var portPart = uri.IsDefaultPort ? "" : $":{uri.Port}";
-        return $"{uri.Scheme}://{username}:{encodedPassword}@{uri.Host}{portPart}{uri.PathAndQuery}";
-    }
-
-    /// <summary>
     /// Pull updates for a specific branch (fast-forward if possible).
     /// </summary>
     public async Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName,
-        string remoteBranchName, bool isCurrentBranch)
+        string remoteBranchName, bool isCurrentBranch, CancellationToken cancellationToken = default)
     {
         var args = isCurrentBranch
             ? new[] { "pull", "--ff-only", remoteName, remoteBranchName }
             : new[] { "fetch", remoteName, $"{remoteBranchName}:{branchName}" };
 
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -385,13 +261,13 @@ internal class RemoteSyncOperations
     /// Push a specific branch to remote.
     /// </summary>
     public async Task PushBranchAsync(string repoPath, string branchName, string remoteName,
-        string remoteBranchName, bool isCurrentBranch)
+        string remoteBranchName, bool isCurrentBranch, CancellationToken cancellationToken = default)
     {
         var args = isCurrentBranch
             ? new[] { "push", remoteName, branchName }
             : new[] { "push", remoteName, $"{branchName}:{remoteBranchName}" };
 
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {

@@ -1,0 +1,192 @@
+<Window x:Class="Leaf.Views.ApplyPatchDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+        Title="Apply Patch"
+        Width="640"
+        Height="700"
+        MinWidth="480"
+        MinHeight="560"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource ApplicationBackgroundBrush}"
+        ResizeMode="CanResize">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header + file picker -->
+        <StackPanel Grid.Row="0" Margin="24,20,24,12">
+            <TextBlock Text="Apply Patch"
+                       FontSize="20"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+            <TextBlock Text="Select one or more .patch files. Files will be applied in the listed order."
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,4,0,12" />
+            <StackPanel Orientation="Horizontal">
+                <Button Padding="12,6"
+                        Click="AddFiles_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <ic:SymbolIcon Symbol="DocumentAdd" FontSize="14" Margin="0,0,6,0" />
+                        <TextBlock Text="Add Patches..." />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="RemoveSelectedButton"
+                        Margin="8,0,0,0"
+                        Padding="12,6"
+                        IsEnabled="False"
+                        Click="RemoveSelected_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <ic:SymbolIcon Symbol="Delete" FontSize="14" Margin="0,0,6,0" />
+                        <TextBlock Text="Remove" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="MoveUpButton"
+                        Margin="8,0,0,0"
+                        Padding="12,6"
+                        IsEnabled="False"
+                        ToolTip="Move selected patch up (changes apply order)"
+                        Click="MoveUp_Click">
+                    <ic:SymbolIcon Symbol="ArrowUp" FontSize="14" />
+                </Button>
+                <Button x:Name="MoveDownButton"
+                        Margin="4,0,0,0"
+                        Padding="12,6"
+                        IsEnabled="False"
+                        ToolTip="Move selected patch down (changes apply order)"
+                        Click="MoveDown_Click">
+                    <ic:SymbolIcon Symbol="ArrowDown" FontSize="14" />
+                </Button>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Preview list. MinHeight pins a usable list area even when
+             the user resizes the window all the way down to the
+             window-level MinHeight, so the strategy panel can never
+             eat the entire vertical budget. -->
+        <Border Grid.Row="1"
+                Margin="24,0,24,12"
+                MinHeight="220"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <Grid>
+                <ListView x:Name="PreviewList"
+                          BorderThickness="0"
+                          Background="Transparent"
+                          SelectionMode="Extended"
+                          SelectionChanged="PreviewList_SelectionChanged">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Subject" Width="280">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <ic:SymbolIcon Symbol="Warning"
+                                                           FontSize="14"
+                                                           Foreground="#E0A030"
+                                                           Margin="0,0,6,0"
+                                                           ToolTip="Could not parse patch headers"
+                                                           Visibility="{Binding HasParseError, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                            <TextBlock Text="{Binding Subject}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Author" Width="160" DisplayMemberBinding="{Binding Author}" />
+                            <GridViewColumn Header="Date" Width="140">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding AuthoredWhen, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+
+                <TextBlock x:Name="EmptyHint"
+                           Text="No patches selected — click Add Patches… to choose files."
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            </Grid>
+        </Border>
+
+        <!-- Strategy radios -->
+        <Border Grid.Row="2"
+                Margin="24,0,24,12"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16">
+            <StackPanel>
+                <TextBlock Text="Strategy"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           Margin="0,0,0,8" />
+                <RadioButton x:Name="AmStrategyRadio"
+                             IsChecked="True"
+                             GroupName="Strategy"
+                             Margin="0,0,0,6"
+                             Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                    <StackPanel>
+                        <TextBlock Text="git am — apply as new commits" FontWeight="SemiBold" />
+                        <TextBlock Text="Preserves the author / date / message recorded in the patch headers."
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="ApplyStrategyRadio"
+                             GroupName="Strategy"
+                             Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                    <StackPanel>
+                        <TextBlock Text="git apply — leave changes in working tree" FontWeight="SemiBold" />
+                        <TextBlock Text="Diff-only ingest. Use this to re-attribute the change or stage selectively."
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </RadioButton>
+            </StackPanel>
+        </Border>
+
+        <!-- Footer -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="24,16">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancel"
+                        Padding="20,10"
+                        IsCancel="True"
+                        Click="Cancel_Click" />
+                <Button x:Name="ApplyButton"
+                        Margin="12,0,0,0"
+                        Padding="24,10"
+                        Click="Apply_Click"
+                        IsEnabled="False"
+                        Style="{StaticResource AccentButtonStyle}">
+                    <StackPanel Orientation="Horizontal">
+                        <ic:SymbolIcon Symbol="ArrowImport" FontSize="14" Margin="0,0,8,0" />
+                        <TextBlock Text="Apply" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

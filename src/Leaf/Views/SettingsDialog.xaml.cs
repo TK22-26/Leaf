@@ -14,18 +14,42 @@ public partial class SettingsDialog : Window
 {
     private readonly CredentialService _credentialService;
     private readonly SettingsService _settingsService;
+    private readonly IExternalToolConfigService _externalToolConfig;
+    private readonly IExternalToolDetectorService _externalToolDetector;
+    private readonly string? _currentRepoPath;
     private readonly AppSettings _settings;
     private bool _suppressNavSelection;
+    private bool _externalToolsBound;
+    private readonly string? _initialSection;
 
     // Search items for settings
     private readonly List<SettingsSearchItem> _allSearchItems;
 
-    public SettingsDialog(CredentialService credentialService, SettingsService settingsService)
+    /// <summary>
+    /// <paramref name="initialSection"/> matches the navigation tags used
+    /// internally (<c>"ExternalTools"</c>, <c>"AiMerge"</c>, etc.) and
+    /// pre-selects that section instead of the default Clone Path. Lets
+    /// callers deep-link the user to the section that's relevant to the
+    /// action they triggered — e.g. clicking "Resolve in External Tool"
+    /// when no tool is configured opens directly to External Tools rather
+    /// than dropping the user on Clone Path with no hint.
+    /// </summary>
+    public SettingsDialog(
+        CredentialService credentialService,
+        SettingsService settingsService,
+        IExternalToolConfigService externalToolConfig,
+        IExternalToolDetectorService externalToolDetector,
+        string? currentRepoPath,
+        string? initialSection = null)
     {
         InitializeComponent();
+        _initialSection = initialSection;
 
         _credentialService = credentialService;
         _settingsService = settingsService;
+        _externalToolConfig = externalToolConfig;
+        _externalToolDetector = externalToolDetector;
+        _currentRepoPath = currentRepoPath;
         _settings = settingsService.LoadSettings();
 
         // Initialize search items
@@ -53,6 +77,9 @@ public partial class SettingsDialog : Window
             new("Codex", "Connect to Codex CLI for AI features", "Codex", Symbol.Bot),
             new("Ollama", "Connect to Ollama for local AI features", "Ollama", Symbol.Bot),
             new("Local LLM", "Run AI locally with Ollama", "Ollama", Symbol.Bot),
+            new("Merge Assistant", "AI-assisted three-way merge resolution via MCP", "AiMerge", Symbol.BranchCompare),
+            new("AI Merge", "AI-assisted three-way merge resolution via MCP", "AiMerge", Symbol.BranchCompare),
+            new("MCP Server", "Path to the Model Context Protocol server for merge assistance", "AiMerge", Symbol.BranchCompare),
             new("GitFlow", "Configure GitFlow default settings", "GitFlow", Symbol.Flow),
             new("Remotes", "Configure multi-remote sync behavior", "Remotes", Symbol.Cloud),
             new("Sync All Remotes", "Push and pull to all remotes automatically", "Remotes", Symbol.Cloud),
@@ -62,6 +89,22 @@ public partial class SettingsDialog : Window
             new("Logging", "Configure diagnostic logging for troubleshooting", "Logging", Symbol.Bug),
             new("Log Level", "Set log verbosity: off, normal, or verbose", "Logging", Symbol.Bug),
             new("Diagnostics", "Enable diagnostic logging to file", "Logging", Symbol.Bug),
+            new("External Tools", "Configure external diff and merge tools", "ExternalTools", Symbol.Wrench),
+            new("Diff Tool", "Choose an external diff tool (VS Code, Beyond Compare, etc.)", "ExternalTools", Symbol.Wrench),
+            new("Merge Tool", "Choose an external merge tool for conflict resolution", "ExternalTools", Symbol.Wrench),
+            new("Branch Colours", "Choose the palette for graph branch colours and manage custom palettes", "BranchColors", Symbol.Color),
+            new("Branch Colors", "Choose the palette for graph branch colours and manage custom palettes", "BranchColors", Symbol.Color),
+            new("Colour Palette", "Pick a built-in or custom colour palette for the graph", "BranchColors", Symbol.Color),
+            new("Color Palette", "Pick a built-in or custom colour palette for the graph", "BranchColors", Symbol.Color),
+            new("Commit Templates", "Manage reusable commit message templates and placeholders", "CommitTemplates", Symbol.DocumentText),
+            new("Conventional Commits", "Edit the Conventional Commits preset and built-in templates", "CommitTemplates", Symbol.DocumentText),
+            new("Commit Signing", "Configure GPG / SSH signing for commits and tags", "CommitSigning", Symbol.ShieldCheckmark),
+            new("GPG", "Set up commit signing with GnuPG", "CommitSigning", Symbol.ShieldCheckmark),
+            new("Signing key", "Pick the GPG or SSH key used to sign commits", "CommitSigning", Symbol.Key),
+            new("SSH Keys", "Manage SSH keys, ~/.ssh/config, and the running ssh-agent", "SshKeys", Symbol.Key),
+            new("Generate SSH key", "Create a new ED25519 / RSA / ECDSA SSH key pair", "SshKeys", Symbol.Key),
+            new("ssh-agent", "Add or remove keys from the running ssh-agent", "SshKeys", Symbol.Key),
+            new("ssh config", "Edit ~/.ssh/config host entries", "SshKeys", Symbol.Key),
         };
 
         // Configure UserControls
@@ -75,8 +118,19 @@ public partial class SettingsDialog : Window
 
         LoadCurrentSettings();
 
-        // Select first item by default
-        NavClonePath.IsSelected = true;
+        // Caller-provided deep-link target wins over the Clone Path default.
+        // Use SelectNavItem to pick the right TreeViewItem so the navigation
+        // tree highlights its own selected row, then ShowContent fires the
+        // panel swap (no-op equivalent to the SelectionChanged hook firing).
+        if (!string.IsNullOrEmpty(_initialSection))
+        {
+            SelectNavItem(_initialSection);
+            ShowContent(_initialSection);
+        }
+        else
+        {
+            NavClonePath.IsSelected = true;
+        }
     }
 
     private void SettingsNavTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -103,6 +157,12 @@ public partial class SettingsDialog : Window
         GitHubSettings.Visibility = Visibility.Collapsed;
         AiSettings.Visibility = Visibility.Collapsed;
         GitFlowSettings.Visibility = Visibility.Collapsed;
+        ExternalToolsSettings.Visibility = Visibility.Collapsed;
+        KeyboardShortcutsSettings.Visibility = Visibility.Collapsed;
+        BranchColorsSettings.Visibility = Visibility.Collapsed;
+        CommitTemplatesSettings.Visibility = Visibility.Collapsed;
+        CommitSigningSettings.Visibility = Visibility.Collapsed;
+        SshKeysSettings.Visibility = Visibility.Collapsed;
         ContentSearchResults.Visibility = Visibility.Collapsed;
 
         // Show the selected content
@@ -141,6 +201,7 @@ public partial class SettingsDialog : Window
             case "Gemini":
             case "Codex":
             case "Ollama":
+            case "AiMerge":
                 AiSettings.Visibility = Visibility.Visible;
                 AiSettings.ShowSection(tag);
                 break;
@@ -160,6 +221,54 @@ public partial class SettingsDialog : Window
             case "GitFlow":
                 GitFlowSettings.Visibility = Visibility.Visible;
                 break;
+            case "ExternalTools":
+                ExternalToolsSettings.Visibility = Visibility.Visible;
+                BindExternalToolsIfNeededAsync()
+                    .FireAndForget(nameof(BindExternalToolsIfNeededAsync), isUserAction: true);
+                break;
+            case "KeyboardShortcuts":
+                KeyboardShortcutsSettings.Visibility = Visibility.Visible;
+                break;
+            case "BranchColors":
+                BranchColorsSettings.Visibility = Visibility.Visible;
+                break;
+            case "CommitTemplates":
+                CommitTemplatesSettings.Visibility = Visibility.Visible;
+                break;
+            case "CommitSigning":
+                CommitSigningSettings.Visibility = Visibility.Visible;
+                CommitSigningSettings.ActiveRepositoryPath = _currentRepoPath;
+                break;
+            case "SshKeys":
+                SshKeysSettings.Visibility = Visibility.Visible;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Lazily bind the External Tools section to its services the first
+    /// time the user navigates to it. Guarded by <c>_externalToolsBound</c>
+    /// so we don't re-read git config on every click. The flag is set
+    /// before awaiting so concurrent clicks don't trigger overlapping
+    /// binds; failures reset it so a retry is possible.
+    /// </summary>
+    private async Task BindExternalToolsIfNeededAsync()
+    {
+        if (_externalToolsBound) return;
+        _externalToolsBound = true;
+
+        // `git config --global` ignores CWD but the CommandRunner still
+        // needs a valid directory. Fall back to UserProfile when Leaf
+        // was opened without any repo active.
+        var repoPath = _currentRepoPath ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        try
+        {
+            await ExternalToolsSettings.BindAsync(_externalToolConfig, _externalToolDetector, repoPath);
+        }
+        catch
+        {
+            _externalToolsBound = false;
+            throw;
         }
     }
 
@@ -202,6 +311,12 @@ public partial class SettingsDialog : Window
         GitHubSettings.Visibility = Visibility.Collapsed;
         AiSettings.Visibility = Visibility.Collapsed;
         GitFlowSettings.Visibility = Visibility.Collapsed;
+        ExternalToolsSettings.Visibility = Visibility.Collapsed;
+        KeyboardShortcutsSettings.Visibility = Visibility.Collapsed;
+        BranchColorsSettings.Visibility = Visibility.Collapsed;
+        CommitTemplatesSettings.Visibility = Visibility.Collapsed;
+        CommitSigningSettings.Visibility = Visibility.Collapsed;
+        SshKeysSettings.Visibility = Visibility.Collapsed;
 
         // Show search results
         ContentSearchResults.Visibility = Visibility.Visible;
@@ -244,8 +359,15 @@ public partial class SettingsDialog : Window
             "Gemini" => NavGemini,
             "Codex" => NavCodex,
             "Ollama" => NavOllama,
+            "AiMerge" => NavAiMerge,
             "Logging" => NavLogging,
             "GitFlow" => NavGitFlow,
+            "ExternalTools" => NavExternalTools,
+            "KeyboardShortcuts" => NavKeyboardShortcuts,
+            "BranchColors" => NavBranchColors,
+            "CommitTemplates" => NavCommitTemplates,
+            "CommitSigning" => NavCommitSigning,
+            "SshKeys" => NavSshKeys,
             _ => null
         };
 
@@ -278,12 +400,18 @@ public partial class SettingsDialog : Window
             _ => 1 // Normal
         };
         LogLevelComboBox.SelectedIndex = logLevelIndex;
+        ShowBackgroundOperationErrorsCheckBox.IsChecked = _settings.ShowBackgroundOperationErrors;
 
         // Load settings into UserControls
         AzureDevOpsSettings.LoadSettings(_settings, _credentialService);
         GitHubSettings.LoadSettings(_settings, _credentialService);
         AiSettings.LoadSettings(_settings, _credentialService);
         GitFlowSettings.LoadSettings(_settings, _credentialService);
+        BranchColorsSettings.LoadSettings(_settings, _credentialService);
+        CommitTemplatesSettings.LoadSettings(_settings, _credentialService);
+        CommitSigningSettings.ActiveRepositoryPath = _currentRepoPath;
+        CommitSigningSettings.LoadSettings(_settings, _credentialService);
+        SshKeysSettings.LoadSettings(_settings, _credentialService);
     }
 
     private void BrowseClonePath_Click(object sender, RoutedEventArgs e)
@@ -326,12 +454,17 @@ public partial class SettingsDialog : Window
         // Logging
         if (LogLevelComboBox.SelectedItem is ComboBoxItem logItem && logItem.Tag is string logTag)
             _settings.LogLevel = logTag;
+        _settings.ShowBackgroundOperationErrors = ShowBackgroundOperationErrorsCheckBox.IsChecked == true;
 
         // Save settings from UserControls
         AzureDevOpsSettings.SaveSettings(_settings, _credentialService);
         GitHubSettings.SaveSettings(_settings, _credentialService);
         AiSettings.SaveSettings(_settings, _credentialService);
         GitFlowSettings.SaveSettings(_settings, _credentialService);
+        BranchColorsSettings.SaveSettings(_settings, _credentialService);
+        CommitTemplatesSettings.SaveSettings(_settings, _credentialService);
+        CommitSigningSettings.SaveSettings(_settings, _credentialService);
+        SshKeysSettings.SaveSettings(_settings, _credentialService);
 
         // Save all settings
         _settingsService.SaveSettings(_settings);

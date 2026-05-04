@@ -58,6 +58,11 @@ public class BranchCategory
     public ObservableCollection<PullRequestInfo> PullRequests { get; set; } = [];
 
     /// <summary>
+    /// Submodules (used for SUBMODULES category).
+    /// </summary>
+    public ObservableCollection<SubmoduleInfo> Submodules { get; set; } = [];
+
+    /// <summary>
     /// Whether this is the LOCAL category (for template selection).
     /// </summary>
     public bool IsLocalCategory => Name == "LOCAL";
@@ -86,6 +91,11 @@ public class BranchCategory
     /// Whether this is the PULL REQUESTS category (for template selection).
     /// </summary>
     public bool IsPullRequestsCategory => Name == "PULL REQUESTS";
+
+    /// <summary>
+    /// Whether this is the SUBMODULES category (for template selection).
+    /// </summary>
+    public bool IsSubmodulesCategory => Name == "SUBMODULES";
 
     /// <summary>
     /// Categories are never "current" - this silences binding warnings in TreeView.

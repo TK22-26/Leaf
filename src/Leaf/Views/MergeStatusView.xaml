@@ -1,305 +1,450 @@
 <UserControl x:Class="Leaf.Views.MergeStatusView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+             xmlns:behaviors="clr-namespace:Leaf.Behaviors"
              xmlns:converters="clr-namespace:Leaf.Converters"
              xmlns:viewmodels="clr-namespace:Leaf.ViewModels"
-             mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="300"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="350"
              x:Name="MergeStatusRoot"
              d:DataContext="{d:DesignInstance Type=viewmodels:MainViewModel}">
     <UserControl.Resources>
-        <converters:GitOperationTypeToStringConverter x:Key="GitOpTypeConverter"/>
-        <Style x:Key="MergeActionButtonStyle"
-               TargetType="Button"
-               BasedOn="{StaticResource DefaultButtonStyle}">
-            <Setter Property="HorizontalAlignment" Value="Stretch"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="0,8"/>
-        </Style>
+        <ResourceDictionary>
+            <!--  SectionChevronToggleStyle lives in FileStatusResources, used by
+                  FileChangesSectionControl too. Merging it here lets the merge
+                  panel reuse the exact same chevron rotation animation as the
+                  WorkingChangesView's collapsible sections.  -->
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Views/Resources/FileStatusResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <converters:GitOperationTypeToStringConverter x:Key="GitOpTypeConverter" />
+            <converters:BoolToSectionRowHeightConverter x:Key="BoolToSectionRowHeightConverter" />
+
+            <!--  Edge-fade brushes + scroll-aware mask swapping live in
+                  the Leaf.Behaviors.ScrollEdgeFader attached property
+                  (applied on each list's wrapping Grid below). Reused
+                  across the right-side panels so the fade chrome reads
+                  consistently across merge status, working changes, etc.  -->
+
+            <!--  Slim-button style for the bottom Approve / Abort row. Compared
+                  to the previous Padding="0,8" with 16 pt icon, this gives ~30 px
+                  buttons that line up height-wise with WorkingChangesView's
+                  Commit button — the visual baseline the user wants.  -->
+            <Style x:Key="MergeActionButtonStyle"
+                   TargetType="Button"
+                   BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="0,6" />
+            </Style>
+
+            <!--  Shared base style for file rows in both the Conflicted and
+                  Resolved ListBoxes. Holds the common chrome: hover-only
+                  background tint, 2 px left border that turns
+                  AccentFillColorDefault on hover, no click-select highlight,
+                  and the IsCompactFileList trigger that tightens padding.
+                  Each list adds its own per-list specifics (AutomationId,
+                  EventSetter, Tag for ContextMenu) via BasedOn.  -->
+            <Style x:Key="MergeFileRowItemStyle" TargetType="ListBoxItem">
+                <Setter Property="Padding" Value="8,6" />
+                <Setter Property="Margin" Value="2" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ListBoxItem">
+                            <Border x:Name="Border"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="2,0,0,0"
+                                    CornerRadius="4"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Border" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                                    <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                </Trigger>
+                                <!-- IsSelected wins over IsMouseOver because the
+                                     trigger is declared later: same accent left
+                                     border as hover, but a stronger fill
+                                     (LeafAccentSelectedBrush — the same green
+                                     used by TreeViewItem / BranchListView) so
+                                     the user can scan which row is the active
+                                     selection at a glance. -->
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="Border" Property="Background" Value="{DynamicResource LeafAccentSelectedBrush}" />
+                                    <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding DataContext.MergeConflictResolutionViewModel.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                        <Setter Property="Padding" Value="8,3" />
+                        <Setter Property="Margin" Value="1" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <!--  Top banner (auto-sized to fit title + subtitle)  -->
+            <RowDefinition Height="Auto" />
+            <!--  Conflicted Files (collapsible)  -->
+            <RowDefinition Height="{Binding MergeConflictResolutionViewModel.IsConflictedExpanded, Converter={StaticResource BoolToSectionRowHeightConverter}}" />
+            <!--  Resolved Files (collapsible)  -->
+            <RowDefinition Height="{Binding MergeConflictResolutionViewModel.IsResolvedExpanded, Converter={StaticResource BoolToSectionRowHeightConverter}}" />
+            <!--  Slim footer (Approve / Abort)  -->
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <Border Grid.Row="0" Padding="24,32,24,16">
-            <StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <ic:SymbolIcon Symbol="Merge" FontSize="24" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                    <TextBlock Text="{Binding SelectedRepository.OperationType, Converter={StaticResource GitOpTypeConverter}, ConverterParameter=Title}"
-                               FontSize="20"
-                               FontWeight="SemiBold"
-                               Margin="12,0,0,0"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                </StackPanel>
-                <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap">
-                    <Run Text="{Binding SelectedRepository.OperationType, Converter={StaticResource GitOpTypeConverter}, ConverterParameter=Verb, Mode=OneWay}"/>
-                    <Run Text="{Binding SelectedRepository.MergingBranch, Mode=OneWay}" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                    <Run Text="{Binding SelectedRepository.OperationType, Converter={StaticResource GitOpTypeConverter}, ConverterParameter=Preposition, Mode=OneWay}"/>
-                    <Run Text="{Binding SelectedRepository.CurrentBranch, Mode=OneWay}" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                </TextBlock>
-            </StackPanel>
-        </Border>
-
-        <!-- Status & Info -->
-        <Border Grid.Row="1" Padding="24,0">
+        <!--  ─── Top banner: title (primary) + branch subtitle (secondary) ─  -->
+        <Border Grid.Row="0"
+                Padding="8"
+                Background="{DynamicResource ControlFillColorTertiaryBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="0,0,0,1">
             <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-                <Border Grid.Row="1"
-                        Background="{DynamicResource ControlFillColorDefaultBrush}"
-                        CornerRadius="4"
-                        Padding="8"
-                        Margin="0,0,0,16">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        <StackPanel Grid.Row="0" Margin="4,0,0,8">
-                            <TextBlock FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}">
-                                <Run Text="Conflicted Files ("/>
-                                <Run Text="{Binding MergeConflictResolutionViewModel.ConflictedConflicts.Count, Mode=OneWay, TargetNullValue=0}"/>
-                                <Run Text=")"/>
-                            </TextBlock>
-                            <Border BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                                    BorderThickness="0,0,0,1"
-                                    Margin="0,6,0,0"/>
-                        </StackPanel>
-                        <ListBox Grid.Row="1"
-                                 AutomationProperties.AutomationId="ConflictedFilesList"
-                                 ItemsSource="{Binding MergeConflictResolutionViewModel.ConflictedConflicts}"
-                                 SelectedItem="{Binding MergeConflictResolutionViewModel.SelectedConflict}"
-                                 Background="Transparent"
-                                 BorderThickness="0"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
-                            <ListBox.ItemContainerStyle>
-                                <Style TargetType="ListBoxItem">
-                                    <Setter Property="AutomationProperties.AutomationId" Value="ConflictedFileItem"/>
-                                    <Setter Property="AutomationProperties.Name" Value="{Binding FileName}"/>
-                                    <Setter Property="Padding" Value="8,6"/>
-                                    <Setter Property="Margin" Value="2"/>
-                                    <Setter Property="Cursor" Value="Hand"/>
-                                    <Setter Property="VerticalContentAlignment" Value="Center"/>
-                                    <EventSetter Event="MouseDoubleClick" Handler="OnConflictedFileDoubleClick"/>
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="ListBoxItem">
-                                                <Border x:Name="Border"
-                                                        Background="Transparent"
-                                                        CornerRadius="4"
-                                                        Padding="{TemplateBinding Padding}">
-                                                    <ContentPresenter VerticalAlignment="Center"/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsSelected" Value="True">
-                                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
-                                                    </Trigger>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding DataContext.MergeConflictResolutionViewModel.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
-                                            <Setter Property="Padding" Value="8,3"/>
-                                            <Setter Property="Margin" Value="1"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </ListBox.ItemContainerStyle>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding FileName}"
-                                                       AutomationProperties.AutomationId="ConflictedFileName"
-                                                       FontWeight="SemiBold"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       ToolTip="{Binding FilePath}"/>
-                                            <TextBlock Text="{Binding FilePath}"
-                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                       FontSize="11"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       ToolTip="{Binding FilePath}"
-                                                       Visibility="{Binding DataContext.MergeConflictResolutionViewModel.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1"
-                                                    Orientation="Horizontal"
-                                                    VerticalAlignment="Center"
-                                                    Visibility="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsMouseOver, Converter={StaticResource BoolToVisibilityConverter}}">
-                                            <Button AutomationProperties.AutomationId="ResolveInLeafButton"
-                                                    AutomationProperties.Name="Resolve in Leaf"
-                                                    Command="{Binding DataContext.OpenConflictInLeafCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}"
-                                                    Padding="6,2"
-                                                    Margin="0,0,6,0"
-                                                    ToolTip="Resolve in Leaf">
-                                                <ic:SymbolIcon Symbol="Edit" FontSize="12"/>
-                                            </Button>
-                                            <Button AutomationProperties.AutomationId="ResolveInVsCodeButton"
-                                                    AutomationProperties.Name="Resolve in VS Code"
-                                                    Command="{Binding DataContext.OpenConflictInVsCodeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}"
-                                                    Padding="6,2"
-                                                    ToolTip="Resolve in VS Code">
-                                                <ic:SymbolIcon Symbol="Code" FontSize="12"/>
-                                            </Button>
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
-                </Border>
+                <ic:SymbolIcon Grid.Column="0"
+                               Symbol="Merge"
+                               FontSize="16"
+                               Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
 
-                <Border Grid.Row="2"
-                        Background="{DynamicResource ControlFillColorDefaultBrush}"
-                        CornerRadius="4"
-                        Padding="8"
-                        Margin="0,0,0,16">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        <StackPanel Grid.Row="0" Margin="4,0,0,8">
-                            <TextBlock FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}">
-                                <Run Text="Resolved Files ("/>
-                                <Run Text="{Binding MergeConflictResolutionViewModel.ResolvedConflicts.Count, Mode=OneWay, TargetNullValue=0}"/>
-                                <Run Text=")"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock FontSize="14"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               Text="{Binding SelectedRepository.OperationType, Converter={StaticResource GitOpTypeConverter}, ConverterParameter=Title}" />
+
+                    <TextBlock FontSize="12"
+                               Margin="0,2,0,0"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                        <Run Text="{Binding SelectedRepository.MergingBranch, Mode=OneWay}" />
+                        <Run Text="{Binding SelectedRepository.OperationType, Converter={StaticResource GitOpTypeConverter}, ConverterParameter=Preposition, Mode=OneWay}" />
+                        <Run Text="{Binding SelectedRepository.CurrentBranch, Mode=OneWay}" />
+                        <TextBlock.ToolTip>
+                            <TextBlock>
+                                <Run Text="{Binding SelectedRepository.OperationType, Converter={StaticResource GitOpTypeConverter}, ConverterParameter=Verb, Mode=OneWay}" />
+                                <Run Text="{Binding SelectedRepository.MergingBranch, Mode=OneWay}" />
+                                <Run Text="{Binding SelectedRepository.OperationType, Converter={StaticResource GitOpTypeConverter}, ConverterParameter=Preposition, Mode=OneWay}" />
+                                <Run Text="{Binding SelectedRepository.CurrentBranch, Mode=OneWay}" />
                             </TextBlock>
-                            <Border BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                                    BorderThickness="0,0,0,1"
-                                    Margin="0,6,0,0"/>
-                        </StackPanel>
-                        <ListBox Grid.Row="1"
-                                 ItemsSource="{Binding MergeConflictResolutionViewModel.ResolvedConflicts}"
-                                 SelectedItem="{Binding MergeConflictResolutionViewModel.SelectedConflict}"
-                                 Background="Transparent"
-                                 BorderThickness="0"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
-                            <ListBox.ItemContainerStyle>
-                                <Style TargetType="ListBoxItem">
-                                    <Setter Property="Padding" Value="8,6"/>
-                                    <Setter Property="Margin" Value="2"/>
-                                    <Setter Property="Cursor" Value="Hand"/>
-                                    <Setter Property="VerticalContentAlignment" Value="Center"/>
-                                    <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
-                                    <Setter Property="ContextMenu">
-                                        <Setter.Value>
-                                            <ContextMenu>
-                                                <MenuItem Header="Move to Conflicted"
-                                                          Command="{Binding PlacementTarget.Tag.UnresolveMergeConflictCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          IsEnabled="{Binding PlacementTarget.DataContext.IsResolved, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-                                            </ContextMenu>
-                                        </Setter.Value>
-                                    </Setter>
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="ListBoxItem">
-                                                <Border x:Name="Border"
-                                                        Background="Transparent"
-                                                        CornerRadius="4"
-                                                        Padding="{TemplateBinding Padding}">
-                                                    <ContentPresenter VerticalAlignment="Center"/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsSelected" Value="True">
-                                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
-                                                    </Trigger>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding DataContext.MergeConflictResolutionViewModel.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
-                                            <Setter Property="Padding" Value="8,3"/>
-                                            <Setter Property="Margin" Value="1"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </ListBox.ItemContainerStyle>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding FileName}"
-                                                   FontWeight="SemiBold"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   ToolTip="{Binding FilePath}"/>
-                                        <TextBlock Text="{Binding FilePath}"
-                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                   FontSize="11"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   ToolTip="{Binding FilePath}"
-                                                   Visibility="{Binding DataContext.MergeConflictResolutionViewModel.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
-                </Border>
+                        </TextBlock.ToolTip>
+                    </TextBlock>
+                </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Actions -->
-        <Border Grid.Row="2" Padding="24" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+        <!--  ─── Conflicted Files section (collapsible) ──────────────────  -->
+        <Grid Grid.Row="1" Margin="8,8,8,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!--  Section header: chevron + title + count + 1 px separator  -->
+            <Grid Grid.Row="0" Margin="0,4,0,6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="1" />
+                </Grid.RowDefinitions>
+                <StackPanel Margin="0,0,0,4"
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal">
+                    <ToggleButton Margin="0,0,6,0"
+                                  VerticalAlignment="Center"
+                                  IsChecked="{Binding MergeConflictResolutionViewModel.IsConflictedExpanded, Mode=TwoWay}"
+                                  Style="{StaticResource SectionChevronToggleStyle}" />
+                    <TextBlock VerticalAlignment="Center"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               Text="Conflicted Files" />
+                    <TextBlock Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Text="{Binding MergeConflictResolutionViewModel.ConflictedConflicts.Count, Mode=OneWay, TargetNullValue=0, StringFormat=({0})}" />
+                </StackPanel>
+                <Border Grid.Row="1"
+                        Height="1"
+                        Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            </Grid>
+
+            <!--  Conflicted files list with scroll-aware edge fade.
+                  Behavior installs BitmapCache + OpacityMask on the
+                  wrapping Grid and swaps the mask between four states
+                  (no fade / bottom only / top only / both) on every
+                  ScrollChanged.  -->
+            <Grid Grid.Row="1"
+                  behaviors:ScrollEdgeFader.IsEnabled="True">
+            <ListBox AutomationProperties.AutomationId="ConflictedFilesList"
+                     ItemsSource="{Binding MergeConflictResolutionViewModel.ConflictedConflicts}"
+                     SelectedItem="{Binding MergeConflictResolutionViewModel.SelectedConflict}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox.ItemContainerStyle>
+                    <!--  Double-click opens the conflict in Leaf — replaces the
+                          pencil button on hover. The shared base style supplies
+                          the hover chrome and Compact trigger.  -->
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource MergeFileRowItemStyle}">
+                        <Setter Property="AutomationProperties.AutomationId" Value="ConflictedFileItem" />
+                        <Setter Property="AutomationProperties.Name" Value="{Binding FileName}" />
+                        <EventSetter Event="MouseDoubleClick" Handler="OnConflictedFileDoubleClick" />
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <!--  Typography matches FileChangesSectionControl
+                                      (staged / unstaged rows): 13 pt Normal weight
+                                      filename, 10 pt tertiary path. Earlier this
+                                      pane used SemiBold + secondary which made
+                                      the merge rows look heavier than the
+                                      working-tree rows in the same window.  -->
+                                <TextBlock Text="{Binding FileName}"
+                                           AutomationProperties.AutomationId="ConflictedFileName"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding FilePath}" />
+                                <TextBlock Text="{Binding FilePath}"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding FilePath}"
+                                           Visibility="{Binding DataContext.MergeConflictResolutionViewModel.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}" />
+                            </StackPanel>
+                            <!--  Row 1: external-tool button only. Edit-in-Leaf moved to
+                                  double-click on the row itself (matches the working-tree
+                                  panels' "no on-row buttons except secondary actions"
+                                  convention). The </> button keeps an explicit tooltip
+                                  so users still know what it does, since the icon alone
+                                  is ambiguous (could mean "view code" otherwise).  -->
+                            <!--  Default Visibility="Hidden" (not Collapsed) so the
+                                  button reserves layout space on every row even
+                                  when not hovered. A Visible-on-hover style trigger
+                                  paints it. Without this the row would grow taller
+                                  on hover (Collapsed → Visible adds the button's
+                                  height into the Grid measure) and the list would
+                                  visibly jump as the cursor moved. Mirrors
+                                  FileChangesSectionControl's ActionButton pattern.  -->
+                            <Button Grid.Column="1"
+                                    AutomationProperties.AutomationId="ResolveInExternalToolButton"
+                                    AutomationProperties.Name="Resolve in External Tool"
+                                    Command="{Binding DataContext.OpenConflictInMergeToolCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    Padding="6,2"
+                                    VerticalAlignment="Center"
+                                    ToolTipService.InitialShowDelay="200"
+                                    ToolTip="Resolve in external merge tool (configure in Settings → External Tools)">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="Visibility" Value="Hidden" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                                <ic:SymbolIcon Symbol="Code" FontSize="12" />
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            </Grid>
+        </Grid>
+
+        <!--  ─── Resolved Files section (collapsible) ────────────────────  -->
+        <Grid Grid.Row="2" Margin="8,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!--  Section header  -->
+            <Grid Grid.Row="0" Margin="0,4,0,6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="1" />
+                </Grid.RowDefinitions>
+                <StackPanel Margin="0,0,0,4"
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal">
+                    <ToggleButton Margin="0,0,6,0"
+                                  VerticalAlignment="Center"
+                                  IsChecked="{Binding MergeConflictResolutionViewModel.IsResolvedExpanded, Mode=TwoWay}"
+                                  Style="{StaticResource SectionChevronToggleStyle}" />
+                    <TextBlock VerticalAlignment="Center"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               Text="Resolved Files" />
+                    <TextBlock Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Text="{Binding MergeConflictResolutionViewModel.ResolvedConflicts.Count, Mode=OneWay, TargetNullValue=0, StringFormat=({0})}" />
+                </StackPanel>
+                <Border Grid.Row="1"
+                        Height="1"
+                        Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            </Grid>
+
+            <!--  Resolved files list — same scroll-aware fade as Conflicted.  -->
+            <Grid Grid.Row="1"
+                  behaviors:ScrollEdgeFader.IsEnabled="True">
+            <ListBox ItemsSource="{Binding MergeConflictResolutionViewModel.ResolvedConflicts}"
+                     SelectedItem="{Binding MergeConflictResolutionViewModel.SelectedConflict}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox.ItemContainerStyle>
+                    <!--  Resolved rows add a Tag for the right-click "Move to
+                          Conflicted" menu. The list is pre-filtered to only
+                          contain resolved entries so the menu's IsEnabled
+                          gate (was: bound to IsResolved) is dropped — every
+                          row qualifies.  -->
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource MergeFileRowItemStyle}">
+                        <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                        <Setter Property="ContextMenu">
+                            <Setter.Value>
+                                <ContextMenu>
+                                    <MenuItem Header="Move to Conflicted"
+                                              Command="{Binding PlacementTarget.Tag.UnresolveMergeConflictCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                </ContextMenu>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <!--  Typography matches FileChangesSectionControl —
+                                      see the Conflicted template above for the
+                                      rationale. Both lists must read with the
+                                      same weight as the working-tree rows.  -->
+                                <TextBlock Text="{Binding FileName}"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding FilePath}" />
+                                <TextBlock Text="{Binding FilePath}"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding FilePath}"
+                                           Visibility="{Binding DataContext.MergeConflictResolutionViewModel.IsCompactFileList, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}" />
+                            </StackPanel>
+                            <!--  Hover-only quick action: move the file back to the
+                                  Conflicted list. Mirrors the right-click "Move to
+                                  Conflicted" menu item but at one click instead of two —
+                                  matches the working-tree panels' pattern of surfacing
+                                  the section's primary inverse action on each row.
+                                  ArrowUndo icon reads as "undo this resolution".  -->
+                            <Button Grid.Column="1"
+                                    AutomationProperties.AutomationId="UnresolveButton"
+                                    AutomationProperties.Name="Move to Conflicted"
+                                    Command="{Binding DataContext.UnresolveMergeConflictCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    Padding="6,2"
+                                    VerticalAlignment="Center"
+                                    ToolTipService.InitialShowDelay="200"
+                                    ToolTip="Move back to Conflicted">
+                                <Button.Style>
+                                    <!--  Hidden default + Visible-on-hover (see
+                                          Conflicted template for rationale: keeps
+                                          rows the same height regardless of hover
+                                          state so the list doesn't jump as the
+                                          cursor moves over rows).  -->
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="Visibility" Value="Hidden" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                                <ic:SymbolIcon Symbol="ArrowUndo" FontSize="12" />
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            </Grid>
+        </Grid>
+
+        <!--  ─── Slim footer: Approve / Abort ────────────────────────────  -->
+        <Border Grid.Row="3"
+                Padding="8"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <Button Grid.Column="0"
                         AutomationProperties.AutomationId="ApproveMergeButton"
                         AutomationProperties.Name="Approve"
                         Command="{Binding MergeConflictResolutionViewModel.CompleteMergeCommand}"
-                        IsEnabled="{Binding MergeConflictResolutionViewModel.CanCompleteMerge}"
-                        Margin="0,0,12,0">
+                        Margin="0,0,8,0">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource MergeActionButtonStyle}">
-                            <Setter Property="Background" Value="#16A34A"/>
-                            <Setter Property="BorderBrush" Value="#22C55E"/>
-                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            <Setter Property="Background" Value="{DynamicResource Merge.State.Resolved}" />
+                            <Setter Property="BorderBrush" Value="{DynamicResource Merge.State.Resolved}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Merge.Text.OnAccent}" />
                             <Style.Triggers>
                                 <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="Background" Value="{DynamicResource ControlFillColorDisabledBrush}"/>
-                                    <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDisabledBrush}"/>
-                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}"/>
+                                    <Setter Property="Background" Value="{DynamicResource ControlFillColorDisabledBrush}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDisabledBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
                                 </Trigger>
                             </Style.Triggers>
                         </Style>
                     </Button.Style>
                     <StackPanel Orientation="Horizontal">
-                        <ic:SymbolIcon Symbol="Checkmark" FontSize="16" Margin="0,0,8,0"/>
-                        <TextBlock Text="Approve"/>
+                        <ic:SymbolIcon Symbol="Checkmark" FontSize="14" Margin="0,0,6,0" />
+                        <TextBlock Text="Approve" />
                     </StackPanel>
                 </Button>
 
@@ -309,14 +454,14 @@
                         Command="{Binding AbortMergeCommand}">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource MergeActionButtonStyle}">
-                            <Setter Property="Background" Value="#DC2626"/>
-                            <Setter Property="BorderBrush" Value="#F87171"/>
-                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            <Setter Property="Background" Value="{DynamicResource Merge.State.Unresolved}" />
+                            <Setter Property="BorderBrush" Value="{DynamicResource Merge.State.Unresolved}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Merge.Text.OnAccent}" />
                         </Style>
                     </Button.Style>
                     <StackPanel Orientation="Horizontal">
-                        <ic:SymbolIcon Symbol="Dismiss" FontSize="16" Margin="0,0,8,0"/>
-                        <TextBlock Text="Abort"/>
+                        <ic:SymbolIcon Symbol="Dismiss" FontSize="14" Margin="0,0,6,0" />
+                        <TextBlock Text="Abort" />
                     </StackPanel>
                 </Button>
             </Grid>

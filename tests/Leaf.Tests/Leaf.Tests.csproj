@@ -17,6 +17,8 @@
     </PackageReference>
     <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <!-- STA-threaded xUnit facts for WPF-related tests (FormattedText etc.). -->
+    <PackageReference Include="Xunit.StaFact" Version="1.2.69" />
     <PackageReference Include="coverlet.collector" Version="6.0.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -25,6 +27,23 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Leaf\Leaf.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Real-world merge fixture sides extracted from the
+         merge-overhaul-test repo's src/Services/UserService.cs. Used by
+         GitMergeFileEngineTests to regression-test the walker against the
+         exact scenario that originally broke (ours/theirs heavily diverge
+         with repeating `var user = ...`, `}`, `return all` idioms). -->
+    <None Update="Services\Merge\UserServiceFixture\base.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Services\Merge\UserServiceFixture\ours.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Services\Merge\UserServiceFixture\theirs.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

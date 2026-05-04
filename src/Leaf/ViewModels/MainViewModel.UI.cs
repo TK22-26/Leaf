@@ -61,21 +61,36 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Open settings.
+    /// Open settings. Pass <paramref name="initialSection"/> (e.g.
+    /// <c>"ExternalTools"</c>) to deep-link the user to a specific section
+    /// instead of the Clone Path default — used by call sites that
+    /// surface a "configure me" prompt and want the user to land directly
+    /// on the relevant config screen.
     /// </summary>
     [RelayCommand]
-    public void OpenSettings()
+    public async Task OpenSettingsAsync(string? initialSection = null)
     {
-        var dialog = new SettingsDialog(_credentialService, _settingsService)
+        var dialog = new SettingsDialog(
+            _credentialService,
+            _settingsService,
+            _externalToolConfig,
+            _externalToolDetector,
+            SelectedRepository?.Path,
+            initialSection)
         {
-            Owner = _ownerWindow,
             Width = 1000,
             Height = 750
         };
-        dialog.ShowDialog();
+        await _dialogService.ShowDialogAsync(dialog);
         TerminalViewModel?.ReloadSettings();
         WorkingChangesViewModel?.RefreshAiAvailability();
+        WorkingChangesViewModel?.RefreshCommitTemplatesEnabled();
         WorkingChangesViewModel?.RefreshSectionContexts();
+        if (WorkingChangesViewModel != null)
+            await WorkingChangesViewModel.RefreshExternalDiffToolAvailabilityAsync();
+        if (CommitDetailViewModel != null)
+            await CommitDetailViewModel.RefreshExternalDiffToolAvailabilityAsync();
+        await RefreshExternalMergeToolAvailabilityAsync();
         var updatedSettings = _settingsService.LoadSettings();
         if (CommitDetailViewModel != null)
             CommitDetailViewModel.IsCompactFileList = updatedSettings.CompactFileList;
@@ -135,13 +150,47 @@ public partial class MainViewModel
     /// Open dialog to report a new issue via GitHub CLI.
     /// </summary>
     [RelayCommand]
-    public void ReportIssue()
+    public async Task ReportIssueAsync()
     {
-        var dialog = new ReportIssueDialog
+        var dialog = new ReportIssueDialog();
+        await _dialogService.ShowDialogAsync(dialog);
+    }
+
+    /// <summary>
+    /// Open the reflog viewer for the currently selected repository.
+    /// No-op if no repo is selected. The reflog view raises
+    /// <see cref="ReflogViewModel.RepositoryMutated"/> after each
+    /// destructive action; we route that through the standard
+    /// async-error wrapper instead of a bare <c>async void</c>
+    /// lambda so a mid-refresh exception surfaces instead of
+    /// crashing the app via <see cref="TaskScheduler.UnobservedTaskException"/>.
+    /// </summary>
+    [RelayCommand]
+    public async Task ShowReflogAsync()
+    {
+        if (SelectedRepository == null) return;
+
+        var vm = new ReflogViewModel(_gitService, _clipboardService, _dialogService, SelectedRepository.Path);
+        void OnReflogMutated(object? sender, EventArgs e)
         {
-            Owner = _ownerWindow
-        };
-        dialog.ShowDialog();
+            // The event fires on the UI thread; FireAndForget's error
+            // handler produces a status toast if RefreshAsync throws.
+            RefreshAsync().FireAndForget(nameof(ShowReflogAsync), isUserAction: true);
+        }
+        vm.RepositoryMutated += OnReflogMutated;
+        try
+        {
+            var window = new Views.ReflogWindow(vm);
+            await _dialogService.ShowDialogAsync(window);
+        }
+        finally
+        {
+            vm.RepositoryMutated -= OnReflogMutated;
+        }
+        // No extra post-close refresh: the event path above already
+        // triggered one for every mutation, and an unconditional
+        // second refresh would race with whatever the first refresh
+        // is still doing on the UI thread.
     }
 
     /// <summary>
@@ -151,6 +200,20 @@ public partial class MainViewModel
     public void OpenReleasesPage()
     {
         UpdateService.OpenReleasesPage();
+    }
+
+    /// <summary>
+    /// Show the About dialog. Owned by the main window so it centres
+    /// correctly and dismisses with the rest of the app.
+    /// </summary>
+    [RelayCommand]
+    public void ShowAbout()
+    {
+        var dialog = new Views.AboutDialog
+        {
+            Owner = System.Windows.Application.Current?.MainWindow,
+        };
+        dialog.ShowDialog();
     }
 
     /// <summary>
@@ -169,23 +232,37 @@ public partial class MainViewModel
                 IsUpdateAvailable = true;
             }
         }
-        catch
+        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException
+                                or TaskCanceledException
+                                or System.Text.Json.JsonException
+                                or InvalidOperationException)
         {
-            // Silently ignore errors during startup check
+            // Update check is best-effort on startup — network down, GitHub
+            // rate-limited, malformed manifest all fall through silently.
+            Log.Info("Updates", $"Silent update check failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
     private async void OnTerminalCommandExecuted(object? sender, TerminalCommandExecutedEventArgs e)
     {
-        if (SelectedRepository == null)
+        try
         {
-            return;
-        }
+            if (SelectedRepository == null)
+            {
+                return;
+            }
 
-        // Refresh after successful git commands to sync the graph.
-        if (e.ExitCode == 0)
+            // Refresh after successful git commands to sync the graph.
+            if (e.ExitCode == 0)
+            {
+                await RefreshAsync();
+            }
+        }
+        catch (Exception ex)
         {
-            await RefreshAsync();
+            // Terminal-driven refresh — treat as user action since the user
+            // explicitly ran a command.
+            AsyncErrorHandler.Handle(ex, nameof(OnTerminalCommandExecuted), isUserAction: true);
         }
     }
 }

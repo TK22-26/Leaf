@@ -1,0 +1,21 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:editing="clr-namespace:Leaf.TextEdit.Editing">
+	<!--
+		Vendored AvalonEdit default styles. The Search and CodeCompletion
+		resource dictionaries were removed in Phase 2b along with their
+		subsystems; only the core TextEditor theme plus the LineNumberMargin
+		cursor style are needed for Leaf's merge / diff views.
+
+		Assembly short name is "Leaf" (the TextEdit namespace lives inside
+		Leaf.dll); pack URIs must reference /Leaf;component, not
+		/Leaf.TextEdit;component.
+	-->
+	<ResourceDictionary.MergedDictionaries>
+		<ResourceDictionary Source="/Leaf;component/TextEdit/TextEditor.xaml" />
+	</ResourceDictionary.MergedDictionaries>
+
+	<Style TargetType="{x:Type editing:LineNumberMargin}">
+		<Setter Property="Control.Cursor" Value="/Leaf;component/TextEdit/themes/RightArrow.cur"/>
+	</Style>
+</ResourceDictionary>

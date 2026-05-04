@@ -1,0 +1,130 @@
+<Window x:Class="Leaf.Views.AboutDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+        Title="About Leaf"
+        Width="460"
+        Height="500"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="{DynamicResource ApplicationBackgroundBrush}">
+    <Grid Margin="28,24,28,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Logo + name + version -->
+        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,18">
+            <Image Source="pack://application:,,,/Leaf;component/Assets/Leaf.png"
+                   Width="64" Height="64"
+                   HorizontalAlignment="Center"
+                   Margin="0,0,0,12"/>
+            <TextBlock Text="Leaf"
+                       FontSize="28"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       HorizontalAlignment="Center"/>
+            <TextBlock x:Name="VersionText"
+                       FontSize="13"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center"
+                       Margin="0,2,0,0"/>
+        </StackPanel>
+
+        <!-- Tagline -->
+        <TextBlock Grid.Row="1"
+                   Text="A modern WPF Git client for Windows."
+                   FontSize="13"
+                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                   HorizontalAlignment="Center"
+                   Margin="0,0,0,4"/>
+        <TextBlock Grid.Row="2"
+                   Text="Interactive commit graph, AI-assisted commits, integrated PRs."
+                   FontSize="11"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   HorizontalAlignment="Center"
+                   TextWrapping="Wrap"
+                   TextAlignment="Center"
+                   Margin="0,0,0,20"/>
+
+        <!-- Links -->
+        <StackPanel Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Top">
+            <Button x:Name="GitHubLinkButton"
+                    Click="OpenGitHub_Click"
+                    Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"
+                    Margin="0,3" Padding="12,6"
+                    Cursor="Hand">
+                <StackPanel Orientation="Horizontal">
+                    <ic:SymbolIcon Symbol="Open" FontSize="14" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"/>
+                    <TextBlock Text="GitHub repository"
+                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                               FontSize="12"/>
+                </StackPanel>
+            </Button>
+            <Button x:Name="WikiLinkButton"
+                    Click="OpenWiki_Click"
+                    Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"
+                    Margin="0,3" Padding="12,6"
+                    Cursor="Hand">
+                <StackPanel Orientation="Horizontal">
+                    <ic:SymbolIcon Symbol="Book" FontSize="14" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"/>
+                    <TextBlock Text="Wiki / documentation"
+                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                               FontSize="12"/>
+                </StackPanel>
+            </Button>
+            <Button x:Name="ReleasesLinkButton"
+                    Click="OpenReleases_Click"
+                    Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"
+                    Margin="0,3" Padding="12,6"
+                    Cursor="Hand">
+                <StackPanel Orientation="Horizontal">
+                    <ic:SymbolIcon Symbol="ArrowDownload" FontSize="14" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"/>
+                    <TextBlock Text="Releases"
+                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                               FontSize="12"/>
+                </StackPanel>
+            </Button>
+            <Button x:Name="IssuesLinkButton"
+                    Click="OpenIssues_Click"
+                    Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"
+                    Margin="0,3" Padding="12,6"
+                    Cursor="Hand">
+                <StackPanel Orientation="Horizontal">
+                    <ic:SymbolIcon Symbol="Bug" FontSize="14" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"/>
+                    <TextBlock Text="Report an issue"
+                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                               FontSize="12"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <!-- Footer -->
+        <StackPanel Grid.Row="4" HorizontalAlignment="Center">
+            <TextBlock Text="Freeware — free for non-commercial use."
+                       FontSize="10"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center"/>
+            <TextBlock x:Name="CopyrightText"
+                       FontSize="10"
+                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                       HorizontalAlignment="Center"
+                       Margin="0,2,0,8"/>
+            <Button Content="Close"
+                    Click="Close_Click"
+                    Width="100" Height="30"
+                    HorizontalAlignment="Center"
+                    IsCancel="True"
+                    IsDefault="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

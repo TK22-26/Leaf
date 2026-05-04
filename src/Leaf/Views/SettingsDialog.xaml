@@ -227,6 +227,14 @@
                                 </StackPanel>
                             </TreeViewItem.Header>
                         </TreeViewItem>
+                        <TreeViewItem x:Name="NavAiMerge" Tag="AiMerge">
+                            <TreeViewItem.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="BranchCompare" FontSize="14" Margin="0,0,8,0" />
+                                    <TextBlock Text="Merge Assistant" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </TreeViewItem.Header>
+                        </TreeViewItem>
                     </TreeViewItem>
 
                     <!-- GitFlow Defaults -->
@@ -235,6 +243,66 @@
                             <StackPanel Orientation="Horizontal">
                                 <ic:SymbolIcon Symbol="Flow" FontSize="16" Margin="0,0,8,0" />
                                 <TextBlock Text="GitFlow Defaults" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
+
+                    <!-- External Tools -->
+                    <TreeViewItem x:Name="NavExternalTools" Tag="ExternalTools">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="Wrench" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="External Tools" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
+
+                    <!-- Keyboard Shortcuts (§5.9) -->
+                    <TreeViewItem x:Name="NavKeyboardShortcuts" Tag="KeyboardShortcuts">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="Keyboard" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Keyboard Shortcuts" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
+
+                    <!-- Branch Colours (§5.14) -->
+                    <TreeViewItem x:Name="NavBranchColors" Tag="BranchColors">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="Color" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Branch Colours" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
+
+                    <!-- Commit Templates (§5.15) -->
+                    <TreeViewItem x:Name="NavCommitTemplates" Tag="CommitTemplates">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="DocumentText" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Commit Templates" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
+
+                    <!-- Commit Signing (§5.8) -->
+                    <TreeViewItem x:Name="NavCommitSigning" Tag="CommitSigning">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="ShieldCheckmark" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Commit Signing" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
+
+                    <!-- SSH Keys (§5.13) -->
+                    <TreeViewItem x:Name="NavSshKeys" Tag="SshKeys">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="Key" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="SSH Keys" VerticalAlignment="Center" />
                             </StackPanel>
                         </TreeViewItem.Header>
                     </TreeViewItem>
@@ -518,6 +586,41 @@
                                            Margin="0,12,0,0" />
                             </StackPanel>
                         </Border>
+
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="16"
+                                Margin="0,12,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Error Reporting"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           Margin="0,0,0,12" />
+
+                                <CheckBox x:Name="ShowBackgroundOperationErrorsCheckBox"
+                                          Margin="0,0,0,8">
+                                    <CheckBox.Content>
+                                        <StackPanel>
+                                            <TextBlock Text="Show background operation errors"
+                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                            <TextBlock Text="Surface errors from passive tasks (tooltip previews, auto-fetch, lazy loading) as toast notifications"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
+                                    </CheckBox.Content>
+                                </CheckBox>
+
+                                <TextBlock Text="Errors from user-initiated actions (clicking Push, opening a dialog, etc.) are always shown. This setting only affects errors from tasks you did not explicitly start."
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           Margin="0,8,0,0"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
 
                     <!-- Terminal Content -->
@@ -627,6 +730,24 @@
 
                     <!-- GitFlow Defaults Content (UserControl) -->
                     <settings:GitFlowSettingsControl x:Name="GitFlowSettings" Visibility="Collapsed" />
+
+                    <!-- External Tools Content -->
+                    <settings:ExternalToolsSettingsControl x:Name="ExternalToolsSettings" Visibility="Collapsed" />
+
+                    <!-- Keyboard Shortcuts Content (§5.9) -->
+                    <settings:KeyboardShortcutsSettingsControl x:Name="KeyboardShortcutsSettings" Visibility="Collapsed" />
+
+                    <!-- Branch Colours Content (§5.14) -->
+                    <settings:BranchColorsSettingsControl x:Name="BranchColorsSettings" Visibility="Collapsed" />
+
+                    <!-- Commit Templates Content (§5.15) -->
+                    <settings:CommitTemplatesSettingsControl x:Name="CommitTemplatesSettings" Visibility="Collapsed" />
+
+                    <!-- Commit Signing Content (§5.8) -->
+                    <settings:CommitSigningSettingsControl x:Name="CommitSigningSettings" Visibility="Collapsed" />
+
+                    <!-- SSH Keys Content (§5.13) -->
+                    <settings:SshKeysSettingsControl x:Name="SshKeysSettings" Visibility="Collapsed" />
 
                     <!-- Search Results (shown when searching) -->
                     <StackPanel x:Name="ContentSearchResults" Visibility="Collapsed">

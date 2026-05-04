@@ -54,6 +54,40 @@ public partial class TagInfo : ObservableObject
     public DateTimeOffset? TaggedAt { get; set; }
 
     /// <summary>
+    /// §5.8 verification status for the tag's GPG/SSH signature, parsed
+    /// from <c>git for-each-ref --format=%(signature:grade)</c>. Defaults
+    /// to <see cref="CommitSignatureStatus.None"/> for unsigned tags and
+    /// for tags where signature parsing was skipped (test fixtures, tags
+    /// constructed by client code without a git enrich pass).
+    /// </summary>
+    public CommitSignatureStatus SignatureStatus { get; set; } = CommitSignatureStatus.None;
+
+    /// <summary>The signer's name from <c>%(signature:signer)</c>. Empty for unsigned tags.</summary>
+    public string SignerName { get; set; } = string.Empty;
+
+    /// <summary>The signer's email parsed out of <c>%(signature:signer)</c>'s "Name &lt;email&gt;" form. Empty when not available.</summary>
+    public string SignerEmail { get; set; } = string.Empty;
+
+    /// <summary>The signing key's fingerprint from <c>%(signature:key)</c>. Empty for unsigned tags.</summary>
+    public string SignerKeyFingerprint { get; set; } = string.Empty;
+
+    /// <summary>True when the tag has any signature regardless of trust.</summary>
+    public bool IsSigned => SignatureStatus != CommitSignatureStatus.None;
+
+    /// <summary>
+    /// Single-line human-readable signature summary, sharing wording with
+    /// <see cref="CommitInfo.SignatureSummary"/> via
+    /// <see cref="SignatureSummaryFormatter"/>. Unsigned tags surface
+    /// their kind ("Annotated tag" / "Lightweight tag") instead of "No
+    /// signature" — for a lightweight tag the user would otherwise see
+    /// a tooltip about the absence of a thing they didn't expect to be
+    /// there.
+    /// </summary>
+    public string SignatureSummary => SignatureStatus == CommitSignatureStatus.None
+        ? (IsAnnotated ? "Annotated tag" : "Lightweight tag")
+        : SignatureSummaryFormatter.Format(SignatureStatus, SignerEmail);
+
+    /// <summary>
     /// Parses the tag name as a semantic version.
     /// Returns null if the tag name doesn't represent a valid version.
     /// </summary>

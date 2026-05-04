@@ -13,6 +13,391 @@ public partial class GitGraphCanvas
     private System.Windows.Controls.Primitives.Popup? _branchTooltipPopup;
     private StackPanel? _branchTooltipPanel;
 
+    // §5.8 signature tooltip — reuses the branch-tooltip's dark Border
+    // styling but is its own Popup so the two can coexist (hovering a
+    // signature badge while a branch overflow indicator is also under
+    // the cursor doesn't replace one with the other).
+    private System.Windows.Controls.Primitives.Popup? _signatureTooltipPopup;
+    private StackPanel? _signatureTooltipPanel;
+    private string? _signatureTooltipSha;
+
+    // §5.17 tag tooltip — same pattern as signature tooltip, dedicated
+    // popup so a tag chip hover doesn't replace a concurrent branch /
+    // signature tooltip.
+    private System.Windows.Controls.Primitives.Popup? _tagTooltipPopup;
+    private StackPanel? _tagTooltipPanel;
+    private string? _tagTooltipName;
+
+    /// <summary>
+    /// Show the §5.8 signature tooltip near the badge. Idempotent for
+    /// the same SHA — hovering the same badge across frames is the
+    /// common case and we don't want to rebuild children every time.
+    /// </summary>
+    private void ShowSignatureTooltip(GitTreeNode node, Point anchor)
+    {
+        if (string.Equals(_signatureTooltipSha, node.Sha, StringComparison.Ordinal)
+            && _signatureTooltipPopup is { IsOpen: true })
+        {
+            // Already visible for this node — leave it where it first
+            // popped up. Following the cursor causes the tooltip to
+            // jitter on every mouse-move frame within the badge area
+            // and is uncomfortable to read.
+            return;
+        }
+
+        if (_signatureTooltipPopup == null)
+        {
+            _signatureTooltipPanel = new StackPanel { Orientation = Orientation.Vertical };
+            var border = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(60, 60, 60)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8, 6, 8, 6),
+                Child = _signatureTooltipPanel,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = Colors.Black, BlurRadius = 12, ShadowDepth = 4, Opacity = 0.4
+                },
+            };
+            _signatureTooltipPopup = new System.Windows.Controls.Primitives.Popup
+            {
+                Child = border,
+                AllowsTransparency = true,
+                PlacementTarget = this,
+                Placement = System.Windows.Controls.Primitives.PlacementMode.Relative,
+                StaysOpen = true,
+            };
+        }
+
+        _signatureTooltipPanel!.Children.Clear();
+        _signatureTooltipPanel.Children.Add(BuildSignatureLine(
+            FontWeights.SemiBold, 12, SignatureSummaryFormatter.Format(node.SignatureStatus)));
+
+        if (!string.IsNullOrWhiteSpace(node.SignerName) || !string.IsNullOrWhiteSpace(node.SignerEmail))
+        {
+            var ident = string.IsNullOrWhiteSpace(node.SignerEmail)
+                ? node.SignerName
+                : (string.IsNullOrWhiteSpace(node.SignerName)
+                    ? node.SignerEmail
+                    : $"{node.SignerName} <{node.SignerEmail}>");
+            _signatureTooltipPanel.Children.Add(BuildSignatureLine(FontWeights.Normal, 11, ident));
+        }
+        if (!string.IsNullOrWhiteSpace(node.SignerKeyFingerprint))
+        {
+            _signatureTooltipPanel.Children.Add(BuildSignatureLine(
+                FontWeights.Normal, 10, FormatFingerprint(node.SignerKeyFingerprint)));
+        }
+
+        _signatureTooltipPopup.HorizontalOffset = anchor.X + 14;
+        _signatureTooltipPopup.VerticalOffset = anchor.Y + 14;
+        _signatureTooltipPopup.IsOpen = true;
+        _signatureTooltipSha = node.Sha;
+    }
+
+    private void HideSignatureTooltip()
+    {
+        if (_signatureTooltipPopup is { IsOpen: true })
+            _signatureTooltipPopup.IsOpen = false;
+        _signatureTooltipSha = null;
+    }
+
+    /// <summary>
+    /// §5.17 — show a tag tooltip near the chip at <paramref name="anchor"/>.
+    /// Idempotent for the same tag name (no jitter while the cursor is
+    /// inside the chip).
+    /// </summary>
+    private void ShowTagTooltip(TagInfo tag, Point anchor)
+    {
+        if (string.Equals(_tagTooltipName, tag.Name, StringComparison.Ordinal)
+            && _tagTooltipPopup is { IsOpen: true })
+        {
+            return;
+        }
+
+        if (_tagTooltipPopup == null)
+        {
+            _tagTooltipPanel = new StackPanel { Orientation = Orientation.Vertical };
+            var border = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(60, 60, 60)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(10, 8, 10, 8),
+                Child = _tagTooltipPanel,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = Colors.Black, BlurRadius = 12, ShadowDepth = 4, Opacity = 0.4,
+                },
+            };
+            _tagTooltipPopup = new System.Windows.Controls.Primitives.Popup
+            {
+                Child = border,
+                AllowsTransparency = true,
+                PlacementTarget = this,
+                Placement = System.Windows.Controls.Primitives.PlacementMode.Relative,
+                StaysOpen = true,
+            };
+        }
+
+        _tagTooltipPanel!.Children.Clear();
+
+        // Layout (per design feedback):
+        //   1. Title line — tag name, bold, primary text color
+        //   2. Annotation message — italic preview, only if the tag has one
+        //   3. Additional info — tagger / commit / date, in muted text
+        //   4. Signature info — only if signed
+        // Sections are separated by margin-bottom on the preceding block.
+
+        // 1. Title
+        var titleMargin = new Thickness(0, 0, 0, 6);
+        _tagTooltipPanel.Children.Add(new TextBlock
+        {
+            Text = tag.Name,
+            Foreground = Brushes.White,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 13,
+            FontWeight = FontWeights.Bold,
+            Margin = titleMargin,
+        });
+
+        // 2. Annotation (italic) — annotated tags only
+        if (tag.IsAnnotated && !string.IsNullOrWhiteSpace(tag.Message))
+        {
+            var preview = FirstMessageLine(tag.Message);
+            if (!string.IsNullOrEmpty(preview))
+            {
+                _tagTooltipPanel.Children.Add(new TextBlock
+                {
+                    Text = preview,
+                    Foreground = Brushes.White,
+                    FontFamily = new FontFamily("Segoe UI"),
+                    FontSize = 11,
+                    FontStyle = FontStyles.Italic,
+                    Margin = new Thickness(0, 0, 0, 6),
+                    MaxWidth = 380,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                });
+            }
+        }
+
+        // 3. Additional info. Annotated tags carry their own tagger /
+        // tag-date metadata; lightweight tags don't, so we substitute the
+        // target commit's author / date — the closest analogue of "who
+        // pinned this tag, when". The target-commit reference (short SHA
+        // + subject) is shown for both kinds when we can find the commit
+        // in the loaded node set.
+        var targetNode = FindTargetNode(tag.TargetSha);
+        var mutedBrush = new SolidColorBrush(Color.FromRgb(180, 180, 180));
+        var moreMutedBrush = new SolidColorBrush(Color.FromRgb(140, 140, 140));
+
+        if (tag.IsAnnotated)
+        {
+            var taggerLine = !string.IsNullOrWhiteSpace(tag.TaggerEmail)
+                ? $"Tagged by {tag.TaggerName} <{tag.TaggerEmail}>"
+                : (!string.IsNullOrWhiteSpace(tag.TaggerName) ? $"Tagged by {tag.TaggerName}" : null);
+            if (taggerLine != null)
+                _tagTooltipPanel.Children.Add(MakeInfoLine(taggerLine, mutedBrush, 11));
+
+            if (tag.TaggedAt is { } tagged)
+                _tagTooltipPanel.Children.Add(MakeInfoLine(FormatDateLine(tagged), moreMutedBrush, 10));
+
+            if (targetNode != null)
+                _tagTooltipPanel.Children.Add(MakeInfoLine(FormatTargetLine(targetNode), moreMutedBrush, 10));
+        }
+        else
+        {
+            // Lightweight: target commit first (it's the only data we
+            // have), then commit author / date as the "who and when".
+            if (targetNode != null)
+            {
+                _tagTooltipPanel.Children.Add(MakeInfoLine(FormatTargetLine(targetNode), mutedBrush, 11));
+
+                var authorLine = !string.IsNullOrWhiteSpace(targetNode.AuthorEmail)
+                    ? $"by {targetNode.Author} <{targetNode.AuthorEmail}>"
+                    : (!string.IsNullOrWhiteSpace(targetNode.Author) ? $"by {targetNode.Author}" : null);
+                if (authorLine != null)
+                    _tagTooltipPanel.Children.Add(MakeInfoLine(authorLine, moreMutedBrush, 10));
+
+                if (targetNode.Date != default)
+                    _tagTooltipPanel.Children.Add(MakeInfoLine(FormatDateLine(targetNode.Date), moreMutedBrush, 10));
+            }
+        }
+
+        // 4. Signature info — same wording as the commit signature tooltip
+        // so users learn one mental model.
+        if (tag.IsSigned)
+        {
+            // Add a top margin to the previous element so the signature
+            // section is visually separated from the additional info.
+            if (_tagTooltipPanel.Children.Count > 0
+                && _tagTooltipPanel.Children[_tagTooltipPanel.Children.Count - 1] is TextBlock last)
+            {
+                last.Margin = new Thickness(last.Margin.Left, last.Margin.Top, last.Margin.Right, 6);
+            }
+            _tagTooltipPanel.Children.Add(BuildSignatureLine(
+                FontWeights.SemiBold, 11, SignatureSummaryFormatter.Format(tag.SignatureStatus)));
+            if (!string.IsNullOrWhiteSpace(tag.SignerKeyFingerprint))
+            {
+                _tagTooltipPanel.Children.Add(BuildSignatureLine(
+                    FontWeights.Normal, 10, FormatFingerprint(tag.SignerKeyFingerprint)));
+            }
+        }
+
+        _tagTooltipPopup.HorizontalOffset = anchor.X + 14;
+        _tagTooltipPopup.VerticalOffset = anchor.Y + 14;
+        _tagTooltipPopup.IsOpen = true;
+        _tagTooltipName = tag.Name;
+    }
+
+    private void HideTagTooltip()
+    {
+        if (_tagTooltipPopup is { IsOpen: true })
+            _tagTooltipPopup.IsOpen = false;
+        _tagTooltipName = null;
+    }
+
+    /// <summary>
+    /// Return the first non-empty, non-comment line of a tag's annotation
+    /// message, capped at 120 chars. Mirrors what the picker preview does
+    /// for commit templates. Uses the shared signature-block stripper so
+    /// "first line" doesn't accidentally fall onto the PGP block when the
+    /// message body is empty.
+    /// </summary>
+    private static string FirstMessageLine(string message)
+    {
+        var body = SignatureSummaryFormatter.StripSignatureBlock(message);
+        foreach (var line in body.Split('\n'))
+        {
+            var trimmed = line.TrimEnd('\r').Trim();
+            if (string.IsNullOrEmpty(trimmed)) continue;
+            if (trimmed.StartsWith('#')) continue;
+            return trimmed.Length > 120 ? trimmed[..120] + "…" : trimmed;
+        }
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Build a single text line for the signature tooltip. White on the
+    /// dark background — matches the branch-overflow tooltip's typography
+    /// so the two feel consistent when both are visible briefly.
+    /// </summary>
+    private static TextBlock BuildSignatureLine(FontWeight weight, double size, string text) => new()
+    {
+        Text = text,
+        Foreground = Brushes.White,
+        FontFamily = new FontFamily("Segoe UI"),
+        FontSize = size,
+        FontWeight = weight,
+        Margin = new Thickness(0, 1, 0, 1),
+    };
+
+    /// <summary>
+    /// Tooltip "additional info" line — uniform typography for tagger,
+    /// target-commit, and date sub-rows.
+    /// </summary>
+    private static TextBlock MakeInfoLine(string text, Brush foreground, double size) => new()
+    {
+        Text = text,
+        Foreground = foreground,
+        FontFamily = new FontFamily("Segoe UI"),
+        FontSize = size,
+        Margin = new Thickness(0, 0, 0, 1),
+        MaxWidth = 380,
+        TextTrimming = TextTrimming.CharacterEllipsis,
+    };
+
+    /// <summary>
+    /// Look up the target commit of a tag in the canvas's loaded node set
+    /// so the tooltip can show the short SHA + subject (and, for
+    /// lightweight tags, the author / date that the tag itself doesn't
+    /// carry). Returns null when the target commit hasn't been paginated
+    /// in yet — the tooltip degrades gracefully in that case.
+    /// </summary>
+    private GitTreeNode? FindTargetNode(string targetSha)
+    {
+        if (string.IsNullOrWhiteSpace(targetSha)) return null;
+        if (_segmentNodeLookup.TryGetValue(targetSha, out var node)) return node;
+        // Fallback for the brief window after Nodes is set but
+        // _segmentNodeLookup hasn't been rebuilt yet (extremely rare).
+        var nodes = Nodes;
+        if (nodes == null) return null;
+        foreach (var n in nodes)
+        {
+            if (string.Equals(n.Sha, targetSha, StringComparison.OrdinalIgnoreCase))
+                return n;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// "→ abc1234  Subject of the commit". Format chosen to read as a
+    /// pointer ("the tag points at this") and to keep the SHA visually
+    /// scannable next to the ellipsised subject.
+    /// </summary>
+    private static string FormatTargetLine(GitTreeNode node)
+    {
+        var shortSha = node.Sha.Length >= 7 ? node.Sha[..7] : node.Sha;
+        var subject = string.IsNullOrEmpty(node.MessageShort) ? string.Empty : "  " + node.MessageShort;
+        return $"→ {shortSha}{subject}";
+    }
+
+    /// <summary>
+    /// Combine an absolute local timestamp with a relative-time hint so the
+    /// reader gets both "exactly when" and "at-a-glance how-old". Drops
+    /// the relative hint for very recent (<60s) or future timestamps where
+    /// "0s ago" / "in the future" would just be noise.
+    /// </summary>
+    private static string FormatDateLine(DateTimeOffset when)
+    {
+        var local = when.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+            System.Globalization.CultureInfo.InvariantCulture);
+        var rel = FormatRelativeTime(when);
+        return string.IsNullOrEmpty(rel) ? local : $"{local}  ({rel})";
+    }
+
+    /// <summary>
+    /// Short relative-time label — "3d ago", "2mo ago", "1y ago". Tuned
+    /// for a tooltip's small footprint; the absolute timestamp shown
+    /// alongside it carries the precision so this side just needs to
+    /// communicate "rough age".
+    /// </summary>
+    private static string FormatRelativeTime(DateTimeOffset when)
+    {
+        var diff = DateTimeOffset.Now - when;
+        if (diff.TotalSeconds < 60) return string.Empty;
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)}w ago";
+        if (diff.TotalDays < 365) return $"{(int)(diff.TotalDays / 30)}mo ago";
+        return $"{(int)(diff.TotalDays / 365)}y ago";
+    }
+
+    /// <summary>
+    /// Format a key fingerprint as <c>XXXX XXXX XXXX XXXX</c> blocks of
+    /// four hex chars for readability. SSH fingerprints use a different
+    /// shape (algorithm prefix + base64) and are returned unchanged.
+    /// </summary>
+    private static string FormatFingerprint(string fingerprint)
+    {
+        var trimmed = fingerprint?.Trim() ?? string.Empty;
+        if (trimmed.Length == 0) return string.Empty;
+        // SSH fingerprint: "SHA256:abcd..." — leave as-is.
+        if (trimmed.Contains(':')) return trimmed;
+        // GPG: 40-char hex. Group into blocks of 4.
+        if (trimmed.All(c => c is (>= '0' and <= '9') or (>= 'A' and <= 'F') or (>= 'a' and <= 'f')))
+        {
+            var groups = new List<string>(trimmed.Length / 4 + 1);
+            for (var i = 0; i < trimmed.Length; i += 4)
+                groups.Add(trimmed.Substring(i, Math.Min(4, trimmed.Length - i)));
+            return string.Join(' ', groups).ToUpperInvariant();
+        }
+        return trimmed;
+    }
+
     private void ShowBranchTooltip(List<BranchLabel> branches, Rect tagRect)
     {
         if (_branchTooltipPopup == null)
@@ -96,7 +481,7 @@ public partial class GitGraphCanvas
 
         foreach (var branch in branches)
         {
-            var branchBrush = GraphBuilder.GetBranchColor(branch.Name);
+            var branchBrush = ResolveBranchColor(branch.Name);
 
             // Create a row: colored circle + name (left) + icons (right)
             var row = new Grid

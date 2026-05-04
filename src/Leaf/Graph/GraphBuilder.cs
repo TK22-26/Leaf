@@ -7,148 +7,89 @@ namespace Leaf.Graph;
 /// Builds the visual graph structure from commits.
 /// Uses a simpler lane allocation that processes from oldest to newest.
 /// </summary>
+/// <remarks>
+/// Instance-based and <b>immutable after construction</b> for its colour
+/// resolver. Each repository gets its own builder; short-lived background
+/// builds (pagination, tooltip previews) create their own builder bound
+/// to the same resolver. Two guarantees fall out of this:
+/// <list type="bullet">
+/// <item>Concurrent builds cannot corrupt shared state (plan §1.2).</item>
+/// <item>A displayed graph can never render against a differently-configured
+/// resolver — the active builder, resolver, and nodes swap atomically in
+/// the view model.</item>
+/// </list>
+///
+/// <para>§5.14 split colour resolution out into
+/// <see cref="Services.BranchColorService"/>. The builder now only owns
+/// graph layout; colour for every node and every label is asked of the
+/// injected <see cref="IBranchColorResolver"/>. Lane fallback for unnamed
+/// lanes is the only colour-shaped responsibility that remains here, since
+/// it depends on the lane index that the builder alone tracks.</para>
+/// </remarks>
 public class GraphBuilder
 {
-    // Cache for generated branch colors (consistent across the session)
-    private static readonly Dictionary<string, Brush> BranchColorCache = new();
-    private static GitFlowConfig? _gitFlowConfig;
-    private static HashSet<string>? _remoteNames;
+    /// <summary>
+    /// Resolves colours for branch names. Owned externally — typically the
+    /// per-repo <see cref="Services.IBranchColorService"/>. Held by reference
+    /// because the resolver evolves over time (palette swaps, override
+    /// changes) and the builder needs to read whatever is current at
+    /// build time. Once a build completes, node colours are baked into
+    /// <see cref="GitTreeNode.NodeColor"/>; callers re-paint by either
+    /// (a) calling <see cref="RecolorNodes"/> or (b) doing a fresh build.
+    /// </summary>
+    private readonly IBranchColorResolver _colorResolver;
 
-    // Fallback colors for lanes without a known branch name
-    private static readonly Brush[] FallbackBrushes =
-    [
-        new SolidColorBrush(Color.FromRgb(0x60, 0x60, 0x60)), // Gray 1
-        new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80)), // Gray 2
-        new SolidColorBrush(Color.FromRgb(0x70, 0x70, 0x70)), // Gray 3
-        new SolidColorBrush(Color.FromRgb(0x90, 0x90, 0x90)), // Gray 4
-    ];
+    // Fallback colors for lanes without a known branch name. Stays here
+    // (rather than in the colour service) because the lane index that
+    // selects from this set is a graph-layout concept the resolver
+    // doesn't know about.
+    private static readonly Brush[] FallbackBrushes;
 
     static GraphBuilder()
     {
+        FallbackBrushes =
+        [
+            new SolidColorBrush(Color.FromRgb(0x60, 0x60, 0x60)), // Gray 1
+            new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80)), // Gray 2
+            new SolidColorBrush(Color.FromRgb(0x70, 0x70, 0x70)), // Gray 3
+            new SolidColorBrush(Color.FromRgb(0x90, 0x90, 0x90)), // Gray 4
+        ];
         foreach (var brush in FallbackBrushes)
             brush.Freeze();
     }
 
+    /// <summary>
+    /// Constructs a builder that delegates colour resolution to the given
+    /// resolver. Pass <see cref="NullBranchColorResolver.Instance"/> when
+    /// no repository is loaded yet — the design-time / initial state of
+    /// <see cref="ViewModels.GitGraphViewModel"/>.
+    /// </summary>
+    public GraphBuilder(IBranchColorResolver colorResolver)
+    {
+        _colorResolver = colorResolver ?? throw new ArgumentNullException(nameof(colorResolver));
+    }
+
     public int MaxLane { get; private set; }
 
-    #region Color Generation (same algorithm as GitGraphCanvas for consistency)
-
-    public static void SetGitFlowContext(GitFlowConfig? config, IEnumerable<string>? remoteNames)
-    {
-        _gitFlowConfig = config?.IsInitialized == true ? config : null;
-        _remoteNames = remoteNames != null
-            ? new HashSet<string>(remoteNames, StringComparer.OrdinalIgnoreCase)
-            : null;
-        ClearColorCache();
-    }
-
-    public static void ClearColorCache()
-    {
-        BranchColorCache.Clear();
-    }
-
     /// <summary>
-    /// Generates a consistent color from a branch name using HSL color space.
-    /// Same name always produces same color across instances.
+    /// Re-paints already-built nodes against the current resolver, in place.
+    /// Used after a colour-only change (palette switch, single-branch override)
+    /// so the canvas can refresh without re-running the lane allocator.
     /// </summary>
-    public static Brush GetBranchColor(string branchName)
+    public void RecolorNodes(IReadOnlyList<GitTreeNode> nodes)
     {
-        var normalizedName = NormalizeBranchName(branchName);
-
-        if (BranchColorCache.TryGetValue(normalizedName, out var cached))
-            return cached;
-
-        // Special case for HEAD label - use Leaf accent color with transparency
-        if (string.Equals(normalizedName, "HEAD", StringComparison.OrdinalIgnoreCase))
+        foreach (var node in nodes)
         {
-            // Leaf accent green (#28A745) with 55% opacity (same as LeafAccentSelectedBrush)
-            var headBrush = new SolidColorBrush(Color.FromArgb(0x88, 0x28, 0xA7, 0x45));
-            headBrush.Freeze();
-            BranchColorCache[normalizedName] = headBrush;
-            return headBrush;
+            node.NodeColor = ResolveNodeColor(node.PrimaryBranch, node.ColumnIndex);
         }
-
-        if (_gitFlowConfig != null)
-        {
-            var gitFlowBrush = BranchInfo.GetGitFlowColorForName(normalizedName, _gitFlowConfig);
-            if (gitFlowBrush != Brushes.Transparent)
-            {
-                BranchColorCache[normalizedName] = gitFlowBrush;
-                return gitFlowBrush;
-            }
-        }
-
-        // Use a stable hash (not GetHashCode which can vary)
-        uint hash = StableHash(normalizedName);
-
-        // Generate HSL values from hash
-        // Hue: full spectrum (0-360)
-        // Saturation: 55-75% (vibrant but not neon)
-        // Lightness: 45-55% (visible on both light/dark backgrounds)
-        double hue = (hash % 360);
-        double saturation = 0.55 + ((hash >> 8) % 20) / 100.0;
-        double lightness = 0.45 + ((hash >> 16) % 10) / 100.0;
-
-        var color = HslToRgb(hue, saturation, lightness);
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-
-        BranchColorCache[normalizedName] = brush;
-        return brush;
     }
 
-    private static string NormalizeBranchName(string branchName)
+    private Brush ResolveNodeColor(string? branchName, int lane)
     {
-        if (_remoteNames == null || string.IsNullOrEmpty(branchName))
-            return branchName;
-
-        var slashIndex = branchName.IndexOf('/');
-        if (slashIndex <= 0)
-            return branchName;
-
-        var prefix = branchName[..slashIndex];
-        return _remoteNames.Contains(prefix)
-            ? branchName[(slashIndex + 1)..]
-            : branchName;
+        return !string.IsNullOrEmpty(branchName)
+            ? _colorResolver.GetBranchColor(branchName)
+            : FallbackBrushes[lane % FallbackBrushes.Length];
     }
-
-    /// <summary>
-    /// Stable hash that doesn't change between runs (unlike string.GetHashCode).
-    /// </summary>
-    private static uint StableHash(string str)
-    {
-        uint hash = 5381;
-        foreach (char c in str)
-        {
-            hash = ((hash << 5) + hash) ^ c;
-        }
-        return hash;
-    }
-
-    /// <summary>
-    /// Convert HSL to RGB color.
-    /// </summary>
-    private static Color HslToRgb(double h, double s, double l)
-    {
-        double c = (1 - Math.Abs(2 * l - 1)) * s;
-        double x = c * (1 - Math.Abs((h / 60) % 2 - 1));
-        double m = l - c / 2;
-
-        double r, g, b;
-        if (h < 60) { r = c; g = x; b = 0; }
-        else if (h < 120) { r = x; g = c; b = 0; }
-        else if (h < 180) { r = 0; g = c; b = x; }
-        else if (h < 240) { r = 0; g = x; b = c; }
-        else if (h < 300) { r = x; g = 0; b = c; }
-        else { r = c; g = 0; b = x; }
-
-        return Color.FromRgb(
-            (byte)((r + m) * 255),
-            (byte)((g + m) * 255),
-            (byte)((b + m) * 255));
-    }
-
-    #endregion
 
     /// <summary>
     /// Build graph nodes from commits.
@@ -224,9 +165,7 @@ public class GraphBuilder
             }
 
             // Determine the color based on the branch name
-            var nodeColor = branchName != null
-                ? GetBranchColor(branchName)
-                : FallbackBrushes[lane % FallbackBrushes.Length];
+            var nodeColor = ResolveNodeColor(branchName, lane);
 
             // Create the node
             var node = new GitTreeNode
@@ -243,7 +182,18 @@ public class GraphBuilder
                 PrimaryBranch = branchName ?? commit.BranchNames.FirstOrDefault(),
                 IdenticonKey = commit.AvatarKey,
                 IsStash = commit.IsStash,
-                StashIndex = commit.StashIndex
+                StashIndex = commit.StashIndex,
+                // §5.8 carry the signature status onto the visual node so
+                // GitGraphCanvas can render the verification badge without
+                // crossing back to CommitInfo on every paint.
+                SignatureStatus = commit.SignatureStatus,
+                SignerName = commit.SignerName,
+                SignerEmail = commit.SignerEmail,
+                SignerKeyFingerprint = commit.SignerKeyFingerprint,
+                Author = commit.Author,
+                AuthorEmail = commit.AuthorEmail,
+                Date = commit.Date,
+                MessageShort = commit.MessageShort,
             };
 
             nodes.Add(node);
@@ -610,4 +560,27 @@ public class GraphBuilder
             activeLanes.Add(null);
         }
     }
+}
+
+/// <summary>
+/// No-op resolver used as the initial state of <see cref="ViewModels.GitGraphViewModel"/>
+/// before a repository is loaded. Returns a single neutral grey for any
+/// branch — keeps design-time and the brief "no repo selected" window
+/// from crashing on a null resolver.
+/// </summary>
+public sealed class NullBranchColorResolver : IBranchColorResolver
+{
+    public static readonly NullBranchColorResolver Instance = new();
+
+    private static readonly Brush NeutralBrush;
+
+    static NullBranchColorResolver()
+    {
+        NeutralBrush = new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80));
+        NeutralBrush.Freeze();
+    }
+
+    private NullBranchColorResolver() { }
+
+    public Brush GetBranchColor(string branchName) => NeutralBrush;
 }

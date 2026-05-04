@@ -28,5 +28,19 @@ public enum GitOperationType
     /// <summary>
     /// A rebase is in progress (.git/rebase-merge or .git/rebase-apply exists).
     /// </summary>
-    Rebase
+    Rebase,
+
+    /// <summary>
+    /// A <c>git am</c> is paused on a conflict (.git/rebase-apply/applying exists).
+    /// Distinct from <see cref="Rebase"/> because the control verbs are
+    /// different (<c>git am --continue/--skip/--abort</c> vs the rebase set).
+    /// </summary>
+    Am,
+
+    /// <summary>
+    /// A <c>git bisect</c> is in progress (.git/BISECT_START exists).
+    /// The user is walking the binary search and the verdict buttons
+    /// drive <c>git bisect good/bad/skip</c>; <c>reset</c> terminates.
+    /// </summary>
+    Bisect
 }

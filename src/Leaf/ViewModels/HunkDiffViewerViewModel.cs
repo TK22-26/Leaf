@@ -1,8 +1,10 @@
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using ICSharpCode.AvalonEdit.Highlighting;
+using Leaf.TextEdit.Highlighting;
 using Leaf.Models;
 using Leaf.Services;
 
@@ -16,6 +18,15 @@ public partial class HunkDiffViewerViewModel : ObservableObject
 {
     private readonly IGitService _gitService;
     private readonly IHunkService _hunkService;
+
+    /// <summary>
+    /// Returns the current repository's cancellation token. Set by
+    /// MainViewModel so this VM's background git calls abort when the
+    /// session is disposed on repo switch.
+    /// </summary>
+    public Func<CancellationToken>? GetSessionToken { get; set; }
+
+    private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
 
     public HunkDiffViewerViewModel(IGitService gitService, IHunkService hunkService)
     {
@@ -132,7 +143,7 @@ public partial class HunkDiffViewerViewModel : ObservableObject
             ErrorMessage = null;
 
             var patch = _hunkService.GenerateHunkPatch(FilePath, hunk);
-            await _gitService.RevertHunkAsync(RepositoryPath, patch);
+            await _gitService.RevertHunkAsync(RepositoryPath, patch, cancellationToken: SessionToken);
 
             HunkReverted?.Invoke(this, hunk);
         }
@@ -161,7 +172,7 @@ public partial class HunkDiffViewerViewModel : ObservableObject
             ErrorMessage = null;
 
             var patch = _hunkService.GenerateHunkPatch(FilePath, hunk);
-            await _gitService.StageHunkAsync(RepositoryPath, patch);
+            await _gitService.StageHunkAsync(RepositoryPath, patch, cancellationToken: SessionToken);
 
             HunkStaged?.Invoke(this, hunk);
         }
@@ -190,7 +201,7 @@ public partial class HunkDiffViewerViewModel : ObservableObject
             ErrorMessage = null;
 
             var patch = _hunkService.GenerateHunkPatch(FilePath, hunk);
-            await _gitService.UnstageHunkAsync(RepositoryPath, patch);
+            await _gitService.UnstageHunkAsync(RepositoryPath, patch, cancellationToken: SessionToken);
 
             HunkUnstaged?.Invoke(this, hunk);
         }

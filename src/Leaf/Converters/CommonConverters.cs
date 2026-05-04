@@ -1,8 +1,35 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Media;
 
 namespace Leaf.Converters;
+
+/// <summary>
+/// Converts a <see cref="Color"/> to a frozen <see cref="SolidColorBrush"/>.
+/// Bind to <c>Background</c> / <c>Foreground</c> / etc. on a real
+/// FrameworkElement instead of binding inside a freestanding
+/// <c>SolidColorBrush</c> — brushes aren't FrameworkElements and can't
+/// inherit DataContext, which produces the
+/// "Cannot find governing FrameworkElement" binding errors when a
+/// brush sits inside a DataTemplate.
+/// </summary>
+public class ColorToBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is Color color)
+        {
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+            return brush;
+        }
+        return Brushes.Transparent;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is SolidColorBrush b ? b.Color : Binding.DoNothing;
+}
 
 /// <summary>
 /// Converts bool to Visibility (true = Visible, false = Collapsed).
@@ -521,6 +548,8 @@ public class GitOperationTypeToStringConverter : IValueConverter
                 Models.GitOperationType.CherryPick => "Cherry-pick in Progress",
                 Models.GitOperationType.Revert => "Revert in Progress",
                 Models.GitOperationType.Rebase => "Rebase in Progress",
+                Models.GitOperationType.Am => "Patch Apply in Progress",
+                Models.GitOperationType.Bisect => "Bisect in Progress",
                 _ => "Operation in Progress"
             },
             "Verb" => opType switch
@@ -529,6 +558,8 @@ public class GitOperationTypeToStringConverter : IValueConverter
                 Models.GitOperationType.CherryPick => "Cherry-picking",
                 Models.GitOperationType.Revert => "Reverting",
                 Models.GitOperationType.Rebase => "Rebasing",
+                Models.GitOperationType.Am => "Applying patches",
+                Models.GitOperationType.Bisect => "Bisecting",
                 _ => "Processing"
             },
             "Preposition" => opType switch
@@ -537,6 +568,8 @@ public class GitOperationTypeToStringConverter : IValueConverter
                 Models.GitOperationType.CherryPick => "onto",
                 Models.GitOperationType.Revert => "on",
                 Models.GitOperationType.Rebase => "onto",
+                Models.GitOperationType.Am => "into",
+                Models.GitOperationType.Bisect => "in",
                 _ => "on"
             },
             _ => opType.ToString()

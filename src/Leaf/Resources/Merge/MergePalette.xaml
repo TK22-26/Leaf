@@ -1,0 +1,19 @@
+<!--
+    Merge editor palette swap-point. ThemeService replaces the merged
+    MergePaletteDark.xaml entry below with MergePaletteLight.xaml (V8) at
+    runtime — the indirection file survives the light-theme wave because
+    that swap is the whole reason to keep a thin umbrella layer.
+
+    Every merge control pulls tokens via {DynamicResource Merge.*} keys
+    defined in the merged palette dictionary — no inline hex anywhere else
+    in the merge UI.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="MergePaletteDark.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
+
+</ResourceDictionary>

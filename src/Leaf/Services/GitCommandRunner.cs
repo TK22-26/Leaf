@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.IO;
+using System.Text;
 
 namespace Leaf.Services;
 
@@ -8,13 +10,23 @@ namespace Leaf.Services;
 /// </summary>
 public class GitCommandRunner : IGitCommandRunner
 {
+    // Git emits UTF-8 by default on all platforms. The .NET default for
+    // ProcessStartInfo.StandardOutputEncoding is the console's code page
+    // (typically Windows-1252 on en-US) which silently corrupts non-ASCII
+    // output — see the merge engine tests for a concrete failure case.
+    // Explicit UTF-8 (no BOM) matches Git's wire format exactly.
+    private static readonly Encoding GitOutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+    /// <inheritdoc />
+    public event EventHandler<GitCommandEventArgs>? CommandExecuted;
+
     /// <inheritdoc />
     public Task<GitCommandResult> RunAsync(
         string workingDirectory,
         GitCommand command,
         CancellationToken cancellationToken = default)
     {
-        return RunAsync(workingDirectory, command.ToArguments(), null, cancellationToken);
+        return RunAsync(workingDirectory, command.ToArguments(), null, null, null, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -22,6 +34,8 @@ public class GitCommandRunner : IGitCommandRunner
         string workingDirectory,
         IReadOnlyList<string> arguments,
         string? input = null,
+        string? credentialKey = null,
+        IReadOnlyDictionary<string, string>? extraEnvironment = null,
         CancellationToken cancellationToken = default)
     {
         var startInfo = new ProcessStartInfo
@@ -33,11 +47,48 @@ public class GitCommandRunner : IGitCommandRunner
             RedirectStandardInput = input != null,
             UseShellExecute = false,
             CreateNoWindow = true,
+            StandardOutputEncoding = GitOutputEncoding,
+            StandardErrorEncoding = GitOutputEncoding,
         };
 
         // CRITICAL: Prevent git from hanging on credential prompts in background
         startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
         startInfo.Environment["GCM_INTERACTIVE"] = "never";  // Git Credential Manager
+
+        // Force English/POSIX locale so any callers that parse git's
+        // human-readable output ("Bisecting: N revisions left … (roughly K
+        // steps)", "<sha> is the first bad commit", "Your branch is ahead
+        // of …") aren't fooled by translated strings on a French / Japanese
+        // / etc. machine. Matches what GitCliHelpers already does for its
+        // synchronous spawns. Caller can override via extraEnvironment if
+        // they specifically need the user's locale.
+        startInfo.Environment["LC_ALL"] = "C";
+
+        // When a credential key is supplied, route git through Leaf.AskPass.exe
+        // instead of embedding the PAT in the URL or relying on GCM. Only the
+        // key (not the PAT) is exposed via environment variables.
+        if (!string.IsNullOrEmpty(credentialKey))
+        {
+            var askPass = AskPassPathResolver.ExecutablePath;
+            if (!string.IsNullOrEmpty(askPass))
+            {
+                startInfo.Environment["GIT_ASKPASS"] = askPass;
+                startInfo.Environment["LEAF_CREDENTIAL_KEY"] = credentialKey;
+            }
+        }
+
+        // Caller-supplied environment overrides take precedence so the
+        // interactive-rebase plumbing can plant GIT_SEQUENCE_EDITOR /
+        // GIT_EDITOR alongside the LEAF_REBASE_* contract that the helper
+        // exe reads. Previously-set keys (GIT_TERMINAL_PROMPT, GIT_ASKPASS)
+        // are intentionally overridable — caller is closer to the use case.
+        if (extraEnvironment != null)
+        {
+            foreach (var kvp in extraEnvironment)
+            {
+                startInfo.Environment[kvp.Key] = kvp.Value;
+            }
+        }
 
         // Use ArgumentList - NO string escaping needed!
         foreach (var arg in arguments)
@@ -93,9 +144,15 @@ public class GitCommandRunner : IGitCommandRunner
                     outputTask.WaitAsync(drainCts.Token),
                     errorTask.WaitAsync(drainCts.Token));
             }
-            catch
+            catch (Exception drainEx) when (drainEx is OperationCanceledException
+                                         or TimeoutException
+                                         or InvalidOperationException
+                                         or IOException
+                                         or AggregateException)
             {
-                // Ignore drain failures during cancellation
+                // Drain hit the 1s ceiling or streams were torn down — cancellation
+                // is still the outcome the caller needs to see.
+                Log.Info("GitRunner", $"Post-cancel drain failed: {drainEx.GetType().Name}: {drainEx.Message}");
             }
             throw;
         }
@@ -113,6 +170,29 @@ public class GitCommandRunner : IGitCommandRunner
         if (!result.Success && !string.IsNullOrWhiteSpace(result.StandardError))
         {
             Log.Error("Git", $"Command failed (exit code {result.ExitCode}): {result.StandardError}");
+        }
+
+        // Notify observers (merge editor's command log, terminal pane) AFTER
+        // the result is fully assembled so handlers see consistent state.
+        // Cancellation paths threw above and never reach here, which is the
+        // intended behaviour — cancelled commands have no result to report.
+        // Subscribers run synchronously on this thread; UI-touching handlers
+        // dispatcher-hop themselves (see IGitCommandRunner.CommandExecuted docs).
+        try
+        {
+            CommandExecuted?.Invoke(this, new GitCommandEventArgs(
+                workingDirectory,
+                string.Join(" ", arguments),
+                result.ExitCode,
+                result.StandardOutput,
+                result.StandardError));
+        }
+        catch (Exception ex)
+        {
+            // A faulty observer must not break the git call's return path.
+            // The result is what the caller actually awaited; an event-side
+            // exception is purely diagnostic.
+            Log.Warn("Git", $"CommandExecuted observer threw: {ex.GetType().Name}: {ex.Message}");
         }
 
         return result;

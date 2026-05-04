@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Utils;
 
 namespace Leaf.ViewModels;
 
@@ -15,12 +16,17 @@ public partial class CommitDetailViewModel : ObservableObject
     private readonly IGitService _gitService;
     private readonly IClipboardService _clipboardService;
     private readonly IFileSystemService _fileSystemService;
+    private readonly IExternalToolConfigService _externalToolConfig;
+    private readonly IExternalToolLauncherService _externalToolLauncher;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasParent))]
     [NotifyPropertyChangedFor(nameof(ParentShortSha))]
     [NotifyPropertyChangedFor(nameof(CoAuthors))]
     [NotifyPropertyChangedFor(nameof(HasCoAuthors))]
+    [NotifyPropertyChangedFor(nameof(SignatureBadgeGlyph))]
+    [NotifyPropertyChangedFor(nameof(SignatureBadgeBrush))]
+    [NotifyPropertyChangedFor(nameof(SignatureFingerprintDisplay))]
     private CommitInfo? _commit;
 
     [ObservableProperty]
@@ -65,6 +71,10 @@ public partial class CommitDetailViewModel : ObservableObject
     [ObservableProperty]
     private bool _showAllFiles;
 
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OpenInExternalDiffToolCommand))]
+    private bool _hasExternalDiffTool;
+
     private List<FileChangeInfo>? _changedFiles;
 
     /// <summary>
@@ -80,6 +90,39 @@ public partial class CommitDetailViewModel : ObservableObject
     public List<CommitInfo.CoAuthorInfo> CoAuthors => Commit?.CoAuthors ?? [];
 
     public bool HasCoAuthors => CoAuthors.Count > 0;
+
+    /// <summary>
+    /// §5.8 — Segoe Fluent Icons glyph for the signature badge in the
+    /// commit detail header. Sourced from <see cref="SignatureAppearance"/>
+    /// so the graph badge, commit detail, and tag detail show the same
+    /// glyph for the same status.
+    /// </summary>
+    public string SignatureBadgeGlyph =>
+        Commit is null ? string.Empty : SignatureAppearance.GlyphFor(Commit.SignatureStatus);
+
+    /// <summary>Brush colouring the signature glyph — shared palette.</summary>
+    public System.Windows.Media.Brush SignatureBadgeBrush =>
+        SignatureAppearance.BrushFor(Commit?.SignatureStatus ?? CommitSignatureStatus.None);
+
+    /// <summary>
+    /// Tooltip text for the signature row — full fingerprint plus signer
+    /// identity. Hidden when the commit is unsigned.
+    /// </summary>
+    public string SignatureFingerprintDisplay
+    {
+        get
+        {
+            if (Commit is null || !Commit.IsSigned) return string.Empty;
+            var lines = new List<string>(3) { Commit.SignatureSummary };
+            if (!string.IsNullOrWhiteSpace(Commit.SignerEmail))
+                lines.Add(string.IsNullOrWhiteSpace(Commit.SignerName)
+                    ? Commit.SignerEmail
+                    : $"{Commit.SignerName} <{Commit.SignerEmail}>");
+            if (!string.IsNullOrWhiteSpace(Commit.SignerKeyFingerprint))
+                lines.Add($"Key: {Commit.SignerKeyFingerprint}");
+            return string.Join('\n', lines);
+        }
+    }
 
     /// <summary>
     /// Short SHA of the first parent commit.
@@ -151,15 +194,28 @@ public partial class CommitDetailViewModel : ObservableObject
     /// </summary>
     public event EventHandler? SelectWorkingChangesRequested;
 
+    /// <summary>
+    /// Returns the current repository's cancellation token. Set by
+    /// MainViewModel so this VM's background git calls abort when the
+    /// session is disposed on repo switch.
+    /// </summary>
+    public Func<CancellationToken>? GetSessionToken { get; set; }
+
+    private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
+
     public CommitDetailViewModel(
         IGitService gitService,
         IClipboardService clipboardService,
         IFileSystemService fileSystemService,
+        IExternalToolConfigService externalToolConfig,
+        IExternalToolLauncherService externalToolLauncher,
         SettingsService settingsService)
     {
         _gitService = gitService;
         _clipboardService = clipboardService;
         _fileSystemService = fileSystemService;
+        _externalToolConfig = externalToolConfig;
+        _externalToolLauncher = externalToolLauncher;
         IsCompactFileList = settingsService.LoadSettings().CompactFileList;
     }
 
@@ -189,6 +245,7 @@ public partial class CommitDetailViewModel : ObservableObject
         {
             IsLoading = true;
             RepositoryPath = repoPath;
+            await RefreshExternalDiffToolAvailabilityAsync();
 
             // Clear existing data
             FileChanges.Clear();
@@ -197,11 +254,11 @@ public partial class CommitDetailViewModel : ObservableObject
             SelectedFile = null;
 
             // Load commit info
-            Commit = await _gitService.GetCommitAsync(repoPath, sha);
+            Commit = await _gitService.GetCommitAsync(repoPath, sha, cancellationToken: SessionToken);
 
             // Load file changes
             ShowAllFiles = false;
-            var changes = await _gitService.GetCommitChangesAsync(repoPath, sha);
+            var changes = await _gitService.GetCommitChangesAsync(repoPath, sha, cancellationToken: SessionToken);
             _changedFiles = changes;
             foreach (var change in changes)
             {
@@ -257,7 +314,7 @@ public partial class CommitDetailViewModel : ObservableObject
             };
 
             // Load file changes from the stash commit
-            var changes = await _gitService.GetCommitChangesAsync(repoPath, stash.Sha);
+            var changes = await _gitService.GetCommitChangesAsync(repoPath, stash.Sha, cancellationToken: SessionToken);
             foreach (var change in changes)
             {
                 FileChanges.Add(change);
@@ -296,7 +353,7 @@ public partial class CommitDetailViewModel : ObservableObject
         if (value)
         {
             ShowTreeView = true;
-            _ = LoadAllFilesAsync();
+            LoadAllFilesAsync().FireAndForget(nameof(LoadAllFilesAsync), isUserAction: true);
         }
         else
         {
@@ -320,7 +377,7 @@ public partial class CommitDetailViewModel : ObservableObject
         try
         {
             IsLoading = true;
-            var allFiles = await _gitService.GetCommitAllFilesAsync(RepositoryPath, Commit.Sha);
+            var allFiles = await _gitService.GetCommitAllFilesAsync(RepositoryPath, Commit.Sha, cancellationToken: SessionToken);
             FileChanges.Clear();
             foreach (var file in allFiles)
                 FileChanges.Add(file);
@@ -340,7 +397,7 @@ public partial class CommitDetailViewModel : ObservableObject
     {
         if (value != null && !string.IsNullOrEmpty(RepositoryPath) && Commit != null)
         {
-            _ = LoadDiffAsync(value);
+            LoadDiffAsync(value).FireAndForget(nameof(LoadDiffAsync), isUserAction: true);
         }
     }
 
@@ -353,8 +410,24 @@ public partial class CommitDetailViewModel : ObservableObject
             if (string.IsNullOrEmpty(RepositoryPath) || Commit == null)
                 return;
 
+            if (file.IsSubmodule)
+            {
+                // Submodule pointer changes have no line-diff — the
+                // interesting content is the pair of recorded commit
+                // SHAs. Render them as a synthetic two-pane diff so the
+                // existing viewer highlights the change without any
+                // submodule-aware UI work.
+                OldContent = file.SubmoduleOldSha.Length > 0
+                    ? $"Subproject commit {file.SubmoduleOldSha}"
+                    : string.Empty;
+                NewContent = file.SubmoduleNewSha.Length > 0
+                    ? $"Subproject commit {file.SubmoduleNewSha}"
+                    : string.Empty;
+                return;
+            }
+
             var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
-                RepositoryPath, Commit.Sha, file.Path);
+                RepositoryPath, Commit.Sha, file.Path, cancellationToken: SessionToken);
 
             OldContent = oldContent;
             NewContent = newContent;
@@ -421,6 +494,92 @@ public partial class CommitDetailViewModel : ObservableObject
         var normalizedFilePath = file.Path.Replace('/', '\\');
         var fullPath = Path.GetFullPath(Path.Combine(RepositoryPath, normalizedFilePath));
         _clipboardService.SetText(fullPath);
+    }
+
+    /// <summary>
+    /// Diff the file's parent-revision content against this commit's
+    /// revision in the user's configured external diff tool. We write
+    /// both sides to temp files rather than point the tool at the
+    /// working tree, because the commit being viewed may not be HEAD.
+    /// Disabled when no external diff tool is configured.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasExternalDiffTool))]
+    public async Task OpenInExternalDiffToolAsync(FileChangeInfo? file)
+    {
+        if (string.IsNullOrEmpty(RepositoryPath) || Commit == null || file == null)
+            return;
+
+        try
+        {
+            var diffTool = await _externalToolConfig.GetCurrentToolAsync(
+                RepositoryPath, ExternalToolKind.Diff, SessionToken);
+            if (diffTool == null)
+            {
+                HasExternalDiffTool = false;
+                return;
+            }
+
+            var (oldContent, newContent) = await _gitService.GetFileDiffAsync(
+                RepositoryPath, Commit.Sha, file.Path, cancellationToken: SessionToken);
+
+            var tempDir = Path.Combine(Path.GetTempPath(), "LeafDiff", Guid.NewGuid().ToString());
+            Directory.CreateDirectory(tempDir);
+
+            var fileName = Path.GetFileName(file.Path);
+            var extension = Path.GetExtension(file.Path);
+            var leftPath = Path.Combine(tempDir, $"{fileName}.before{extension}");
+            var rightPath = Path.Combine(tempDir, $"{fileName}.after{extension}");
+
+            try
+            {
+                await File.WriteAllTextAsync(leftPath, oldContent, SessionToken);
+                await File.WriteAllTextAsync(rightPath, newContent, SessionToken);
+                await _externalToolLauncher.LaunchDiffAsync(diffTool, leftPath, rightPath, SessionToken);
+            }
+            finally
+            {
+                try { Directory.Delete(tempDir, true); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Log.Warn("ExternalDiff", $"Failed to clean up temp directory: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or IOException
+                                or UnauthorizedAccessException
+                                or System.ComponentModel.Win32Exception
+                                or OperationCanceledException)
+        {
+            Log.Warn("ExternalDiff", $"Open diff in external tool failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Re-check whether an external diff tool is configured for this
+    /// repository. Called on repo switch and after the Settings dialog
+    /// closes so the menu item's enabled state matches git config.
+    /// </summary>
+    public async Task RefreshExternalDiffToolAvailabilityAsync()
+    {
+        if (string.IsNullOrEmpty(RepositoryPath))
+        {
+            HasExternalDiffTool = false;
+            return;
+        }
+
+        try
+        {
+            var tool = await _externalToolConfig.GetCurrentToolAsync(
+                RepositoryPath, ExternalToolKind.Diff, SessionToken);
+            HasExternalDiffTool = tool != null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or OperationCanceledException)
+        {
+            Log.Info("ExternalDiff", $"Availability probe failed: {ex.Message}");
+            HasExternalDiffTool = false;
+        }
     }
 
     /// <summary>

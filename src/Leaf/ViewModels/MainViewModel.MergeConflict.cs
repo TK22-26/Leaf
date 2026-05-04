@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Windows;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
@@ -23,63 +24,46 @@ public partial class MainViewModel
 
         if (MergeConflictResolutionViewModel == null) return;
 
-        var conflictWindow = new Views.ConflictResolutionView
+        var conflictWindow = new Views.Merge.MergeEditorView
         {
-            DataContext = MergeConflictResolutionViewModel,
-            Owner = System.Windows.Application.Current.MainWindow
+            DataContext = MergeConflictResolutionViewModel
         };
-
-        conflictWindow.ShowDialog();
-    }
-
-    /// <summary>
-    /// Open the first unresolved conflict in VS Code.
-    /// </summary>
-    [RelayCommand]
-    public async Task OpenInVsCodeAsync()
-    {
-        if (SelectedRepository == null) return;
-
+        // C5: blame-peek sha link → jump the commit graph to that commit.
+        // The editor window fires CommitJumpRequested; we route through the
+        // same OnNavigateToCommitRequested handler the CommitDetail panel
+        // uses for its own commit-hash hyperlinks.
+        conflictWindow.CommitJumpRequested += OnMergeEditorCommitJumpRequested;
+        // Auto-close on merge completion or external abort. Both cases come
+        // through MergeCompleted: in-editor Abort/CompleteMerge button, or
+        // RefreshMergeConflictResolutionAsync calling
+        // NotifyMergeAbortedExternally when the file watcher detects
+        // MERGE_HEAD vanished. ShowDialogAsync just calls ShowDialog(), so
+        // without this the window only closes when the user clicks X.
+        EventHandler<bool> closeOnComplete = (_, _) =>
+        {
+            if (conflictWindow.IsLoaded) conflictWindow.Close();
+        };
+        MergeConflictResolutionViewModel.MergeCompleted += closeOnComplete;
         try
         {
-            IsBusy = true;
-            StatusMessage = "Opening VS Code for merge...";
-
-            var conflicts = await _gitService.GetConflictsAsync(SelectedRepository.Path);
-            var firstConflict = conflicts.FirstOrDefault();
-
-            if (firstConflict != null)
-            {
-                await _gitService.OpenConflictInVsCodeAsync(SelectedRepository.Path, firstConflict.FilePath);
-
-                // Refresh to check if resolved
-                await RefreshAsync();
-
-                // If there are more conflicts, we could prompt to open the next one,
-                // but let's just refresh for now.
-                var remaining = await _gitService.GetConflictsAsync(SelectedRepository.Path);
-                if (remaining.Count == 0)
-                {
-                    StatusMessage = "All conflicts resolved in VS Code.";
-                }
-                else
-                {
-                    StatusMessage = $"Conflict resolved. {remaining.Count} remaining.";
-                }
-            }
-            else
-            {
-                StatusMessage = "No conflicts found to open.";
-            }
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Failed to open VS Code: {ex.Message}";
+            await _dialogService.ShowDialogAsync(conflictWindow);
         }
         finally
         {
-            IsBusy = false;
+            conflictWindow.CommitJumpRequested -= OnMergeEditorCommitJumpRequested;
+            // VM may already be null if RefreshMergeConflictResolutionAsync
+            // tore it down (external abort path); guard the unsubscribe.
+            if (conflictWindow.DataContext is ViewModels.Merge.MergeEditorViewModel vm)
+            {
+                vm.MergeCompleted -= closeOnComplete;
+            }
         }
+    }
+
+    private void OnMergeEditorCommitJumpRequested(object? sender, string sha)
+    {
+        if (string.IsNullOrEmpty(sha)) return;
+        GitGraphViewModel?.SelectCommitBySha(sha);
     }
 
     /// <summary>
@@ -92,18 +76,16 @@ public partial class MainViewModel
 
         try
         {
-            IsBusy = true;
+            await BeginBusyAsync("Aborting...");
             Log.Info("Merge", $"AbortMerge: repo={SelectedRepository.Name}");
 
             // Check if we're in an orphaned conflict state (conflicts without MERGE_HEAD)
-            var isOrphaned = await _gitService.IsOrphanedConflictStateAsync(SelectedRepository.Path);
+            var isOrphaned = await _gitService.IsOrphanedConflictStateAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             Log.Info("Merge", $"AbortMerge: isOrphaned={isOrphaned}");
 
             if (isOrphaned)
             {
                 // Show dialog to let user choose how to recover
-                StatusMessage = "Detected orphaned conflict state...";
-
                 var result = await _dialogService.ShowMessageAsync(
                     "The repository has conflicts but no merge is in progress.\n" +
                     "This can happen after a failed checkout or other operation.\n\n" +
@@ -116,7 +98,7 @@ public partial class MainViewModel
 
                 if (result == MessageBoxResult.Cancel)
                 {
-                    StatusMessage = "Recovery cancelled";
+                    NotifyInfo("Recovery cancelled", "Repository state unchanged.");
                     return;
                 }
 
@@ -132,27 +114,29 @@ public partial class MainViewModel
 
                     if (!confirmed)
                     {
-                        StatusMessage = "Recovery cancelled";
+                        NotifyInfo("Recovery cancelled", "Repository state unchanged.");
                         return;
                     }
                 }
 
-                StatusMessage = discardChanges
-                    ? "Resetting index and restoring files..."
-                    : "Resetting index...";
-
-                await _gitService.ResetOrphanedConflictsAsync(SelectedRepository.Path, discardChanges);
+                await _gitService.ResetOrphanedConflictsAsync(SelectedRepository.Path, discardChanges, cancellationToken: CurrentRepositoryToken);
 
                 // Clean up stored merge conflict file
                 try
                 {
-                    await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path);
+                    await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
                 }
-                catch { /* best-effort cleanup */ }
+                catch (Exception clearEx) when (clearEx is IOException or UnauthorizedAccessException)
+                {
+                    // Stored conflict file may already be gone or locked —
+                    // the reset itself already succeeded, so this is
+                    // cosmetic.
+                    Log.Info("Merge", $"Clear stored merge conflicts failed: {clearEx.Message}");
+                }
 
-                StatusMessage = discardChanges
-                    ? "Index reset and files restored"
-                    : "Index reset (working directory preserved)";
+                NotifySuccess("Index reset", discardChanges
+                    ? "Index reset and files restored."
+                    : "Index reset (working directory preserved).");
             }
             else
             {
@@ -163,27 +147,28 @@ public partial class MainViewModel
                 switch (opType)
                 {
                     case Models.GitOperationType.CherryPick:
-                        StatusMessage = "Aborting cherry-pick...";
-                        await _gitService.AbortCherryPickAsync(SelectedRepository.Path);
-                        StatusMessage = "Cherry-pick aborted";
+                        await _gitService.AbortCherryPickAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
+                        NotifySuccess("Cherry-pick aborted", "Working tree restored to pre-cherry-pick state.");
                         break;
 
                     case Models.GitOperationType.Revert:
-                        StatusMessage = "Aborting revert...";
-                        await _gitService.AbortRevertAsync(SelectedRepository.Path);
-                        StatusMessage = "Revert aborted";
+                        await _gitService.AbortRevertAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
+                        NotifySuccess("Revert aborted", "Working tree restored to pre-revert state.");
                         break;
 
                     case Models.GitOperationType.Rebase:
-                        StatusMessage = "Aborting rebase...";
-                        await _gitService.AbortRebaseAsync(SelectedRepository.Path);
-                        StatusMessage = "Rebase aborted";
+                        await _gitService.AbortRebaseAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
+                        NotifySuccess("Rebase aborted", "Working tree restored to pre-rebase state.");
+                        break;
+
+                    case Models.GitOperationType.Am:
+                        await _gitService.AbortAmAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
+                        NotifySuccess("Patch apply aborted", "Working tree restored to pre-apply state.");
                         break;
 
                     default:
-                        StatusMessage = "Aborting merge...";
-                        await _gitService.AbortMergeAsync(SelectedRepository.Path);
-                        StatusMessage = "Merge aborted";
+                        await _gitService.AbortMergeAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
+                        NotifySuccess("Merge aborted", "Working tree restored to pre-merge state.");
                         break;
                 }
 
@@ -193,7 +178,7 @@ public partial class MainViewModel
             // Clean up the stored merge conflict file immediately after abort
             try
             {
-                await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path);
+                await _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             }
             catch (Exception clearEx)
             {
@@ -205,7 +190,7 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             Log.Error("Merge", "AbortMerge failed", ex);
-            StatusMessage = $"Abort failed: {ex.Message}";
+            await ReportOperationFailureAsync("Abort", ex);
         }
         finally
         {
@@ -214,26 +199,103 @@ public partial class MainViewModel
     }
 
     [RelayCommand]
-    public async Task OpenConflictInVsCodeAsync(ConflictInfo? conflict)
+    public async Task OpenConflictInMergeToolAsync(ConflictInfo? conflict)
     {
         if (SelectedRepository == null || conflict == null) return;
 
+        var mergeTool = await _externalToolConfig.GetCurrentToolAsync(
+            SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
+        if (mergeTool == null)
+        {
+            // No tool configured. Drop the user directly into the External
+            // Tools settings page — earlier the button would be disabled
+            // (and so wouldn't even surface its tooltip), leaving users
+            // with no clue why nothing was happening. The "configure on
+            // demand" pattern matches GitHub Desktop and Sourcetree, and
+            // the settings page already offers auto-detection so most
+            // users land back here with a working tool one click later.
+            //
+            // ExternalToolsSettings persists tool selection via its Apply
+            // button (writes to `git config --global` through
+            // IExternalToolConfigService.SetSelectedToolAsync), so a
+            // user who picks a tool + clicks Apply + closes the dialog
+            // gets picked up by the re-fetch below. If they close without
+            // Apply, no tool is saved — explicit user choice, we honour
+            // it by returning early.
+            NotifyInfo("Merge tool needed", "Configure an external merge tool to resolve conflicts in it.");
+            await OpenSettingsAsync("ExternalTools");
+            // OpenSettingsAsync calls RefreshExternalMergeToolAvailabilityAsync
+            // on close, which updates HasExternalMergeTool — no need to
+            // pre-set it false here, that would just flicker any consumer
+            // bound to the property during the window the dialog is open.
+            mergeTool = await _externalToolConfig.GetCurrentToolAsync(
+                SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
+            if (mergeTool == null)
+            {
+                NotifyWarning("No merge tool", "No external merge tool configured.");
+                return;
+            }
+        }
+
         try
         {
-            IsBusy = true;
-            StatusMessage = "Opening VS Code for merge...";
+            await BeginBusyAsync($"Opening {mergeTool.DisplayName} for merge...");
 
-            await _gitService.OpenConflictInVsCodeAsync(SelectedRepository.Path, conflict.FilePath);
+            var staged = await _gitService.OpenConflictInMergeToolAsync(
+                SelectedRepository.Path,
+                conflict.FilePath,
+                (b, l, r, m, ct) => _externalToolLauncher.LaunchMergeAsync(mergeTool, b, l, r, m, ct),
+                cancellationToken: CurrentRepositoryToken);
 
             await RefreshAsync();
+
+            // Mirror the feedback users get from per-conflict
+            // resolution in Leaf's own merge view — without it a failed
+            // external merge silently returns as if nothing happened.
+            if (staged)
+            {
+                NotifySuccess("Conflict resolved", $"{conflict.FilePath} resolved in {mergeTool.DisplayName}.");
+            }
+            else
+            {
+                NotifyWarning("Merge tool exited", $"{mergeTool.DisplayName} did not produce a staged result for {conflict.FilePath}.");
+            }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Failed to open VS Code: {ex.Message}";
+            await ReportOperationFailureAsync($"Open {mergeTool.DisplayName}", ex);
         }
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Re-check whether an external merge tool is configured for the
+    /// currently selected repository. Called on repo switch and after
+    /// the Settings dialog closes so the "Resolve in External Tool"
+    /// button's enabled state stays in sync with git config.
+    /// </summary>
+    public async Task RefreshExternalMergeToolAvailabilityAsync()
+    {
+        if (SelectedRepository == null)
+        {
+            HasExternalMergeTool = false;
+            return;
+        }
+
+        try
+        {
+            var tool = await _externalToolConfig.GetCurrentToolAsync(
+                SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
+            HasExternalMergeTool = tool != null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                or OperationCanceledException)
+        {
+            Log.Info("ExternalMerge", $"Availability probe failed: {ex.Message}");
+            HasExternalMergeTool = false;
         }
     }
 
@@ -242,18 +304,56 @@ public partial class MainViewModel
     {
         if (SelectedRepository == null || conflict == null) return;
 
-        await RefreshMergeConflictResolutionAsync();
-        if (MergeConflictResolutionViewModel == null) return;
-
-        MergeConflictResolutionViewModel.SelectedConflict = conflict;
-
-        var conflictWindow = new Views.ConflictResolutionView
+        // The path between double-click and the merge editor appearing runs
+        // RefreshMergeConflictResolutionAsync (git calls), constructs the
+        // editor view, expands its (large) template, and waits for the
+        // dialog service to actually show the window. On a cold open this
+        // can be one-to-several seconds during which the main window
+        // appears frozen. Flip IsBusy so the indeterminate progress bar
+        // ticks immediately, then clear it just before handing off to
+        // ShowDialogAsync — once the modal is up the editor's own
+        // IsLoading state owns the user's attention and a still-running
+        // main-window progress bar would be misleading.
+        var fileName = System.IO.Path.GetFileName(conflict.FilePath);
+        await BeginBusyAsync($"Opening {fileName} in merge editor…");
+        try
         {
-            DataContext = MergeConflictResolutionViewModel,
-            Owner = System.Windows.Application.Current.MainWindow
-        };
+            await RefreshMergeConflictResolutionAsync();
+            if (MergeConflictResolutionViewModel == null) return;
 
-        conflictWindow.ShowDialog();
+            MergeConflictResolutionViewModel.SelectedConflict = conflict;
+
+            var conflictWindow = new Views.Merge.MergeEditorView
+            {
+                DataContext = MergeConflictResolutionViewModel
+            };
+            conflictWindow.CommitJumpRequested += OnMergeEditorCommitJumpRequested;
+            // Mirror ContinueMergeAsync: auto-close on MergeCompleted (in-
+            // editor Abort/CompleteMerge or external abort detected by the
+            // file watcher).
+            EventHandler<bool> closeOnComplete = (_, _) =>
+            {
+                if (conflictWindow.IsLoaded) conflictWindow.Close();
+            };
+            MergeConflictResolutionViewModel.MergeCompleted += closeOnComplete;
+            try
+            {
+                IsBusy = false;
+                await _dialogService.ShowDialogAsync(conflictWindow);
+            }
+            finally
+            {
+                conflictWindow.CommitJumpRequested -= OnMergeEditorCommitJumpRequested;
+                if (conflictWindow.DataContext is ViewModels.Merge.MergeEditorViewModel vm)
+                {
+                    vm.MergeCompleted -= closeOnComplete;
+                }
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -279,20 +379,44 @@ public partial class MainViewModel
         {
             if (MergeConflictResolutionViewModel != null)
             {
+                // Distinguish "merge state vanished beneath us in the same
+                // repo" (external `git merge --abort`, another client wrote
+                // MERGE_HEAD away — fire MergeCompleted(false) so the open
+                // editor closes and the user sees a verb-aware toast) from
+                // "the user just switched to a different repo" (the prior
+                // repo's merge state hasn't changed; firing the toast would
+                // claim the user aborted something they didn't, and reuse
+                // the prior repo's `_activeResolutionOperationType` to pick
+                // the verb — surfacing e.g. "Patch apply aborted" on every
+                // exit from a repo with a paused `git am`).
+                var sameRepoExternalAbort = string.Equals(
+                    _mergeConflictRepoPath,
+                    SelectedRepository.Path,
+                    StringComparison.OrdinalIgnoreCase);
+                if (sameRepoExternalAbort)
+                {
+                    MergeConflictResolutionViewModel.NotifyMergeAbortedExternally();
+                }
                 MergeConflictResolutionViewModel.MergeCompleted -= OnMergeConflictResolutionCompleted;
             }
 
             MergeConflictResolutionViewModel = null;
             _mergeConflictRepoPath = null;
-            _ = _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path).ContinueWith(
-                t => Log.Error("Merge", "Failed to clear stored merge conflicts", t.Exception?.InnerException ?? t.Exception),
-                TaskContinuationOptions.OnlyOnFaulted);
+            // Symmetry: clear the snapshot too so a future refactor that
+            // ever reads it without an intervening surface re-capture
+            // can't leak the previous operation's verb. Today the field
+            // is always re-captured before the next read, but the cost
+            // of zeroing it here is one assignment vs. a class of latent
+            // bugs.
+            _activeResolutionOperationType = Models.GitOperationType.None;
+            _gitService.ClearStoredMergeConflictFilesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken)
+                .FireAndForget(nameof(_gitService.ClearStoredMergeConflictFilesAsync), isUserAction: false);
             return;
         }
 
         if (string.IsNullOrEmpty(SelectedRepository.MergingBranch))
         {
-            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path);
+            var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
             SelectedRepository.MergingBranch = info.MergingBranch;
         }
 
@@ -306,9 +430,12 @@ public partial class MainViewModel
                 MergeConflictResolutionViewModel.MergeCompleted -= OnMergeConflictResolutionCompleted;
             }
 
-            var conflictViewModel = new ConflictResolutionViewModel(_gitService, _clipboardService, _dispatcherService, SelectedRepository.Path)
+            var conflictViewModel = new ViewModels.Merge.MergeEditorViewModel(
+                _gitService, _clipboardService, _mergeEngine,
+                _wordDiffService, _aiMergeAssistant, _imageMergeService, SelectedRepository.Path)
             {
-                IsCompactFileList = _settingsService.LoadSettings().CompactFileList
+                IsCompactFileList = _settingsService.LoadSettings().CompactFileList,
+                GetSessionToken = () => CurrentRepositoryToken
             };
             conflictViewModel.MergeCompleted += OnMergeConflictResolutionCompleted;
             MergeConflictResolutionViewModel = conflictViewModel;
@@ -319,6 +446,14 @@ public partial class MainViewModel
         {
             return;
         }
+
+        // Snapshot the operation type EVERY time we surface the editor,
+        // not only on new-VM creation. Same-repo sequential operations
+        // (cherry-pick → revert → rebase, etc.) reuse the VM, so a
+        // capture limited to isNewViewModel would leave the previous
+        // operation's type cached and `OnMergeConflictResolutionCompleted`
+        // would label the new outcome with the old verb.
+        _activeResolutionOperationType = SelectedRepository.OperationType;
 
         MergeConflictResolutionViewModel.SourceBranch = !string.IsNullOrEmpty(SelectedRepository.MergingBranch)
             ? SelectedRepository.MergingBranch
@@ -333,8 +468,48 @@ public partial class MainViewModel
 
     private async void OnMergeConflictResolutionCompleted(object? sender, bool success)
     {
-        Log.Info("Merge", $"OnMergeConflictResolutionCompleted: success={success}");
-        StatusMessage = success ? "Merge completed successfully" : "Merge aborted";
-        await RefreshAsync();
+        try
+        {
+            Log.Info("Merge", $"OnMergeConflictResolutionCompleted: success={success}");
+
+            // The merge editor handles cherry-pick / revert / rebase / am
+            // conflicts too; "Merge complete/aborted" would lie for those
+            // cases. Read the snapshot taken when the editor opened, NOT
+            // SelectedRepository.OperationType — by the time this fires,
+            // git has already cleared the sentinel files and a file-watcher
+            // refresh may have set OperationType=None, which would route
+            // every cherry-pick / revert / rebase / am result to the
+            // generic "Merge" branch.
+            var (verb, what) = _activeResolutionOperationType switch
+            {
+                Models.GitOperationType.CherryPick => ("Cherry-pick", "Cherry-pick"),
+                Models.GitOperationType.Revert => ("Revert", "Revert"),
+                Models.GitOperationType.Rebase => ("Rebase", "Rebase"),
+                Models.GitOperationType.Am => ("Patch apply", "Patch apply"),
+                _ => ("Merge", "Merge"),
+            };
+
+            if (success)
+                NotifySuccess($"{verb} complete", $"{what} completed successfully.");
+            else
+                NotifyInfo($"{verb} aborted", "Working tree restored.");
+
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(OnMergeConflictResolutionCompleted), isUserAction: true);
+        }
     }
+
+    /// <summary>
+    /// Snapshot of <see cref="RepositoryInfo.OperationType"/> taken when
+    /// the merge-editor session was opened. Read by
+    /// <see cref="OnMergeConflictResolutionCompleted"/> so the success
+    /// toast labels the right verb (cherry-pick / revert / rebase / am
+    /// vs plain merge). Reading the live value is racy — by the time
+    /// the editor closes, git has cleared the sentinel files and a file
+    /// watcher refresh may have already set OperationType=None.
+    /// </summary>
+    private Models.GitOperationType _activeResolutionOperationType = Models.GitOperationType.None;
 }

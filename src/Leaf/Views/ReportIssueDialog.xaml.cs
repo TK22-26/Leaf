@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -113,6 +114,9 @@ public partial class ReportIssueDialog : Window
             TitleTextBox.IsEnabled = true;
             BodyTextBox.IsEnabled = true;
             SubmitButton.IsEnabled = true;
+
+            // Also log — ShowStatus is a UI-only indicator.
+            AsyncErrorHandler.Handle(ex, nameof(SubmitButton_Click), isUserAction: false);
         }
     }
 
@@ -243,9 +247,12 @@ public partial class ReportIssueDialog : Window
                 UseShellExecute = true
             });
         }
-        catch
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception
+                                or System.IO.FileNotFoundException
+                                or InvalidOperationException)
         {
-            // Ignore errors opening browser
+            // No registered handler for URL scheme or shell execution blocked.
+            Log.Info("ReportIssue", $"OpenUrl('{url}') failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 }

@@ -1,78 +1,80 @@
 # Leaf
 
-A modern WPF Git client for Windows with an interactive commit graph, AI-powered commit messages, and seamless cloud repository integration.
+A modern WPF Git client for Windows with an interactive commit graph, AI-powered commit messages, integrated pull-request workflows, and full GitFlow / worktree / interactive-rebase / bisect support.
 
 [![Build and Release](https://github.com/TK22-26/Leaf/actions/workflows/build.yml/badge.svg)](https://github.com/TK22-26/Leaf/actions/workflows/build.yml)
 ![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)
 ![Windows](https://img.shields.io/badge/Platform-Windows-0078D6)
 ![License](https://img.shields.io/badge/License-Freeware-blue)
 
+> 📚 **Full documentation lives in the [Leaf Wiki](https://github.com/TK22-26/Leaf/wiki).** This README is a tour; the wiki has the deep guides.
+
 ## Features
 
-### Git Graph Visualization
-- Interactive commit history with branch lanes and merge lines
-- Color-coded branches for easy identification
-- Click to view commit details, changed files, and diffs
-- Visual indicators for HEAD, remote tracking, and tags
+### Git graph & commits
+- Interactive commit graph with lane allocation, color-coded branches, and pass-through rendering of long-running lanes
+- Live working-changes "WIP" row anchored to the current branch
+- Click any commit to see metadata, signature status, changed-files tree, and per-file diffs
+- Search commits inline; jump to a SHA from any tooltip or signature popup
+- **Tag browser** (§5.17) — full tag detail pane with annotated message and target commit
 
-### Repository Management
-- **Clone repositories** from GitHub, Azure DevOps, or any Git URL
-- **Browse remote repositories** directly from GitHub and Azure DevOps
-- **Recent repositories** list for quick access
-- **Repository groups** to organize your projects
+### Repository management
+- Clone from GitHub or Azure DevOps via in-app browsers, or any Git URL
+- Pinned / Recent / custom Repository Groups, plus folder-watching for auto-discovery
+- Per-repository GitFlow config, branch filters (hide / solo), color overrides, and palette persistence (§5.14)
+- **Worktrees** — create, switch, lock, prune; first-class sidebar entries
 
-### Branch Operations
-- Create, checkout, and delete branches
-- Merge branches with conflict detection
-- **Unrelated histories support** - automatically prompts when merging branches with no common ancestor
-- Visual branch list organized by local, remote, and tags
+### Working changes
+- Stage / unstage individual files, hunks, or all
+- Live diff viewer with hunk-level revert
+- Conventional Commits structured form + freeform mode (§5.15) with per-repo and global templates
+- AI commit-message generation (Claude / Gemini / Codex), schema-validated output
+- **Commit signing** (§5.8) — GPG and SSH commit signatures; verification badges on every node
 
-### Working Changes
-- Stage/unstage individual files or all changes
-- View file diffs before committing
-- Discard changes with confirmation
-- Character count for commit messages (72 char recommended limit)
+### Branching, merging, history rewriting
+- Create / checkout / delete / rename branches with safety prompts
+- Merge with conflict detection; **unrelated histories** prompt; squash / fast-forward / no-ff selection
+- Full **merge editor** with three-way diff, side-by-side / inline views, AI-assisted resolution, per-conflict notes
+- **Interactive rebase** window — pick / reword / squash / edit / drop with drag-reorder
+- **Bisect** workflow with banner, automatic next-commit checkout, and full-content takeover view
+- **Reflog** window with filters and context actions (§5.4)
+- **Cherry-pick / revert / amend** from any commit
 
-### AI-Powered Commit Messages
-Generate meaningful commit messages automatically using your preferred AI:
-- **Claude** (Anthropic) - via Claude CLI
-- **Gemini** (Google) - via Gemini CLI
-- **Codex** (OpenAI) - via Codex CLI
+### Patch workflow (§5.10)
+- Create patches from any commit range or working tree
+- Apply patches via `git am` or `git apply` with conflict resolution piped through the merge editor
 
-The AI analyzes your staged changes and generates:
-- A concise commit message (≤72 characters)
-- A bullet-point description of changes
+### Stashes & submodules
+- Stash with optional message, view inline above HEAD, pop / drop / apply
+- Submodule add / update / sync with progress UI
 
-### Merge Conflict Resolution
-- Visual conflict list showing all conflicting files
-- Three-way merge view (Base, Ours, Theirs)
-- Per-file resolution: Accept Ours, Accept Theirs, or Manual Edit
-- Merge status banner with quick actions
+### Pull requests (M1)
+- Browse, open, and create PRs against **GitHub** and **Azure DevOps** without leaving Leaf
+- Inline file diffs, status checks, reviewers, and merge actions
 
-### GitFlow Integration
-- Full GitFlow workflow support (initialize, feature, release, hotfix, support branches)
-- Start, finish, and publish GitFlow branches from the UI
-- Configurable merge strategy, auto-push, and branch deletion settings
-- GitFlow branches highlighted with distinct colors in the commit graph
-- Compatible with standard git-flow CLI configuration
-
-### Worktree Management
-- Create worktrees for existing branches or with new branches
-- Switch between worktrees seamlessly from the branch panel or repository sidebar
-- Lock/unlock worktrees to prevent accidental removal
-- Prune stale worktree references
-- Detached HEAD worktree creation from any commit
-
-### Stash Support
-- Stash working changes with optional message
-- View stash list with timestamps
-- Pop or delete individual stashes
-- Smart stash handling during branch operations
+### AI integration
+- **Claude** — uses the rolling `sonnet` alias (auto-tracks Anthropic releases)
+- **Gemini** — uses the gemini CLI default (auto-tracks Google releases)
+- **Codex** — uses your `~/.codex/config.toml` model (auto-tracks OpenAI's ChatGPT-account-eligible model rotation)
+- AI also assists during merge-conflict resolution (Merge Editor's Ask AI)
 
 ### Authentication
-- **GitHub** - Personal Access Token (PAT) authentication
-- **Azure DevOps** - PAT with organization configuration
-- **Git Credential Manager** - Automatic fallback for other remotes
+- **GitHub PAT** with `repo` scope
+- **Azure DevOps PAT** with `Code (Read/Write)` and `PullRequest` scopes
+- **SSH key management** (§5.13) — generate, list, add to ssh-agent, push to GitHub, all from inside Leaf
+- **Git Credential Manager** fallback for everything else
+
+### Customisation
+- Configurable **keyboard shortcuts** (§5.9) — every action remappable, conflict detection
+- **External tools** — pluggable diff/merge tools (BeyondCompare, KDiff3, etc.) and editors
+- **Branch colors** (§5.14) — palette presets + per-branch overrides, persisted to `.git/config`
+- **Commit templates** (§5.15) — Conventional Commits form, custom templates, master toggle, per-repo defaults
+- Light / dark Fluent themes
+
+### CLI flags
+- `--repo <path>` / `-r <path>` — open Leaf and navigate directly to a repo
+- `--auto-commit <repoName>` / `-ac` — headless AI auto-commit (great for cron / CI)
+- `--help` / `-h`
 
 ## Installation
 
@@ -81,144 +83,84 @@ The AI analyzes your staged changes and generates:
 - [.NET 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [Git for Windows](https://git-scm.com/download/win)
 
-### Build from Source
-```bash
-git clone https://github.com/TK22-26/Leaf.git
-cd Leaf
-dotnet restore
-dotnet build
-dotnet run --project src/Leaf/Leaf.csproj
-```
+### Get Leaf
+- **Released installer:** see the [Releases page](https://github.com/TK22-26/Leaf/releases) for signed builds.
+- **Build from source:**
+  ```bash
+  git clone https://github.com/TK22-26/Leaf.git
+  cd Leaf
+  dotnet build Leaf.sln
+  dotnet run --project src/Leaf/Leaf.csproj
+  ```
 
-## Configuration
+## Quick configuration
 
-### GitHub Authentication
-1. Go to **Settings** → **Authentication** → **GitHub**
-2. Enter your GitHub username
-3. Create a [Personal Access Token](https://github.com/settings/tokens) with `repo` scope
-4. Paste the token and click **Connect**
+| Area | Where | Wiki link |
+|------|-------|-----------|
+| GitHub auth (PAT) | Settings → Authentication → GitHub | [Authentication](https://github.com/TK22-26/Leaf/wiki/Authentication-and-SSH) |
+| Azure DevOps auth | Settings → Authentication → Azure DevOps | [Authentication](https://github.com/TK22-26/Leaf/wiki/Authentication-and-SSH) |
+| AI providers | Settings → AI Integrations | [AI Integration](https://github.com/TK22-26/Leaf/wiki/AI-Integration) |
+| GitFlow defaults | Settings → GitFlow | [Branches & GitFlow](https://github.com/TK22-26/Leaf/wiki/Branches-and-GitFlow) |
+| Commit signing | Settings → Commit Signing | [Commit Signing](https://github.com/TK22-26/Leaf/wiki/Commit-Signing) |
+| SSH keys | Settings → SSH Keys | [SSH Keys](https://github.com/TK22-26/Leaf/wiki/Authentication-and-SSH#ssh-keys) |
+| Templates | Settings → Commit Templates | [Commit Templates](https://github.com/TK22-26/Leaf/wiki/Commit-Templates) |
+| Shortcuts | Settings → Keyboard Shortcuts | [Shortcuts & CLI](https://github.com/TK22-26/Leaf/wiki/Keyboard-Shortcuts-and-CLI) |
+| External tools | Settings → External Tools | [Settings Reference](https://github.com/TK22-26/Leaf/wiki/Settings-Reference) |
 
-### Azure DevOps Authentication
-1. Go to **Settings** → **Authentication** → **Azure DevOps**
-2. Enter your organization name (e.g., `mycompany` from `dev.azure.com/mycompany`)
-3. Create a [PAT](https://docs.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate) with `Code (Read)` scope
-4. Paste the token and click **Connect**
+## Default keyboard shortcuts
 
-### AI Integration
-Leaf integrates with CLI tools for AI-powered features. Install your preferred AI CLI:
-
-#### Claude CLI
-```bash
-npm install -g @anthropic-ai/claude-code
-claude auth login
-```
-
-#### Gemini CLI
-```bash
-npm install -g @anthropic-ai/gemini-cli
-gemini auth login
-```
-
-#### Codex CLI
-```bash
-npm install -g @openai/codex
-codex auth login
-```
-
-Then in Leaf:
-1. Go to **Settings** → **AI Integrations**
-2. Click **Connect** next to your installed CLI
-3. Select your **Default AI** from the dropdown
-4. Adjust **CLI timeout** if needed (default: 60s)
-
-## Usage
-
-### Cloning a Repository
-1. Click **Clone** in the toolbar
-2. Choose a tab:
-   - **Browse GitHub** - Select from your GitHub repositories
-   - **Browse Azure DevOps** - Select from your organization's repositories
-   - **Enter URL** - Paste any Git repository URL
-3. Choose destination folder
-4. Click **Clone**
-
-### Making a Commit
-1. Make changes to your files
-2. In the **Working Changes** panel:
-   - Click **+** to stage individual files, or **Stage All**
-   - Enter a commit message (≤72 characters recommended)
-   - Optionally add a description
-   - Click **Commit**
-
-### Using AI Commit Messages
-1. Stage your changes
-2. Click the **✨** (sparkle) button next to the commit message
-3. Wait for the AI to analyze your changes
-4. Review and edit the generated message if needed
-5. Click **Commit**
-
-### Merging Branches
-1. Right-click a branch in the branch list
-2. Select **Merge into current branch**
-3. If branches have unrelated histories, a dialog will prompt you to confirm
-4. Resolve any conflicts if they occur
-
-### Resolving Merge Conflicts
-1. When conflicts occur, the **Merge Status** banner appears
-2. Click on a conflicting file to open the resolution view
-3. For each file, choose:
-   - **Accept Ours** - Keep your changes
-   - **Accept Theirs** - Take incoming changes
-   - **Manual Edit** - Edit the merged result manually
-4. Click **Mark Resolved** after resolving each file
-5. Click **Complete Merge** when all conflicts are resolved
-
-## Keyboard Shortcuts
+A small set of defaults; everything is remappable in Settings → Keyboard Shortcuts.
 
 | Action | Shortcut |
 |--------|----------|
 | Refresh | `F5` |
 | Commit | `Ctrl+Enter` |
-| Stage All | `Ctrl+Shift+S` |
-| New Branch | `Ctrl+B` |
+| Stage all | `Ctrl+Shift+S` |
+| New branch | `Ctrl+B` |
+| Command palette | `Ctrl+K` |
+| AI commit message | `Ctrl+Shift+A` |
+| Open terminal | `` Ctrl+` `` |
+| Pull / Push | `Ctrl+Shift+P` / `Ctrl+P` |
 
 ## Architecture
 
 ```
-src/Leaf/
-├── Controls/          # Custom WPF controls (GitGraphCanvas, etc.)
-├── Converters/        # XAML value converters
-├── Graph/             # Git graph layout algorithms
-├── Models/            # Data models (CommitInfo, BranchInfo, etc.)
-├── Resources/         # XAML styles and themes
-├── Services/          # Business logic (GitService, CredentialService, etc.)
-├── ViewModels/        # MVVM ViewModels
-└── Views/             # XAML views and dialogs
+src/
+├── Leaf/                  WPF app — UI, view models, services
+│   ├── Controls/          Custom controls (GitGraphCanvas, CommitInput, etc.)
+│   ├── Graph/             Lane allocator + branch-color resolver
+│   ├── Models/            Domain types (CommitInfo, BranchLabel, …)
+│   ├── Services/          GitService, CredentialService, AiCommitMessageService, …
+│   │   └── Git/Operations/  Per-domain git operations (Branch, Merge, Rebase, …)
+│   ├── ViewModels/        MainViewModel split by partial files (Branch, Merge, Sync, …)
+│   └── Views/             XAML windows, dialogs, settings controls
+├── Leaf.Core/             Shared models / engine logic usable from headless contexts
+├── Leaf.AskPass/          Standalone helper invoked by git for credential prompts
+└── Leaf.SequenceEditor/   Standalone helper invoked by git for interactive rebase todos
 ```
 
-### Key Components
-- **GitService** - All Git operations via command-line git
-- **GitGraphCanvas** - Custom WPF canvas for commit graph rendering
-- **ThreeWayMergeService** - Conflict detection and resolution using DiffPlex
-- **CredentialService** - Secure credential storage via Windows Credential Manager
+See [Architecture](https://github.com/TK22-26/Leaf/wiki/Architecture) on the wiki for a deeper tour.
 
 ## Dependencies
 
-- [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) - MVVM framework
-- [DiffPlex](https://github.com/mmanela/diffplex) - Diff algorithm for merge resolution
-- [WPF-UI (Fluent)](https://github.com/lepoco/wpfui) - Modern UI styling
+- [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) — MVVM source generators
+- [LibGit2Sharp](https://github.com/libgit2/libgit2sharp) — fast read paths and simple mutations
+- Git CLI — used for any operation with an editor / hook / credential contract
+- [DiffPlex](https://github.com/mmanela/diffplex) — diff and three-way merge engine
+- [WPF-UI (Fluent)](https://github.com/lepoco/wpfui) — Fluent design controls and theming
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+3. Commit your changes (Leaf will happily generate the message for you 😉)
+4. Push and open a Pull Request
+
+See [Contributing](https://github.com/TK22-26/Leaf/wiki/Contributing) for the development workflow, build / test instructions, and the architectural conventions Leaf follows.
 
 ## License
 
-This software is **Freeware** - free to use, modify, and distribute for non-commercial purposes.
+This software is **Freeware** — free to use, modify, and distribute for non-commercial purposes.
 
 **You may NOT sell this software or any derivative works for profit.**
 

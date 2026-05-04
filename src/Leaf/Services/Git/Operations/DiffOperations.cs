@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using Leaf.Services.Git.Core;
 using LibGit2Sharp;
@@ -19,7 +20,7 @@ internal class DiffOperations
     /// <summary>
     /// Get diff content for a specific file in a commit.
     /// </summary>
-    public Task<(string oldContent, string newContent)> GetFileDiffAsync(string repoPath, string sha, string filePath)
+    public Task<(string oldContent, string newContent)> GetFileDiffAsync(string repoPath, string sha, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -50,13 +51,13 @@ internal class DiffOperations
             }
 
             return (oldContent, newContent);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get diff content for an unstaged file (working directory vs index).
     /// </summary>
-    public Task<(string oldContent, string newContent)> GetUnstagedFileDiffAsync(string repoPath, string filePath)
+    public Task<(string oldContent, string newContent)> GetUnstagedFileDiffAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -97,20 +98,25 @@ internal class DiffOperations
                 {
                     newContent = File.ReadAllText(fullPath);
                 }
-                catch
+                catch (Exception ex) when (ex is IOException
+                                        or UnauthorizedAccessException
+                                        or System.Security.SecurityException
+                                        or NotSupportedException)
                 {
-                    // File might be locked or binary
+                    // File might be locked, binary, or access-denied — caller
+                    // renders an empty diff rather than failing the operation.
+                    Leaf.Services.Log.Info("Diff", $"ReadAllText({filePath}) failed: {ex.GetType().Name}: {ex.Message}");
                 }
             }
 
             return (oldContent, newContent);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get diff content for a staged file (index vs HEAD).
     /// </summary>
-    public Task<(string oldContent, string newContent)> GetStagedFileDiffAsync(string repoPath, string filePath)
+    public Task<(string oldContent, string newContent)> GetStagedFileDiffAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
@@ -142,17 +148,17 @@ internal class DiffOperations
             }
 
             return (oldContent, newContent);
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Get a unified diff between a commit and the working tree.
     /// </summary>
-    public async Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha)
+    public async Task<string> GetCommitToWorkingTreeDiffAsync(string repoPath, string commitSha, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["diff", commitSha]);
+            ["diff", commitSha], cancellationToken: cancellationToken);
 
         if (!result.Success)
         {
@@ -168,7 +174,7 @@ internal class DiffOperations
     /// <summary>
     /// Get a unified diff between two refs.
     /// </summary>
-    public async Task<string> GetRefToRefDiffAsync(string repoPath, string baseRef, string headRef, string? filePath = null)
+    public async Task<string> GetRefToRefDiffAsync(string repoPath, string baseRef, string headRef, string? filePath = null, CancellationToken cancellationToken = default)
     {
         var args = new List<string>
         {
@@ -184,7 +190,7 @@ internal class DiffOperations
             args.Add(filePath.TrimStart('/', '\\'));
         }
 
-        var result = await _context.CommandRunner.RunAsync(repoPath, args);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
         {

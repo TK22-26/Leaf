@@ -1,3 +1,5 @@
+using Leaf.Services;
+
 namespace Leaf.Utils;
 
 /// <summary>
@@ -55,6 +57,23 @@ public static class CredentialHelper
             return null;
 
         return $"{provider}:{org}";
+    }
+
+    /// <summary>
+    /// Resolves the credential key for a remote URL, but only if Leaf actually
+    /// has a stored credential under that key. Returns null when no credential
+    /// is stored so git falls back to its default credential helpers (e.g.
+    /// Git Credential Manager).
+    /// </summary>
+    /// <param name="credentials">Credential store to probe.</param>
+    /// <param name="remoteUrl">The git remote URL.</param>
+    /// <returns>Credential key usable by GIT_ASKPASS, or null to let git use GCM.</returns>
+    public static string? ResolveActiveCredentialKey(this ICredentialService credentials, string? remoteUrl)
+    {
+        if (string.IsNullOrEmpty(remoteUrl))
+            return null;
+        var key = GetCredentialKeyForUrl(remoteUrl);
+        return key != null && credentials.HasCredential(key) ? key : null;
     }
 
     private static bool TryParseHttpsUrl(Uri uri, out CredentialProvider provider, out string? organization)

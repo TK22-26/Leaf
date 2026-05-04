@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Leaf.Models;
+using Leaf.Services;
 using Leaf.ViewModels;
 
 namespace Leaf.Controls;
@@ -34,17 +35,31 @@ public partial class HunkDiffViewerControl : UserControl
 
     private async void HunkItem_RevertHunkRequested(object? sender, DiffHunk hunk)
     {
-        if (DataContext is HunkDiffViewerViewModel viewModel)
+        try
         {
-            await viewModel.RevertHunkAsync(hunk);
+            if (DataContext is HunkDiffViewerViewModel viewModel)
+            {
+                await viewModel.RevertHunkAsync(hunk);
+            }
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(HunkItem_RevertHunkRequested), isUserAction: true);
         }
     }
 
     private async void HunkItem_StageHunkRequested(object? sender, DiffHunk hunk)
     {
-        if (DataContext is HunkDiffViewerViewModel viewModel)
+        try
         {
-            await viewModel.StageHunkAsync(hunk);
+            if (DataContext is HunkDiffViewerViewModel viewModel)
+            {
+                await viewModel.StageHunkAsync(hunk);
+            }
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(HunkItem_StageHunkRequested), isUserAction: true);
         }
     }
 
