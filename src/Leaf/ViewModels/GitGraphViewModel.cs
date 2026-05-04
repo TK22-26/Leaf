@@ -364,9 +364,17 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
         Log.Info("Graph", $"Loading repository graph: {path}");
         var sw = Log.StartTimer();
 
+        // Captured before RepositoryPath is overwritten so the transient-
+        // failure catch below can tell a refresh of the current repo apart
+        // from a switch to a new one. Without this, a failed first load of
+        // a freshly selected repo would keep showing the previous repo's
+        // commits (Commits isn't cleared on path change) under the new
+        // path — a worse outcome than the white error overlay.
+        bool isRefreshOfSameRepo = string.Equals(RepositoryPath, path, StringComparison.OrdinalIgnoreCase);
+
         try
         {
-            if (!string.Equals(RepositoryPath, path, StringComparison.OrdinalIgnoreCase))
+            if (!isRefreshOfSameRepo)
             {
                 _mergeTooltipTasks.Clear();
                 _hiddenBranchNames.Clear();
@@ -545,6 +553,25 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
         {
             // Superseded by a later LoadRepositoryAsync — drop our results
             // silently; the newer call will update the UI.
+        }
+        catch (Exception ex) when ((ex is LibGit2Sharp.LibGit2SharpException
+                                       or IOException
+                                       or UnauthorizedAccessException)
+                                   && isRefreshOfSameRepo
+                                   && Commits.Count > 0)
+        {
+            // Transient filesystem / libgit2 read failure during a refresh
+            // of the same repo (file locked by an editor / AI tool / build,
+            // .git/index busy mid-operation, etc.). We already have a valid
+            // graph on screen; the next file-watcher tick or auto-fetch
+            // will retry once the lock clears. Surfacing "Failed to load
+            // repository" here would raise the GitGraphView error overlay
+            // (a white WindowBrush-backed border at ZIndex 99) over the
+            // existing graph and make the canvas appear pure white until
+            // the next successful load. Initial loads and repo switches
+            // still fall through to the generic catch so genuine
+            // "can't open this repo" errors remain visible.
+            Log.Warn("Graph", $"LoadRepositoryAsync transient failure (keeping last graph): {ex.GetType().Name}: {ex.Message}");
         }
         catch (Exception ex)
         {
