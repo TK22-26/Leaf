@@ -112,4 +112,16 @@ public class GitTreeNode
 
     /// <summary>Signing key fingerprint, mirrored from CommitInfo.</summary>
     public string SignerKeyFingerprint { get; set; } = string.Empty;
+
+    /// <summary>Commit author display name (mirrored from CommitInfo so tooltips don't have to round-trip).</summary>
+    public string Author { get; set; } = string.Empty;
+
+    /// <summary>Commit author email (mirrored from CommitInfo).</summary>
+    public string AuthorEmail { get; set; } = string.Empty;
+
+    /// <summary>Commit author date (mirrored from CommitInfo).</summary>
+    public DateTimeOffset Date { get; set; }
+
+    /// <summary>Commit subject — first line of the message (mirrored from CommitInfo).</summary>
+    public string MessageShort { get; set; } = string.Empty;
 }

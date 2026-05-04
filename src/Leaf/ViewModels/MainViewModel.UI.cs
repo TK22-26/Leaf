@@ -203,6 +203,20 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Show the About dialog. Owned by the main window so it centres
+    /// correctly and dismisses with the rest of the app.
+    /// </summary>
+    [RelayCommand]
+    public void ShowAbout()
+    {
+        var dialog = new Views.AboutDialog
+        {
+            Owner = System.Windows.Application.Current?.MainWindow,
+        };
+        dialog.ShowDialog();
+    }
+
+    /// <summary>
     /// Check for updates silently on startup (no dialog if up to date).
     /// </summary>
     private async Task CheckForUpdatesSilentlyAsync()

@@ -190,6 +190,10 @@ public class GraphBuilder
                 SignerName = commit.SignerName,
                 SignerEmail = commit.SignerEmail,
                 SignerKeyFingerprint = commit.SignerKeyFingerprint,
+                Author = commit.Author,
+                AuthorEmail = commit.AuthorEmail,
+                Date = commit.Date,
+                MessageShort = commit.MessageShort,
             };
 
             nodes.Add(node);

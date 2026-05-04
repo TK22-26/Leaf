@@ -144,36 +144,27 @@ public partial class GitGraphCanvas
 
         _tagTooltipPanel!.Children.Clear();
 
-        // Header line: tag name (bold) + a kind indicator for annotated /
-        // signed tags. Lightweight tags get no suffix — "lightweight" is
-        // git jargon that adds no useful information when there's no
-        // annotation message or tagger to introduce, and the chip itself
-        // already shows the tag name.
-        var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
-        header.Children.Add(new TextBlock
+        // Layout (per design feedback):
+        //   1. Title line — tag name, bold, primary text color
+        //   2. Annotation message — italic preview, only if the tag has one
+        //   3. Additional info — tagger / commit / date, in muted text
+        //   4. Signature info — only if signed
+        // Sections are separated by margin-bottom on the preceding block.
+
+        // 1. Title
+        var titleMargin = new Thickness(0, 0, 0, 6);
+        _tagTooltipPanel.Children.Add(new TextBlock
         {
             Text = tag.Name,
             Foreground = Brushes.White,
             FontFamily = new FontFamily("Segoe UI"),
             FontSize = 13,
-            FontWeight = FontWeights.SemiBold,
+            FontWeight = FontWeights.Bold,
+            Margin = titleMargin,
         });
-        if (tag.IsAnnotated)
-        {
-            var kind = tag.IsSigned ? "signed" : "annotated";
-            header.Children.Add(new TextBlock
-            {
-                Text = $"   {kind}",
-                Foreground = new SolidColorBrush(Color.FromRgb(160, 160, 160)),
-                FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 11,
-                VerticalAlignment = VerticalAlignment.Center,
-            });
-        }
-        _tagTooltipPanel.Children.Add(header);
 
-        // Annotation message preview (first non-empty line, truncated).
-        if (!string.IsNullOrWhiteSpace(tag.Message))
+        // 2. Annotation (italic) — annotated tags only
+        if (tag.IsAnnotated && !string.IsNullOrWhiteSpace(tag.Message))
         {
             var preview = FirstMessageLine(tag.Message);
             if (!string.IsNullOrEmpty(preview))
@@ -184,46 +175,68 @@ public partial class GitGraphCanvas
                     Foreground = Brushes.White,
                     FontFamily = new FontFamily("Segoe UI"),
                     FontSize = 11,
-                    Margin = new Thickness(0, 0, 0, 4),
+                    FontStyle = FontStyles.Italic,
+                    Margin = new Thickness(0, 0, 0, 6),
                     MaxWidth = 380,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                 });
             }
         }
 
-        // Tagger / date row when annotated.
+        // 3. Additional info. Annotated tags carry their own tagger /
+        // tag-date metadata; lightweight tags don't, so we substitute the
+        // target commit's author / date — the closest analogue of "who
+        // pinned this tag, when". The target-commit reference (short SHA
+        // + subject) is shown for both kinds when we can find the commit
+        // in the loaded node set.
+        var targetNode = FindTargetNode(tag.TargetSha);
+        var mutedBrush = new SolidColorBrush(Color.FromRgb(180, 180, 180));
+        var moreMutedBrush = new SolidColorBrush(Color.FromRgb(140, 140, 140));
+
         if (tag.IsAnnotated)
         {
             var taggerLine = !string.IsNullOrWhiteSpace(tag.TaggerEmail)
-                ? $"{tag.TaggerName} <{tag.TaggerEmail}>"
-                : (tag.TaggerName ?? string.Empty);
-            if (!string.IsNullOrWhiteSpace(taggerLine))
-            {
-                _tagTooltipPanel.Children.Add(new TextBlock
-                {
-                    Text = taggerLine,
-                    Foreground = new SolidColorBrush(Color.FromRgb(180, 180, 180)),
-                    FontFamily = new FontFamily("Segoe UI"),
-                    FontSize = 10,
-                });
-            }
+                ? $"Tagged by {tag.TaggerName} <{tag.TaggerEmail}>"
+                : (!string.IsNullOrWhiteSpace(tag.TaggerName) ? $"Tagged by {tag.TaggerName}" : null);
+            if (taggerLine != null)
+                _tagTooltipPanel.Children.Add(MakeInfoLine(taggerLine, mutedBrush, 11));
+
             if (tag.TaggedAt is { } tagged)
+                _tagTooltipPanel.Children.Add(MakeInfoLine(FormatDateLine(tagged), moreMutedBrush, 10));
+
+            if (targetNode != null)
+                _tagTooltipPanel.Children.Add(MakeInfoLine(FormatTargetLine(targetNode), moreMutedBrush, 10));
+        }
+        else
+        {
+            // Lightweight: target commit first (it's the only data we
+            // have), then commit author / date as the "who and when".
+            if (targetNode != null)
             {
-                _tagTooltipPanel.Children.Add(new TextBlock
-                {
-                    Text = tagged.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
-                        System.Globalization.CultureInfo.InvariantCulture),
-                    Foreground = new SolidColorBrush(Color.FromRgb(160, 160, 160)),
-                    FontFamily = new FontFamily("Segoe UI"),
-                    FontSize = 10,
-                });
+                _tagTooltipPanel.Children.Add(MakeInfoLine(FormatTargetLine(targetNode), mutedBrush, 11));
+
+                var authorLine = !string.IsNullOrWhiteSpace(targetNode.AuthorEmail)
+                    ? $"by {targetNode.Author} <{targetNode.AuthorEmail}>"
+                    : (!string.IsNullOrWhiteSpace(targetNode.Author) ? $"by {targetNode.Author}" : null);
+                if (authorLine != null)
+                    _tagTooltipPanel.Children.Add(MakeInfoLine(authorLine, moreMutedBrush, 10));
+
+                if (targetNode.Date != default)
+                    _tagTooltipPanel.Children.Add(MakeInfoLine(FormatDateLine(targetNode.Date), moreMutedBrush, 10));
             }
         }
 
-        // Signature info when present — same wording vocabulary as the
-        // commit signature tooltip so users learn one mental model.
+        // 4. Signature info — same wording as the commit signature tooltip
+        // so users learn one mental model.
         if (tag.IsSigned)
         {
+            // Add a top margin to the previous element so the signature
+            // section is visually separated from the additional info.
+            if (_tagTooltipPanel.Children.Count > 0
+                && _tagTooltipPanel.Children[_tagTooltipPanel.Children.Count - 1] is TextBlock last)
+            {
+                last.Margin = new Thickness(last.Margin.Left, last.Margin.Top, last.Margin.Right, 6);
+            }
             _tagTooltipPanel.Children.Add(BuildSignatureLine(
                 FontWeights.SemiBold, 11, SignatureSummaryFormatter.Format(tag.SignatureStatus)));
             if (!string.IsNullOrWhiteSpace(tag.SignerKeyFingerprint))
@@ -280,6 +293,88 @@ public partial class GitGraphCanvas
         FontWeight = weight,
         Margin = new Thickness(0, 1, 0, 1),
     };
+
+    /// <summary>
+    /// Tooltip "additional info" line — uniform typography for tagger,
+    /// target-commit, and date sub-rows.
+    /// </summary>
+    private static TextBlock MakeInfoLine(string text, Brush foreground, double size) => new()
+    {
+        Text = text,
+        Foreground = foreground,
+        FontFamily = new FontFamily("Segoe UI"),
+        FontSize = size,
+        Margin = new Thickness(0, 0, 0, 1),
+        MaxWidth = 380,
+        TextTrimming = TextTrimming.CharacterEllipsis,
+    };
+
+    /// <summary>
+    /// Look up the target commit of a tag in the canvas's loaded node set
+    /// so the tooltip can show the short SHA + subject (and, for
+    /// lightweight tags, the author / date that the tag itself doesn't
+    /// carry). Returns null when the target commit hasn't been paginated
+    /// in yet — the tooltip degrades gracefully in that case.
+    /// </summary>
+    private GitTreeNode? FindTargetNode(string targetSha)
+    {
+        if (string.IsNullOrWhiteSpace(targetSha)) return null;
+        if (_segmentNodeLookup.TryGetValue(targetSha, out var node)) return node;
+        // Fallback for the brief window after Nodes is set but
+        // _segmentNodeLookup hasn't been rebuilt yet (extremely rare).
+        var nodes = Nodes;
+        if (nodes == null) return null;
+        foreach (var n in nodes)
+        {
+            if (string.Equals(n.Sha, targetSha, StringComparison.OrdinalIgnoreCase))
+                return n;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// "→ abc1234  Subject of the commit". Format chosen to read as a
+    /// pointer ("the tag points at this") and to keep the SHA visually
+    /// scannable next to the ellipsised subject.
+    /// </summary>
+    private static string FormatTargetLine(GitTreeNode node)
+    {
+        var shortSha = node.Sha.Length >= 7 ? node.Sha[..7] : node.Sha;
+        var subject = string.IsNullOrEmpty(node.MessageShort) ? string.Empty : "  " + node.MessageShort;
+        return $"→ {shortSha}{subject}";
+    }
+
+    /// <summary>
+    /// Combine an absolute local timestamp with a relative-time hint so the
+    /// reader gets both "exactly when" and "at-a-glance how-old". Drops
+    /// the relative hint for very recent (<60s) or future timestamps where
+    /// "0s ago" / "in the future" would just be noise.
+    /// </summary>
+    private static string FormatDateLine(DateTimeOffset when)
+    {
+        var local = when.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+            System.Globalization.CultureInfo.InvariantCulture);
+        var rel = FormatRelativeTime(when);
+        return string.IsNullOrEmpty(rel) ? local : $"{local}  ({rel})";
+    }
+
+    /// <summary>
+    /// Short relative-time label — "3d ago", "2mo ago", "1y ago". Tuned
+    /// for a tooltip's small footprint; the absolute timestamp shown
+    /// alongside it carries the precision so this side just needs to
+    /// communicate "rough age".
+    /// </summary>
+    private static string FormatRelativeTime(DateTimeOffset when)
+    {
+        var diff = DateTimeOffset.Now - when;
+        if (diff.TotalSeconds < 60) return string.Empty;
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)}w ago";
+        if (diff.TotalDays < 365) return $"{(int)(diff.TotalDays / 30)}mo ago";
+        return $"{(int)(diff.TotalDays / 365)}y ago";
+    }
 
     /// <summary>
     /// Format a key fingerprint as <c>XXXX XXXX XXXX XXXX</c> blocks of

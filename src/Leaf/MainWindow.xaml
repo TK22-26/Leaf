@@ -157,6 +157,12 @@
                                 <ic:SymbolIcon FontSize="14" Symbol="Bug" />
                             </MenuItem.Icon>
                         </MenuItem>
+                        <Separator />
+                        <MenuItem Command="{Binding ShowAboutCommand}" Header="_About Leaf">
+                            <MenuItem.Icon>
+                                <ic:SymbolIcon FontSize="14" Symbol="Info" />
+                            </MenuItem.Icon>
+                        </MenuItem>
                     </MenuItem>
                 </Menu>
 
