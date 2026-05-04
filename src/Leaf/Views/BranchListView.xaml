@@ -16,6 +16,7 @@
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
         <converters:NullToVisibilityInverseConverter x:Key="NullToVisibilityInverseConverter" />
         <converters:BranchCategoryItemsConverter x:Key="BranchCategoryItemsConverter" />
+        <converters:RemoteBranchGroupItemsConverter x:Key="RemoteBranchGroupItemsConverter" />
         <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
         <converters:BranchNameToGitFlowColorConverter x:Key="BranchNameToGitFlowColorConverter" />
         <converters:BranchNameToGitFlowVisibilityConverter x:Key="BranchNameToGitFlowVisibilityConverter" />
@@ -475,7 +476,8 @@
                 </HierarchicalDataTemplate>
 
                 <!--  Remote branch group template (origin, upstream, etc.)  -->
-                <HierarchicalDataTemplate DataType="{x:Type models:RemoteBranchGroup}" ItemsSource="{Binding Branches}">
+                <!--  Issue #29: ItemsSource binds via converter so DirectoryGroups (e.g. "feature/", "hotfix/") render as folders alongside ungrouped branches, matching the LOCAL/GITFLOW layout.  -->
+                <HierarchicalDataTemplate DataType="{x:Type models:RemoteBranchGroup}" ItemsSource="{Binding Converter={StaticResource RemoteBranchGroupItemsConverter}}">
                     <Border Background="Transparent" Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
                         <Border.ContextMenu>
                             <ContextMenu>

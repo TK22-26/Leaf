@@ -78,33 +78,43 @@ public partial class MainViewModel
                 .GroupBy(b => b.RemoteName ?? "origin")
                 .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
-            // Create remote groups for ALL remotes (including those without branches yet)
+            // Create remote groups for ALL remotes (including those without branches yet).
+            // Each remote's branches are organised into directory subfolders (issue #29)
+            // — e.g. "origin/feature/foo" lives under origin → feature → foo, matching
+            // how LOCAL and GITFLOW already render.
             var remoteGroups = remotes
                 .Select(remote =>
                 {
                     var remoteBranchList = branchesByRemote.GetValueOrDefault(remote.Name, []);
-                    return new RemoteBranchGroup
+
+                    // Strip the "<remoteName>/" prefix so the directory grouping
+                    // sees the remote-relative path ("feature/foo", not
+                    // "origin/feature/foo"). Materialise to a list because
+                    // BuildDirectoryGrouping enumerates twice (group then sort).
+                    var prefix = $"{remote.Name}/";
+                    var projectedBranches = remoteBranchList.Select(b => new BranchInfo
+                    {
+                        Name = b.Name.StartsWith(prefix) ? b.Name[prefix.Length..] : b.Name,
+                        FullName = b.FullName,
+                        IsCurrent = b.IsCurrent,
+                        IsRemote = b.IsRemote,
+                        RemoteName = b.RemoteName,
+                        TrackingBranchName = b.TrackingBranchName,
+                        TipSha = b.TipSha,
+                        AheadBy = b.AheadBy,
+                        BehindBy = b.BehindBy
+                    }).ToList();
+
+                    var group = new RemoteBranchGroup
                     {
                         Name = remote.Name,
                         Url = remote.Url,
                         RemoteType = RemoteBranchGroup.GetRemoteTypeFromUrl(remote.Url),
                         IsDefault = remote.Name.Equals(defaultRemoteName, StringComparison.OrdinalIgnoreCase),
-                        Branches = new System.Collections.ObjectModel.ObservableCollection<BranchInfo>(
-                            remoteBranchList.Select(b => new BranchInfo
-                            {
-                                // Strip the remote prefix from the display name
-                                Name = b.Name.StartsWith($"{remote.Name}/") ? b.Name[($"{remote.Name}/".Length)..] : b.Name,
-                                FullName = b.FullName,
-                                IsCurrent = b.IsCurrent,
-                                IsRemote = b.IsRemote,
-                                RemoteName = b.RemoteName,
-                                TrackingBranchName = b.TrackingBranchName,
-                                TipSha = b.TipSha,
-                                AheadBy = b.AheadBy,
-                                BehindBy = b.BehindBy
-                            }).OrderBy(b => b.Name)),
                         IsExpanded = true
                     };
+                    PopulateWithDirectoryGroups(group, projectedBranches);
+                    return group;
                 })
                 .OrderBy(g => g.Name)
                 .ToList();
@@ -410,38 +420,61 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Populates a BranchCategory with directory groups for branches containing "/" and
-    /// ungrouped branches for those without. Branches are the same instances (shared references).
+    /// Splits a branch list into directory-prefixed groups (e.g.
+    /// "feature/foo", "hotfix/bar") and an ungrouped remainder. Used by
+    /// LOCAL, GITFLOW, and per-remote sections so the tree layout is
+    /// consistent across the sidebar (issue #29).
     /// </summary>
-    private static void PopulateWithDirectoryGroups(BranchCategory category, List<BranchInfo> branches)
+    private static (List<DirectoryBranchGroup> DirectoryGroups, List<BranchInfo> Ungrouped) BuildDirectoryGrouping(IEnumerable<BranchInfo> branches)
     {
-        var grouped = branches
-            .GroupBy(b =>
-            {
-                var slashIndex = b.Name.IndexOf('/');
-                return slashIndex > 0 ? b.Name[..slashIndex] : null;
-            });
+        var directoryGroups = new List<DirectoryBranchGroup>();
+        var ungrouped = new List<BranchInfo>();
+
+        var grouped = branches.GroupBy(b =>
+        {
+            var slashIndex = b.Name.IndexOf('/');
+            return slashIndex > 0 ? b.Name[..slashIndex] : null;
+        });
 
         foreach (var group in grouped.OrderBy(g => g.Key ?? ""))
         {
             if (group.Key == null)
             {
-                // Ungrouped branches (no "/" in name) — add directly
-                foreach (var branch in group.OrderBy(b => b.Name))
-                {
-                    category.Branches.Add(branch);
-                }
+                ungrouped.AddRange(group.OrderBy(b => b.Name));
             }
             else
             {
-                // Directory group — collapsible folder
-                var dirGroup = new DirectoryBranchGroup
+                directoryGroups.Add(new DirectoryBranchGroup
                 {
                     Name = group.Key,
                     Branches = new ObservableCollection<BranchInfo>(group.OrderBy(b => b.Name))
-                };
-                category.DirectoryGroups.Add(dirGroup);
+                });
             }
         }
+
+        return (directoryGroups, ungrouped);
+    }
+
+    /// <summary>
+    /// Populates a BranchCategory with directory groups for branches containing "/" and
+    /// ungrouped branches for those without. Branches are the same instances (shared references).
+    /// </summary>
+    private static void PopulateWithDirectoryGroups(BranchCategory category, List<BranchInfo> branches)
+    {
+        var (dirs, ungrouped) = BuildDirectoryGrouping(branches);
+        foreach (var dir in dirs) category.DirectoryGroups.Add(dir);
+        foreach (var branch in ungrouped) category.Branches.Add(branch);
+    }
+
+    /// <summary>
+    /// Per-remote variant of <see cref="PopulateWithDirectoryGroups(BranchCategory, List{BranchInfo})"/> —
+    /// puts prefixed branches under <see cref="RemoteBranchGroup.DirectoryGroups"/> and
+    /// the rest under <see cref="RemoteBranchGroup.Branches"/>.
+    /// </summary>
+    private static void PopulateWithDirectoryGroups(RemoteBranchGroup group, IEnumerable<BranchInfo> branches)
+    {
+        var (dirs, ungrouped) = BuildDirectoryGrouping(branches);
+        foreach (var dir in dirs) group.DirectoryGroups.Add(dir);
+        foreach (var branch in ungrouped) group.Branches.Add(branch);
     }
 }
