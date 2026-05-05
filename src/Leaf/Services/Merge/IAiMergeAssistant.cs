@@ -38,20 +38,47 @@ public interface IAiMergeAssistant
     bool IsConsentGiven { get; }
 
     /// <summary>
-    /// Absolute path to the configured MCP server executable, or <c>null</c>
-    /// if none is set. Surfaced to the consent dialog so the user knows
-    /// where their data is headed.
+    /// Which provider category will receive the request — used by UI logic
+    /// (settings dropdown, tests) without resorting to string matching on
+    /// <see cref="ProviderDescription"/>. Replaces the earlier
+    /// <c>McpServerPath</c> property when the merge feature was MCP-only.
     /// </summary>
-    string? McpServerPath { get; }
+    AiProviderKind ProviderKind { get; }
 
     /// <summary>
-    /// Ask the configured MCP server for a proposed resolution. Returns <c>null</c>
+    /// Human-readable description of where the request will go — surfaced
+    /// to the consent dialog so the user always knows what's about to
+    /// receive their conflict data. Examples: <c>"Claude CLI"</c>,
+    /// <c>"Ollama (llama3.1, http://localhost:11434)"</c>,
+    /// <c>"External server: C:\path\to\server.exe"</c>.
+    /// </summary>
+    string ProviderDescription { get; }
+
+    /// <summary>
+    /// Ask the configured AI for a proposed resolution. Returns <c>null</c>
     /// when the feature is disabled or the user has not granted consent for this
-    /// session. Throws on transport errors so the caller can surface them.
+    /// session. Throws <see cref="AiMergeAssistantException"/> on transport
+    /// errors so the caller can surface them.
     /// </summary>
     Task<AiResolution?> RequestResolutionAsync(
         AiResolutionRequest request,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Provider category for an <see cref="IAiMergeAssistant"/> instance — used
+/// by the router and settings UI to dispatch and label without string
+/// comparison. Mirrors the connection-state flags on <c>AppSettings</c>
+/// (Claude / Gemini / Codex / Ollama) plus the original external-server
+/// transport.
+/// </summary>
+public enum AiProviderKind
+{
+    Claude,
+    Gemini,
+    Codex,
+    Ollama,
+    ExternalServer,
 }
 
 /// <summary>Input payload sent to the MCP server.</summary>

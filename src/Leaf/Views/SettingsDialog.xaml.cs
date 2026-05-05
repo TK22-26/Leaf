@@ -390,6 +390,7 @@ public partial class SettingsDialog : Window
         TerminalLogGitCommandsCheckBox.IsChecked = _settings.TerminalLogGitCommands;
         SyncAllRemotesCheckBox.IsChecked = _settings.SyncAllRemotes;
         CompactFileListCheckBox.IsChecked = _settings.CompactFileList;
+        ShowAllSubmodulesInRepositoryListCheckBox.IsChecked = _settings.ShowAllSubmodulesInRepositoryList;
 
         // Logging
         LogFilePathTextBox.Text = Log.FilePath;
@@ -450,6 +451,7 @@ public partial class SettingsDialog : Window
         _settings.TerminalLogGitCommands = TerminalLogGitCommandsCheckBox.IsChecked == true;
         _settings.SyncAllRemotes = SyncAllRemotesCheckBox.IsChecked == true;
         _settings.CompactFileList = CompactFileListCheckBox.IsChecked == true;
+        _settings.ShowAllSubmodulesInRepositoryList = ShowAllSubmodulesInRepositoryListCheckBox.IsChecked == true;
 
         // Logging
         if (LogLevelComboBox.SelectedItem is ComboBoxItem logItem && logItem.Tag is string logTag)

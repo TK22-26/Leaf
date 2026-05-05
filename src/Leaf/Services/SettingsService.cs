@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Leaf.Models;
 
 namespace Leaf.Services;
@@ -53,6 +54,7 @@ public class SettingsService
             if (File.Exists(SettingsFile))
             {
                 var json = File.ReadAllText(SettingsFile);
+                json = MigrateRenamedKeys(json);
                 return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
             }
             else
@@ -67,6 +69,70 @@ public class SettingsService
 
         return new AppSettings();
     }
+
+    /// <summary>
+    /// Run one-time JSON-level renames before typed deserialization. We
+    /// rewrite the on-disk file at the same time so future loads stay
+    /// fast and the legacy keys disappear permanently — no per-property
+    /// shim or [Obsolete] field on <see cref="AppSettings"/>, which would
+    /// otherwise leak the old name forever.
+    /// </summary>
+    /// <remarks>
+    /// Add new entries to <see cref="RenamedSettingsKeys"/> when keys move.
+    /// The migration is idempotent: missing-old-key + present-new-key is a
+    /// no-op. When both exist the new key wins (defensive — a hand-edited
+    /// settings.json could end up in that state).
+    /// </remarks>
+    private string MigrateRenamedKeys(string json)
+    {
+        JsonNode? root;
+        try { root = JsonNode.Parse(json); }
+        catch (JsonException) { return json; }
+        if (root is not JsonObject obj) return json;
+
+        var changed = false;
+        foreach (var (oldKey, newKey) in RenamedSettingsKeys)
+        {
+            if (!obj.ContainsKey(oldKey)) continue;
+            var oldVal = obj[oldKey];
+            var newAlreadyHasValue = obj.TryGetPropertyValue(newKey, out var existing)
+                && existing is JsonValue existingValue
+                && !string.IsNullOrEmpty(existingValue.GetValue<string?>() ?? string.Empty);
+            if (!newAlreadyHasValue && oldVal is not null)
+            {
+                obj[newKey] = oldVal.DeepClone();
+            }
+            obj.Remove(oldKey);
+            changed = true;
+            Log.Info("Settings", $"Migrated renamed key '{oldKey}' → '{newKey}'.");
+        }
+
+        if (!changed) return json;
+
+        var rewritten = root.ToJsonString(JsonOptions);
+        try { File.WriteAllText(SettingsFile, rewritten); }
+        catch (Exception ex)
+        {
+            // Persisting the migration is best-effort — if it fails the
+            // in-memory settings still reflect the new shape and we'll
+            // just retry the migration on next launch.
+            Log.Warn("Settings", $"Failed to persist key-rename migration: {ex.Message}");
+        }
+        return rewritten;
+    }
+
+    /// <summary>
+    /// Maps obsolete JSON property names to their replacements. Camel-cased
+    /// to match the on-disk key style (<see cref="JsonOptions"/> uses
+    /// <see cref="JsonNamingPolicy.CamelCase"/>). New entries land here
+    /// when a setting is renamed.
+    /// </summary>
+    private static readonly (string OldKey, string NewKey)[] RenamedSettingsKeys =
+    [
+        // 2026-05: AI merge feature dropped MCP-only constraint; the
+        // external-server path is now one of several providers.
+        ("aiMergeMcpServerPath", "aiMergeExternalServerPath"),
+    ];
 
     public void SaveSettings(AppSettings settings)
     {
@@ -245,15 +311,37 @@ public class AppSettings
     // only want to see errors from actions they explicitly initiated.
     public bool ShowBackgroundOperationErrors { get; set; } = false;
 
-    // AI merge assistant (plan §5 — Phase 5 AI-Assisted Resolution).
-    // Opt-in only: disabled and no MCP server path by default. First click
-    // on "Ask AI" in the merge editor triggers a one-time consent dialog
-    // that, when acknowledged, flips AiMergeConsentGiven to true — after
-    // which clicks go straight through. Resetting either flag to false
-    // from settings re-triggers the consent dialog on next use.
+    // Repository sidebar nesting toggle. When true, every entry in a
+    // parent's .gitmodules — including ones the user has never opened —
+    // shows up as a virtual child under the parent. Clicking a virtual
+    // child runs OpenSubmoduleAsRepositoryAsync (same as double-click
+    // in the branch pane's SUBMODULES section) and the child becomes
+    // a real entry. Off by default because the resulting tree is
+    // noisy for repos with many submodules; some users prefer the
+    // exhaustive view.
+    public bool ShowAllSubmodulesInRepositoryList { get; set; } = false;
+
+    // AI merge assistant. Opt-in only: disabled by default. First click
+    // on "Ask AI" in the merge editor triggers a one-time consent
+    // dialog that, when acknowledged, flips AiMergeConsentGiven to true
+    // — after which clicks go straight through. Resetting either flag
+    // to false from settings re-triggers the consent dialog on next use.
+    //
+    // AiMergeProvider selects which backend the router dispatches to:
+    // "Claude" / "Gemini" / "Codex" / "Ollama" (CLI / HTTP wrappers
+    // around the user's existing tooling) or "ExternalServer" (the
+    // legacy stdio-JSON server, optional power-user / corporate path).
+    // Empty string leaves the router to fall back to a sensible default
+    // on first use (the user's commit-message provider if connected,
+    // otherwise the first connected CLI provider).
+    //
+    // AiMergeExternalServerPath was previously named AiMergeMcpServerPath;
+    // SettingsService.LoadSettings performs a one-time JSON-level rename
+    // when an old settings file is loaded.
     public bool AiMergeEnabled { get; set; } = false;
     public bool AiMergeConsentGiven { get; set; } = false;
-    public string AiMergeMcpServerPath { get; set; } = string.Empty;
+    public string AiMergeProvider { get; set; } = string.Empty;
+    public string AiMergeExternalServerPath { get; set; } = string.Empty;
 
     // Merge editor layout (C1 grid splitters). FileListWidth is an absolute
     // pixel width; the three ratio properties are star-values that map to

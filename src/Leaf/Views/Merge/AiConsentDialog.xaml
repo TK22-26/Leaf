@@ -21,7 +21,7 @@
                    Text="Ask AI to propose a resolution?"/>
 
         <TextBlock Grid.Row="1" Margin="0,10,0,0" TextWrapping="Wrap"
-                   Text="Leaf can send this conflict to a local MCP (Model Context Protocol) server, which then talks to an AI model on your behalf. Leaf itself does not call any model API directly."/>
+                   Text="Leaf can send this conflict to your configured AI provider (a local CLI like claude / gemini / codex / ollama, or a custom external server). Leaf itself does not call any model API directly — provider tooling owns the credentials."/>
 
         <Border Grid.Row="2" Margin="0,14,0,0"
                 Background="{DynamicResource Merge.Surface.Scrim}"
@@ -46,7 +46,7 @@
         </Border>
 
         <StackPanel Grid.Row="3" Margin="0,14,0,0">
-            <TextBlock FontWeight="SemiBold" Text="Target MCP server:"/>
+            <TextBlock FontWeight="SemiBold" Text="Target AI provider:"/>
             <TextBlock x:Name="ServerPathText"
                        Margin="0,4,0,0"
                        FontFamily="Consolas"
@@ -59,7 +59,7 @@
 
         <TextBlock Grid.Row="4" Margin="0,14,0,0" TextWrapping="Wrap"
                    FontStyle="Italic" Foreground="{DynamicResource Merge.Text.Secondary}"
-                   Text="You can revoke this at any time from Settings → AI Integrations → Merge Assistant. This dialog will not appear again unless consent is reset."/>
+                   Text="You can revoke this at any time from Settings → AI → Merge Assistant. This dialog will not appear again unless consent is reset."/>
 
         <StackPanel Grid.Row="5" Margin="0,18,0,0"
                     Orientation="Horizontal" HorizontalAlignment="Right">
@@ -67,7 +67,7 @@
                     Width="120" Margin="0,0,8,0"
                     IsDefault="True"
                     Click="OkButton_Click"
-                    Content="Send to MCP"/>
+                    Content="Send to AI"/>
             <Button Width="90" IsCancel="True"
                     Click="CancelButton_Click"
                     Content="Cancel"/>

@@ -526,7 +526,7 @@ public partial class MergeEditorView : Window
     private void OnAiConsentRequested(object? sender, AiConsentRequest e)
     {
         if (Vm is null) return;
-        var dlg = new AiConsentDialog(e.McpServerPath, e.ContextLines)
+        var dlg = new AiConsentDialog(e.ProviderDescription, e.ContextLines)
         {
             Owner = this,
         };

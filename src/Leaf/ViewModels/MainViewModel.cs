@@ -101,6 +101,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<RepositoryGroup> RepositoryGroups => _repositoryService.RepositoryGroups;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ParentRepositoryName))]
+    [NotifyCanExecuteChangedFor(nameof(NavigateToParentRepositoryCommand))]
     private RepositoryInfo? _selectedRepository;
 
     /// <summary>
@@ -483,10 +485,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService, externalToolConfig, externalToolLauncher, settingsService)
             { GetSessionToken = tokenGetter };
 
-        // Create AI and gitignore services for WorkingChangesViewModel
+        // Create AI and gitignore services for WorkingChangesViewModel.
+        // This non-DI ctor path (used by the parameterless MainViewModel
+        // entry, mostly tests / design-time) constructs the runner +
+        // adapters by hand to keep the call site self-contained.
         var commitMessageParser = new CommitMessageParser();
         var ollamaService = new OllamaService();
-        var aiCommitService = new AiCommitMessageService(settingsService, ollamaService, commitMessageParser);
+        var aiCliRunner = new Leaf.Services.Ai.AiCliRunner();
+        var aiCliAdapters = new Leaf.Services.Ai.Adapters.IAiCliAdapter[]
+        {
+            new Leaf.Services.Ai.Adapters.ClaudeCliAdapter(),
+            new Leaf.Services.Ai.Adapters.GeminiCliAdapter(),
+            new Leaf.Services.Ai.Adapters.CodexCliAdapter(),
+        };
+        var aiCommitService = new AiCommitMessageService(settingsService, ollamaService, commitMessageParser, aiCliRunner, aiCliAdapters);
         var gitignoreService = new GitignoreService(gitService);
 
         _workingChangesViewModel = new WorkingChangesViewModel(gitService, clipboardService, fileSystemService, dialogService, aiCommitService, gitignoreService, externalToolConfig, externalToolLauncher, settingsService, commitTemplateService)
@@ -550,9 +562,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         CloseDiffViewer();
     }
 
-    private void OnFileWatcherWorkingDirectoryChanged(object? sender, EventArgs e)
+    private void OnFileWatcherWorkingDirectoryChanged(object? sender, WorkingDirectoryChangedEventArgs e)
     {
-        HandleWorkingDirectoryChangedAsync()
+        HandleWorkingDirectoryChangedAsync(e.ChangedPaths)
             .FireAndForget(nameof(HandleWorkingDirectoryChangedAsync), isUserAction: false);
     }
 

@@ -8,12 +8,13 @@ using Xunit;
 namespace Leaf.Tests.Services.Merge;
 
 /// <summary>
-/// Tests for <see cref="McpMergeAssistant"/>. The transport layer spawns a real
-/// child process + exchanges JSON over stdio, so the tests use a real exe-style
-/// shim: a <c>cmd.exe</c> script that echoes canned JSON. This verifies the
-/// gating logic + the JSON round-trip without depending on an Anthropic account.
+/// Tests for <see cref="ExternalServerMergeAssistant"/>. The transport layer
+/// spawns a real child process + exchanges JSON over stdio, so the tests use a
+/// real exe-style shim: a <c>cmd.exe</c> script that echoes canned JSON. This
+/// verifies the gating logic + the JSON round-trip without depending on a
+/// real provider account.
 /// </summary>
-public class McpMergeAssistantTests
+public class ExternalServerMergeAssistantTests
 {
     private static AiResolutionRequest SampleRequest() => new(
         FilePath: "test.cs",
@@ -27,7 +28,7 @@ public class McpMergeAssistantTests
     [Fact]
     public async Task ReturnsNull_WhenFeatureDisabled()
     {
-        var assistant = new McpMergeAssistant(
+        var assistant = new ExternalServerMergeAssistant(
             serverPathProvider: () => "C:/nonexistent.exe",
             enabledProvider: () => false,
             consentGivenProvider: () => true);
@@ -38,7 +39,7 @@ public class McpMergeAssistantTests
     [Fact]
     public async Task ReturnsNull_WhenConsentMissing()
     {
-        var assistant = new McpMergeAssistant(
+        var assistant = new ExternalServerMergeAssistant(
             serverPathProvider: () => "C:/nonexistent.exe",
             enabledProvider: () => true,
             consentGivenProvider: () => false);
@@ -49,19 +50,19 @@ public class McpMergeAssistantTests
     [Fact]
     public async Task Throws_WhenServerPathMissing()
     {
-        var assistant = new McpMergeAssistant(
+        var assistant = new ExternalServerMergeAssistant(
             serverPathProvider: () => null,
             enabledProvider: () => true,
             consentGivenProvider: () => true);
         var act = () => assistant.RequestResolutionAsync(SampleRequest());
         await act.Should().ThrowAsync<AiMergeAssistantException>()
-            .Where(e => e.Message.Contains("MCP server"));
+            .Where(e => e.Message.Contains("External Server"));
     }
 
     [Fact]
     public async Task Throws_WhenServerPathDoesNotExist()
     {
-        var assistant = new McpMergeAssistant(
+        var assistant = new ExternalServerMergeAssistant(
             serverPathProvider: () => "C:/this-path-should-never-exist-xyz.exe",
             enabledProvider: () => true,
             consentGivenProvider: () => true);
@@ -79,7 +80,7 @@ public class McpMergeAssistantTests
         File.WriteAllText(notAnExe, "plain text");
         try
         {
-            var assistant = new McpMergeAssistant(
+            var assistant = new ExternalServerMergeAssistant(
                 serverPathProvider: () => notAnExe,
                 enabledProvider: () => true,
                 consentGivenProvider: () => true);
@@ -88,7 +89,7 @@ public class McpMergeAssistantTests
             // We don't assert the inner-exception type — Windows may return
             // different framework exceptions depending on file contents — but
             // we do verify the public exception type is the wrapped one.
-            exAssertion.Which.Message.Should().Contain("Could not start MCP server");
+            exAssertion.Which.Message.Should().Contain("Could not start external server");
         }
         finally { File.Delete(notAnExe); }
     }
@@ -102,7 +103,7 @@ public class McpMergeAssistantTests
         var shim = CreateBatShim("{\"proposedText\":\"early-exit\",\"rationale\":\"\",\"confidence\":\"medium\"}");
         try
         {
-            var assistant = new McpMergeAssistant(
+            var assistant = new ExternalServerMergeAssistant(
                 serverPathProvider: () => shim,
                 enabledProvider: () => true,
                 consentGivenProvider: () => true);
@@ -127,7 +128,7 @@ public class McpMergeAssistantTests
         var shim = CreateBatShim("{\"proposedText\":\"fixed line\",\"rationale\":\"ok\",\"confidence\":\"high\"}");
         try
         {
-            var assistant = new McpMergeAssistant(
+            var assistant = new ExternalServerMergeAssistant(
                 serverPathProvider: () => shim,
                 enabledProvider: () => true,
                 consentGivenProvider: () => true);
@@ -149,7 +150,7 @@ public class McpMergeAssistantTests
         var shim = CreateBatShim("not-json");
         try
         {
-            var assistant = new McpMergeAssistant(
+            var assistant = new ExternalServerMergeAssistant(
                 serverPathProvider: () => shim,
                 enabledProvider: () => true,
                 consentGivenProvider: () => true);
@@ -166,7 +167,7 @@ public class McpMergeAssistantTests
         var shim = CreateBatShim("{\"proposedText\":\"\",\"rationale\":\"\",\"confidence\":\"low\"}");
         try
         {
-            var assistant = new McpMergeAssistant(
+            var assistant = new ExternalServerMergeAssistant(
                 serverPathProvider: () => shim,
                 enabledProvider: () => true,
                 consentGivenProvider: () => true);
@@ -180,13 +181,49 @@ public class McpMergeAssistantTests
     [Fact]
     public void ExposesSettings_ForViewQueries()
     {
-        var assistant = new McpMergeAssistant(
-            serverPathProvider: () => "C:/mcp.exe",
+        // IsEnabled now gates on the server path existing on disk too
+        // (matches the connection-state pattern from the CLI providers
+        // — the router relies on this to dispatch a clear "not connected"
+        // error rather than silently falling through). Use a real temp
+        // file so the property surface reflects a connected state.
+        var serverPath = Path.Combine(Path.GetTempPath(), $"leaf-mock-server-{Guid.NewGuid():N}.bat");
+        File.WriteAllText(serverPath, "@echo off\r\n");
+        try
+        {
+            var assistant = new ExternalServerMergeAssistant(
+                serverPathProvider: () => serverPath,
+                enabledProvider: () => true,
+                consentGivenProvider: () => false);
+            assistant.IsEnabled.Should().BeTrue();
+            assistant.IsConsentGiven.Should().BeFalse();
+            assistant.ProviderKind.Should().Be(AiProviderKind.ExternalServer);
+            assistant.ProviderDescription.Should().Contain(serverPath);
+        }
+        finally { File.Delete(serverPath); }
+    }
+
+    [Fact]
+    public void IsEnabled_FalseWhenServerPathMissing()
+    {
+        // Connection-state contract: a configured-but-missing server
+        // path counts as "not connected" so the router's selected-
+        // provider-not-connected branch can fire with a named error,
+        // matching the CLI providers' IsProviderConnected behaviour.
+        var assistant = new ExternalServerMergeAssistant(
+            serverPathProvider: () => "C:/does-not-exist-on-disk.exe",
             enabledProvider: () => true,
-            consentGivenProvider: () => false);
-        assistant.IsEnabled.Should().BeTrue();
-        assistant.IsConsentGiven.Should().BeFalse();
-        assistant.McpServerPath.Should().Be("C:/mcp.exe");
+            consentGivenProvider: () => true);
+        assistant.IsEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ProviderDescription_FallsBackWhenNoPathConfigured()
+    {
+        var assistant = new ExternalServerMergeAssistant(
+            serverPathProvider: () => null,
+            enabledProvider: () => true,
+            consentGivenProvider: () => true);
+        assistant.ProviderDescription.Should().Contain("no path configured");
     }
 
     /// <summary>
@@ -196,7 +233,7 @@ public class McpMergeAssistantTests
     /// </summary>
     private static string CreateBatShim(string jsonOutput)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"leaf-mcp-test-{Guid.NewGuid():N}.bat");
+        var path = Path.Combine(Path.GetTempPath(), $"leaf-merge-server-test-{Guid.NewGuid():N}.bat");
         // @echo off suppresses the "C:\>echo ..." prefix; redirect stdout to the
         // given JSON and exit cleanly. We intentionally don't read stdin — the
         // assistant closes it before reading stdout, which is sufficient.

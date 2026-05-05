@@ -107,23 +107,64 @@ public static class ServiceRegistry
     {
         services.AddSingleton<OllamaService>();
         services.AddSingleton<ICommitMessageParser, CommitMessageParser>();
+        services.AddSingleton<Leaf.Services.Ai.IAiCliRunner, Leaf.Services.Ai.AiCliRunner>();
+        // CLI adapters per provider — stateless wrappers that translate
+        // (prompt, schema) → AiCliInvocation and unwrap the provider's
+        // response envelope. Resolved into AiCommitMessageService and
+        // (Phase 3) the per-provider merge assistants via IEnumerable<IAiCliAdapter>.
+        services.AddSingleton<Leaf.Services.Ai.Adapters.IAiCliAdapter, Leaf.Services.Ai.Adapters.ClaudeCliAdapter>();
+        services.AddSingleton<Leaf.Services.Ai.Adapters.IAiCliAdapter, Leaf.Services.Ai.Adapters.GeminiCliAdapter>();
+        services.AddSingleton<Leaf.Services.Ai.Adapters.IAiCliAdapter, Leaf.Services.Ai.Adapters.CodexCliAdapter>();
         services.AddSingleton<IAiCommitMessageService, AiCommitMessageService>();
 
-        // Phase 5: AI-assisted merge resolution via MCP. The assistant itself
-        // is transport + gating only; the providers read fresh values from
-        // SettingsService on every invocation so a settings change takes
-        // effect without reconstructing the singleton.
+        // AI-assisted merge resolution. The router holds one of every
+        // provider implementation and dispatches to whichever is selected
+        // in AppSettings.AiMergeProvider — re-read on every call so a
+        // settings change takes effect without DI rebuild. All inner
+        // providers read settings via Func<T> closures, so the router
+        // is stateless and safe as a singleton.
         services.AddSingleton<Leaf.Services.Merge.IAiMergeAssistant>(sp =>
         {
             var settings = sp.GetRequiredService<SettingsService>();
-            return new Leaf.Services.Merge.McpMergeAssistant(
+            var runner = sp.GetRequiredService<Leaf.Services.Ai.IAiCliRunner>();
+            var ollama = sp.GetRequiredService<OllamaService>();
+            var adapters = sp.GetServices<Leaf.Services.Ai.Adapters.IAiCliAdapter>().ToList();
+            var claudeAdapter = (Leaf.Services.Ai.Adapters.ClaudeCliAdapter)adapters.First(a => a.Provider == Leaf.Services.Merge.AiProviderKind.Claude);
+            var geminiAdapter = (Leaf.Services.Ai.Adapters.GeminiCliAdapter)adapters.First(a => a.Provider == Leaf.Services.Merge.AiProviderKind.Gemini);
+            var codexAdapter = (Leaf.Services.Ai.Adapters.CodexCliAdapter)adapters.First(a => a.Provider == Leaf.Services.Merge.AiProviderKind.Codex);
+
+            int Timeout() => Math.Max(1, settings.LoadSettings().AiCliTimeoutSeconds);
+            bool Enabled() => settings.LoadSettings().AiMergeEnabled;
+            bool Consent() => settings.LoadSettings().AiMergeConsentGiven;
+
+            var claude = new Leaf.Services.Merge.Providers.ClaudeMergeAssistant(
+                runner, claudeAdapter, Enabled, Consent,
+                () => settings.LoadSettings().IsClaudeConnected, Timeout);
+            var gemini = new Leaf.Services.Merge.Providers.GeminiMergeAssistant(
+                runner, geminiAdapter, Enabled, Consent,
+                () => settings.LoadSettings().IsGeminiConnected, Timeout);
+            var codex = new Leaf.Services.Merge.Providers.CodexMergeAssistant(
+                runner, codexAdapter, Enabled, Consent,
+                () => settings.LoadSettings().IsCodexConnected, Timeout);
+            var ollamaAssistant = new Leaf.Services.Merge.Providers.OllamaMergeAssistant(
+                ollama, Enabled, Consent,
+                () => settings.LoadSettings().OllamaBaseUrl,
+                () => settings.LoadSettings().OllamaSelectedModel,
+                Timeout);
+            var externalServer = new Leaf.Services.Merge.ExternalServerMergeAssistant(
                 serverPathProvider: () =>
                 {
-                    var path = settings.LoadSettings().AiMergeMcpServerPath;
+                    var path = settings.LoadSettings().AiMergeExternalServerPath;
                     return string.IsNullOrWhiteSpace(path) ? null : path;
                 },
-                enabledProvider: () => settings.LoadSettings().AiMergeEnabled,
-                consentGivenProvider: () => settings.LoadSettings().AiMergeConsentGiven);
+                enabledProvider: Enabled,
+                consentGivenProvider: Consent);
+
+            return new Leaf.Services.Merge.AiMergeAssistantRouter(
+                selectedProviderProvider: () => settings.LoadSettings().AiMergeProvider,
+                enabledProvider: Enabled,
+                consentProvider: Consent,
+                claude, gemini, codex, ollamaAssistant, externalServer);
         });
     }
 

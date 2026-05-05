@@ -8,27 +8,28 @@ using System.Text.Json;
 namespace Leaf.Services.Merge;
 
 /// <summary>
-/// MCP-stdio-backed implementation of <see cref="IAiMergeAssistant"/>. Spawns
-/// a configurable external process (the "merge resolution MCP server") and
-/// exchanges JSON payloads over its stdin/stdout. Leaf ships a default server
-/// path at <c>tools/leaf-merge-mcp/</c>; users can swap the path in settings
-/// to point at any other MCP implementation (local model, Gemini, corporate
-/// endpoint, etc.).
+/// External-server-backed implementation of <see cref="IAiMergeAssistant"/>.
+/// Spawns a configurable external process (the user's chosen "merge
+/// resolution server") and exchanges JSON payloads over its stdin/stdout.
+/// Leaf ships a reference server skeleton at <c>tools/leaf-merge-server/</c>;
+/// users can swap the path in settings to point at any compatible
+/// implementation (local model, corporate endpoint, custom proxy, etc.).
 /// </summary>
 /// <remarks>
 /// <para>
-/// The wire protocol is intentionally simple — one JSON request object on
-/// stdin, one JSON response object on stdout — because full MCP tool-use
-/// session management is the MCP server's responsibility, not Leaf's. This
-/// keeps the Leaf client identical regardless of which backend is plugged in.
+/// Despite the historical "MCP" naming, the wire protocol is intentionally
+/// minimal — one JSON request object on stdin, one JSON response object on
+/// stdout — because full MCP tool-use session management is the server's
+/// responsibility, not Leaf's. This keeps the Leaf client identical
+/// regardless of which backend is plugged in.
 /// </para>
 /// <para>
 /// The process is started fresh for each request (not persisted), so a
-/// crashed or hanging MCP server doesn't leave Leaf with stale state. Trade-off:
+/// crashed or hanging server doesn't leave Leaf with stale state. Trade-off:
 /// small per-request spawn cost, worth it for the isolation.
 /// </para>
 /// </remarks>
-public sealed class McpMergeAssistant : IAiMergeAssistant
+public sealed class ExternalServerMergeAssistant : IAiMergeAssistant
 {
     private readonly Func<string?> _serverPathProvider;
     private readonly Func<bool> _enabledProvider;
@@ -41,12 +42,13 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
     };
 
     /// <summary>
-    /// <paramref name="serverPathProvider"/> returns the absolute path to the MCP
-    /// server executable (or <c>null</c> if none configured). <paramref name="enabledProvider"/>
-    /// returns whether the user has enabled the feature globally. <paramref name="consentGivenProvider"/>
-    /// returns whether the user has acknowledged the first-run consent dialog.
+    /// <paramref name="serverPathProvider"/> returns the absolute path to the
+    /// external server executable (or <c>null</c> if none configured).
+    /// <paramref name="enabledProvider"/> returns whether the user has enabled
+    /// the feature globally. <paramref name="consentGivenProvider"/> returns
+    /// whether the user has acknowledged the first-run consent dialog.
     /// </summary>
-    public McpMergeAssistant(
+    public ExternalServerMergeAssistant(
         Func<string?> serverPathProvider,
         Func<bool> enabledProvider,
         Func<bool> consentGivenProvider)
@@ -56,11 +58,38 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
         _consentGivenProvider = consentGivenProvider ?? throw new ArgumentNullException(nameof(consentGivenProvider));
     }
 
-    public bool IsEnabled => _enabledProvider();
+    /// <summary>
+    /// Globally enabled AND a usable server path is configured. Mirrors
+    /// the connection-state pattern from <see cref="Providers.AiMergeAssistantBase"/>
+    /// (each CLI provider OR's a connection check into IsEnabled) so the
+    /// router's "selected provider not connected → throw a named error"
+    /// branch fires uniformly across all five backends. Without this gate,
+    /// a missing path would slip past the router-level check and only
+    /// surface as the file-existence failure inside <see cref="RequestResolutionAsync"/>,
+    /// producing a different error path than the CLI providers do.
+    /// </summary>
+    public bool IsEnabled => _enabledProvider() && IsProviderConfigured();
 
     public bool IsConsentGiven => _consentGivenProvider();
 
-    public string? McpServerPath => _serverPathProvider();
+    private bool IsProviderConfigured()
+    {
+        var path = _serverPathProvider();
+        return !string.IsNullOrWhiteSpace(path) && File.Exists(path);
+    }
+
+    public AiProviderKind ProviderKind => AiProviderKind.ExternalServer;
+
+    public string ProviderDescription
+    {
+        get
+        {
+            var path = _serverPathProvider();
+            return string.IsNullOrWhiteSpace(path)
+                ? "External server (no path configured)"
+                : $"External server: {path}";
+        }
+    }
 
     public async Task<AiResolution?> RequestResolutionAsync(
         AiResolutionRequest request,
@@ -78,8 +107,8 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
         if (string.IsNullOrWhiteSpace(serverPath) || !File.Exists(serverPath))
         {
             throw new AiMergeAssistantException(
-                "AI merge assistant is enabled but no MCP server is configured. " +
-                "Set Settings → AI Integrations → Merge Assistant → MCP Server Path.");
+                "AI merge assistant is set to External Server but no server is configured. " +
+                "Set Settings → AI → Merge Assistant → External Server Path, or pick a CLI provider instead.");
         }
 
         // Privacy log: timing + outcome only, never request content.
@@ -110,22 +139,22 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
             try
             {
                 process = Process.Start(psi) ??
-                    throw new AiMergeAssistantException($"Could not start MCP server at '{serverPath}'.");
+                    throw new AiMergeAssistantException($"Could not start external server at '{serverPath}'.");
             }
             catch (Win32Exception ex)
             {
                 throw new AiMergeAssistantException(
-                    $"Could not start MCP server at '{serverPath}' ({ex.Message}).", ex);
+                    $"Could not start external server at '{serverPath}' ({ex.Message}).", ex);
             }
             catch (InvalidOperationException ex)
             {
                 throw new AiMergeAssistantException(
-                    $"Could not start MCP server at '{serverPath}' ({ex.Message}).", ex);
+                    $"Could not start external server at '{serverPath}' ({ex.Message}).", ex);
             }
             catch (PlatformNotSupportedException ex)
             {
                 throw new AiMergeAssistantException(
-                    $"Could not start MCP server at '{serverPath}' ({ex.Message}).", ex);
+                    $"Could not start external server at '{serverPath}' ({ex.Message}).", ex);
             }
             using var _proc = process;
             using var reg = cancellationToken.Register(() =>
@@ -144,7 +173,7 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
                 ContextBefore: request.ContextBefore,
                 ContextAfter: request.ContextAfter), JsonOptions);
 
-            // Start both readers BEFORE writing stdin. A chatty MCP server can
+            // Start both readers BEFORE writing stdin. A chatty server can
             // fill the (~4–64 KB on Windows) stdout/stderr pipe buffer before
             // reading stdin; if we wait to drain until after write, the server
             // blocks on stdout and we block on stdin, deadlock. Mirrors the
@@ -183,7 +212,7 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
                 // faulted Task. The result is unused when we're going to throw.
                 try { await outputTask.ConfigureAwait(false); } catch { /* ignored */ }
                 throw new AiMergeAssistantException(
-                    $"MCP server exited with code {process.ExitCode}: {err.Trim()}");
+                    $"External server exited with code {process.ExitCode}: {err.Trim()}");
             }
 
             var stdout = await outputTask.ConfigureAwait(false);
@@ -196,11 +225,11 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
             catch (JsonException ex)
             {
                 throw new AiMergeAssistantException(
-                    $"MCP server returned malformed JSON ({ex.Message}).", ex);
+                    $"External server returned malformed JSON ({ex.Message}).", ex);
             }
             if (parsed is null || string.IsNullOrEmpty(parsed.ProposedText))
             {
-                throw new AiMergeAssistantException("MCP server returned an empty resolution.");
+                throw new AiMergeAssistantException("External server returned an empty resolution.");
             }
 
             var confidence = parsed.Confidence?.ToLowerInvariant() switch
@@ -238,7 +267,7 @@ public sealed class McpMergeAssistant : IAiMergeAssistant
             TaskScheduler.Default);
     }
 
-    // ── Wire types (internal — shape is the MCP request/response contract). ───
+    // ── Wire types (internal — shape is the external-server request/response contract). ───
 
     private sealed record WireRequest(
         string Tool,

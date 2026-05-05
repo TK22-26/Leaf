@@ -71,7 +71,7 @@ public class MergeEditorViewModelAiTests
     [Fact]
     public void RequestAiResolution_WhenConsentMissing_FiresConsentEventAndHoldsRequest()
     {
-        var fake = new FakeAiAssistant { IsEnabled = true, IsConsentGiven = false, McpServerPath = "C:/mcp.exe" };
+        var fake = new FakeAiAssistant { IsEnabled = true, IsConsentGiven = false, ProviderDescription = "Test provider" };
         var vm = CreateVm(DocWithOneConflict(), fake);
 
         AiConsentRequest? consent = null;
@@ -80,7 +80,7 @@ public class MergeEditorViewModelAiTests
         vm.RequestAiResolutionCommand.Execute(null);
 
         consent.Should().NotBeNull();
-        consent!.McpServerPath.Should().Be("C:/mcp.exe");
+        consent!.ProviderDescription.Should().Be("Test provider");
         consent.FilePath.Should().Be("test.cs");
         fake.CallCount.Should().Be(0, "consent hasn't been granted yet");
     }
@@ -92,7 +92,7 @@ public class MergeEditorViewModelAiTests
         {
             IsEnabled = true,
             IsConsentGiven = false,
-            McpServerPath = "C:/mcp.exe",
+            ProviderDescription = "Test provider",
             Result = new AiResolution("resolved", "because reasons", AiConfidence.High),
         };
         var vm = CreateVm(DocWithOneConflict(), fake);
@@ -119,7 +119,7 @@ public class MergeEditorViewModelAiTests
         {
             IsEnabled = true,
             IsConsentGiven = true,
-            McpServerPath = "C:/mcp.exe",
+            ProviderDescription = "Test provider",
             Result = new AiResolution("final text", string.Empty, AiConfidence.Medium),
         };
         var vm = CreateVm(DocWithOneConflict(), fake);
@@ -144,7 +144,7 @@ public class MergeEditorViewModelAiTests
         {
             IsEnabled = true,
             IsConsentGiven = true,
-            McpServerPath = "C:/mcp.exe",
+            ProviderDescription = "Test provider",
             ThrowMessage = "server unreachable",
         };
         var vm = CreateVm(DocWithOneConflict(), fake);
@@ -161,7 +161,7 @@ public class MergeEditorViewModelAiTests
     [Fact]
     public void CancelPendingAiRequest_DropsPending()
     {
-        var fake = new FakeAiAssistant { IsEnabled = true, IsConsentGiven = false, McpServerPath = "C:/mcp.exe" };
+        var fake = new FakeAiAssistant { IsEnabled = true, IsConsentGiven = false, ProviderDescription = "Test provider" };
         var vm = CreateVm(DocWithOneConflict(), fake);
 
         vm.RequestAiResolutionCommand.Execute(null);
@@ -176,7 +176,7 @@ public class MergeEditorViewModelAiTests
     [Fact]
     public void CanRequestAiResolution_FollowsDocumentAndInFlight()
     {
-        var fake = new FakeAiAssistant { IsEnabled = true, IsConsentGiven = true, McpServerPath = "C:/mcp.exe" };
+        var fake = new FakeAiAssistant { IsEnabled = true, IsConsentGiven = true, ProviderDescription = "Test provider" };
         var vm = CreateVm(DocWithOneConflict(), fake);
 
         vm.CanRequestAiResolution.Should().BeTrue();
@@ -189,7 +189,7 @@ public class MergeEditorViewModelAiTests
     [Fact]
     public void ConcurrentRequest_IsGuardedByInFlightFlag()
     {
-        var fake = new FakeAiAssistant { IsEnabled = true, IsConsentGiven = true, McpServerPath = "C:/mcp.exe" };
+        var fake = new FakeAiAssistant { IsEnabled = true, IsConsentGiven = true, ProviderDescription = "Test provider" };
         var vm = CreateVm(DocWithOneConflict(), fake);
         // Simulate a previous click that's still in flight. A second click
         // should be dropped so we don't double-spawn.
@@ -231,7 +231,7 @@ public class MergeEditorViewModelAiTests
         {
             IsEnabled = true,
             IsConsentGiven = true,
-            McpServerPath = "C:/mcp.exe",
+            ProviderDescription = "Test provider",
             Result = new AiResolution("ok", "r", AiConfidence.High),
         };
         var vm = CreateVm(doc, fake);
@@ -273,7 +273,7 @@ public class MergeEditorViewModelAiTests
         {
             IsEnabled = true,
             IsConsentGiven = true,
-            McpServerPath = "C:/mcp.exe",
+            ProviderDescription = "Test provider",
             Result = new AiResolution("ok", "r", AiConfidence.High),
         };
         var vm = CreateVm(doc, fake);
@@ -289,7 +289,8 @@ public class MergeEditorViewModelAiTests
     {
         public bool IsEnabled { get; set; }
         public bool IsConsentGiven { get; set; }
-        public string? McpServerPath { get; set; }
+        public AiProviderKind ProviderKind { get; set; } = AiProviderKind.ExternalServer;
+        public string ProviderDescription { get; set; } = "Test provider";
         public int CallCount { get; private set; }
         public AiResolution? Result { get; set; }
         public string? ThrowMessage { get; set; }

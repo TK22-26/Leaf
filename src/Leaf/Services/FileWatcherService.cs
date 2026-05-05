@@ -1,7 +1,26 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Timers;
 
 namespace Leaf.Services;
+
+/// <summary>
+/// Payload for <see cref="FileWatcherService.WorkingDirectoryChanged"/>.
+/// Carries the (deduplicated) absolute paths that fired the underlying
+/// FileSystemWatcher events between the previous debounce tick and this
+/// one, so handlers can route updates to specific subsystems (e.g. the
+/// per-submodule dirtiness dispatch) instead of wholesale-refreshing.
+/// </summary>
+public sealed class WorkingDirectoryChangedEventArgs : EventArgs
+{
+    /// <summary>
+    /// Absolute paths that changed in the working directory since the
+    /// last fire. Empty (but never null) on watcher restart / overflow,
+    /// in which case handlers should treat the event as a wholesale
+    /// refresh signal.
+    /// </summary>
+    public required IReadOnlyCollection<string> ChangedPaths { get; init; }
+}
 
 /// <summary>
 /// Service for monitoring file system changes in a Git repository.
@@ -17,14 +36,23 @@ public class FileWatcherService : IDisposable
     private string? _currentRepoPath;
     private bool _disposed;
 
+    // Accumulator of changed paths between debounce ticks. Concurrent
+    // because FileSystemWatcher events fire on background threads.
+    // Drained inside the debounce-elapsed handler.
+    private readonly ConcurrentDictionary<string, byte> _pendingPaths =
+        new(StringComparer.OrdinalIgnoreCase);
+
     // Debounce intervals in milliseconds
     private const int WorkingDirDebounceMs = 200;
     private const int GitDirDebounceMs = 2000;
 
     /// <summary>
     /// Raised when files in the working directory change (staged/unstaged changes).
+    /// The args carry the deduplicated paths that changed between debounce
+    /// ticks so handlers can dispatch surgically (e.g. only the submodules
+    /// whose working tree saw an edit get re-statused).
     /// </summary>
-    public event EventHandler? WorkingDirectoryChanged;
+    public event EventHandler<WorkingDirectoryChangedEventArgs>? WorkingDirectoryChanged;
 
     /// <summary>
     /// Raised when the git directory changes (commits, branches, etc.).
@@ -41,6 +69,15 @@ public class FileWatcherService : IDisposable
 
         // Stop any existing watchers
         StopWatching();
+
+        // Drop any paths the previous watcher (or a re-entry from the
+        // overflow-restart path) accumulated. Without this, the next
+        // debounce tick fires WorkingDirectoryChangedEventArgs containing
+        // paths from the *previous* repo, which the dispatch helpers
+        // would then prefix-match against the *new* repo's submodule
+        // roots — usually a no-match, but a real footgun when sibling
+        // clones share a parent path or when the same repo is rebuilt.
+        _pendingPaths.Clear();
 
         _currentRepoPath = repoPath;
         Log.Info("FileWatcher", $"Starting watch on {repoPath}");
@@ -149,6 +186,10 @@ public class FileWatcherService : IDisposable
         _gitDirDebounceTimer?.Dispose();
         _gitDirDebounceTimer = null;
 
+        // Clear here too so paths that arrived between the last debounce
+        // tick and the stop call don't survive into the next watcher.
+        _pendingPaths.Clear();
+
         _currentRepoPath = null;
     }
 
@@ -163,6 +204,17 @@ public class FileWatcherService : IDisposable
         {
             Log.Info("FileWatcher", $"Restarting watcher for {repoPath}");
             WatchRepository(repoPath);
+
+            // Buffer overflow means we silently lost an unknown set of
+            // change events. Fire a wholesale signal (empty ChangedPaths)
+            // so handlers refresh everything they care about — matches
+            // the contract documented on WorkingDirectoryChangedEventArgs.
+            // Without this the dispatch helpers stay stale until the next
+            // organic file event.
+            WorkingDirectoryChanged?.Invoke(this, new WorkingDirectoryChangedEventArgs
+            {
+                ChangedPaths = Array.Empty<string>(),
+            });
         }
     }
 
@@ -176,6 +228,8 @@ public class FileWatcherService : IDisposable
         if (ShouldIgnoreFile(e.FullPath))
             return;
 
+        _pendingPaths[e.FullPath] = 0;
+
         // Restart debounce timer
         _workingDirDebounceTimer?.Stop();
         _workingDirDebounceTimer?.Start();
@@ -188,6 +242,9 @@ public class FileWatcherService : IDisposable
 
         if (ShouldIgnoreFile(e.FullPath) && ShouldIgnoreFile(e.OldFullPath))
             return;
+
+        if (!ShouldIgnoreFile(e.FullPath)) _pendingPaths[e.FullPath] = 0;
+        if (!ShouldIgnoreFile(e.OldFullPath)) _pendingPaths[e.OldFullPath] = 0;
 
         _workingDirDebounceTimer?.Stop();
         _workingDirDebounceTimer?.Start();
@@ -214,7 +271,19 @@ public class FileWatcherService : IDisposable
 
     private void OnWorkingDirDebounceElapsed(object? sender, ElapsedEventArgs e)
     {
-        WorkingDirectoryChanged?.Invoke(this, EventArgs.Empty);
+        // Snapshot + clear atomically so paths arriving between the
+        // snapshot and the next event don't get dropped.
+        var paths = new List<string>(_pendingPaths.Count);
+        foreach (var key in _pendingPaths.Keys)
+        {
+            if (_pendingPaths.TryRemove(key, out _))
+                paths.Add(key);
+        }
+
+        WorkingDirectoryChanged?.Invoke(this, new WorkingDirectoryChangedEventArgs
+        {
+            ChangedPaths = paths,
+        });
     }
 
     private void OnGitDirDebounceElapsed(object? sender, ElapsedEventArgs e)

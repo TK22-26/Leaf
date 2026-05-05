@@ -105,9 +105,9 @@ public partial class MainViewModel
             }
 
             var repoInfo = await _gitService.GetRepositoryInfoFastAsync(path);
-            _repositoryService.AddRepository(repoInfo);
-            Log.Info("Repository", $"Added repository: {repoInfo.Name} ({path})");
-            await SelectRepositoryAsync(repoInfo);
+            var canonical = _repositoryService.AddRepository(repoInfo);
+            Log.Info("Repository", $"Added repository: {canonical.Name} ({path})");
+            await SelectRepositoryAsync(canonical);
         }
     }
 
@@ -267,9 +267,70 @@ public partial class MainViewModel
             // path isn't the current repo yet, and we're about to SelectRepositoryAsync
             // it which creates its own session.
             var repoInfo = await _gitService.GetRepositoryInfoFastAsync(dialog.ClonedRepositoryPath);
-            _repositoryService.AddRepository(repoInfo);
-            await SelectRepositoryAsync(repoInfo);
-            NotifySuccess("Repository cloned", $"Cloned {repoInfo.Name} successfully.");
+            var canonical = _repositoryService.AddRepository(repoInfo);
+            await SelectRepositoryAsync(canonical);
+            NotifySuccess("Repository cloned", $"Cloned {canonical.Name} successfully.");
+        }
+    }
+
+    /// <summary>
+    /// Navigate to the current repository's parent — the one whose
+    /// submodule sidebar the user drilled in from. No-op when the
+    /// current repo isn't a child (<c>ParentRepositoryPath == null</c>)
+    /// or when the parent is no longer in the repository list.
+    /// </summary>
+    /// <remarks>
+    /// One step at a time: from <c>kilo</c> this navigates to
+    /// <c>foxtrot</c>, not all the way to the top-level <c>parent</c>.
+    /// CanExecute returns false when there's nowhere to go, so the
+    /// back-button binds to it directly and disappears via
+    /// <c>BooleanToVisibilityConverter</c> when no parent is present.
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanNavigateToParentRepository))]
+    public async Task NavigateToParentRepositoryAsync()
+    {
+        var current = SelectedRepository;
+        if (current?.ParentRepositoryPath == null) return;
+
+        var sw = Log.StartTimer();
+        var lookupSw = Log.StartTimer();
+        var parent = _repositoryService.FindRepository(current.ParentRepositoryPath);
+        Log.Perf("BackNav", $"FindRepository({current.ParentRepositoryPath})", lookupSw.ElapsedMilliseconds);
+
+        if (parent == null)
+        {
+            // Parent was removed from the list while the child stayed
+            // open — the cascade rule should make this rare (user-added
+            // children get promoted, with ParentRepositoryPath cleared),
+            // but defend against a concurrent state.
+            return;
+        }
+
+        Log.Info("BackNav", $"NavigateToParent: {current.Name} → {parent.Name} starting");
+        await SelectRepositoryAsync(parent);
+        Log.Perf("BackNav", $"NavigateToParent {current.Name} → {parent.Name} TOTAL", sw.ElapsedMilliseconds);
+    }
+
+    private bool CanNavigateToParentRepository()
+    {
+        var current = SelectedRepository;
+        if (current?.ParentRepositoryPath == null) return false;
+        return _repositoryService.FindRepository(current.ParentRepositoryPath) != null;
+    }
+
+    /// <summary>
+    /// Display name of the repository's parent (when one exists), used
+    /// by the back-button label binding. Empty string when no parent
+    /// is available — the button is hidden via the visibility converter
+    /// in that case.
+    /// </summary>
+    public string ParentRepositoryName
+    {
+        get
+        {
+            var parentPath = SelectedRepository?.ParentRepositoryPath;
+            if (string.IsNullOrEmpty(parentPath)) return string.Empty;
+            return _repositoryService.FindRepository(parentPath)?.Name ?? string.Empty;
         }
     }
 
@@ -357,8 +418,13 @@ public partial class MainViewModel
             SelectedRepository = repository;
             Log.Perf("SelectRepo", "Set SelectedRepository", stepSw.ElapsedMilliseconds);
 
+            stepSw.Restart();
             _repositoryService.MarkAsRecentlyAccessed(repository);
+            Log.Perf("SelectRepo", "MarkAsRecentlyAccessed", stepSw.ElapsedMilliseconds);
+
+            stepSw.Restart();
             _fileWatcherService.WatchRepository(repository.Path);
+            Log.Perf("SelectRepo", "WatchRepository", stepSw.ElapsedMilliseconds);
 
             // Probe the merge-tool config for this repo so the "Resolve
             // in External Tool" button enables/disables correctly.
@@ -367,9 +433,11 @@ public partial class MainViewModel
             RefreshExternalMergeToolAvailabilityAsync()
                 .FireAndForget(nameof(RefreshExternalMergeToolAvailabilityAsync), isUserAction: false);
 
+            stepSw.Restart();
             var settings = _settingsService.LoadSettings();
             settings.LastSelectedRepositoryPath = repository.Path;
             _settingsService.SaveSettings(settings);
+            Log.Perf("SelectRepo", "Settings load+save (LastSelectedRepositoryPath)", stepSw.ElapsedMilliseconds);
 
             // Step 2: Prepare graph color/filter context without waiting for the full sidebar tree load.
             stepSw.Restart();
@@ -378,6 +446,10 @@ public partial class MainViewModel
 
             var needsBranchFilters = repository.HiddenBranchNames.Count > 0 || repository.SoloBranchNames.Count > 0;
             var needsBranchSidebarLoad = !repository.BranchesLoaded;
+            Log.Info("SelectRepo",
+                $"Branch-load decision for {repository.Name}: " +
+                $"BranchesLoaded={repository.BranchesLoaded} " +
+                $"needsFilters={needsBranchFilters} needsSidebarLoad={needsBranchSidebarLoad}");
             var branchLoadTask = needsBranchFilters && needsBranchSidebarLoad
                 ? LoadBranchesForRepoAsync(repository, forceReload: false, skipFilterApplication: true)
                 : null;

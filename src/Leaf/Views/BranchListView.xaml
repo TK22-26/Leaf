@@ -135,12 +135,59 @@
     <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!--  Back-to-parent button — shown only when the current repo
+              was opened via drilling into a submodule from another
+              repo that's still in the list. ParentRepositoryName is
+              empty whenever NavigateToParentRepositoryCommand can't
+              execute, so a single binding handles the show/hide via
+              the StringIsNullOrEmptyConverter (visibility = Visible
+              when string non-empty).  -->
+        <Button
+            Grid.Row="0"
+            Margin="8,8,8,0"
+            Padding="8,4"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Left"
+            Background="Transparent"
+            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            Command="{Binding NavigateToParentRepositoryCommand}"
+            Cursor="Hand"
+            ToolTip="Back to parent repository">
+            <Button.Style>
+                <Style BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ParentRepositoryName, Converter={StaticResource StringIsNullOrEmptyConverter}}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+            <StackPanel Orientation="Horizontal">
+                <ic:SymbolIcon
+                    Margin="0,0,6,0"
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                    IconVariant="Regular"
+                    Symbol="ArrowLeft" />
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="11"
+                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                    Text="{Binding ParentRepositoryName}"
+                    TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </Button>
+
         <!--  Header  -->
         <TextBlock
-            Grid.Row="0"
+            Grid.Row="1"
             Margin="12,12,12,8"
             FontSize="11"
             FontWeight="SemiBold"
@@ -150,7 +197,7 @@
 
         <!--  No repo selected message  -->
         <TextBlock
-            Grid.Row="1"
+            Grid.Row="2"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -160,7 +207,7 @@
         <!--  Branch tree  -->
         <TreeView
             x:Name="BranchTreeView"
-            Grid.Row="1"
+            Grid.Row="2"
             Padding="4"
             BorderThickness="0"
             ItemsSource="{Binding SelectedRepository.BranchCategories}"
@@ -1067,11 +1114,16 @@
 
                 <!--  Submodule item template  -->
                 <DataTemplate DataType="{x:Type models:SubmoduleInfo}">
+                    <!--  Double-click is context-sensitive (see code-behind):
+                          uninitialised → init, initialised → open as repository.
+                          Cursor="Hand" advertises that the row is interactive.  -->
                     <Border
                         Padding="2,3"
                         HorizontalAlignment="Stretch"
                         Background="Transparent"
                         CornerRadius="2"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="Submodule_MouseLeftButtonDown"
                         Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                         ToolTip="{Binding TooltipText}">
                         <Border.ContextMenu>
@@ -1164,6 +1216,14 @@
                             <Setter TargetName="SubmoduleStatusBadge" Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}" />
                             <Setter TargetName="SubmoduleStatusText" Property="Text" Value="NOT INIT" />
                             <Setter TargetName="SubmoduleStatusText" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </DataTrigger>
+                        <!--  Working-tree dirty: uncommitted edits / untracked files inside the submodule. Mirrors the OutOfSync visuals (amber DIRTY badge); the Conflicted trigger below overrides when both apply because its setters come later.  -->
+                        <DataTrigger Binding="{Binding HasWorkingTreeChanges}" Value="True">
+                            <Setter TargetName="SubmoduleIcon" Property="Foreground" Value="#F59E0B" />
+                            <Setter TargetName="SubmoduleStatusBadge" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="SubmoduleStatusBadge" Property="Background" Value="#33F59E0B" />
+                            <Setter TargetName="SubmoduleStatusText" Property="Text" Value="DIRTY" />
+                            <Setter TargetName="SubmoduleStatusText" Property="Foreground" Value="#F59E0B" />
                         </DataTrigger>
                         <DataTrigger Binding="{Binding Status}" Value="OutOfSync">
                             <Setter TargetName="SubmoduleIcon" Property="Foreground" Value="#F59E0B" />

@@ -83,6 +83,116 @@ public partial class RepositoryInfo : ObservableObject
     public string? GroupId { get; set; }
 
     /// <summary>
+    /// Path of the repository this entry was discovered as a submodule of,
+    /// or <c>null</c> when the user added / cloned this repo independently.
+    /// Set by <c>OpenSubmoduleAsRepositoryAsync</c> when the user drills
+    /// into a submodule from the parent's sidebar; persisted to
+    /// <c>repositories.json</c> so the relationship survives across sessions.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Drives two pieces of UX:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>The "← {Parent}" back-button at the top of the branch pane
+    ///   (visible only when this is non-null and the parent is still in
+    ///   the repository list).</item>
+    ///   <item>Sidebar nesting — repos with a non-null parent render
+    ///   indented under that parent in whatever group the parent lives in.</item>
+    /// </list>
+    /// <para>
+    /// When the parent is removed from the list, every child whose
+    /// <see cref="IsUserAdded"/> is <c>false</c> (i.e. only got into the
+    /// list because the user drilled into it) cascades-removes; children
+    /// with <see cref="IsUserAdded"/> <c>true</c> have their
+    /// <c>ParentRepositoryPath</c> cleared and survive as top-level entries.
+    /// </para>
+    /// </remarks>
+    public string? ParentRepositoryPath { get; set; }
+
+    /// <summary>
+    /// Distinguishes "the user explicitly added this entry" (Add Repository,
+    /// Clone, drag-and-drop) from "this entry was auto-discovered when the
+    /// user drilled into a submodule from a parent." Drives the cascade
+    /// behaviour when a parent is removed: auto-discovered children
+    /// disappear with their parent; user-added children get promoted to
+    /// the top level (<see cref="ParentRepositoryPath"/> cleared) and stay.
+    /// </summary>
+    /// <remarks>
+    /// Default <c>true</c> so that legacy entries (saved before this
+    /// property existed) are treated as user-affirmed — safest assumption
+    /// for the migration. New entries created by the submodule-open path
+    /// must explicitly flip it to <c>false</c>.
+    /// </remarks>
+    public bool IsUserAdded { get; set; } = true;
+
+    /// <summary>
+    /// Repositories that point at this one via <see cref="ParentRepositoryPath"/> —
+    /// i.e. submodules of this repo that the user has at some point
+    /// opened-as-repo. Maintained by <c>RepositoryManagementService</c>;
+    /// callers should not mutate this directly. Surfaced in the sidebar
+    /// as nested children under their parent (single source of truth —
+    /// child repos do NOT also appear flat in folder groups).
+    /// </summary>
+    [JsonIgnore]
+    public ObservableCollection<RepositoryInfo> ChildRepositories { get; } = [];
+
+    /// <summary>
+    /// Combined sidebar children — worktrees (when there are multiple)
+    /// followed by submodule child repositories. Bound by the
+    /// <c>HierarchicalDataTemplate</c> for <see cref="RepositoryInfo"/>
+    /// so the tree expands to show both kinds of descendant in one
+    /// place. Returns null when there's nothing to show, which keeps
+    /// the parent row non-expandable in WPF's TreeView (matches the
+    /// pre-nesting behaviour for repos with neither extra worktrees
+    /// nor child repos).
+    /// </summary>
+    /// <remarks>
+    /// Notified through <see cref="OnChildRepositoriesChanged"/> when
+    /// child repos or extra worktrees come and go, so the tree
+    /// re-renders without forcing a full sidebar rebuild.
+    /// </remarks>
+    [JsonIgnore]
+    public IEnumerable<object>? TreeViewChildren
+    {
+        get
+        {
+            EnsureChildRepositoriesSubscribed();
+            EnsureWorktreesSubscribed();
+            var hasWorktrees = Worktrees.Count > 1;
+            var hasChildRepos = ChildRepositories.Count > 0;
+            if (!hasWorktrees && !hasChildRepos) return null;
+
+            // Materialise once per call. Cheap (these collections stay
+            // small) and keeps the binding stable — yield-return would
+            // produce a fresh enumerator each access and confuse
+            // TreeViewItem expansion state.
+            var items = new List<object>(
+                (hasWorktrees ? Worktrees.Count : 0) + ChildRepositories.Count);
+            if (hasWorktrees)
+            {
+                foreach (var wt in Worktrees) items.Add(wt);
+            }
+            foreach (var child in ChildRepositories) items.Add(child);
+            return items;
+        }
+    }
+
+    private bool _childRepositoriesSubscribed;
+
+    private void EnsureChildRepositoriesSubscribed()
+    {
+        if (_childRepositoriesSubscribed) return;
+        ChildRepositories.CollectionChanged += OnChildRepositoriesChanged;
+        _childRepositoriesSubscribed = true;
+    }
+
+    private void OnChildRepositoriesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(TreeViewChildren));
+    }
+
+    /// <summary>
     /// Current branch name (refreshed on open).
     /// </summary>
     [ObservableProperty]
@@ -283,6 +393,7 @@ public partial class RepositoryInfo : ObservableObject
     private void Worktrees_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
         OnPropertyChanged(nameof(WorktreesIfMultiple));
+        OnPropertyChanged(nameof(TreeViewChildren));
     }
 
     /// <summary>
@@ -402,6 +513,58 @@ public partial class RepositoryInfo : ObservableObject
             {
                 foreach (var pr in category.PullRequests)
                     pr.IsSelected = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clears the submodule selection. Mirrors the other clear-* methods
+    /// so the cross-class selection model stays consistent: any class
+    /// that gets selected first clears every other class.
+    /// </summary>
+    public void ClearSubmoduleSelection()
+    {
+        foreach (var category in BranchCategories)
+        {
+            if (category.IsSubmodulesCategory)
+            {
+                foreach (var sm in category.Submodules)
+                    sm.IsSelected = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clears the worktree selection. Sibling of <see cref="ClearBranchSelection"/>
+    /// / <see cref="ClearPullRequestSelection"/> / <see cref="ClearSubmoduleSelection"/>
+    /// — used by every Select* path on the view-model so the cross-class
+    /// selection contract is encoded as a single helper call rather than
+    /// inline category-walks repeated five times.
+    /// </summary>
+    public void ClearWorktreeSelection()
+    {
+        foreach (var category in BranchCategories)
+        {
+            if (category.IsWorktreesCategory)
+            {
+                foreach (var wt in category.Worktrees)
+                    wt.IsSelected = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clears the tag selection. Sibling of the other clear-* helpers —
+    /// see <see cref="ClearWorktreeSelection"/> for the rationale.
+    /// </summary>
+    public void ClearTagSelection()
+    {
+        foreach (var category in BranchCategories)
+        {
+            if (category.IsTagsCategory)
+            {
+                foreach (var t in category.Tags)
+                    t.IsSelected = false;
             }
         }
     }

@@ -1,28 +1,40 @@
-using System.Diagnostics;
-using System.IO;
 using Leaf.Models;
+using Leaf.Services.Ai;
+using Leaf.Services.Ai.Adapters;
+using Leaf.Services.Merge;
 
 namespace Leaf.Services;
 
 /// <summary>
-/// Service for generating commit messages using AI providers (Claude, Gemini, Codex, Ollama).
+/// Generates commit messages by routing a structured-output prompt
+/// through whichever AI provider the user has connected (Claude / Gemini /
+/// Codex CLIs, or Ollama HTTP). Provider-specific CLI argument
+/// construction and output unwrapping live in <see cref="IAiCliAdapter"/>
+/// implementations under <see cref="Services.Ai.Adapters"/>; the
+/// transport (process spawning, PATH, batch wrapping, timeout) lives in
+/// <see cref="IAiCliRunner"/>. This class owns prompt construction +
+/// commit-message JSON parsing.
 /// </summary>
 public class AiCommitMessageService : IAiCommitMessageService
 {
     private readonly SettingsService _settingsService;
     private readonly OllamaService _ollamaService;
     private readonly ICommitMessageParser _parser;
-
-    private static string? _codexSchemaPath;
+    private readonly IAiCliRunner _runner;
+    private readonly IReadOnlyDictionary<AiProviderKind, IAiCliAdapter> _adapters;
 
     public AiCommitMessageService(
         SettingsService settingsService,
         OllamaService ollamaService,
-        ICommitMessageParser parser)
+        ICommitMessageParser parser,
+        IAiCliRunner runner,
+        IEnumerable<IAiCliAdapter> adapters)
     {
         _settingsService = settingsService;
         _ollamaService = ollamaService;
         _parser = parser;
+        _runner = runner;
+        _adapters = adapters.ToDictionary(a => a.Provider);
     }
 
     /// <inheritdoc/>
@@ -85,7 +97,7 @@ public class AiCommitMessageService : IAiCommitMessageService
     private async Task<(bool success, string output, string detail)> RunAiPromptAsync(
         string provider, string prompt, int timeoutSeconds, string? repoPath, CancellationToken cancellationToken)
     {
-        // Handle Ollama separately via HTTP API (not CLI)
+        // Ollama is HTTP, not CLI — handled directly via OllamaService.
         if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
         {
             var settings = _settingsService.LoadSettings();
@@ -94,171 +106,45 @@ public class AiCommitMessageService : IAiCommitMessageService
             return (success, output, error ?? string.Empty);
         }
 
-        var (command, args, useStdin, workingDirectory) = BuildAiCommand(provider, prompt, repoPath);
-        if (string.IsNullOrWhiteSpace(command))
+        if (!TryResolveAdapter(provider, out var adapter))
         {
             return (false, string.Empty, "Unknown AI provider");
         }
 
-        var (resolvedPath, combinedPath) = ResolveCommandPath(command);
-        var executablePath = resolvedPath ?? command;
-        Log.Info("AiCommit", $"Command '{command}' resolved to: {executablePath}");
-
-        try
+        var invocation = adapter.BuildInvocation(prompt, CommitMessageJsonSchema, repoPath);
+        var result = await _runner.RunAsync(invocation, timeoutSeconds, cancellationToken);
+        if (!result.Success)
         {
-            var psi = new ProcessStartInfo
-            {
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            // On Windows, .cmd and .bat files must be run through cmd.exe /c with args as a single string
-            var isBatchFile = executablePath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
-                              executablePath.EndsWith(".bat", StringComparison.OrdinalIgnoreCase);
-            if (isBatchFile)
-            {
-                var cmdPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
-                psi.FileName = cmdPath;
-                var escapedArgs = args.Select(a => a.Contains(' ') || a.Contains('"') ? $"\"{a.Replace("\"", "\\\"")}\"" : a);
-                psi.Arguments = $"/c \"{executablePath}\" {string.Join(" ", escapedArgs)}";
-                Log.Info("AiCommit", $"Batch file detected, using: {cmdPath}");
-                Log.Info("AiCommit", $"Full arguments: {psi.Arguments}");
-            }
-            else
-            {
-                psi.FileName = executablePath;
-                foreach (var arg in args)
-                {
-                    psi.ArgumentList.Add(arg);
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(workingDirectory))
-            {
-                psi.WorkingDirectory = workingDirectory;
-            }
-
-            if (!string.IsNullOrWhiteSpace(combinedPath))
-            {
-                psi.Environment["PATH"] = combinedPath;
-            }
-
-            // Set environment variables for non-interactive mode
-            psi.Environment["CI"] = "true";
-            psi.Environment["NO_COLOR"] = "1";
-            psi.Environment["TERM"] = "dumb";
-
-            using var process = Process.Start(psi);
-            if (process == null)
-            {
-                return (false, string.Empty, "Failed to start AI process");
-            }
-
-            // Start reading output streams before writing stdin to avoid deadlocks
-            var outputTask = process.StandardOutput.ReadToEndAsync();
-            var errorTask = process.StandardError.ReadToEndAsync();
-
-            // Send prompt via stdin if needed, then close stdin
-            if (useStdin)
-            {
-                try
-                {
-                    await process.StandardInput.WriteAsync(prompt);
-                }
-                catch (IOException stdinEx)
-                {
-                    // Process exited before we finished writing - read its output to find out why
-                    Log.Error("AiCommit", $"Stdin write failed: {stdinEx.Message}");
-                    await process.WaitForExitAsync();
-                    var stderrOutput = (await outputTask + await errorTask).Trim();
-                    Log.Error("AiCommit", $"Process stderr after pipe break: {TrimDetail(stderrOutput)}");
-                    var detail = string.IsNullOrWhiteSpace(stderrOutput)
-                        ? stdinEx.Message
-                        : TrimDetail(stderrOutput);
-                    return (false, string.Empty, detail);
-                }
-            }
-            process.StandardInput.Close();
-
-            var exitTask = process.WaitForExitAsync();
-            var timeoutTask = Task.Delay(timeoutSeconds * 1000, cancellationToken);
-
-            var completed = await Task.WhenAny(exitTask, timeoutTask);
-            if (completed == timeoutTask)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    KillSafely(process, "cancelled");
-                    throw new OperationCanceledException(cancellationToken);
-                }
-                KillSafely(process, "timed out");
-                return (false, string.Empty, $"timed out after {timeoutSeconds}s");
-            }
-
-            var output = (await outputTask + await errorTask).Trim();
-            if (process.ExitCode != 0)
-            {
-                var detail = string.IsNullOrWhiteSpace(output)
-                    ? $"exit {process.ExitCode}"
-                    : $"exit {process.ExitCode}: {TrimDetail(output)}";
-                return (false, string.Empty, detail);
-            }
-
-            if (string.IsNullOrWhiteSpace(output))
-            {
-                return (false, string.Empty, "no output");
-            }
-
-            // Apply provider-specific output extraction
-            if (provider.Equals("Codex", StringComparison.OrdinalIgnoreCase))
-            {
-                output = CommitMessageParser.ExtractCodexJsonlMessage(output);
-            }
-
-            if (provider.Equals("Claude", StringComparison.OrdinalIgnoreCase))
-            {
-                output = CommitMessageParser.ExtractClaudeStructuredOutput(output);
-            }
-
-            if (provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
-            {
-                output = CommitMessageParser.ExtractGeminiResponse(output);
-            }
-
-            return (true, output, string.Empty);
+            return (false, string.Empty, result.Detail);
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (System.ComponentModel.Win32Exception ex)
-        {
-            Log.Error("AiCommit", $"Win32Exception: {ex.Message} (NativeErrorCode: {ex.NativeErrorCode})");
-            return (false, string.Empty, $"command error: {ex.Message}");
-        }
-        catch (Exception ex)
-        {
-            return (false, string.Empty, ex.Message);
-        }
+
+        // Provider-specific envelope unwrap (Claude structured_output,
+        // Codex JSONL agent_message, Gemini response field). The
+        // commit-message JSON parser expects the inner shape.
+        var unwrapped = adapter.ExtractStructuredOutput(result.Stdout);
+        return (true, unwrapped, string.Empty);
     }
 
-    private static void KillSafely(Process process, string reason)
+    /// <summary>
+    /// JSON schema constraining the response shape for commit-message
+    /// generation. Adapters that support schema-output (Claude, Codex)
+    /// pass it to the CLI; Gemini ignores it (the prompt enforces the
+    /// shape via instructions).
+    /// </summary>
+    private const string CommitMessageJsonSchema =
+        """{"type":"object","properties":{"commitMessage":{"type":"string"},"description":{"type":"string"}},"required":["commitMessage","description"],"additionalProperties":false}""";
+
+    private bool TryResolveAdapter(string providerName, out IAiCliAdapter adapter)
     {
-        try
+        var kind = providerName.Trim() switch
         {
-            process.Kill();
-        }
-        catch (Exception ex) when (ex is InvalidOperationException
-                                or System.ComponentModel.Win32Exception
-                                or NotSupportedException
-                                or AggregateException)
-        {
-            // Process may have exited between the decision to kill and the call.
-            Log.Info("AiCommit", $"Kill on {reason} failed: {ex.GetType().Name}: {ex.Message}");
-        }
+            string s when s.Equals("Claude", StringComparison.OrdinalIgnoreCase) => AiProviderKind.Claude,
+            string s when s.Equals("Gemini", StringComparison.OrdinalIgnoreCase) => AiProviderKind.Gemini,
+            string s when s.Equals("Codex", StringComparison.OrdinalIgnoreCase) => AiProviderKind.Codex,
+            _ => (AiProviderKind?)null,
+        } ?? AiProviderKind.ExternalServer;
+
+        return _adapters.TryGetValue(kind, out adapter!);
     }
 
     private static string BuildPrompt(string repoPath, string summary, bool includeContext)
@@ -316,88 +202,6 @@ Description:
 - [bullet point 2]";
     }
 
-    /// <summary>
-    /// Builds the AI command with arguments.
-    /// Returns: (command, args, useStdin, workingDirectory)
-    /// </summary>
-    private static (string command, List<string> args, bool useStdin, string? workingDirectory) BuildAiCommand(
-        string provider, string prompt, string? repoPath)
-    {
-        if (provider.Equals("Claude", StringComparison.OrdinalIgnoreCase))
-        {
-            var schema = """{"type":"object","properties":{"commitMessage":{"type":"string"},"description":{"type":"string"}},"required":["commitMessage","description"],"additionalProperties":false}""";
-            return ("claude", new List<string>
-            {
-                "-p",
-                "--model", "sonnet",
-                "--output-format", "json",
-                "--json-schema", schema,
-                "-"
-            }, useStdin: true, workingDirectory: null);
-        }
-
-        if (provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("gemini", new List<string> { "-p", "-", "--output-format", "json" },
-                useStdin: true, workingDirectory: null);
-        }
-
-        if (provider.Equals("Codex", StringComparison.OrdinalIgnoreCase))
-        {
-            var schemaPath = GetOrCreateCodexSchemaFile();
-            // Don't pin a specific model with -m. OpenAI rotates the
-            // ChatGPT-account-eligible model list (e.g. gpt-5.1-codex-mini
-            // was hard-locked out in late 2026 with "model is not supported
-            // when using Codex with a ChatGPT account"). Letting `codex
-            // exec` fall back to whatever the user's ~/.codex/config.toml
-            // declares as `model = "..."` keeps Leaf's commit-message AI
-            // working across future model rotations without code changes
-            // — the user (or `codex login`) is already the source of
-            // truth for "what model can I use right now".
-            //
-            // model_reasoning_effort=low IS still pinned: this is a
-            // commit-message generation task (one summary, no agentic
-            // tool use), so we want the cheapest/fastest setting
-            // regardless of what the user's interactive default is.
-            return ("codex", new List<string>
-            {
-                "exec",
-                "-c", "model_reasoning_effort=low",
-                "--full-auto",
-                "--color", "never",
-                "--output-schema", schemaPath,
-                "--json",
-                "-"
-            }, useStdin: true, workingDirectory: repoPath);
-        }
-
-        return (string.Empty, [], false, null);
-    }
-
-    private static string GetOrCreateCodexSchemaFile()
-    {
-        if (_codexSchemaPath != null && File.Exists(_codexSchemaPath))
-            return _codexSchemaPath;
-
-        var schema = """
-            {
-                "type": "object",
-                "properties": {
-                    "commitMessage": { "type": "string" },
-                    "description": { "type": "string" }
-                },
-                "required": ["commitMessage", "description"],
-                "additionalProperties": false
-            }
-            """;
-
-        var tempDir = Path.Combine(Path.GetTempPath(), "Leaf");
-        Directory.CreateDirectory(tempDir);
-        _codexSchemaPath = Path.Combine(tempDir, "commit-schema.json");
-        File.WriteAllText(_codexSchemaPath, schema);
-        return _codexSchemaPath;
-    }
-
     private static bool IsProviderConnected(string provider, AppSettings settings)
     {
         if (provider.Equals("Claude", StringComparison.OrdinalIgnoreCase))
@@ -410,46 +214,5 @@ Description:
             return !string.IsNullOrEmpty(settings.OllamaSelectedModel);
 
         return false;
-    }
-
-    private static string TrimDetail(string detail)
-    {
-        var compact = detail.Replace("\r", " ").Replace("\n", " ");
-        return compact.Length <= 140 ? compact : compact[..140] + "...";
-    }
-
-    private static (string? fullPath, string? combinedPath) ResolveCommandPath(string command)
-    {
-        var paths = new List<string>();
-        var processPath = Environment.GetEnvironmentVariable("PATH");
-        var userPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User);
-        var machinePath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine);
-
-        if (!string.IsNullOrWhiteSpace(processPath))
-            paths.Add(processPath);
-        if (!string.IsNullOrWhiteSpace(userPath))
-            paths.Add(userPath);
-        if (!string.IsNullOrWhiteSpace(machinePath))
-            paths.Add(machinePath);
-
-        var combinedPath = string.Join(";", paths);
-        var searchPaths = combinedPath.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var extensions = Path.HasExtension(command) ? new[] { string.Empty } : new[] { ".exe", ".cmd", ".bat" };
-        foreach (var dir in searchPaths)
-        {
-            foreach (var ext in extensions)
-            {
-                var candidate = Path.Combine(dir, command + ext);
-                if (File.Exists(candidate))
-                {
-                    return (candidate, combinedPath);
-                }
-            }
-        }
-
-        return (null, combinedPath);
     }
 }
