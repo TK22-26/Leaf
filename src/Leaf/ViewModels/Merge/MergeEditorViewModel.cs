@@ -89,9 +89,10 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     /// <c>IServiceProvider</c> which resolves the singleton registered in
     /// <c>ServiceRegistry</c>. Tests can inject a fake here.
     /// <paramref name="aiAssistant"/> is nullable: production code always
-    /// passes the DI-registered <see cref="McpMergeAssistant"/> (which itself
-    /// returns <c>null</c> when disabled/consent-missing), but tests that
-    /// don't exercise the AI path can pass <c>null</c> to opt out entirely.
+    /// passes the DI-registered <see cref="AiMergeAssistantRouter"/> (which
+    /// dispatches to the user-selected provider and returns <c>null</c> when
+    /// the feature is disabled / consent missing), but tests that don't
+    /// exercise the AI path can pass <c>null</c> to opt out entirely.
     /// <paramref name="imageService"/> is nullable for the same reason:
     /// production injects the singleton, unit tests that don't exercise
     /// binary/image conflicts pass <c>null</c>.
