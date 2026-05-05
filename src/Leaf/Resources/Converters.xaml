@@ -5,6 +5,7 @@
 
     <!--  Common Converters  -->
     <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
     <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
     <converters:NullToVisibilityInverseConverter x:Key="NullToVisibilityInverseConverter" />
     <converters:InverseBoolConverter x:Key="InverseBoolConverter" />

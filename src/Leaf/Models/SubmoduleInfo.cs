@@ -19,6 +19,20 @@ public sealed partial class SubmoduleInfo : ObservableObject
     [ObservableProperty]
     private bool _isSelected;
 
+    /// <summary>
+    /// Satisfies <see cref="System.Windows.Controls.TreeViewItem.IsExpanded"/>
+    /// binding inherited from <c>BranchListView.xaml</c>'s style. Submodules
+    /// are leaf items (they don't have child rows to expand into) but every
+    /// other model bound to that style — <c>BranchInfo</c>, <c>WorktreeInfo</c>,
+    /// <c>TagInfo</c>, <c>PullRequestInfo</c> — declares the property too,
+    /// so the binding-engine warning that fired for <c>SubmoduleInfo</c>
+    /// rows ("IsExpanded property not found on object of type SubmoduleInfo")
+    /// went away once this was added. The value is unused — kept private-
+    /// init so callers can't accidentally rely on it.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isExpanded;
+
 
     /// <summary>
     /// Logical name of the submodule as recorded in <c>.gitmodules</c>
