@@ -556,6 +556,9 @@ public class GitService : IGitService
     public Task<List<SubmoduleInfo>> GetSubmodulesAsync(string repoPath, CancellationToken cancellationToken = default)
         => _submoduleOps.GetSubmodulesAsync(repoPath, cancellationToken);
 
+    public Task<bool> GetSubmoduleWorkingTreeDirtyAsync(string parentRepoPath, string submodulePath, CancellationToken cancellationToken = default)
+        => _submoduleOps.GetWorkingTreeDirtyAsync(parentRepoPath, submodulePath, cancellationToken);
+
     public Task InitAndUpdateSubmodulesAsync(string repoPath, IReadOnlyList<string> paths, bool recursive, CancellationToken cancellationToken = default)
         => _submoduleOps.InitAndUpdateAsync(repoPath, paths, recursive, cancellationToken);
 

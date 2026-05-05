@@ -534,6 +534,41 @@ public partial class RepositoryInfo : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Clears the worktree selection. Sibling of <see cref="ClearBranchSelection"/>
+    /// / <see cref="ClearPullRequestSelection"/> / <see cref="ClearSubmoduleSelection"/>
+    /// — used by every Select* path on the view-model so the cross-class
+    /// selection contract is encoded as a single helper call rather than
+    /// inline category-walks repeated five times.
+    /// </summary>
+    public void ClearWorktreeSelection()
+    {
+        foreach (var category in BranchCategories)
+        {
+            if (category.IsWorktreesCategory)
+            {
+                foreach (var wt in category.Worktrees)
+                    wt.IsSelected = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clears the tag selection. Sibling of the other clear-* helpers —
+    /// see <see cref="ClearWorktreeSelection"/> for the rationale.
+    /// </summary>
+    public void ClearTagSelection()
+    {
+        foreach (var category in BranchCategories)
+        {
+            if (category.IsTagsCategory)
+            {
+                foreach (var t in category.Tags)
+                    t.IsSelected = false;
+            }
+        }
+    }
+
     partial void OnShowAllPullRequestsChanged(bool value)
     {
         OnPropertyChanged(nameof(PullRequestFilterLabel));

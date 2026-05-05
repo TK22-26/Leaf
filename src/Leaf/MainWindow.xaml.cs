@@ -130,8 +130,8 @@ public partial class MainWindow : Window
             {
                 Log.Info("App", $"Opening repository from --repo flag: {initialRepo}");
                 var repoInfo = await _gitService.GetRepositoryInfoFastAsync(initialRepo);
-                _repositoryService.AddRepository(repoInfo);
-                await _viewModel.SelectRepositoryAsync(repoInfo, fetchInBackground: false);
+                var canonical = _repositoryService.AddRepository(repoInfo);
+                await _viewModel.SelectRepositoryAsync(canonical, fetchInBackground: false);
             }
         }
         catch (Exception ex)

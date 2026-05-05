@@ -683,6 +683,16 @@ public interface IGitService
     Task<List<SubmoduleInfo>> GetSubmodulesAsync(string repoPath, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Single-submodule working-tree dirtiness probe — true when
+    /// <c>git status --porcelain</c> inside the submodule produces any
+    /// output (modified, staged, or untracked). Used by the file-watcher
+    /// dispatch helper to refresh just the affected submodule's
+    /// <see cref="SubmoduleInfo.HasWorkingTreeChanges"/> flag without
+    /// re-statusing every submodule.
+    /// </summary>
+    Task<bool> GetSubmoduleWorkingTreeDirtyAsync(string parentRepoPath, string submodulePath, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Clone + check out each submodule at the commit the parent tree
     /// records. Empty <paramref name="paths"/> targets every submodule.
     /// </summary>

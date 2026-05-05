@@ -31,21 +31,13 @@ public partial class MainViewModel
         var repo = SelectedRepository;
         if (repo == null) return;
 
-        // Clear worktree, submodule, and PR selections to avoid mixed
-        // selection types.
+        // Cross-class clear: any non-branch selection type drops first
+        // so a branch click is always a clean transition. §5.17: tag
+        // detail pane closes too so the right side returns to commit view.
         repo.ClearPullRequestSelection();
         repo.ClearSubmoduleSelection();
-        // §5.17 — branch selection drops the tag-detail pane so the
-        // right side returns to the commit detail view.
+        repo.ClearWorktreeSelection();
         ClearTagDetailIfOpen();
-        foreach (var category in repo.BranchCategories)
-        {
-            if (category.IsWorktreesCategory)
-            {
-                foreach (var wt in category.Worktrees)
-                    wt.IsSelected = false;
-            }
-        }
 
         if (toggle)
         {
@@ -81,6 +73,7 @@ public partial class MainViewModel
         repo.ClearBranchSelection();
         repo.ClearPullRequestSelection();
         repo.ClearSubmoduleSelection();
+        repo.ClearWorktreeSelection();
 
         if (toggle)
         {
@@ -92,14 +85,7 @@ public partial class MainViewModel
             return;
         }
 
-        foreach (var category in repo.BranchCategories)
-        {
-            if (category.IsTagsCategory)
-            {
-                foreach (var t in category.Tags)
-                    t.IsSelected = false;
-            }
-        }
+        repo.ClearTagSelection();
         tag.IsSelected = true;
         ShowTagDetail(tag);
     }
@@ -160,16 +146,7 @@ public partial class MainViewModel
         ShowTagDetail(null);
         // Also flip IsSelected off on the tag itself so the sidebar's
         // selection visual matches the cleared detail pane.
-        var repo = SelectedRepository;
-        if (repo is null) return;
-        foreach (var category in repo.BranchCategories)
-        {
-            if (category.IsTagsCategory)
-            {
-                foreach (var t in category.Tags)
-                    t.IsSelected = false;
-            }
-        }
+        SelectedRepository?.ClearTagSelection();
     }
 
     private async Task LoadTagTargetCommitAsync(string repoPath, TagInfo tag)
@@ -204,6 +181,7 @@ public partial class MainViewModel
         repo.ClearBranchSelection();
         repo.ClearPullRequestSelection();
         repo.ClearSubmoduleSelection();
+        ClearTagDetailIfOpen();
 
         if (toggle)
         {
@@ -211,14 +189,7 @@ public partial class MainViewModel
             return;
         }
 
-        foreach (var category in repo.BranchCategories)
-        {
-            if (category.IsWorktreesCategory)
-            {
-                foreach (var wt in category.Worktrees)
-                    wt.IsSelected = false;
-            }
-        }
+        repo.ClearWorktreeSelection();
         worktree.IsSelected = true;
     }
 
@@ -238,6 +209,8 @@ public partial class MainViewModel
         repo.ClearBranchSelection();
         repo.ClearPullRequestSelection();
         repo.ClearSubmoduleSelection();
+        repo.ClearWorktreeSelection();
+        ClearTagDetailIfOpen();
 
         pr.IsSelected = true;
         repo.SelectedPullRequest = pr;
@@ -256,27 +229,11 @@ public partial class MainViewModel
 
         repo.ClearBranchSelection();
         repo.ClearPullRequestSelection();
+        repo.ClearSubmoduleSelection();
+        repo.ClearWorktreeSelection();
         ClearTagDetailIfOpen();
-        foreach (var category in repo.BranchCategories)
-        {
-            if (category.IsWorktreesCategory)
-            {
-                foreach (var wt in category.Worktrees)
-                    wt.IsSelected = false;
-            }
-            else if (category.IsTagsCategory)
-            {
-                foreach (var t in category.Tags)
-                    t.IsSelected = false;
-            }
-            else if (category.IsSubmodulesCategory)
-            {
-                // Walk the submodules in the same category — set the
-                // clicked one IsSelected, clear every sibling.
-                foreach (var sm in category.Submodules)
-                    sm.IsSelected = ReferenceEquals(sm, submodule);
-            }
-        }
+
+        submodule.IsSelected = true;
     }
 
     /// <summary>

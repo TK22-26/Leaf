@@ -83,7 +83,81 @@ internal class SubmoduleOperations
             ? ParseRecordedShaByPath(cachedResult.StandardOutput)
             : new Dictionary<string, string>(StringComparer.Ordinal);
 
-        return ParseSubmoduleStatusOutput(statusResult.StandardOutput, moduleConfig, recordedByPath);
+        var submodules = ParseSubmoduleStatusOutput(statusResult.StandardOutput, moduleConfig, recordedByPath);
+
+        // Working-tree dirtiness fan-out: per-submodule `git status
+        // --porcelain` to detect uncommitted edits / untracked files.
+        // Only initialized entries have a working tree to check.
+        // Parallel — typical cost is ~30–60 ms total for ~10 submodules
+        // on an SSD, comfortably under the per-call cost of `submodule
+        // status --cached` (~1.7 s here) we just paid above.
+        var initialized = submodules.Where(s => s.IsInitialized).ToList();
+        if (initialized.Count > 0)
+        {
+            await Task.WhenAll(initialized.Select(async s =>
+            {
+                try
+                {
+                    s.HasWorkingTreeChanges = await GetWorkingTreeDirtyAsync(repoPath, s.Path, cancellationToken);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException)
+                {
+                    // Surface the real failure in the log — the per-submodule
+                    // dirtiness probe failing isn't fatal to the sidebar load
+                    // (the entry still appears with its pointer-side state),
+                    // but the user needs a path to diagnose if every probe
+                    // fails (e.g. broken git binary, permissions). Privacy:
+                    // log includes submodule path, no file content.
+                    Log.Warn("Submodule",
+                        $"Working-tree dirtiness probe failed for '{s.Path}': {ex.Message}");
+                }
+            }));
+        }
+
+        return submodules;
+    }
+
+    /// <summary>
+    /// Run <c>git status --porcelain</c> inside the submodule's working
+    /// tree and return true when any output is produced (any modified
+    /// tracked file, staged change, or untracked file). Throws
+    /// <see cref="InvalidOperationException"/> on real failures (missing
+    /// directory for an entry the parent thinks is initialised, git exit
+    /// non-zero) — caller is responsible for catching + logging so the
+    /// dirtiness fan-out doesn't fail the whole sidebar load over one
+    /// busted submodule, but a silent "false" would hide actionable
+    /// corruption from the user (engineering-software policy: fail
+    /// loudly, don't substitute a clean signal).
+    /// </summary>
+    public async Task<bool> GetWorkingTreeDirtyAsync(string parentRepoPath, string submodulePath, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(submodulePath))
+            throw new ArgumentException("Submodule path required.", nameof(submodulePath));
+
+        var fullPath = Path.GetFullPath(Path.Combine(parentRepoPath, submodulePath));
+        if (!Directory.Exists(fullPath))
+        {
+            throw new InvalidOperationException(
+                $"Submodule '{submodulePath}' is registered as initialised but its working " +
+                $"directory '{fullPath}' is missing on disk.");
+        }
+
+        var result = await _context.CommandRunner.RunAsync(
+            fullPath,
+            ["status", "--porcelain", "--untracked-files=normal"],
+            cancellationToken: cancellationToken);
+
+        if (!result.Success)
+        {
+            var detail = !string.IsNullOrWhiteSpace(result.StandardError)
+                ? result.StandardError
+                : $"exit code {result.ExitCode}";
+            throw new InvalidOperationException(
+                $"git status failed inside submodule '{submodulePath}': {detail.Trim()}");
+        }
+
+        return !string.IsNullOrWhiteSpace(result.StandardOutput);
     }
 
     /// <summary>

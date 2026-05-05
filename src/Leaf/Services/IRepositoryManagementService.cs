@@ -51,11 +51,15 @@ public interface IRepositoryManagementService
     void SaveRepositories();
 
     /// <summary>
-    /// Add a repository to the appropriate group.
+    /// Add a repository to the appropriate group, returning the canonical
+    /// list entry (the existing instance when the path is already present,
+    /// otherwise <paramref name="repo"/>). Callers that go on to select
+    /// the result must use the returned reference — see implementation
+    /// XML doc for the full rationale.
     /// </summary>
     /// <param name="repo">Repository to add.</param>
     /// <param name="save">Whether to persist immediately.</param>
-    void AddRepository(RepositoryInfo repo, bool save = true);
+    RepositoryInfo AddRepository(RepositoryInfo repo, bool save = true);
 
     /// <summary>
     /// Remove a repository from all groups.

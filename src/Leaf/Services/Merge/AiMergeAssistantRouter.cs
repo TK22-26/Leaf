@@ -57,9 +57,9 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
         };
     }
 
-    public AiProviderKind ProviderKind => ResolveSelected().ProviderKind;
+    public AiProviderKind ProviderKind => ResolveSelectedSafe().ProviderKind;
 
-    public string ProviderDescription => ResolveSelected().ProviderDescription;
+    public string ProviderDescription => ResolveSelectedSafe().ProviderDescription;
 
     /// <summary>
     /// Globally enabled AND the currently selected provider is
@@ -69,7 +69,7 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
     /// "feature is off entirely". The inner provider's IsEnabled is
     /// still the source of truth at execution time.
     /// </summary>
-    public bool IsEnabled => _enabledProvider() && ResolveSelected().IsEnabled;
+    public bool IsEnabled => _enabledProvider() && ResolveSelectedSafe().IsEnabled;
 
     public bool IsConsentGiven => _consentProvider();
 
@@ -105,10 +105,12 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
     }
 
     /// <summary>
-    /// Resolve the currently configured provider. An empty / unknown
-    /// setting falls back to <see cref="AiProviderKind.ExternalServer"/>
-    /// — that's the only provider that's always present (no CLI
-    /// dependency) and matches the pre-router behaviour.
+    /// Resolve the currently configured provider, throwing on an
+    /// unrecognised setting so the user sees the real cause instead of
+    /// silently dispatching to a different model than they asked for.
+    /// An empty / null setting maps to <see cref="AiProviderKind.ExternalServer"/>
+    /// — that's the migration default for installs upgraded from before
+    /// the router landed and matches the historical behaviour.
     /// </summary>
     private IAiMergeAssistant ResolveSelected()
     {
@@ -123,9 +125,25 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
             string s when s.Equals("ExternalServer", StringComparison.OrdinalIgnoreCase)
                        || s.Equals("External", StringComparison.OrdinalIgnoreCase)
                 => AiProviderKind.ExternalServer,
-            _ => AiProviderKind.ExternalServer,
+            _ => throw new AiMergeAssistantException(
+                $"Unknown AI merge provider '{raw}' in settings. Expected one of: " +
+                "Claude, Gemini, Codex, Ollama, ExternalServer."),
         };
 
         return _providers[kind];
+    }
+
+    /// <summary>
+    /// Property-accessor variant of <see cref="ResolveSelected"/> that
+    /// degrades to ExternalServer when the setting is corrupt instead of
+    /// throwing. Property reads bind into Settings UI and consent dialogs
+    /// — letting them throw would crash the surrounding view; instead the
+    /// fail-loud behaviour is reserved for <see cref="RequestResolutionAsync"/>
+    /// where the user actively asks for a resolution.
+    /// </summary>
+    private IAiMergeAssistant ResolveSelectedSafe()
+    {
+        try { return ResolveSelected(); }
+        catch (AiMergeAssistantException) { return _providers[AiProviderKind.ExternalServer]; }
     }
 }

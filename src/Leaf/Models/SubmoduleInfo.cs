@@ -80,22 +80,33 @@ public sealed partial class SubmoduleInfo : ObservableObject
     public bool IsInitialized => Status != SubmoduleStatus.Uninitialized;
 
     /// <summary>
-    /// True when <see cref="Status"/> is <see cref="SubmoduleStatus.OutOfSync"/>
-    /// or <see cref="SubmoduleStatus.Conflicted"/>. Drives the amber
-    /// "DIRTY" badge in the sidebar.
+    /// True when the submodule's working tree has uncommitted
+    /// modifications, untracked files, or staged changes. Populated
+    /// by a parallel per-submodule <c>git status --porcelain</c> at
+    /// list-build time and refreshed by the file-watcher dispatch
+    /// helper when a file under this submodule's working tree changes.
     /// </summary>
     /// <remarks>
-    /// Scope: this reflects the parent's view of the submodule —
-    /// "recorded commit differs from checked-out commit" or
-    /// "merge conflict on the submodule pointer". It does <b>not</b>
-    /// cover uncommitted modifications inside the submodule's own
-    /// working tree; detecting those requires an extra per-submodule
-    /// git call (<c>git status</c> inside each one) that Phase 1
-    /// deliberately skips to keep sidebar refresh cheap.
+    /// Distinct from <see cref="Status"/> (which is the parent's view
+    /// of the submodule pointer). Either dimension can be true on its
+    /// own; <see cref="IsDirty"/> ORs them so the sidebar badge lights
+    /// up for any kind of dirtiness.
     /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDirty))]
+    private bool _hasWorkingTreeChanges;
+
+    /// <summary>
+    /// True when this submodule needs the user's attention. Combines
+    /// pointer-side state (<see cref="SubmoduleStatus.OutOfSync"/>,
+    /// <see cref="SubmoduleStatus.Conflicted"/>) with working-tree
+    /// state (<see cref="HasWorkingTreeChanges"/>). Drives the amber
+    /// "DIRTY" badge in the sidebar.
+    /// </summary>
     public bool IsDirty =>
         Status == SubmoduleStatus.OutOfSync ||
-        Status == SubmoduleStatus.Conflicted;
+        Status == SubmoduleStatus.Conflicted ||
+        HasWorkingTreeChanges;
 
     /// <summary>
     /// Tooltip text for the sidebar entry: the clone URL when one is

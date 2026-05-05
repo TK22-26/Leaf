@@ -106,12 +106,14 @@ public class RepositoryManagementService : IRepositoryManagementService
 
     public void SaveRepositories()
     {
+        var totalSw = Log.StartTimer();
         // Walk AllRepositories so child repos nested under a parent
         // (Phase E) get persisted — they don't live in any folder
         // group's Repositories collection any more.
         var allRepos = AllRepositories()
             .DistinctBy(r => r.Path)
             .ToList();
+        Log.Perf("RepoMgmt", $"SaveRepositories: walk ({allRepos.Count} entries)", totalSw.ElapsedMilliseconds);
 
         var minimalRepos = allRepos
             .Select(CreateRepoSnapshot)
@@ -128,32 +130,40 @@ public class RepositoryManagementService : IRepositoryManagementService
             CustomGroups = customGroups
         };
 
+        var ioSw = Log.StartTimer();
         _settingsService.SaveRepositories(data);
+        Log.Perf("RepoMgmt", "SaveRepositories: file write", ioSw.ElapsedMilliseconds);
+        Log.Perf("RepoMgmt", "SaveRepositories TOTAL", totalSw.ElapsedMilliseconds);
     }
 
-    public void AddRepository(RepositoryInfo repo, bool save = true)
+    /// <summary>
+    /// Adds <paramref name="repo"/> to the list and returns the canonical
+    /// entry — the existing list instance when a repo with the same path
+    /// is already present, otherwise <paramref name="repo"/> itself.
+    /// Callers that go on to <c>SelectRepositoryAsync</c> the result
+    /// MUST use the returned reference: state like <c>BranchesLoaded</c>
+    /// lives on the in-memory instance, and using the throwaway argument
+    /// instead leaves the live (sidebar-bound) entry permanently
+    /// stale-looking, forcing redundant reloads on every revisit.
+    /// </summary>
+    public RepositoryInfo AddRepository(RepositoryInfo repo, bool save = true)
     {
         // If this is a secondary worktree, add the main worktree instead
         if (repo.IsSecondaryWorktree && repo.MainWorktreePath != null)
         {
             var mainPath = repo.MainWorktreePath;
+            var existingMain = FindRepository(mainPath);
+            if (existingMain != null) return existingMain;
 
-            // Check if main worktree already exists
-            if (!ContainsRepository(mainPath))
+            var mainRepo = new RepositoryInfo
             {
-                // Create RepositoryInfo for the main worktree
-                var mainRepo = new RepositoryInfo
-                {
-                    Path = mainPath,
-                    Name = System.IO.Path.GetFileName(mainPath.TrimEnd(
-                        System.IO.Path.DirectorySeparatorChar,
-                        System.IO.Path.AltDirectorySeparatorChar))
-                };
-                AddRepositoryToGroups(mainRepo, save, raiseEvent: true);
-            }
-
-            // Don't add the secondary worktree as a separate entry
-            return;
+                Path = mainPath,
+                Name = System.IO.Path.GetFileName(mainPath.TrimEnd(
+                    System.IO.Path.DirectorySeparatorChar,
+                    System.IO.Path.AltDirectorySeparatorChar))
+            };
+            AddRepositoryToGroups(mainRepo, save, raiseEvent: true);
+            return mainRepo;
         }
 
         // Promote existing auto-added entry when the user explicitly
@@ -164,14 +174,18 @@ public class RepositoryManagementService : IRepositoryManagementService
         // RepositoryInfo, which preserves the auto-added flag on existing
         // entries.
         var existing = FindRepository(repo.Path);
-        if (existing != null && repo.IsUserAdded && !existing.IsUserAdded)
+        if (existing != null)
         {
-            existing.IsUserAdded = true;
-            if (save) SaveRepositories();
-            return;
+            if (repo.IsUserAdded && !existing.IsUserAdded)
+            {
+                existing.IsUserAdded = true;
+                if (save) SaveRepositories();
+            }
+            return existing;
         }
 
         AddRepositoryToGroups(repo, save, raiseEvent: true);
+        return repo;
     }
 
     /// <summary>
@@ -209,7 +223,25 @@ public class RepositoryManagementService : IRepositoryManagementService
     }
 
     public void RemoveRepository(RepositoryInfo repo)
+        => RemoveRepository(repo, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+    private void RemoveRepository(RepositoryInfo repo, HashSet<string> visited)
     {
+        // Cycle guard. CountParentDepth defends LoadRepositoriesAsync
+        // against `A.parent=B; B.parent=A` in a hand-edited repositories.json,
+        // but the cascade-remove path used to recurse without one — the
+        // same loop here would stack-overflow before SaveRepositories ran.
+        // The visited set is keyed on path (the same key FindRepository /
+        // ParentRepositoryPath comparisons use) so re-entry on a path we
+        // already handled becomes a quiet no-op.
+        if (!visited.Add(NormalizePath(repo.Path)))
+        {
+            Log.Warn("RepoMgmt",
+                $"Cascade-remove cycle detected at '{repo.Path}'; stopping recursion. " +
+                "Check repositories.json for parentRepositoryPath loops.");
+            return;
+        }
+
         Log.Info("RepoMgmt", $"Repository removed: {repo.Name} ({repo.Path})");
 
         // Cascade rule: handle every entry whose ParentRepositoryPath
@@ -263,7 +295,7 @@ public class RepositoryManagementService : IRepositoryManagementService
                 // we do NOT re-parent this child's user-added grandchildren
                 // up to the deleted repo's parent; we rebuild relationships
                 // from scratch each level down.
-                RemoveRepository(child);
+                RemoveRepository(child, visited);
             }
         }
 
@@ -281,9 +313,18 @@ public class RepositoryManagementService : IRepositoryManagementService
 
     public void MarkAsRecentlyAccessed(RepositoryInfo repo)
     {
+        var totalSw = Log.StartTimer();
         repo.LastAccessed = DateTimeOffset.Now;
+
+        var saveSw = Log.StartTimer();
         SaveRepositories();
+        Log.Perf("RepoMgmt", "MarkRecent: SaveRepositories", saveSw.ElapsedMilliseconds);
+
+        var updateSw = Log.StartTimer();
         UpdateRecentSection();
+        Log.Perf("RepoMgmt", "MarkRecent: UpdateRecentSection", updateSw.ElapsedMilliseconds);
+
+        Log.Perf("RepoMgmt", $"MarkAsRecentlyAccessed({repo.Name}) TOTAL", totalSw.ElapsedMilliseconds);
     }
 
     public bool ContainsRepository(string path)
@@ -400,15 +441,18 @@ public class RepositoryManagementService : IRepositoryManagementService
 
     public void RefreshQuickAccess()
     {
+        var totalSw = Log.StartTimer();
         // Pinning is independent of nesting (Q3 in the design
         // discussion: "show in both places"), so the pinned list
         // walks AllRepositories — a child repo nested under its
         // parent can still be pinned and surface at the top.
         // MOST RECENT also walks AllRepositories so children are
         // reachable as quick-access shortcuts when recently used.
+        var walkSw = Log.StartTimer();
         var allRepos = AllRepositories()
             .DistinctBy(r => r.Path)
             .ToList();
+        Log.Perf("RepoMgmt", $"RefreshQuickAccess: AllRepositories walk ({allRepos.Count} entries)", walkSw.ElapsedMilliseconds);
 
         // Update pinned repositories
         PinnedRepositories.Clear();
@@ -441,7 +485,10 @@ public class RepositoryManagementService : IRepositoryManagementService
         }
 
         // Rebuild root items
+        var rootSw = Log.StartTimer();
         RebuildRootItems();
+        Log.Perf("RepoMgmt", "RefreshQuickAccess: RebuildRootItems", rootSw.ElapsedMilliseconds);
+        Log.Perf("RepoMgmt", "RefreshQuickAccess TOTAL", totalSw.ElapsedMilliseconds);
     }
 
     /// <summary>

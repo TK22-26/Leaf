@@ -58,9 +58,25 @@ public sealed class ExternalServerMergeAssistant : IAiMergeAssistant
         _consentGivenProvider = consentGivenProvider ?? throw new ArgumentNullException(nameof(consentGivenProvider));
     }
 
-    public bool IsEnabled => _enabledProvider();
+    /// <summary>
+    /// Globally enabled AND a usable server path is configured. Mirrors
+    /// the connection-state pattern from <see cref="Providers.AiMergeAssistantBase"/>
+    /// (each CLI provider OR's a connection check into IsEnabled) so the
+    /// router's "selected provider not connected → throw a named error"
+    /// branch fires uniformly across all five backends. Without this gate,
+    /// a missing path would slip past the router-level check and only
+    /// surface as the file-existence failure inside <see cref="RequestResolutionAsync"/>,
+    /// producing a different error path than the CLI providers do.
+    /// </summary>
+    public bool IsEnabled => _enabledProvider() && IsProviderConfigured();
 
     public bool IsConsentGiven => _consentGivenProvider();
+
+    private bool IsProviderConfigured()
+    {
+        var path = _serverPathProvider();
+        return !string.IsNullOrWhiteSpace(path) && File.Exists(path);
+    }
 
     public AiProviderKind ProviderKind => AiProviderKind.ExternalServer;
 

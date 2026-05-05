@@ -105,9 +105,9 @@ public partial class MainViewModel
             }
 
             var repoInfo = await _gitService.GetRepositoryInfoFastAsync(path);
-            _repositoryService.AddRepository(repoInfo);
-            Log.Info("Repository", $"Added repository: {repoInfo.Name} ({path})");
-            await SelectRepositoryAsync(repoInfo);
+            var canonical = _repositoryService.AddRepository(repoInfo);
+            Log.Info("Repository", $"Added repository: {canonical.Name} ({path})");
+            await SelectRepositoryAsync(canonical);
         }
     }
 
@@ -267,9 +267,9 @@ public partial class MainViewModel
             // path isn't the current repo yet, and we're about to SelectRepositoryAsync
             // it which creates its own session.
             var repoInfo = await _gitService.GetRepositoryInfoFastAsync(dialog.ClonedRepositoryPath);
-            _repositoryService.AddRepository(repoInfo);
-            await SelectRepositoryAsync(repoInfo);
-            NotifySuccess("Repository cloned", $"Cloned {repoInfo.Name} successfully.");
+            var canonical = _repositoryService.AddRepository(repoInfo);
+            await SelectRepositoryAsync(canonical);
+            NotifySuccess("Repository cloned", $"Cloned {canonical.Name} successfully.");
         }
     }
 
@@ -292,7 +292,11 @@ public partial class MainViewModel
         var current = SelectedRepository;
         if (current?.ParentRepositoryPath == null) return;
 
+        var sw = Log.StartTimer();
+        var lookupSw = Log.StartTimer();
         var parent = _repositoryService.FindRepository(current.ParentRepositoryPath);
+        Log.Perf("BackNav", $"FindRepository({current.ParentRepositoryPath})", lookupSw.ElapsedMilliseconds);
+
         if (parent == null)
         {
             // Parent was removed from the list while the child stayed
@@ -302,7 +306,9 @@ public partial class MainViewModel
             return;
         }
 
+        Log.Info("BackNav", $"NavigateToParent: {current.Name} → {parent.Name} starting");
         await SelectRepositoryAsync(parent);
+        Log.Perf("BackNav", $"NavigateToParent {current.Name} → {parent.Name} TOTAL", sw.ElapsedMilliseconds);
     }
 
     private bool CanNavigateToParentRepository()
@@ -412,8 +418,13 @@ public partial class MainViewModel
             SelectedRepository = repository;
             Log.Perf("SelectRepo", "Set SelectedRepository", stepSw.ElapsedMilliseconds);
 
+            stepSw.Restart();
             _repositoryService.MarkAsRecentlyAccessed(repository);
+            Log.Perf("SelectRepo", "MarkAsRecentlyAccessed", stepSw.ElapsedMilliseconds);
+
+            stepSw.Restart();
             _fileWatcherService.WatchRepository(repository.Path);
+            Log.Perf("SelectRepo", "WatchRepository", stepSw.ElapsedMilliseconds);
 
             // Probe the merge-tool config for this repo so the "Resolve
             // in External Tool" button enables/disables correctly.
@@ -422,9 +433,11 @@ public partial class MainViewModel
             RefreshExternalMergeToolAvailabilityAsync()
                 .FireAndForget(nameof(RefreshExternalMergeToolAvailabilityAsync), isUserAction: false);
 
+            stepSw.Restart();
             var settings = _settingsService.LoadSettings();
             settings.LastSelectedRepositoryPath = repository.Path;
             _settingsService.SaveSettings(settings);
+            Log.Perf("SelectRepo", "Settings load+save (LastSelectedRepositoryPath)", stepSw.ElapsedMilliseconds);
 
             // Step 2: Prepare graph color/filter context without waiting for the full sidebar tree load.
             stepSw.Restart();
@@ -433,6 +446,10 @@ public partial class MainViewModel
 
             var needsBranchFilters = repository.HiddenBranchNames.Count > 0 || repository.SoloBranchNames.Count > 0;
             var needsBranchSidebarLoad = !repository.BranchesLoaded;
+            Log.Info("SelectRepo",
+                $"Branch-load decision for {repository.Name}: " +
+                $"BranchesLoaded={repository.BranchesLoaded} " +
+                $"needsFilters={needsBranchFilters} needsSidebarLoad={needsBranchSidebarLoad}");
             var branchLoadTask = needsBranchFilters && needsBranchSidebarLoad
                 ? LoadBranchesForRepoAsync(repository, forceReload: false, skipFilterApplication: true)
                 : null;

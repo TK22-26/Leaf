@@ -1217,6 +1217,14 @@
                             <Setter TargetName="SubmoduleStatusText" Property="Text" Value="NOT INIT" />
                             <Setter TargetName="SubmoduleStatusText" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
                         </DataTrigger>
+                        <!--  Working-tree dirty: uncommitted edits / untracked files inside the submodule. Mirrors the OutOfSync visuals (amber DIRTY badge); the Conflicted trigger below overrides when both apply because its setters come later.  -->
+                        <DataTrigger Binding="{Binding HasWorkingTreeChanges}" Value="True">
+                            <Setter TargetName="SubmoduleIcon" Property="Foreground" Value="#F59E0B" />
+                            <Setter TargetName="SubmoduleStatusBadge" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="SubmoduleStatusBadge" Property="Background" Value="#33F59E0B" />
+                            <Setter TargetName="SubmoduleStatusText" Property="Text" Value="DIRTY" />
+                            <Setter TargetName="SubmoduleStatusText" Property="Foreground" Value="#F59E0B" />
+                        </DataTrigger>
                         <DataTrigger Binding="{Binding Status}" Value="OutOfSync">
                             <Setter TargetName="SubmoduleIcon" Property="Foreground" Value="#F59E0B" />
                             <Setter TargetName="SubmoduleStatusBadge" Property="Visibility" Value="Visible" />

@@ -181,14 +181,39 @@ public class ExternalServerMergeAssistantTests
     [Fact]
     public void ExposesSettings_ForViewQueries()
     {
+        // IsEnabled now gates on the server path existing on disk too
+        // (matches the connection-state pattern from the CLI providers
+        // — the router relies on this to dispatch a clear "not connected"
+        // error rather than silently falling through). Use a real temp
+        // file so the property surface reflects a connected state.
+        var serverPath = Path.Combine(Path.GetTempPath(), $"leaf-mock-server-{Guid.NewGuid():N}.bat");
+        File.WriteAllText(serverPath, "@echo off\r\n");
+        try
+        {
+            var assistant = new ExternalServerMergeAssistant(
+                serverPathProvider: () => serverPath,
+                enabledProvider: () => true,
+                consentGivenProvider: () => false);
+            assistant.IsEnabled.Should().BeTrue();
+            assistant.IsConsentGiven.Should().BeFalse();
+            assistant.ProviderKind.Should().Be(AiProviderKind.ExternalServer);
+            assistant.ProviderDescription.Should().Contain(serverPath);
+        }
+        finally { File.Delete(serverPath); }
+    }
+
+    [Fact]
+    public void IsEnabled_FalseWhenServerPathMissing()
+    {
+        // Connection-state contract: a configured-but-missing server
+        // path counts as "not connected" so the router's selected-
+        // provider-not-connected branch can fire with a named error,
+        // matching the CLI providers' IsProviderConnected behaviour.
         var assistant = new ExternalServerMergeAssistant(
-            serverPathProvider: () => "C:/server.exe",
+            serverPathProvider: () => "C:/does-not-exist-on-disk.exe",
             enabledProvider: () => true,
-            consentGivenProvider: () => false);
-        assistant.IsEnabled.Should().BeTrue();
-        assistant.IsConsentGiven.Should().BeFalse();
-        assistant.ProviderKind.Should().Be(AiProviderKind.ExternalServer);
-        assistant.ProviderDescription.Should().Contain("C:/server.exe");
+            consentGivenProvider: () => true);
+        assistant.IsEnabled.Should().BeFalse();
     }
 
     [Fact]

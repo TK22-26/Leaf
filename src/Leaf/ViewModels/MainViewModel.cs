@@ -562,9 +562,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         CloseDiffViewer();
     }
 
-    private void OnFileWatcherWorkingDirectoryChanged(object? sender, EventArgs e)
+    private void OnFileWatcherWorkingDirectoryChanged(object? sender, WorkingDirectoryChangedEventArgs e)
     {
-        HandleWorkingDirectoryChangedAsync()
+        HandleWorkingDirectoryChangedAsync(e.ChangedPaths)
             .FireAndForget(nameof(HandleWorkingDirectoryChangedAsync), isUserAction: false);
     }
 
