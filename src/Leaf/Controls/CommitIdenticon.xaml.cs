@@ -20,6 +20,20 @@ public partial class CommitIdenticon : UserControl
     public CommitIdenticon()
     {
         InitializeComponent();
+
+        // Initial-state bug: OnSizeChanged is the only place that
+        // populates ImageClip / Radius / ImageSize, but it only fires
+        // when the property changes value. A consumer that leaves Size
+        // at the default 20.0 never triggers it — the read-only DPs
+        // hold their initial values, ImageClip stays null, and the
+        // Image renders unclipped (a 18x18 square inside the round
+        // Border, looking like a "square under the circle frame").
+        // RecomputeAvatarSource has the same problem: AvatarKey may
+        // be set in XAML before the binding pipeline notifies the
+        // callback, so the source is null on first render until the
+        // user moves to a different commit and back.
+        RecomputeGeometry();
+        RecomputeAvatarSource();
     }
 
     /// <summary>
