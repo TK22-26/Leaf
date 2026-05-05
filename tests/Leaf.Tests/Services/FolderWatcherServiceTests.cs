@@ -284,11 +284,32 @@ public class FolderWatcherServiceTests : IDisposable
         Directory.CreateDirectory(repoPath);
         Directory.CreateDirectory(Path.Combine(repoPath, ".git"));
 
-        // Wait for debounce and event processing
-        await Task.Delay(800);
+        // Poll for the event instead of a fixed Task.Delay. The
+        // service's internal debounce is 500 ms, but FileSystemWatcher
+        // delivery latency varies wildly on cold CI runners (slow disk,
+        // anti-virus interception, low-priority watcher threads). A
+        // fixed 800 ms ceiling produces a flaky test; polling with a
+        // generous deadline + tight inner sleep gives the same fast
+        // path on a warm machine and a real ceiling under load.
+        await WaitForDiscoveredAsync(repoPath, TimeSpan.FromSeconds(10));
 
         // Assert
         _discoveredRepos.Should().Contain(repoPath);
+    }
+
+    private async Task WaitForDiscoveredAsync(string expectedPath, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            // Snapshot the list under no lock — it's only mutated by the
+            // event handler running on the watcher thread, and our reads
+            // are an existence check; a missed entry just means another
+            // poll iteration. Contains uses default ordinal compare,
+            // matching how the assertion checks below.
+            if (_discoveredRepos.Contains(expectedPath)) return;
+            await Task.Delay(50);
+        }
     }
 
     #endregion
