@@ -403,6 +403,24 @@
                                         </StackPanel>
                                     </CheckBox.Content>
                                 </CheckBox>
+
+                                <TextBlock Text="Repository list"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           Margin="0,16,0,12" />
+                                <CheckBox x:Name="ShowAllSubmodulesInRepositoryListCheckBox">
+                                    <CheckBox.Content>
+                                        <StackPanel>
+                                            <TextBlock Text="Show all submodules in repository list"
+                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                            <TextBlock Text="Surface every entry from a parent's .gitmodules as a nested child in the sidebar, even before you've opened it. Off by default — most users prefer the tree to grow only as they navigate."
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
+                                    </CheckBox.Content>
+                                </CheckBox>
                             </StackPanel>
                         </Border>
                     </StackPanel>

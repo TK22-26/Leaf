@@ -311,6 +311,16 @@ public class AppSettings
     // only want to see errors from actions they explicitly initiated.
     public bool ShowBackgroundOperationErrors { get; set; } = false;
 
+    // Repository sidebar nesting toggle. When true, every entry in a
+    // parent's .gitmodules — including ones the user has never opened —
+    // shows up as a virtual child under the parent. Clicking a virtual
+    // child runs OpenSubmoduleAsRepositoryAsync (same as double-click
+    // in the branch pane's SUBMODULES section) and the child becomes
+    // a real entry. Off by default because the resulting tree is
+    // noisy for repos with many submodules; some users prefer the
+    // exhaustive view.
+    public bool ShowAllSubmodulesInRepositoryList { get; set; } = false;
+
     // AI merge assistant. Opt-in only: disabled by default. First click
     // on "Ask AI" in the merge editor triggers a one-time consent
     // dialog that, when acknowledged, flips AiMergeConsentGiven to true
