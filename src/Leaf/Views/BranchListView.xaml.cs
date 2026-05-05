@@ -733,6 +733,49 @@ public partial class BranchListView : UserControl
 
     #endregion
 
+    #region Submodule clicks
+
+    /// <summary>
+    /// Context-sensitive double-click on a submodule row in the sidebar.
+    /// Uninitialised submodules trigger init/clone; initialised ones open
+    /// the submodule as a repository (switches Leaf to view it). Single
+    /// clicks are intentionally inert today — selection state isn't
+    /// surfaced for submodules and we'd rather not make rows feel
+    /// click-actionable when nothing happens.
+    /// </summary>
+    /// <remarks>
+    /// Mirrors the <c>Branch_MouseLeftButtonDown</c> pattern: handler
+    /// owns the click-count check and the dispatch, the VM owns the
+    /// commands. Conflicted submodules are treated as initialised — the
+    /// user wants to navigate into them and resolve, not re-init.
+    /// </remarks>
+    private void Submodule_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not SubmoduleInfo submodule)
+            return;
+
+        if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
+            return;
+
+        if (e.ClickCount != 2)
+            return;
+
+        if (submodule.IsInitialized)
+        {
+            viewModel.OpenSubmoduleAsRepositoryAsync(submodule)
+                .FireAndForget(nameof(viewModel.OpenSubmoduleAsRepositoryAsync), isUserAction: true);
+        }
+        else
+        {
+            viewModel.InitSubmoduleAsync(submodule)
+                .FireAndForget(nameof(viewModel.InitSubmoduleAsync), isUserAction: true);
+        }
+
+        e.Handled = true;
+    }
+
+    #endregion
+
     #region UI helpers
 
     /// <summary>

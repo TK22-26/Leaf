@@ -1067,11 +1067,16 @@
 
                 <!--  Submodule item template  -->
                 <DataTemplate DataType="{x:Type models:SubmoduleInfo}">
+                    <!--  Double-click is context-sensitive (see code-behind):
+                          uninitialised → init, initialised → open as repository.
+                          Cursor="Hand" advertises that the row is interactive.  -->
                     <Border
                         Padding="2,3"
                         HorizontalAlignment="Stretch"
                         Background="Transparent"
                         CornerRadius="2"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="Submodule_MouseLeftButtonDown"
                         Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                         ToolTip="{Binding TooltipText}">
                         <Border.ContextMenu>
