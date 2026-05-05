@@ -198,7 +198,43 @@ public class RepositoryManagementService : IRepositoryManagementService
     public void RemoveRepository(RepositoryInfo repo)
     {
         Log.Info("RepoMgmt", $"Repository removed: {repo.Name} ({repo.Path})");
+
+        // Cascade rule: handle every entry whose ParentRepositoryPath
+        // points at the one being removed.
+        //   • IsUserAdded=false → recursive cascade (it only existed
+        //     because the user drilled into the parent; it goes too).
+        //   • IsUserAdded=true  → promote to top-level (clear
+        //     ParentRepositoryPath; the user explicitly added this
+        //     entry at some point and we keep their work).
+        // We snapshot the children up-front because cascading removes
+        // mutate RepositoryGroups underneath us.
+        var children = RepositoryGroups
+            .SelectMany(g => g.Repositories)
+            .Where(r => !string.IsNullOrEmpty(r.ParentRepositoryPath)
+                     && string.Equals(r.ParentRepositoryPath, repo.Path, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var child in children)
+        {
+            if (child.IsUserAdded)
+            {
+                // Promote: keep the entry, lose the parent link.
+                child.ParentRepositoryPath = null;
+                Log.Info("RepoMgmt", $"Repository promoted to top-level (parent removed): {child.Name} ({child.Path})");
+            }
+            else
+            {
+                // Cascade: recurse, which will handle this child's own
+                // descendants the same way. Option A from the design —
+                // we do NOT re-parent this child's user-added grandchildren
+                // up to the deleted repo's parent; we rebuild relationships
+                // from scratch each level down.
+                RemoveRepository(child);
+            }
+        }
+
         RemoveRepositoryFromGroups(repo);
+        SaveRepositories();
         RepositoryRemoved?.Invoke(this, repo);
     }
 
