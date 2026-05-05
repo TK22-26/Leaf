@@ -101,6 +101,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<RepositoryGroup> RepositoryGroups => _repositoryService.RepositoryGroups;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ParentRepositoryName))]
+    [NotifyCanExecuteChangedFor(nameof(NavigateToParentRepositoryCommand))]
     private RepositoryInfo? _selectedRepository;
 
     /// <summary>

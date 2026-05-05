@@ -274,6 +274,61 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Navigate to the current repository's parent — the one whose
+    /// submodule sidebar the user drilled in from. No-op when the
+    /// current repo isn't a child (<c>ParentRepositoryPath == null</c>)
+    /// or when the parent is no longer in the repository list.
+    /// </summary>
+    /// <remarks>
+    /// One step at a time: from <c>kilo</c> this navigates to
+    /// <c>foxtrot</c>, not all the way to the top-level <c>parent</c>.
+    /// CanExecute returns false when there's nowhere to go, so the
+    /// back-button binds to it directly and disappears via
+    /// <c>BooleanToVisibilityConverter</c> when no parent is present.
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanNavigateToParentRepository))]
+    public async Task NavigateToParentRepositoryAsync()
+    {
+        var current = SelectedRepository;
+        if (current?.ParentRepositoryPath == null) return;
+
+        var parent = _repositoryService.FindRepository(current.ParentRepositoryPath);
+        if (parent == null)
+        {
+            // Parent was removed from the list while the child stayed
+            // open — the cascade rule should make this rare (user-added
+            // children get promoted, with ParentRepositoryPath cleared),
+            // but defend against a concurrent state.
+            return;
+        }
+
+        await SelectRepositoryAsync(parent);
+    }
+
+    private bool CanNavigateToParentRepository()
+    {
+        var current = SelectedRepository;
+        if (current?.ParentRepositoryPath == null) return false;
+        return _repositoryService.FindRepository(current.ParentRepositoryPath) != null;
+    }
+
+    /// <summary>
+    /// Display name of the repository's parent (when one exists), used
+    /// by the back-button label binding. Empty string when no parent
+    /// is available — the button is hidden via the visibility converter
+    /// in that case.
+    /// </summary>
+    public string ParentRepositoryName
+    {
+        get
+        {
+            var parentPath = SelectedRepository?.ParentRepositoryPath;
+            if (string.IsNullOrEmpty(parentPath)) return string.Empty;
+            return _repositoryService.FindRepository(parentPath)?.Name ?? string.Empty;
+        }
+    }
+
+    /// <summary>
     /// Select a repository to view.
     /// </summary>
     [RelayCommand]

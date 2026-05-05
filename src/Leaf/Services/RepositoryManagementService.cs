@@ -283,9 +283,16 @@ public class RepositoryManagementService : IRepositoryManagementService
 
     public RepositoryInfo? FindRepository(string path)
     {
+        // Use the same normalization that AddRepositoryToGroups uses
+        // for its dedup check — otherwise they can disagree on trailing
+        // separators / mixed slashes / relative segments, leading to
+        // FindRepository "not in list" + AddRepository "already in list,
+        // skipping" and the caller silently losing whatever mutation it
+        // intended to apply.
+        var normalized = NormalizePath(path);
         return RepositoryGroups
             .SelectMany(g => g.Repositories)
-            .FirstOrDefault(r => r.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(r => NormalizePath(r.Path).Equals(normalized, StringComparison.OrdinalIgnoreCase));
     }
 
     public void RefreshQuickAccess()
