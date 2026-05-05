@@ -143,6 +143,21 @@ public class RepositoryManagementService : IRepositoryManagementService
             return;
         }
 
+        // Promote existing auto-added entry when the user explicitly
+        // re-adds the same path. AddRepository's contract is "the user
+        // wants this in the list" — passing IsUserAdded=true on the
+        // incoming repo signals user intent. The submodule-open path
+        // bypasses this by setting IsUserAdded=false on its incoming
+        // RepositoryInfo, which preserves the auto-added flag on existing
+        // entries.
+        var existing = FindRepository(repo.Path);
+        if (existing != null && repo.IsUserAdded && !existing.IsUserAdded)
+        {
+            existing.IsUserAdded = true;
+            if (save) SaveRepositories();
+            return;
+        }
+
         AddRepositoryToGroups(repo, save, raiseEvent: true);
     }
 

@@ -206,17 +206,36 @@ public partial class MainViewModel
                 return;
             }
 
+            var parentPath = SelectedRepository.Path;
             var existing = _repositoryService.FindRepository(fullPath);
             RepositoryInfo target;
             if (existing != null)
             {
+                // Already in the list — preserve the existing entry's
+                // identity (don't replace it). If it had no parent
+                // recorded yet (e.g. user previously opened it as a
+                // standalone repo before discovering it was a submodule
+                // of this parent), back-fill the relationship now so the
+                // back-button + sidebar nesting both work. Don't touch
+                // IsUserAdded — if the user explicitly added it before,
+                // they get the user-added cascade behaviour on parent
+                // removal (promote to top-level rather than cascade).
                 target = existing;
+                if (string.IsNullOrEmpty(target.ParentRepositoryPath))
+                {
+                    target.ParentRepositoryPath = parentPath;
+                    _repositoryService.SaveRepositories();
+                }
             }
             else
             {
-                // No session token: SelectRepositoryAsync immediately
-                // rotates to a fresh session for the new repo.
+                // Auto-discovered via submodule open: stamp the parent
+                // path and IsUserAdded=false so a later parent-removal
+                // cascades this entry away. No session token: the
+                // SelectRepositoryAsync below rotates a fresh session.
                 target = await _gitService.GetRepositoryInfoFastAsync(fullPath);
+                target.ParentRepositoryPath = parentPath;
+                target.IsUserAdded = false;
                 _repositoryService.AddRepository(target);
             }
 
