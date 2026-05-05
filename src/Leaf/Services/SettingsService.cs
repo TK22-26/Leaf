@@ -311,19 +311,26 @@ public class AppSettings
     // only want to see errors from actions they explicitly initiated.
     public bool ShowBackgroundOperationErrors { get; set; } = false;
 
-    // AI merge assistant (plan §5 — Phase 5 AI-Assisted Resolution).
-    // Opt-in only: disabled by default, no provider/external-server path
-    // configured. First click on "Ask AI" in the merge editor triggers a
-    // one-time consent dialog that, when acknowledged, flips
-    // AiMergeConsentGiven to true — after which clicks go straight
-    // through. Resetting either flag to false from settings re-triggers
-    // the consent dialog on next use.
+    // AI merge assistant. Opt-in only: disabled by default. First click
+    // on "Ask AI" in the merge editor triggers a one-time consent
+    // dialog that, when acknowledged, flips AiMergeConsentGiven to true
+    // — after which clicks go straight through. Resetting either flag
+    // to false from settings re-triggers the consent dialog on next use.
+    //
+    // AiMergeProvider selects which backend the router dispatches to:
+    // "Claude" / "Gemini" / "Codex" / "Ollama" (CLI / HTTP wrappers
+    // around the user's existing tooling) or "ExternalServer" (the
+    // legacy stdio-JSON server, optional power-user / corporate path).
+    // Empty string leaves the router to fall back to a sensible default
+    // on first use (the user's commit-message provider if connected,
+    // otherwise the first connected CLI provider).
     //
     // AiMergeExternalServerPath was previously named AiMergeMcpServerPath;
     // SettingsService.LoadSettings performs a one-time JSON-level rename
     // when an old settings file is loaded.
     public bool AiMergeEnabled { get; set; } = false;
     public bool AiMergeConsentGiven { get; set; } = false;
+    public string AiMergeProvider { get; set; } = string.Empty;
     public string AiMergeExternalServerPath { get; set; } = string.Empty;
 
     // Merge editor layout (C1 grid splitters). FileListWidth is an absolute

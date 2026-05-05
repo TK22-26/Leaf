@@ -353,6 +353,27 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
+                            <TextBlock Text="Provider"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock Text="Which AI handles 'Ask AI' clicks. CLI providers reuse the tooling you already have configured for commit messages; External Server is for custom backends (see tools/leaf-merge-server/README.md)."
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox x:Name="AiMergeProviderComboBox"
+                                  Grid.Column="1"
+                                  MinWidth="200"
+                                  VerticalAlignment="Center"
+                                  SelectionChanged="AiMergeProviderComboBox_SelectionChanged" />
+                    </Grid>
+
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
                             <TextBlock Text="Consent acknowledged"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}" />

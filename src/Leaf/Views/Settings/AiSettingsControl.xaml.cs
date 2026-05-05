@@ -45,11 +45,13 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         // Load timeout
         AiTimeoutTextBox.Text = settings.AiCliTimeoutSeconds.ToString();
 
-        // Load AI Merge (Phase 5)
+        // Load AI Merge
         AiMergeEnabledCheckBox.IsChecked = settings.AiMergeEnabled;
         AiMergeExternalServerPathTextBox.Text = settings.AiMergeExternalServerPath ?? string.Empty;
         // Reset button is only meaningful when consent has been given.
         AiMergeResetConsentButton.IsEnabled = settings.AiMergeConsentGiven;
+        // Provider dropdown populated AFTER connection-state flags below
+        // are set, so the "(not connected)" suffix is accurate.
 
         // Load connection states
         _isClaudeConnected = settings.IsClaudeConnected;
@@ -75,6 +77,95 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         }
 
         UpdateAiDefaults();
+        UpdateMergeProviderOptions();
+    }
+
+    /// <summary>
+    /// Populate the merge-provider combo and select whatever the user
+    /// has saved. Each provider's label includes a "(not connected)"
+    /// suffix when its connection-state predicate is false, so the
+    /// dropdown reads honestly without disabling rows (selecting an
+    /// unavailable provider is the only way to surface the "go connect
+    /// it" path through the existing settings UI).
+    /// </summary>
+    private void UpdateMergeProviderOptions()
+    {
+        if (_settings is null) return;
+        _suppressAiSelectionSync = true;
+        try
+        {
+            AiMergeProviderComboBox.Items.Clear();
+            AiMergeProviderComboBox.Items.Add(BuildOption("Claude", _isClaudeConnected));
+            AiMergeProviderComboBox.Items.Add(BuildOption("Gemini", _isGeminiConnected));
+            AiMergeProviderComboBox.Items.Add(BuildOption("Codex",  _isCodexConnected));
+            AiMergeProviderComboBox.Items.Add(BuildOption("Ollama", _isOllamaConnected));
+            AiMergeProviderComboBox.Items.Add("External Server");
+
+            // Map persisted setting → display label.
+            var current = (_settings.AiMergeProvider ?? string.Empty).Trim();
+            var target = current switch
+            {
+                "Claude" => BuildOption("Claude", _isClaudeConnected),
+                "Gemini" => BuildOption("Gemini", _isGeminiConnected),
+                "Codex"  => BuildOption("Codex",  _isCodexConnected),
+                "Ollama" => BuildOption("Ollama", _isOllamaConnected),
+                "ExternalServer" or "External" => "External Server",
+                _ => DefaultProviderLabel(),
+            };
+
+            for (int i = 0; i < AiMergeProviderComboBox.Items.Count; i++)
+            {
+                if ((string)AiMergeProviderComboBox.Items[i]! == target)
+                {
+                    AiMergeProviderComboBox.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+        finally { _suppressAiSelectionSync = false; }
+    }
+
+    private static string BuildOption(string name, bool connected)
+        => connected ? name : $"{name} (not connected)";
+
+    /// <summary>
+    /// First-launch default provider — the user's commit-message
+    /// provider if it's connected, otherwise the first connected
+    /// CLI / Ollama in priority order, otherwise "External Server"
+    /// as the always-present fallback.
+    /// </summary>
+    private string DefaultProviderLabel()
+    {
+        if (_settings is null) return "External Server";
+        var preferred = (_settings.DefaultAiProvider ?? string.Empty).Trim();
+        bool ConnectedFor(string name) => name switch
+        {
+            "Claude" => _isClaudeConnected,
+            "Gemini" => _isGeminiConnected,
+            "Codex"  => _isCodexConnected,
+            "Ollama" => _isOllamaConnected,
+            _ => false,
+        };
+        if (!string.IsNullOrEmpty(preferred) && ConnectedFor(preferred))
+            return BuildOption(preferred, true);
+        foreach (var name in new[] { "Claude", "Gemini", "Codex", "Ollama" })
+            if (ConnectedFor(name)) return BuildOption(name, true);
+        return "External Server";
+    }
+
+    private void AiMergeProviderComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressAiSelectionSync || _settings is null || _settingsService is null) return;
+        var label = AiMergeProviderComboBox.SelectedItem as string ?? string.Empty;
+        // Strip the "(not connected)" suffix when persisting; the
+        // provider name is what AppSettings.AiMergeProvider stores.
+        var name = label.Replace(" (not connected)", string.Empty).Trim();
+        _settings.AiMergeProvider = name switch
+        {
+            "External Server" => "ExternalServer",
+            _ => name,
+        };
+        _settingsService.SaveSettings(_settings);
     }
 
     public void SaveSettings(AppSettings settings, CredentialService credentialService)

@@ -103,6 +103,17 @@ public class SettingsMigrationTests : IDisposable
     }
 
     [Fact]
+    public void LoadSettings_NewInstall_AiMergeProviderEmpty()
+    {
+        // No settings file yet — defaults apply. AiMergeProvider stays
+        // empty until the user picks one (or the settings UI fills it
+        // in via UpdateMergeProviderOptions on first load).
+        var service = new SettingsService(_tempDir);
+        var settings = service.LoadSettings();
+        settings.AiMergeProvider.Should().BeEmpty();
+    }
+
+    [Fact]
     public void LoadSettings_MalformedJson_DoesNotThrow_AndReturnsDefaults()
     {
         // Migration must tolerate a corrupt settings file without crashing
