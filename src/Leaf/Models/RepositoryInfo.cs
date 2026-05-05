@@ -83,6 +83,50 @@ public partial class RepositoryInfo : ObservableObject
     public string? GroupId { get; set; }
 
     /// <summary>
+    /// Path of the repository this entry was discovered as a submodule of,
+    /// or <c>null</c> when the user added / cloned this repo independently.
+    /// Set by <c>OpenSubmoduleAsRepositoryAsync</c> when the user drills
+    /// into a submodule from the parent's sidebar; persisted to
+    /// <c>repositories.json</c> so the relationship survives across sessions.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Drives two pieces of UX:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>The "← {Parent}" back-button at the top of the branch pane
+    ///   (visible only when this is non-null and the parent is still in
+    ///   the repository list).</item>
+    ///   <item>Sidebar nesting — repos with a non-null parent render
+    ///   indented under that parent in whatever group the parent lives in.</item>
+    /// </list>
+    /// <para>
+    /// When the parent is removed from the list, every child whose
+    /// <see cref="IsUserAdded"/> is <c>false</c> (i.e. only got into the
+    /// list because the user drilled into it) cascades-removes; children
+    /// with <see cref="IsUserAdded"/> <c>true</c> have their
+    /// <c>ParentRepositoryPath</c> cleared and survive as top-level entries.
+    /// </para>
+    /// </remarks>
+    public string? ParentRepositoryPath { get; set; }
+
+    /// <summary>
+    /// Distinguishes "the user explicitly added this entry" (Add Repository,
+    /// Clone, drag-and-drop) from "this entry was auto-discovered when the
+    /// user drilled into a submodule from a parent." Drives the cascade
+    /// behaviour when a parent is removed: auto-discovered children
+    /// disappear with their parent; user-added children get promoted to
+    /// the top level (<see cref="ParentRepositoryPath"/> cleared) and stay.
+    /// </summary>
+    /// <remarks>
+    /// Default <c>true</c> so that legacy entries (saved before this
+    /// property existed) are treated as user-affirmed — safest assumption
+    /// for the migration. New entries created by the submodule-open path
+    /// must explicitly flip it to <c>false</c>.
+    /// </remarks>
+    public bool IsUserAdded { get; set; } = true;
+
+    /// <summary>
     /// Current branch name (refreshed on open).
     /// </summary>
     [ObservableProperty]
