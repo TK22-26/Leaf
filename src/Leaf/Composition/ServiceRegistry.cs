@@ -108,6 +108,13 @@ public static class ServiceRegistry
         services.AddSingleton<OllamaService>();
         services.AddSingleton<ICommitMessageParser, CommitMessageParser>();
         services.AddSingleton<Leaf.Services.Ai.IAiCliRunner, Leaf.Services.Ai.AiCliRunner>();
+        // CLI adapters per provider — stateless wrappers that translate
+        // (prompt, schema) → AiCliInvocation and unwrap the provider's
+        // response envelope. Resolved into AiCommitMessageService and
+        // (Phase 3) the per-provider merge assistants via IEnumerable<IAiCliAdapter>.
+        services.AddSingleton<Leaf.Services.Ai.Adapters.IAiCliAdapter, Leaf.Services.Ai.Adapters.ClaudeCliAdapter>();
+        services.AddSingleton<Leaf.Services.Ai.Adapters.IAiCliAdapter, Leaf.Services.Ai.Adapters.GeminiCliAdapter>();
+        services.AddSingleton<Leaf.Services.Ai.Adapters.IAiCliAdapter, Leaf.Services.Ai.Adapters.CodexCliAdapter>();
         services.AddSingleton<IAiCommitMessageService, AiCommitMessageService>();
 
         // AI-assisted merge resolution. The assistant is transport + gating
