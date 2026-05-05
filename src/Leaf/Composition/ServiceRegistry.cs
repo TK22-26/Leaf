@@ -107,6 +107,7 @@ public static class ServiceRegistry
     {
         services.AddSingleton<OllamaService>();
         services.AddSingleton<ICommitMessageParser, CommitMessageParser>();
+        services.AddSingleton<Leaf.Services.Ai.IAiCliRunner, Leaf.Services.Ai.AiCliRunner>();
         services.AddSingleton<IAiCommitMessageService, AiCommitMessageService>();
 
         // AI-assisted merge resolution. The assistant is transport + gating
