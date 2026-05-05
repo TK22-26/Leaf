@@ -127,6 +127,72 @@ public partial class RepositoryInfo : ObservableObject
     public bool IsUserAdded { get; set; } = true;
 
     /// <summary>
+    /// Repositories that point at this one via <see cref="ParentRepositoryPath"/> —
+    /// i.e. submodules of this repo that the user has at some point
+    /// opened-as-repo. Maintained by <c>RepositoryManagementService</c>;
+    /// callers should not mutate this directly. Surfaced in the sidebar
+    /// as nested children under their parent (single source of truth —
+    /// child repos do NOT also appear flat in folder groups).
+    /// </summary>
+    [JsonIgnore]
+    public ObservableCollection<RepositoryInfo> ChildRepositories { get; } = [];
+
+    /// <summary>
+    /// Combined sidebar children — worktrees (when there are multiple)
+    /// followed by submodule child repositories. Bound by the
+    /// <c>HierarchicalDataTemplate</c> for <see cref="RepositoryInfo"/>
+    /// so the tree expands to show both kinds of descendant in one
+    /// place. Returns null when there's nothing to show, which keeps
+    /// the parent row non-expandable in WPF's TreeView (matches the
+    /// pre-nesting behaviour for repos with neither extra worktrees
+    /// nor child repos).
+    /// </summary>
+    /// <remarks>
+    /// Notified through <see cref="OnChildRepositoriesChanged"/> when
+    /// child repos or extra worktrees come and go, so the tree
+    /// re-renders without forcing a full sidebar rebuild.
+    /// </remarks>
+    [JsonIgnore]
+    public IEnumerable<object>? TreeViewChildren
+    {
+        get
+        {
+            EnsureChildRepositoriesSubscribed();
+            EnsureWorktreesSubscribed();
+            var hasWorktrees = Worktrees.Count > 1;
+            var hasChildRepos = ChildRepositories.Count > 0;
+            if (!hasWorktrees && !hasChildRepos) return null;
+
+            // Materialise once per call. Cheap (these collections stay
+            // small) and keeps the binding stable — yield-return would
+            // produce a fresh enumerator each access and confuse
+            // TreeViewItem expansion state.
+            var items = new List<object>(
+                (hasWorktrees ? Worktrees.Count : 0) + ChildRepositories.Count);
+            if (hasWorktrees)
+            {
+                foreach (var wt in Worktrees) items.Add(wt);
+            }
+            foreach (var child in ChildRepositories) items.Add(child);
+            return items;
+        }
+    }
+
+    private bool _childRepositoriesSubscribed;
+
+    private void EnsureChildRepositoriesSubscribed()
+    {
+        if (_childRepositoriesSubscribed) return;
+        ChildRepositories.CollectionChanged += OnChildRepositoriesChanged;
+        _childRepositoriesSubscribed = true;
+    }
+
+    private void OnChildRepositoriesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(TreeViewChildren));
+    }
+
+    /// <summary>
     /// Current branch name (refreshed on open).
     /// </summary>
     [ObservableProperty]
@@ -327,6 +393,7 @@ public partial class RepositoryInfo : ObservableObject
     private void Worktrees_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
         OnPropertyChanged(nameof(WorktreesIfMultiple));
+        OnPropertyChanged(nameof(TreeViewChildren));
     }
 
     /// <summary>

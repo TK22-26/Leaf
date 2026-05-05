@@ -33,7 +33,18 @@ public class RepositoryManagementService : IRepositoryManagementService
         var data = _settingsService.LoadRepositories();
         var needsSave = false;
 
-        foreach (var repo in data.Repositories)
+        // Order matters now that AddRepositoryToGroups nests children
+        // under their parent: if a child arrives before its parent
+        // is in the list, FindRepository(parentPath) returns null and
+        // the child falls through to a folder-group entry instead of
+        // getting nested. Sort by parent-chain depth so every parent
+        // is added before any of its descendants. Repos without a
+        // parent (the common case) sort to depth 0 first.
+        var ordered = data.Repositories
+            .OrderBy(r => CountParentDepth(r.ParentRepositoryPath, data.Repositories))
+            .ToList();
+
+        foreach (var repo in ordered)
         {
             // Only add if the repo still exists on disk
             if (!repo.Exists)
@@ -95,8 +106,10 @@ public class RepositoryManagementService : IRepositoryManagementService
 
     public void SaveRepositories()
     {
-        var allRepos = RepositoryGroups
-            .SelectMany(g => g.Repositories)
+        // Walk AllRepositories so child repos nested under a parent
+        // (Phase E) get persisted — they don't live in any folder
+        // group's Repositories collection any more.
+        var allRepos = AllRepositories()
             .DistinctBy(r => r.Path)
             .ToList();
 
@@ -207,9 +220,13 @@ public class RepositoryManagementService : IRepositoryManagementService
         //     ParentRepositoryPath; the user explicitly added this
         //     entry at some point and we keep their work).
         // We snapshot the children up-front because cascading removes
-        // mutate RepositoryGroups underneath us.
-        var children = RepositoryGroups
-            .SelectMany(g => g.Repositories)
+        // mutate RepositoryGroups underneath us. Walk AllRepositories
+        // so we catch children that live inside the parent's
+        // ChildRepositories collection (Phase E nested rendering) as
+        // well as anything still flat at the folder-group level
+        // (e.g. legacy entries pre-Phase-E whose ParentRepositoryPath
+        // points at the soon-to-be-removed repo).
+        var children = AllRepositories()
             .Where(r => !string.IsNullOrEmpty(r.ParentRepositoryPath)
                      && string.Equals(r.ParentRepositoryPath, repo.Path, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -218,8 +235,25 @@ public class RepositoryManagementService : IRepositoryManagementService
         {
             if (child.IsUserAdded)
             {
-                // Promote: keep the entry, lose the parent link.
+                // Promote: clear the parent link, then re-home the
+                // entry in a folder group. Without the re-add the
+                // child is stuck inside the about-to-be-removed
+                // parent's ChildRepositories collection — it would
+                // vanish along with the parent because nothing in
+                // RemoveRepositoryFromGroups iterates the soon-to-be-
+                // detached parent's children. Re-add via the normal
+                // path: AddRepositoryToGroups now sees no parent path
+                // and routes to the folder group.
                 child.ParentRepositoryPath = null;
+                if (FindRepository(child.Path) != null && children.Contains(child))
+                {
+                    // Detach from the old parent's collection first so
+                    // AddRepositoryToGroups doesn't trip over the
+                    // dedup check (the child is technically already in
+                    // the list via the parent's ChildRepositories).
+                    repo.ChildRepositories.Remove(child);
+                }
+                AddRepositoryToGroups(child, save: false, raiseEvent: false);
                 Log.Info("RepoMgmt", $"Repository promoted to top-level (parent removed): {child.Name} ({child.Path})");
             }
             else
@@ -255,9 +289,76 @@ public class RepositoryManagementService : IRepositoryManagementService
     public bool ContainsRepository(string path)
     {
         var normalizedPath = NormalizePath(path);
-        return RepositoryGroups
-            .SelectMany(g => g.Repositories)
+        return AllRepositories()
             .Any(r => NormalizePath(r.Path).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Walks every repository in the list, regardless of where it
+    /// lives in the tree (folder groups, child-of-parent nesting,
+    /// future kinds). Used by lookup methods so a child repo
+    /// nested under its parent is still discoverable by path.
+    /// </summary>
+    private IEnumerable<RepositoryInfo> AllRepositories()
+    {
+        foreach (var group in RepositoryGroups)
+        {
+            foreach (var repo in group.Repositories)
+            {
+                yield return repo;
+                foreach (var child in repo.ChildRepositories)
+                {
+                    yield return child;
+                    // Recursive nesting: a child can have its own
+                    // children. Two-level walk is enough for the
+                    // current tree depth, but recurse defensively
+                    // so a deeper chain still gets found.
+                    foreach (var grandchild in EnumerateDescendants(child))
+                    {
+                        yield return grandchild;
+                    }
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<RepositoryInfo> EnumerateDescendants(RepositoryInfo repo)
+    {
+        foreach (var child in repo.ChildRepositories)
+        {
+            yield return child;
+            foreach (var descendant in EnumerateDescendants(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    /// <summary>
+    /// How many parent-chain hops separate a repo from a top-level
+    /// entry. Top-level (no parent path) is depth 0. Used by
+    /// <see cref="LoadRepositoriesAsync"/> to ensure parents are
+    /// added to the tree before their descendants.
+    /// </summary>
+    /// <remarks>
+    /// Linear scan over <paramref name="all"/> per hop; cheap because
+    /// repository lists stay small. Defends against a hand-edited
+    /// repositories.json with a parent-loop by capping at the list
+    /// length — a cycle would otherwise spin forever.
+    /// </remarks>
+    private static int CountParentDepth(string? parentPath, List<RepositoryInfo> all)
+    {
+        var depth = 0;
+        var current = parentPath;
+        var max = all.Count;
+        while (!string.IsNullOrEmpty(current) && depth <= max)
+        {
+            var parent = all.FirstOrDefault(r => string.Equals(r.Path, current, StringComparison.OrdinalIgnoreCase));
+            if (parent == null) break;
+            depth++;
+            current = parent.ParentRepositoryPath;
+        }
+        return depth;
     }
 
     /// <summary>
@@ -289,16 +390,23 @@ public class RepositoryManagementService : IRepositoryManagementService
         // FindRepository "not in list" + AddRepository "already in list,
         // skipping" and the caller silently losing whatever mutation it
         // intended to apply.
+        //
+        // Walks AllRepositories so child repos nested under a parent
+        // (Phase E sidebar nesting) are still findable by path.
         var normalized = NormalizePath(path);
-        return RepositoryGroups
-            .SelectMany(g => g.Repositories)
+        return AllRepositories()
             .FirstOrDefault(r => NormalizePath(r.Path).Equals(normalized, StringComparison.OrdinalIgnoreCase));
     }
 
     public void RefreshQuickAccess()
     {
-        var allRepos = RepositoryGroups
-            .SelectMany(g => g.Repositories)
+        // Pinning is independent of nesting (Q3 in the design
+        // discussion: "show in both places"), so the pinned list
+        // walks AllRepositories — a child repo nested under its
+        // parent can still be pinned and surface at the top.
+        // MOST RECENT also walks AllRepositories so children are
+        // reachable as quick-access shortcuts when recently used.
+        var allRepos = AllRepositories()
             .DistinctBy(r => r.Path)
             .ToList();
 
@@ -379,6 +487,40 @@ public class RepositoryManagementService : IRepositoryManagementService
 
     private void AddRepositoryToGroups(RepositoryInfo repo, bool save, bool raiseEvent)
     {
+        // Submodule child? Nest under the parent — single source of
+        // truth, no duplicate folder-group entry. (User explicitly
+        // chose "only nested" in the design discussion.) When the
+        // parent is missing from the list (rare, defensive), we fall
+        // through to normal folder-group handling so the entry stays
+        // visible somewhere.
+        if (!string.IsNullOrEmpty(repo.ParentRepositoryPath))
+        {
+            var parent = FindRepository(repo.ParentRepositoryPath);
+            if (parent != null)
+            {
+                // If the path is already represented somewhere in the
+                // tree — flat in a folder group OR already nested
+                // under this same parent — don't add a duplicate.
+                // The submodule-open path's "if exists, back-fill
+                // ParentRepositoryPath" logic in MainViewModel.Submodule
+                // already handles surfacing the relationship; we just
+                // need to not double-register.
+                var existing = FindRepository(repo.Path);
+                if (existing == null)
+                {
+                    parent.ChildRepositories.Add(repo);
+                    if (save) SaveRepositories();
+                    if (raiseEvent)
+                    {
+                        Log.Info("RepoMgmt", $"Repository nested under parent: {repo.Name} (under {parent.Name})");
+                        RepositoryAdded?.Invoke(this, repo);
+                    }
+                }
+                RefreshQuickAccess();
+                return;
+            }
+        }
+
         // Find or create folder-based group
         var folderGroup = RepositoryGroups.FirstOrDefault(g =>
             g.Type == GroupType.Folder && g.Name == repo.FolderGroup);
@@ -436,6 +578,24 @@ public class RepositoryManagementService : IRepositoryManagementService
         foreach (var group in emptyGroups)
         {
             RepositoryGroups.Remove(group);
+        }
+
+        // Also detach from a parent's ChildRepositories collection if
+        // this repo lived nested under one. Walk every potential parent
+        // (cheap — repository lists are small) so we don't have to
+        // resolve ParentRepositoryPath for an entry that may have had
+        // it cleared during a promotion.
+        foreach (var group in RepositoryGroups)
+        {
+            foreach (var maybeParent in group.Repositories)
+            {
+                if (maybeParent.ChildRepositories.Count == 0) continue;
+                var existing = maybeParent.ChildRepositories.FirstOrDefault(c => c.Path == repo.Path);
+                if (existing != null)
+                {
+                    maybeParent.ChildRepositories.Remove(existing);
+                }
+            }
         }
 
         SortAllRepositories();
@@ -516,7 +676,13 @@ public class RepositoryManagementService : IRepositoryManagementService
                 StringComparer.OrdinalIgnoreCase),
             LastAccessed = repo.LastAccessed,
             GroupId = repo.GroupId,
-            IsPinned = repo.IsPinned
+            IsPinned = repo.IsPinned,
+            // Phase A/B: persist the submodule-relationship + provenance
+            // fields. Without these in the snapshot, the back-button +
+            // sidebar nesting silently lose their state across saves —
+            // every reload demotes children to top-level entries.
+            ParentRepositoryPath = repo.ParentRepositoryPath,
+            IsUserAdded = repo.IsUserAdded,
         };
     }
 

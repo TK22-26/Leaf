@@ -245,15 +245,15 @@
                     </Border>
                 </HierarchicalDataTemplate>
 
-                <!--  QuickAccessItem template - uses same visual as RepositoryInfo but binds to Repository property  -->
-                <!--  Only show worktree children if there's more than one worktree  -->
-                <HierarchicalDataTemplate DataType="{x:Type models:QuickAccessItem}" ItemsSource="{Binding Repository.WorktreesIfMultiple}">
+                <!--  QuickAccessItem template — uses same visual as RepositoryInfo but binds to Repository property.
+                      ItemsSource pulls TreeViewChildren so submodule children + worktrees both expand here too.  -->
+                <HierarchicalDataTemplate DataType="{x:Type models:QuickAccessItem}" ItemsSource="{Binding Repository.TreeViewChildren}">
                     <ContentPresenter Content="{Binding Repository}" ContentTemplate="{StaticResource RepositoryItemTemplate}" />
                 </HierarchicalDataTemplate>
 
-                <!--  Repository template (for repos in folder groups) - expandable with worktrees  -->
-                <!--  Only show worktree children if there's more than one worktree  -->
-                <HierarchicalDataTemplate DataType="{x:Type models:RepositoryInfo}" ItemsSource="{Binding WorktreesIfMultiple}">
+                <!--  Repository template (for repos in folder groups) — expandable with TreeViewChildren
+                      (extra worktrees + submodule child repos that the user has opened).  -->
+                <HierarchicalDataTemplate DataType="{x:Type models:RepositoryInfo}" ItemsSource="{Binding TreeViewChildren}">
                     <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource RepositoryItemTemplate}" />
                 </HierarchicalDataTemplate>
 
