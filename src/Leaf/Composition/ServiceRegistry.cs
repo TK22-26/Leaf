@@ -109,17 +109,23 @@ public static class ServiceRegistry
         services.AddSingleton<ICommitMessageParser, CommitMessageParser>();
         services.AddSingleton<IAiCommitMessageService, AiCommitMessageService>();
 
-        // Phase 5: AI-assisted merge resolution via MCP. The assistant itself
-        // is transport + gating only; the providers read fresh values from
-        // SettingsService on every invocation so a settings change takes
-        // effect without reconstructing the singleton.
+        // AI-assisted merge resolution. The assistant is transport + gating
+        // only; the providers read fresh values from SettingsService on
+        // every invocation so a settings change takes effect without
+        // reconstructing the singleton.
+        //
+        // Phase 0 ships the External-Server transport as the only
+        // implementation (renamed from McpMergeAssistant). Phase 4 will
+        // replace this registration with a router that dispatches to
+        // per-provider implementations (Claude/Gemini/Codex/Ollama) plus
+        // the External-Server option.
         services.AddSingleton<Leaf.Services.Merge.IAiMergeAssistant>(sp =>
         {
             var settings = sp.GetRequiredService<SettingsService>();
-            return new Leaf.Services.Merge.McpMergeAssistant(
+            return new Leaf.Services.Merge.ExternalServerMergeAssistant(
                 serverPathProvider: () =>
                 {
-                    var path = settings.LoadSettings().AiMergeMcpServerPath;
+                    var path = settings.LoadSettings().AiMergeExternalServerPath;
                     return string.IsNullOrWhiteSpace(path) ? null : path;
                 },
                 enabledProvider: () => settings.LoadSettings().AiMergeEnabled,

@@ -1,10 +1,19 @@
-# leaf-merge-mcp — Reference MCP Server for Leaf's AI Merge Assistant
+# leaf-merge-server — Reference External-Server Backend for Leaf's AI Merge Assistant
 
-Leaf's AI-assisted conflict resolution (plan §5.5, Phase 5) talks to an
-external process over **stdio JSON**. This directory is the *reference*
-server implementation — the default path Leaf's Settings points at. Users
-are free to swap in their own server (local model, corporate endpoint,
-Gemini, etc.); the contract below is the only thing that matters.
+Leaf's AI-assisted conflict resolution can talk to an external process
+over **stdio JSON**. This directory documents the wire contract that
+Settings → AI → Merge Assistant → External Server expects when the user
+picks "External Server" as the provider.
+
+Most users won't need this. Leaf also ships per-provider CLI backends
+(Claude / Gemini / Codex / Ollama) which reuse the user's existing
+provider tooling and require no separate server. The External-Server
+option exists for power users / corporate setups that need a custom
+backend (on-prem model, audit-logging proxy, alternative protocol
+shim, etc.).
+
+The contract below is the only thing that matters; reference
+implementations may be added later, or you can wire your own.
 
 ## Wire contract
 
@@ -51,9 +60,13 @@ No branch names, commit messages, or other repo state are ever included
 - Malformed JSON on stdout: Leaf surfaces a parse-error message
 - Timeout: Leaf cancels by killing the process tree
 
-## Default server implementation
+## Wiring it up
 
-The reference server is intentionally minimal and is meant to be replaced
-with a real model integration. Fork this directory, wire it to your
-model/provider of choice, and point Settings → AI Merge → MCP Server Path
-at the resulting executable.
+Build (or download) an executable that implements the contract above,
+then in Leaf go to **Settings → AI → Merge Assistant**, set the provider
+dropdown to **External Server**, and point **External Server Path** at
+your executable.
+
+Leaf shells the executable out fresh for each request — there is no
+session, no warm-up, no shared state. A crashed server doesn't leave
+Leaf with stale state, at the cost of a small per-request spawn.

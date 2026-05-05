@@ -379,28 +379,28 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <StackPanel Grid.Row="0" Grid.ColumnSpan="2">
-                            <TextBlock Text="MCP Server Path"
+                            <TextBlock Text="External Server Path"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                            <TextBlock Text="Absolute path to the MCP server executable that handles resolve_conflict. Ships blank; point this at your MCP server."
+                            <TextBlock Text="Absolute path to an external server executable that handles resolve_conflict over stdio JSON. Optional — leave blank to use a CLI provider (Claude / Gemini / Codex / Ollama). See tools/leaf-merge-server/README.md for the wire contract."
                                        FontSize="11"
                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                        TextWrapping="Wrap" />
                         </StackPanel>
-                        <TextBox x:Name="AiMergeMcpServerPathTextBox"
+                        <TextBox x:Name="AiMergeExternalServerPathTextBox"
                                  Grid.Row="1"
                                  Grid.Column="0"
                                  Margin="0,8,8,0"
                                  Padding="8,6"
                                  VerticalAlignment="Center"
-                                 TextChanged="AiMergeMcpServerPath_Changed" />
-                        <Button x:Name="AiMergeMcpServerPathBrowseButton"
+                                 TextChanged="AiMergeExternalServerPath_Changed" />
+                        <Button x:Name="AiMergeExternalServerPathBrowseButton"
                                 Grid.Row="1"
                                 Grid.Column="1"
                                 Margin="0,8,0,0"
                                 Padding="12,6"
                                 VerticalAlignment="Center"
-                                Click="AiMergeMcpServerPathBrowse_Click"
+                                Click="AiMergeExternalServerPathBrowse_Click"
                                 Content="Browse..." />
                     </Grid>
                 </StackPanel>

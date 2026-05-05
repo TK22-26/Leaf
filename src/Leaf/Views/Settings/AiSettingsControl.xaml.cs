@@ -47,7 +47,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
         // Load AI Merge (Phase 5)
         AiMergeEnabledCheckBox.IsChecked = settings.AiMergeEnabled;
-        AiMergeMcpServerPathTextBox.Text = settings.AiMergeMcpServerPath ?? string.Empty;
+        AiMergeExternalServerPathTextBox.Text = settings.AiMergeExternalServerPath ?? string.Empty;
         // Reset button is only meaningful when consent has been given.
         AiMergeResetConsentButton.IsEnabled = settings.AiMergeConsentGiven;
 
@@ -148,23 +148,23 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _settingsService.SaveSettings(_settings);
     }
 
-    private void AiMergeMcpServerPath_Changed(object sender, TextChangedEventArgs e)
+    private void AiMergeExternalServerPath_Changed(object sender, TextChangedEventArgs e)
     {
         if (_settings is null || _settingsService is null) return;
-        _settings.AiMergeMcpServerPath = AiMergeMcpServerPathTextBox.Text.Trim();
+        _settings.AiMergeExternalServerPath = AiMergeExternalServerPathTextBox.Text.Trim();
         _settingsService.SaveSettings(_settings);
     }
 
-    private void AiMergeMcpServerPathBrowse_Click(object sender, RoutedEventArgs e)
+    private void AiMergeExternalServerPathBrowse_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Select MCP server executable",
+            Title = "Select external server executable",
             Filter = "Executables (*.exe;*.bat;*.cmd;*.ps1)|*.exe;*.bat;*.cmd;*.ps1|All files (*.*)|*.*",
         };
         if (dlg.ShowDialog(Window.GetWindow(this)) == true)
         {
-            AiMergeMcpServerPathTextBox.Text = dlg.FileName;
+            AiMergeExternalServerPathTextBox.Text = dlg.FileName;
             // TextChanged handler persists the change.
         }
     }

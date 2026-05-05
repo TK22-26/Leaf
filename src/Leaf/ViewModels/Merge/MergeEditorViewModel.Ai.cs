@@ -9,16 +9,16 @@ using Leaf.Utils;
 namespace Leaf.ViewModels.Merge;
 
 /// <summary>
-/// Phase 5 partial: AI-assisted conflict resolution. Kept in its own file so
-/// the core VM stays focused on state + resolution commands, and the MCP /
-/// consent flow lives beside its own tests.
+/// AI-assisted conflict resolution partial. Kept in its own file so the
+/// core VM stays focused on state + resolution commands, and the AI
+/// provider / consent flow lives beside its own tests.
 /// </summary>
 public sealed partial class MergeEditorViewModel
 {
     /// <summary>
     /// Raised when the VM wants to ask the user for AI consent before making
-    /// the very first MCP call of the session. The view subscribes, shows
-    /// the consent dialog, and invokes <see cref="ResumeAiRequestAfterConsentAsync"/>
+    /// the very first AI call of the session. The view subscribes, shows
+    /// the consent dialog, and invokes <see cref="ResumeAiRequestAfterConsent"/>
     /// (or <see cref="CancelPendingAiRequest"/>) with the user's choice.
     /// An event is used rather than a direct IDialogService call so the VM
     /// remains view-agnostic and the unit tests don't need a fake dialog.
@@ -26,7 +26,7 @@ public sealed partial class MergeEditorViewModel
     public event EventHandler<AiConsentRequest>? AiConsentRequested;
 
     /// <summary>
-    /// Raised when the MCP server returns a proposed resolution. The view
+    /// Raised when the AI provider returns a proposed resolution. The view
     /// shows the popover; the user then calls
     /// <see cref="AcceptAiResolution"/> or dismisses. An event is used for
     /// the same reason as <see cref="AiConsentRequested"/>.
@@ -34,10 +34,11 @@ public sealed partial class MergeEditorViewModel
     public event EventHandler<AiResolutionProposal>? AiResolutionReceived;
 
     /// <summary>
-    /// Raised on MCP transport failures (server missing, non-zero exit,
-    /// malformed JSON). The view surfaces this as a notification / toast.
-    /// Keeping this on the VM (rather than letting exceptions propagate)
-    /// avoids routing AI-specific failure text through generic AsyncErrorHandler.
+    /// Raised on AI transport failures (provider not connected, non-zero
+    /// exit, malformed JSON). The view surfaces this as a notification /
+    /// toast. Keeping this on the VM (rather than letting exceptions
+    /// propagate) avoids routing AI-specific failure text through generic
+    /// AsyncErrorHandler.
     /// </summary>
     public event EventHandler<string>? AiError;
 
@@ -82,15 +83,16 @@ public sealed partial class MergeEditorViewModel
         var range = Document.Ranges.FirstOrDefault(r => r.Index == rangeIndex);
         if (range is null || !range.IsConflicting) return;
 
-        // Consent gate: the MCP server path is what actually receives data,
-        // so the dialog should show the configured path as well as the payload
-        // shape. The view owns the dialog; we just ask for permission.
+        // Consent gate: the configured provider is what actually receives
+        // data, so the dialog should show the provider description as well
+        // as the payload shape. The view owns the dialog; we just ask for
+        // permission.
         if (!_aiAssistant.IsConsentGiven)
         {
             _pendingAiRangeIndex = rangeIndex;
             AiConsentRequested?.Invoke(this, new AiConsentRequest(
                 FilePath: Document.FilePath,
-                McpServerPath: _aiAssistant.McpServerPath ?? string.Empty,
+                ProviderDescription: _aiAssistant.ProviderDescription,
                 ContextLines: AiContextLines));
             return;
         }
@@ -263,16 +265,16 @@ public sealed partial class MergeEditorViewModel
 }
 
 /// <summary>
-/// Payload fired to the view when consent is required. The view formats this
-/// into the first-run dialog text — it must show the MCP server path so the
-/// user knows where data is headed.
+/// Payload fired to the view when consent is required. The view formats
+/// this into the first-run dialog text — it must show the AI provider
+/// description so the user knows where data is headed.
 /// </summary>
-public sealed record AiConsentRequest(string FilePath, string McpServerPath, int ContextLines);
+public sealed record AiConsentRequest(string FilePath, string ProviderDescription, int ContextLines);
 
 /// <summary>
-/// Payload fired to the view when the MCP server returns a proposed resolution.
-/// The view renders the popover and invokes <see cref="MergeEditorViewModel.AcceptAiResolution"/>
-/// on user accept.
+/// Payload fired to the view when the AI provider returns a proposed
+/// resolution. The view renders the popover and invokes
+/// <see cref="MergeEditorViewModel.AcceptAiResolution"/> on user accept.
 /// </summary>
 public sealed record AiResolutionProposal(
     int RangeIndex,

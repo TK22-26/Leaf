@@ -1159,11 +1159,11 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     // NOTE: The plan's §C4 context menu also lists "Ask AI about selection"
     // and "Expand / Collapse context". Both are DEFERRED in C4:
     //   • Ask AI about selection → requires a free-form Q&A method on
-    //     IAiMergeAssistant that the MCP transport doesn't currently expose
-    //     (the existing RequestResolutionAsync is range-scoped). The proper
-    //     architectural fix is to extend the interface + MCP protocol, not
-    //     to shoehorn a selection into the range-resolution path. Defer
-    //     until a dedicated AI-Q&A capability lands.
+    //     IAiMergeAssistant that the current transport doesn't expose (the
+    //     existing RequestResolutionAsync is range-scoped). The proper
+    //     architectural fix is to extend the interface + every provider's
+    //     prompt builder, not to shoehorn a selection into the range-
+    //     resolution path. Defer until a dedicated AI-Q&A capability lands.
     //   • Expand / Collapse context → same deferral as C2's
     //     ContextExpanderHandle: Leaf renders full files in each pane, so
     //     there is no collapsed region for the menu to expand. Revisit once
