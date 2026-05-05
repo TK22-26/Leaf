@@ -1,3 +1,5 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+
 namespace Leaf.Models;
 
 /// <summary>
@@ -5,8 +7,19 @@ namespace Leaf.Models;
 /// registration data from <c>.gitmodules</c> with live state from
 /// <c>git submodule status</c>.
 /// </summary>
-public sealed class SubmoduleInfo
+public sealed partial class SubmoduleInfo : ObservableObject
 {
+    /// <summary>
+    /// Whether this submodule row is currently selected in the sidebar.
+    /// Drives the same selection-visual style as branches and worktrees
+    /// (tree-level Border DataTrigger in BranchListView's TreeViewItem
+    /// style — the row's highlight + the green selection bar). Single-
+    /// selection model: clicking a submodule clears the others' flags.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSelected;
+
+
     /// <summary>
     /// Logical name of the submodule as recorded in <c>.gitmodules</c>
     /// (the section key, <c>[submodule "name"]</c>). Usually matches

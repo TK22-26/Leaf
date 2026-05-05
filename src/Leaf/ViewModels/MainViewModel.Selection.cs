@@ -31,8 +31,10 @@ public partial class MainViewModel
         var repo = SelectedRepository;
         if (repo == null) return;
 
-        // Clear worktree and PR selections to avoid mixed selection types.
+        // Clear worktree, submodule, and PR selections to avoid mixed
+        // selection types.
         repo.ClearPullRequestSelection();
+        repo.ClearSubmoduleSelection();
         // §5.17 — branch selection drops the tag-detail pane so the
         // right side returns to the commit detail view.
         ClearTagDetailIfOpen();
@@ -78,6 +80,7 @@ public partial class MainViewModel
 
         repo.ClearBranchSelection();
         repo.ClearPullRequestSelection();
+        repo.ClearSubmoduleSelection();
 
         if (toggle)
         {
@@ -200,6 +203,7 @@ public partial class MainViewModel
 
         repo.ClearBranchSelection();
         repo.ClearPullRequestSelection();
+        repo.ClearSubmoduleSelection();
 
         if (toggle)
         {
@@ -233,9 +237,46 @@ public partial class MainViewModel
 
         repo.ClearBranchSelection();
         repo.ClearPullRequestSelection();
+        repo.ClearSubmoduleSelection();
 
         pr.IsSelected = true;
         repo.SelectedPullRequest = pr;
+    }
+
+    /// <summary>
+    /// Select a submodule in the sidebar. Single-select model — clicking
+    /// another row replaces the selection. Clears branch, worktree, PR,
+    /// and tag selections to keep the cross-class selection mutually
+    /// exclusive (matches every other Select* method's contract).
+    /// </summary>
+    public void SelectSubmodule(SubmoduleInfo submodule)
+    {
+        var repo = SelectedRepository;
+        if (repo == null) return;
+
+        repo.ClearBranchSelection();
+        repo.ClearPullRequestSelection();
+        ClearTagDetailIfOpen();
+        foreach (var category in repo.BranchCategories)
+        {
+            if (category.IsWorktreesCategory)
+            {
+                foreach (var wt in category.Worktrees)
+                    wt.IsSelected = false;
+            }
+            else if (category.IsTagsCategory)
+            {
+                foreach (var t in category.Tags)
+                    t.IsSelected = false;
+            }
+            else if (category.IsSubmodulesCategory)
+            {
+                // Walk the submodules in the same category — set the
+                // clicked one IsSelected, clear every sibling.
+                foreach (var sm in category.Submodules)
+                    sm.IsSelected = ReferenceEquals(sm, submodule);
+            }
+        }
     }
 
     /// <summary>

@@ -517,6 +517,23 @@ public partial class RepositoryInfo : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Clears the submodule selection. Mirrors the other clear-* methods
+    /// so the cross-class selection model stays consistent: any class
+    /// that gets selected first clears every other class.
+    /// </summary>
+    public void ClearSubmoduleSelection()
+    {
+        foreach (var category in BranchCategories)
+        {
+            if (category.IsSubmodulesCategory)
+            {
+                foreach (var sm in category.Submodules)
+                    sm.IsSelected = false;
+            }
+        }
+    }
+
     partial void OnShowAllPullRequestsChanged(bool value)
     {
         OnPropertyChanged(nameof(PullRequestFilterLabel));

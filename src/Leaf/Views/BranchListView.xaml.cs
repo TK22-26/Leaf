@@ -757,8 +757,19 @@ public partial class BranchListView : UserControl
         if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
             return;
 
+        // Single click: select this submodule, clearing every other
+        // selection class (branch, worktree, PR, tag). Single-select
+        // model — matches the way the user interacts with the row
+        // before deciding whether to open / init / right-click. The
+        // tree-level Border DataTrigger reads IsSelected and paints
+        // the highlight + the green left bar.
+        viewModel.SelectSubmodule(submodule);
+
         if (e.ClickCount != 2)
+        {
+            e.Handled = true;
             return;
+        }
 
         if (submodule.IsInitialized)
         {
@@ -773,6 +784,7 @@ public partial class BranchListView : UserControl
 
         e.Handled = true;
     }
+
 
     #endregion
 
