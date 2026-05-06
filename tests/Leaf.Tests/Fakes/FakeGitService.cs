@@ -75,7 +75,7 @@ public class FakeGitService : IGitService
     public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new RepositoryInfo());
     public Task<string> CloneAsync(string url, string localPath, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult("");
     public Task FetchAsync(string repoPath, string remoteName = "origin", string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task PullAsync(string repoPath, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task PullAsync(string repoPath, string? credentialKey = null, IProgress<string>? progress = null, bool? rebase = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task PushAsync(string repoPath, string? remoteName = null, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task PullBranchFastForwardAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task PushBranchAsync(string repoPath, string branchName, string remoteName, string remoteBranchName, bool isCurrentBranch, CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -138,7 +138,7 @@ public class FakeGitService : IGitService
     public Task DeleteTagAsync(string repoPath, string tagName, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task PushTagAsync(string repoPath, string tagName, string remoteName = "origin", string? credentialKey = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task DeleteRemoteTagAsync(string repoPath, string tagName, string remoteName = "origin", string? credentialKey = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task<MergeResult> RebaseAsync(string repoPath, string ontoBranch, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
+    public Task<MergeResult> RebaseAsync(string repoPath, string ontoBranch, bool autosquash = false, bool updateRefs = false, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
     public Task AbortRebaseAsync(string repoPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<MergeResult> ContinueRebaseAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
     public Task<MergeResult> SkipRebaseCommitAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());

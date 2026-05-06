@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Windows;
+using Leaf.Models;
 using Leaf.Services;
 
 namespace Leaf.Views;
@@ -81,8 +82,8 @@ public partial class AboutDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Could not open link: {ex.Message}", "Open URL",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            FluentMessageBox.Show($"Could not open link: {ex.Message}", "Open URL",
+                MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
         }
     }
 }

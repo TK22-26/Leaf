@@ -310,7 +310,19 @@
                     <Button
                         Command="{Binding PullCommand}"
                         Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Pull changes from remote">
+                        ToolTip="Pull changes from remote (right-click for rebase variant)">
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem
+                                    Command="{Binding PullCommand}"
+                                    Header="Pull"
+                                    ToolTip="Use the strategy from your pull.rebase git config" />
+                                <MenuItem
+                                    Command="{Binding PullRebaseCommand}"
+                                    Header="Pull (rebase)"
+                                    ToolTip="git pull --rebase — replay local commits on top of incoming work" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock
                                 HorizontalAlignment="Center"

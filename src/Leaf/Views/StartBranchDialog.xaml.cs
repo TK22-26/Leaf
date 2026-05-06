@@ -311,13 +311,13 @@ public partial class StartBranchDialog : Window
             {
                 ProgressSection.Visibility = Visibility.Collapsed;
 
-                var result = MessageBox.Show(
+                var result = FluentMessageBox.Show(
                     "You have uncommitted changes in your working directory.\n\n" +
                     "Starting a new GitFlow branch requires switching branches, which may fail or cause issues with your changes.\n\n" +
                     "Would you like to stash your changes first? They can be restored after switching.",
                     "Uncommitted Changes Detected",
                     MessageBoxButton.YesNoCancel,
-                    MessageBoxImage.Warning);
+                    FluentMessageBoxIcon.Warning);
 
                 if (result == MessageBoxResult.Cancel)
                 {

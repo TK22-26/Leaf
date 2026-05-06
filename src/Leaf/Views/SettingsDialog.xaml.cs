@@ -477,11 +477,11 @@ public partial class SettingsDialog : Window
 
     private void ClearAllCredentials_Click(object sender, RoutedEventArgs e)
     {
-        var result = MessageBox.Show(
+        var result = FluentMessageBox.Show(
             "Remove all stored credentials (PATs and tokens)?\n\nYou will need to re-enter them in the Azure DevOps and GitHub settings.",
             "Clear All Credentials",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            FluentMessageBoxIcon.Warning);
 
         if (result != MessageBoxResult.Yes)
             return;
@@ -501,11 +501,11 @@ public partial class SettingsDialog : Window
         AzureDevOpsSettings.LoadSettings(_settings, _credentialService);
         GitHubSettings.LoadSettings(_settings, _credentialService);
 
-        MessageBox.Show(
+        FluentMessageBox.Show(
             "All credentials have been cleared.\n\nRe-enter your PATs under Azure DevOps and GitHub settings.",
             "Credentials Cleared",
             MessageBoxButton.OK,
-            MessageBoxImage.Information);
+            FluentMessageBoxIcon.Information);
     }
 
     private void OpenLogFolder_Click(object sender, RoutedEventArgs e)
@@ -548,8 +548,8 @@ public partial class SettingsDialog : Window
             // Check if already watched
             if (_settings.WatchedFolders.Contains(folderPath, StringComparer.OrdinalIgnoreCase))
             {
-                MessageBox.Show("This folder is already being watched.", "Already Watched",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
+                FluentMessageBox.Show("This folder is already being watched.", "Already Watched",
+                    MessageBoxButton.OK, FluentMessageBoxIcon.Information);
                 return;
             }
 

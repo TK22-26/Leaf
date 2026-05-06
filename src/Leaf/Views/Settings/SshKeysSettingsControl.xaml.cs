@@ -7,6 +7,7 @@ using System.Windows.Media;
 using Leaf.Models;
 using Leaf.Services;
 using Leaf.Services.Ssh;
+using Leaf.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
 
@@ -179,11 +180,11 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
         var result = await _sshService.GenerateKeyAsync(request).ConfigureAwait(true);
         if (!result.Success)
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 result.Message ?? "Key generation failed.",
                 "Generate SSH key",
                 MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                FluentMessageBoxIcon.Warning);
             return;
         }
 
@@ -194,11 +195,11 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
             {
                 var pubText = await _sshService.ReadPublicKeyTextAsync(key.PublicKeyPath).ConfigureAwait(true);
                 _clipboardService?.SetText(pubText);
-                MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+                FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                     "Public key generated and copied to clipboard. Paste it into your Git host's SSH keys page.",
                     "Generate SSH key",
                     MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                    FluentMessageBoxIcon.Information);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -218,11 +219,11 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 $"Could not read public key file: {ex.Message}",
                 "Copy public key",
                 MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                FluentMessageBoxIcon.Warning);
         }
     }
 
@@ -238,11 +239,11 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
         var target = TestHostCombo.Text?.Trim();
         if (string.IsNullOrEmpty(target))
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 "Type or pick a host to test.",
                 "Test connection",
                 MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                FluentMessageBoxIcon.Information);
             return;
         }
 
@@ -352,11 +353,11 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
         var pattern = HostPatternBox.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrEmpty(pattern))
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 "Host pattern cannot be empty.",
                 "Save SSH config",
                 MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                FluentMessageBoxIcon.Warning);
             return;
         }
 
@@ -366,11 +367,11 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
             if (!int.TryParse(HostPortBox.Text, System.Globalization.NumberStyles.Integer,
                     System.Globalization.CultureInfo.InvariantCulture, out var parsed) || parsed <= 0 || parsed > 65535)
             {
-                MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+                FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                     "Port must be a number between 1 and 65535, or empty for the default (22).",
                     "Save SSH config",
                     MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                    FluentMessageBoxIcon.Warning);
                 return;
             }
             port = parsed;
@@ -390,11 +391,11 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
     {
         if (_editingHost is null) return;
         var owner = Window.GetWindow(this) ?? Application.Current.MainWindow;
-        var confirm = MessageBox.Show(owner,
+        var confirm = FluentMessageBox.Show(owner,
             $"Remove host '{_editingHost.HostPattern}' from ~/.ssh/config?",
             "Delete host",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            FluentMessageBoxIcon.Warning);
         if (confirm != MessageBoxResult.Yes) return;
 
         _hosts.Remove(_editingHost);
@@ -412,11 +413,11 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 $"Could not write ~/.ssh/config: {ex.Message}",
                 "Save SSH config",
                 MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                FluentMessageBoxIcon.Warning);
         }
     }
 
@@ -442,11 +443,11 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
         var result = await _sshService.AddKeyToAgentAsync(row.PrivateKeyPath, passphrase).ConfigureAwait(true);
         if (!result.Success)
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 string.IsNullOrWhiteSpace(result.Message) ? "ssh-add failed." : result.Message,
                 "Add key to agent",
                 MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                FluentMessageBoxIcon.Warning);
         }
         await RefreshAgentAsync().ConfigureAwait(true);
     }
@@ -462,22 +463,22 @@ public partial class SshKeysSettingsControl : UserControl, ISettingsSectionContr
             string.Equals(k.Fingerprint, row.Fingerprint, StringComparison.OrdinalIgnoreCase));
         if (match is null)
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 "Couldn't locate the matching private key on disk. Remove with `ssh-add -D` (all keys) or via a terminal.",
                 "Remove key",
                 MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                FluentMessageBoxIcon.Information);
             return;
         }
 
         var result = await _sshService.RemoveKeyFromAgentAsync(match.PrivateKeyPath).ConfigureAwait(true);
         if (!result.Success)
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 string.IsNullOrWhiteSpace(result.Message) ? "ssh-add -d failed." : result.Message,
                 "Remove key",
                 MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                FluentMessageBoxIcon.Warning);
         }
         await RefreshAgentAsync().ConfigureAwait(true);
     }

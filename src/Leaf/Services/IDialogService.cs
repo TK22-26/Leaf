@@ -1,4 +1,5 @@
 using System.Windows;
+using Leaf.Models;
 
 namespace Leaf.Services;
 
@@ -38,8 +39,23 @@ public interface IDialogService
     /// </summary>
     /// <param name="message">The message to display.</param>
     /// <param name="title">The dialog title.</param>
+    /// <param name="suppressionKey">
+    /// Optional stable key (e.g. <c>"branch.forceDelete"</c>). When set, the
+    /// dialog surfaces a "Don't show this again" checkbox; if the user has
+    /// previously checked it, the call returns the remembered answer
+    /// without rendering UI. Persisted via
+    /// <see cref="SettingsService.SetSuppressedAnswer"/>.
+    /// </param>
+    /// <param name="icon">
+    /// Severity glyph for the new Fluent-styled box. Defaults to
+    /// <see cref="FluentMessageBoxIcon.Question"/> for a Yes/No prompt.
+    /// </param>
     /// <returns>True if user clicked Yes, false otherwise.</returns>
-    Task<bool> ShowConfirmationAsync(string message, string title);
+    Task<bool> ShowConfirmationAsync(
+        string message,
+        string title,
+        string? suppressionKey = null,
+        FluentMessageBoxIcon icon = FluentMessageBoxIcon.Question);
 
     /// <summary>
     /// Shows a message dialog with custom buttons.
@@ -47,15 +63,23 @@ public interface IDialogService
     /// <param name="message">The message to display.</param>
     /// <param name="title">The dialog title.</param>
     /// <param name="buttons">The buttons to show.</param>
+    /// <param name="icon">Severity glyph; defaults to <see cref="FluentMessageBoxIcon.Information"/>.</param>
+    /// <param name="suppressionKey">See <see cref="ShowConfirmationAsync"/>.</param>
     /// <returns>The result indicating which button was clicked.</returns>
-    Task<MessageBoxResult> ShowMessageAsync(string message, string title, MessageBoxButton buttons);
+    Task<MessageBoxResult> ShowMessageAsync(
+        string message,
+        string title,
+        MessageBoxButton buttons,
+        FluentMessageBoxIcon icon = FluentMessageBoxIcon.Information,
+        string? suppressionKey = null);
 
     /// <summary>
     /// Shows an informational message dialog.
     /// </summary>
     /// <param name="message">The message to display.</param>
     /// <param name="title">The dialog title.</param>
-    Task ShowInformationAsync(string message, string title);
+    /// <param name="suppressionKey">See <see cref="ShowConfirmationAsync"/>.</param>
+    Task ShowInformationAsync(string message, string title, string? suppressionKey = null);
 
     /// <summary>
     /// Shows an error as a non-blocking toast notification. Use for

@@ -270,8 +270,8 @@ public partial class GitFlowInitDialog : Window
         // Validate
         if (string.IsNullOrWhiteSpace(config.MainBranch))
         {
-            MessageBox.Show("Main branch name is required.", "Validation Error",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            FluentMessageBox.Show("Main branch name is required.", "Validation Error",
+                MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
             _currentStep = 2;
             UpdateStepVisuals();
             return;
@@ -279,8 +279,8 @@ public partial class GitFlowInitDialog : Window
 
         if (string.IsNullOrWhiteSpace(config.DevelopBranch))
         {
-            MessageBox.Show("Develop branch name is required.", "Validation Error",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            FluentMessageBox.Show("Develop branch name is required.", "Validation Error",
+                MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
             _currentStep = 2;
             UpdateStepVisuals();
             return;
@@ -302,8 +302,8 @@ public partial class GitFlowInitDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to initialize GitFlow:\n\n{ex.Message}",
-                "Initialization Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            FluentMessageBox.Show($"Failed to initialize GitFlow:\n\n{ex.Message}",
+                "Initialization Error", MessageBoxButton.OK, FluentMessageBoxIcon.Error);
 
             InitProgressSection.Visibility = Visibility.Collapsed;
             NextButton.IsEnabled = true;

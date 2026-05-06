@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Views;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Leaf.Views.Settings;
@@ -185,13 +186,13 @@ public partial class BranchColorsSettingsControl : UserControl, ISettingsSection
     {
         if (sender is not Button button || button.Tag is not CustomPaletteRow row || _registry is null) return;
         var owner = Window.GetWindow(this);
-        var confirm = MessageBox.Show(
+        var confirm = FluentMessageBox.Show(
             owner,
             $"Delete the custom palette '{row.DisplayName}'?\n\n" +
             "If this palette is currently active, the default palette will be used instead.",
             "Delete custom palette",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            FluentMessageBoxIcon.Warning);
         if (confirm != MessageBoxResult.Yes) return;
 
         _registry.DeleteCustom(row.Id);
@@ -229,11 +230,11 @@ public partial class BranchColorsSettingsControl : UserControl, ISettingsSection
         {
             // Engineering Software Policy: surface the failure visibly
             // rather than silently keeping invalid input in the registry.
-            MessageBox.Show(Window.GetWindow(this),
+            FluentMessageBox.Show(Window.GetWindow(this),
                 ex.Message,
                 isNew ? "Could not create palette" : "Could not save palette",
                 MessageBoxButton.OK,
-                MessageBoxImage.Error);
+                FluentMessageBoxIcon.Error);
             return false;
         }
     }

@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using Leaf.Models;
 using Leaf.Services;
+using Leaf.Views;
 
 namespace Leaf.Views.Settings;
 
@@ -85,26 +87,26 @@ public partial class GitHubSettingsControl : UserControl, ISettingsSectionContro
 
         if (string.IsNullOrWhiteSpace(owner))
         {
-            MessageBox.Show("Please enter an owner or organization name.", "Missing Owner",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            FluentMessageBox.Show("Please enter an owner or organization name.", "Missing Owner",
+                MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(pat))
         {
-            MessageBox.Show("Please enter a Personal Access Token.", "Missing PAT",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            FluentMessageBox.Show("Please enter a Personal Access Token.", "Missing PAT",
+                MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
             return;
         }
 
         // Check if this org already exists
         if (_credentialService.HasCredential($"GitHub:{owner}"))
         {
-            var result = MessageBox.Show(
+            var result = FluentMessageBox.Show(
                 $"A credential for '{owner}' already exists. Do you want to replace it?",
                 "Credential Exists",
                 MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
+                FluentMessageBoxIcon.Question);
 
             if (result != MessageBoxResult.Yes)
                 return;
@@ -147,11 +149,11 @@ public partial class GitHubSettingsControl : UserControl, ISettingsSectionContro
         if (_credentialService == null || sender is not Button button || button.Tag is not string owner)
             return;
 
-        var result = MessageBox.Show(
+        var result = FluentMessageBox.Show(
             $"Remove the credential for '{owner}'?\n\nYou will need to re-enter the PAT to use this account again.",
             "Remove Credential",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+            FluentMessageBoxIcon.Question);
 
         if (result == MessageBoxResult.Yes)
         {

@@ -244,11 +244,11 @@ public class InteractiveRebaseViewModelTests
         private readonly Task<Leaf.Models.MergeResult> _start;
         public BlockingFakeRebaseService(Task<Leaf.Models.MergeResult> start) => _start = start;
         public Task<IReadOnlyList<RebaseTodoItem>> LoadPlanAsync(
-            IRepositorySession session, string fromCommitSha, CancellationToken cancellationToken = default) =>
+            IRepositorySession session, string fromCommitSha, string? upstreamRef = null, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<RebaseTodoItem>>([]);
         public Task<Leaf.Models.MergeResult> StartAsync(
             IRepositorySession session, string fromCommitSha,
-            IReadOnlyList<RebaseTodoItem> plan, CancellationToken cancellationToken = default) => _start;
+            IReadOnlyList<RebaseTodoItem> plan, string? upstreamRef = null, CancellationToken cancellationToken = default) => _start;
     }
 
     private sealed class FakeRebaseService : IInteractiveRebaseService
@@ -271,7 +271,7 @@ public class InteractiveRebaseViewModelTests
         public IReadOnlyList<RebaseTodoItem>? LastStartPlan { get; private set; }
 
         public Task<IReadOnlyList<RebaseTodoItem>> LoadPlanAsync(
-            IRepositorySession session, string fromCommitSha, CancellationToken cancellationToken = default)
+            IRepositorySession session, string fromCommitSha, string? upstreamRef = null, CancellationToken cancellationToken = default)
         {
             if (_loadException != null) throw _loadException;
             return Task.FromResult(_planFromLoad);
@@ -279,7 +279,7 @@ public class InteractiveRebaseViewModelTests
 
         public Task<Leaf.Models.MergeResult> StartAsync(
             IRepositorySession session, string fromCommitSha,
-            IReadOnlyList<RebaseTodoItem> plan, CancellationToken cancellationToken = default)
+            IReadOnlyList<RebaseTodoItem> plan, string? upstreamRef = null, CancellationToken cancellationToken = default)
         {
             LastStartFromSha = fromCommitSha;
             LastStartPlan = plan;

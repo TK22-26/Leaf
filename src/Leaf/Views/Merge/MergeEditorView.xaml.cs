@@ -3,10 +3,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Leaf.Controls.Merge;
+using Leaf.Models;
 using Leaf.Models.Merge;
 using Leaf.Services;
 using Leaf.Services.Shortcuts;
 using Leaf.ViewModels.Merge;
+using Leaf.Views;
 
 namespace Leaf.Views.Merge;
 
@@ -582,12 +584,12 @@ public partial class MergeEditorView : Window
 
     private void OnAiError(object? sender, string message)
     {
-        MessageBox.Show(
+        FluentMessageBox.Show(
             this,
             message,
             "AI merge assistant",
             MessageBoxButton.OK,
-            MessageBoxImage.Warning);
+            FluentMessageBoxIcon.Warning);
     }
 
     // V5 tracks the previous range-state snapshot so OnRangeStatesChanged can

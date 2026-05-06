@@ -412,11 +412,23 @@ public partial class MainViewModel
         return localBranches.First().Name;
     }
 
+    /// <summary>
+    /// Suppression key for the Force Delete prompt. Stable string so a user
+    /// who once checked "Don't show this again" stays opted-out across
+    /// upgrades. The remembered answer is honoured automatically by
+    /// <see cref="IDialogService.ShowConfirmationAsync"/> — when the user
+    /// previously clicked Yes + checked the box, the call returns true
+    /// immediately and force-delete proceeds without re-prompting.
+    /// </summary>
+    private const string ForceDeleteSuppressionKey = "branch.forceDelete";
+
     private async Task<bool> ConfirmForceDeleteAsync(BranchInfo branch, string error)
     {
         return await _dialogService.ShowConfirmationAsync(
             $"Failed to delete branch '{branch.Name}'.\n\n{error}\n\nForce delete this branch?",
-            "Force Delete Branch");
+            "Force Delete Branch",
+            suppressionKey: ForceDeleteSuppressionKey,
+            icon: Models.FluentMessageBoxIcon.Question);
     }
 
     /// <summary>

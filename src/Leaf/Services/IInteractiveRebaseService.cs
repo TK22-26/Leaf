@@ -17,6 +17,15 @@ public interface IInteractiveRebaseService
     /// is the oldest commit (matches git's todo order), every item is
     /// pre-set to <see cref="RebaseTodoAction.Pick"/>.
     /// </summary>
+    /// <param name="upstreamRef">
+    /// When non-null, treats <paramref name="upstreamRef"/> as the rebase
+    /// upstream — i.e. plan = <c>{upstreamRef}..HEAD</c>, and the eventual
+    /// <c>git rebase -i</c> lands HEAD's unique commits onto
+    /// <paramref name="upstreamRef"/>. Used by the branch-onto-branch entry
+    /// point. When null, the upstream is derived from the parent of
+    /// <paramref name="fromCommitSha"/> (existing "edit these commits in
+    /// place" behaviour driven from a commit-graph right-click).
+    /// </param>
     /// <exception cref="InvalidOperationException">
     /// Thrown when the commit cannot be resolved or is the repository root
     /// (root rebases need <c>--root</c>; v1 of the editor doesn't expose it).
@@ -24,6 +33,7 @@ public interface IInteractiveRebaseService
     Task<IReadOnlyList<RebaseTodoItem>> LoadPlanAsync(
         IRepositorySession session,
         string fromCommitSha,
+        string? upstreamRef = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -32,9 +42,15 @@ public interface IInteractiveRebaseService
     /// resolution (<see cref="MergeResult.HasConflicts"/>), or with an error
     /// message git wrote to stderr.
     /// </summary>
+    /// <param name="upstreamRef">
+    /// Same semantics as on <see cref="LoadPlanAsync"/>. When non-null,
+    /// the rebase invocation becomes <c>git rebase -i {upstreamRef}</c>;
+    /// when null, it falls back to <c>git rebase -i {fromCommitSha}^</c>.
+    /// </param>
     Task<MergeResult> StartAsync(
         IRepositorySession session,
         string fromCommitSha,
         IReadOnlyList<RebaseTodoItem> plan,
+        string? upstreamRef = null,
         CancellationToken cancellationToken = default);
 }

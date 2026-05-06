@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using Leaf.Models;
 using Leaf.Services;
+using Leaf.Views;
 
 namespace Leaf.Views.Settings;
 
@@ -98,26 +100,26 @@ public partial class AzureDevOpsSettingsControl : UserControl, ISettingsSectionC
 
         if (string.IsNullOrWhiteSpace(organization))
         {
-            MessageBox.Show("Please enter an organization name.", "Missing Organization",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            FluentMessageBox.Show("Please enter an organization name.", "Missing Organization",
+                MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(pat))
         {
-            MessageBox.Show("Please enter a Personal Access Token.", "Missing PAT",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            FluentMessageBox.Show("Please enter a Personal Access Token.", "Missing PAT",
+                MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
             return;
         }
 
         // Check if this org already exists
         if (_credentialService.HasCredential($"AzureDevOps:{organization}"))
         {
-            var result = MessageBox.Show(
+            var result = FluentMessageBox.Show(
                 $"A credential for '{organization}' already exists. Do you want to replace it?",
                 "Credential Exists",
                 MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
+                FluentMessageBoxIcon.Question);
 
             if (result != MessageBoxResult.Yes)
                 return;
@@ -160,11 +162,11 @@ public partial class AzureDevOpsSettingsControl : UserControl, ISettingsSectionC
         if (_credentialService == null || sender is not Button button || button.Tag is not string organization)
             return;
 
-        var result = MessageBox.Show(
+        var result = FluentMessageBox.Show(
             $"Remove the credential for '{organization}'?\n\nYou will need to re-enter the PAT to use this organization again.",
             "Remove Credential",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+            FluentMessageBoxIcon.Question);
 
         if (result == MessageBoxResult.Yes)
         {
@@ -220,11 +222,11 @@ public partial class AzureDevOpsSettingsControl : UserControl, ISettingsSectionC
         var organization = OrganizationTextBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(organization))
         {
-            MessageBox.Show(
+            FluentMessageBox.Show(
                 "Enter an Azure DevOps organization first, then use this button to open its PAT page.",
                 "Missing Organization",
                 MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                FluentMessageBoxIcon.Information);
             OrganizationTextBox.Focus();
             return;
         }

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Views;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Leaf.Views.Settings;
@@ -226,11 +227,11 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
         var name = NameTextBox.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(name) && !_editing.Template.IsBuiltIn)
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 "Template name cannot be empty.",
                 "Invalid template",
                 MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                FluentMessageBoxIcon.Warning);
             // Revert visual state to last-saved name so the user isn't
             // stuck in a broken edit.
             _suppressDirty = true;
@@ -260,15 +261,15 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
         }
         catch (ArgumentException ex)
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 ex.Message, "Cannot save template",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
         }
         catch (InvalidOperationException ex)
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 ex.Message, "Cannot save template",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
         }
     }
 
@@ -296,9 +297,9 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
         }
         catch (ArgumentException ex)
         {
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 ex.Message, "Cannot create template",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
             return;
         }
 
@@ -329,11 +330,11 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
         }
 
         var owner = Window.GetWindow(this) ?? Application.Current.MainWindow;
-        var confirm = MessageBox.Show(owner,
+        var confirm = FluentMessageBox.Show(owner,
             $"Delete template '{_editing.Template.Name}'?",
             "Delete template",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            FluentMessageBoxIcon.Warning);
         if (confirm != MessageBoxResult.Yes) return;
         _service.Delete(_editing.Template.Id);
     }
@@ -342,11 +343,11 @@ public partial class CommitTemplatesSettingsControl : UserControl, ISettingsSect
     {
         if (_service is null) return;
         var owner = Window.GetWindow(this) ?? Application.Current.MainWindow;
-        var confirm = MessageBox.Show(owner,
+        var confirm = FluentMessageBox.Show(owner,
             "Reset every template back to the shipped defaults?\n\nYour custom global templates will be deleted, and any tweaks to built-in presets will be reverted.",
             "Reset all templates",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            FluentMessageBoxIcon.Warning);
         if (confirm != MessageBoxResult.Yes) return;
         _service.ResetToDefaults();
     }

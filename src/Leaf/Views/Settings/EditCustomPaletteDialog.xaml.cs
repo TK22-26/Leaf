@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Leaf.Models;
+using Leaf.Views;
 
 namespace Leaf.Views.Settings;
 
@@ -72,11 +73,11 @@ public partial class EditCustomPaletteDialog : Window
             // Per Engineering Software Policy: refuse to leave the palette
             // empty rather than silently accept it. Registry would reject
             // on save anyway; failing earlier is more discoverable.
-            MessageBox.Show(this,
+            FluentMessageBox.Show(this,
                 "A palette must have at least one colour.",
                 "Cannot remove",
                 MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                FluentMessageBoxIcon.Information);
             return;
         }
         _rows.Remove(row);
@@ -101,22 +102,22 @@ public partial class EditCustomPaletteDialog : Window
         var name = NameTextBox.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(name))
         {
-            MessageBox.Show(this,
+            FluentMessageBox.Show(this,
                 "Palette name cannot be empty.",
                 "Save palette",
                 MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                FluentMessageBoxIcon.Information);
             NameTextBox.Focus();
             return;
         }
 
         if (_rows.Count == 0)
         {
-            MessageBox.Show(this,
+            FluentMessageBox.Show(this,
                 "A palette must have at least one colour.",
                 "Save palette",
                 MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                FluentMessageBoxIcon.Information);
             return;
         }
 

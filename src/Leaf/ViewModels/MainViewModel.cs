@@ -45,6 +45,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly Services.Merge.IImageMergeService? _imageMergeService;
     private readonly Services.Merge.IMergeBlameService _mergeBlameService;
     private readonly IInteractiveRebaseService _interactiveRebaseService;
+    private readonly IRebaseService _rebaseService;
     private readonly IPatchService _patchService;
     private readonly IBisectService _bisectService;
     private readonly IBranchColorPaletteRegistry _branchColorPaletteRegistry;
@@ -406,6 +407,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Services.Merge.IWordDiffService wordDiffService,
         Services.Merge.IMergeBlameService mergeBlameService,
         IInteractiveRebaseService interactiveRebaseService,
+        IRebaseService rebaseService,
         IPatchService patchService,
         IBisectService bisectService,
         IBranchColorPaletteRegistry branchColorPaletteRegistry,
@@ -421,6 +423,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _imageMergeService = imageMergeService;
         _mergeBlameService = mergeBlameService;
         _interactiveRebaseService = interactiveRebaseService ?? throw new ArgumentNullException(nameof(interactiveRebaseService));
+        _rebaseService = rebaseService ?? throw new ArgumentNullException(nameof(rebaseService));
         _patchService = patchService ?? throw new ArgumentNullException(nameof(patchService));
         _bisectService = bisectService ?? throw new ArgumentNullException(nameof(bisectService));
         _branchColorPaletteRegistry = branchColorPaletteRegistry ?? throw new ArgumentNullException(nameof(branchColorPaletteRegistry));

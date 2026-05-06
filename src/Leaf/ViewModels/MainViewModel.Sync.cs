@@ -140,16 +140,35 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Pull from remote.
+    /// Pull from remote, honouring the user's <c>pull.rebase</c> git
+    /// config. The toolbar's primary Pull button binds here.
     /// </summary>
     [RelayCommand]
-    public async Task PullAsync()
+    public Task PullAsync() => PullCoreAsync(rebaseOverride: null);
+
+    /// <summary>
+    /// Pull with <c>--rebase</c> regardless of the user's <c>pull.rebase</c>
+    /// config. Bound to the "Pull (rebase)" sub-entry on the Pull split-button.
+    /// </summary>
+    [RelayCommand]
+    public Task PullRebaseAsync() => PullCoreAsync(rebaseOverride: true);
+
+    /// <summary>
+    /// Shared body for both pull commands. <paramref name="rebaseOverride"/>
+    /// flows straight to <see cref="IGitService.PullAsync"/>: <c>null</c>
+    /// defers to git config, <c>true</c> forces rebase, <c>false</c> would
+    /// force merge (no UI surface for that today, but the plumbing is
+    /// symmetric so a future "Pull (merge)" wires up cleanly).
+    /// </summary>
+    private async Task PullCoreAsync(bool? rebaseOverride)
     {
         if (SelectedRepository == null) return;
 
+        var label = rebaseOverride == true ? "Pulling (rebase)..." : "Pulling...";
+
         try
         {
-            await BeginBusyAsync("Pulling...");
+            await BeginBusyAsync(label);
             var remotes = await _gitService.GetRemotesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
             // Check if SyncAllRemotes is enabled for multi-remote repos
@@ -181,14 +200,21 @@ public partial class MainViewModel
                                     ?? remotes.FirstOrDefault()?.Url;
             var pullCredentialKey = _credentialService.ResolveActiveCredentialKey(trackingRemoteUrl);
 
-            await _gitService.PullAsync(SelectedRepository.Path, pullCredentialKey, cancellationToken: CurrentRepositoryToken);
+            await _gitService.PullAsync(
+                SelectedRepository.Path,
+                pullCredentialKey,
+                rebase: rebaseOverride,
+                cancellationToken: CurrentRepositoryToken);
 
-            NotifySuccess("Pull complete", "Your branch is up to date with the remote.");
+            var successDescription = rebaseOverride == true
+                ? "Your branch was rebased onto the remote."
+                : "Your branch is up to date with the remote.";
+            NotifySuccess("Pull complete", successDescription);
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            await ReportOperationFailureAsync("Pull", ex);
+            await ReportOperationFailureAsync(rebaseOverride == true ? "Pull (rebase)" : "Pull", ex);
         }
         finally
         {

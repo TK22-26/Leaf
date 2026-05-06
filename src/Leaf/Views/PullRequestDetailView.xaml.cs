@@ -214,12 +214,12 @@ public partial class PullRequestDetailView : UserControl
             var closeItem = new MenuItem { Header = "Close pull request" };
             closeItem.Click += async (_, _) =>
             {
-                var result = MessageBox.Show(
+                var result = FluentMessageBox.Show(
                     Window.GetWindow(this)!,
                     "Close this pull request without merging?",
                     "Close Pull Request",
                     MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
+                    FluentMessageBoxIcon.Question);
 
                 if (result == MessageBoxResult.Yes)
                 {

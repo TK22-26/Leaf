@@ -20,37 +20,85 @@ internal class RebaseOperations
     /// <summary>
     /// Rebase the current branch onto another branch.
     /// </summary>
-    public Task<Models.MergeResult> RebaseAsync(string repoPath, string ontoBranch, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// Routes through the <c>git rebase</c> CLI rather than LibGit2Sharp's
+    /// <c>repo.Rebase.Start</c> for the same reasons documented on
+    /// <see cref="ContinueRebaseAsync"/>: rebase has an editor / hook
+    /// contract (post-rewrite, prepare-commit-msg) that LibGit2Sharp does
+    /// not honour, and using the CLI keeps every rebase verb
+    /// (start / continue / skip / abort) on a single execution model.
+    /// </remarks>
+    public async Task<Models.MergeResult> RebaseAsync(
+        string repoPath,
+        string ontoBranch,
+        bool autosquash = false,
+        bool updateRefs = false,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        return Task.Run(() =>
-        {
-            Log.Info("Rebase", $"Rebase: onto={ontoBranch}");
-            MergeDebugHelper.LogMergeState("BeforeRebase", repoPath);
-            using var repo = new Repository(repoPath);
+        Log.Info("Rebase", $"Rebase: onto={ontoBranch} autosquash={autosquash} updateRefs={updateRefs}");
+        MergeDebugHelper.LogMergeState("BeforeRebase", repoPath);
 
-            var targetBranch = repo.Branches[ontoBranch];
-            if (targetBranch == null)
+        // Validate the target before invoking the CLI so the failure path
+        // matches what callers got from the LibGit2Sharp implementation.
+        using (var repo = new Repository(repoPath))
+        {
+            if (repo.Branches[ontoBranch] == null)
             {
                 throw new InvalidOperationException($"Branch '{ontoBranch}' not found.");
             }
+        }
 
-            progress?.Report($"Rebasing onto {ontoBranch}...");
+        progress?.Report($"Rebasing onto {ontoBranch}...");
 
-            var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
-            var options = new RebaseOptions();
+        var args = new List<string> { "rebase" };
+        if (autosquash) args.Add("--autosquash");
+        if (updateRefs) args.Add("--update-refs");
+        args.Add(ontoBranch);
 
-            var rebaseResult = repo.Rebase.Start(repo.Head, targetBranch, targetBranch, new Identity(signature.Name, signature.Email), options);
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath,
+            args.ToArray(),
+            input: null,
+            credentialKey: null,
+            cancellationToken: cancellationToken);
 
-            Log.Info("Rebase", $"Rebase: status={rebaseResult.Status}");
-            MergeDebugHelper.LogMergeState("AfterRebase", repoPath);
+        Log.Info("Rebase", $"Rebase: exit={result.ExitCode}");
+        MergeDebugHelper.LogMergeState("AfterRebase", repoPath);
 
-            return rebaseResult.Status switch
+        if (result.Success)
+        {
+            return new Models.MergeResult { Success = true };
+        }
+
+        // Same paused-state probe used by ContinueRebaseAsync — a non-zero
+        // exit while the rebase-state directory exists means git stopped
+        // for the user (conflict or `edit` instruction), not a failure.
+        var gitDir = Path.Combine(repoPath, ".git");
+        var paused = Directory.Exists(Path.Combine(gitDir, "rebase-merge")) ||
+                     Directory.Exists(Path.Combine(gitDir, "rebase-apply"));
+
+        if (paused)
+        {
+            Log.Info("Rebase", $"Rebase: paused (exit {result.ExitCode}); user action required.");
+            return new Models.MergeResult
             {
-                RebaseStatus.Complete => new Models.MergeResult { Success = true },
-                RebaseStatus.Conflicts => new Models.MergeResult { Success = false, HasConflicts = true },
-                _ => new Models.MergeResult { Success = false, ErrorMessage = $"Rebase status: {rebaseResult.Status}" }
+                Success = false,
+                HasConflicts = true,
+                ErrorMessage = string.IsNullOrWhiteSpace(result.StandardError)
+                    ? result.StandardOutput.Trim()
+                    : result.StandardError.Trim(),
             };
-        }, cancellationToken);
+        }
+
+        Log.Error("Rebase", $"Rebase: failed (exit {result.ExitCode}): {result.StandardError.Trim()}");
+        return new Models.MergeResult
+        {
+            Success = false,
+            ErrorMessage = string.IsNullOrWhiteSpace(result.StandardError)
+                ? $"git rebase exited with code {result.ExitCode}."
+                : result.StandardError.Trim(),
+        };
     }
 
     /// <summary>

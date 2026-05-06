@@ -689,6 +689,11 @@
                                     CommandParameter="{Binding}"
                                     Header="Merge into current branch"
                                     IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}" />
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.RebaseBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding}"
+                                    Header="Rebase current branch onto..."
+                                    IsEnabled="{Binding IsCurrent, Converter={StaticResource InverseBoolConverter}}" />
                                 <Separator />
                                 <MenuItem
                                     Command="{Binding PlacementTarget.Tag.CreateBranchAtBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
