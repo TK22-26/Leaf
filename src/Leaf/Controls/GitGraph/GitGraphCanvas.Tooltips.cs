@@ -28,6 +28,17 @@ public partial class GitGraphCanvas
     private StackPanel? _tagTooltipPanel;
     private string? _tagTooltipName;
 
+    // Per-label branch tooltip — fires on hover over any individual branch
+    // chip in the label gutter. Keyed by FullName so re-hovering the same
+    // chip is a no-op (otherwise the popup would jitter on every mouse
+    // move). Distinct from the overflow `_branchTooltipPopup` above: the
+    // overflow case lists every branch on the row, while this one shows
+    // a single branch with richer detail (full untruncated name + sync
+    // status + checked-out marker).
+    private System.Windows.Controls.Primitives.Popup? _singleBranchTooltipPopup;
+    private StackPanel? _singleBranchTooltipPanel;
+    private string? _singleBranchTooltipKey;
+
     /// <summary>
     /// Show the §5.8 signature tooltip near the badge. Idempotent for
     /// the same SHA — hovering the same badge across frames is the
@@ -556,5 +567,220 @@ public partial class GitGraphCanvas
         {
             _branchTooltipPopup.IsOpen = false;
         }
+    }
+
+    /// <summary>
+    /// Show a rich tooltip for a single hovered branch chip. Used for the
+    /// "long branch name" case where the chip itself has been truncated
+    /// with an ellipsis — the tooltip presents the full name plus
+    /// secondary metadata (sync status, current-branch marker, upstream
+    /// reference). Idempotent for the same branch so the popup doesn't
+    /// jitter on every mouse-move while the cursor is inside the chip.
+    /// </summary>
+    /// <remarks>
+    /// Layout (all elements inside a Border styled the same as the
+    /// signature / tag tooltips so the chrome reads as part of a single
+    /// family of overlays):
+    /// <list type="number">
+    ///   <item><description>Title row — coloured dot keyed off the branch's
+    ///     palette colour, then the full branch name in SemiBold.</description></item>
+    ///   <item><description>Location row — "Local" / "Remote: origin" /
+    ///     "Local · origin, upstream" with monochrome icons.</description></item>
+    ///   <item><description>Current-branch marker, only when <see cref="BranchLabel.IsCurrent"/>
+    ///     is true. Green accent so it reads at a glance.</description></item>
+    /// </list>
+    /// </remarks>
+    private void ShowSingleBranchTooltip(BranchLabel label, Point cursor)
+    {
+        var key = label.FullName + "|" + label.IsCurrent;
+        if (string.Equals(_singleBranchTooltipKey, key, StringComparison.Ordinal)
+            && _singleBranchTooltipPopup is { IsOpen: true })
+        {
+            return;
+        }
+
+        if (_singleBranchTooltipPopup == null)
+        {
+            _singleBranchTooltipPanel = new StackPanel { Orientation = Orientation.Vertical };
+            var border = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(60, 60, 60)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(12, 10, 12, 10),
+                Child = _singleBranchTooltipPanel,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = Colors.Black,
+                    BlurRadius = 14,
+                    ShadowDepth = 4,
+                    Opacity = 0.45,
+                },
+            };
+            _singleBranchTooltipPopup = new System.Windows.Controls.Primitives.Popup
+            {
+                Child = border,
+                AllowsTransparency = true,
+                PlacementTarget = this,
+                Placement = System.Windows.Controls.Primitives.PlacementMode.Relative,
+                StaysOpen = true,
+            };
+        }
+
+        _singleBranchTooltipPanel!.Children.Clear();
+
+        // 1. Title row — colour dot + full branch name.
+        var titleRow = new StackPanel { Orientation = Orientation.Horizontal };
+
+        titleRow.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Width = 12,
+            Height = 12,
+            Fill = ResolveBranchColor(label.Name),
+            Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        titleRow.Children.Add(new TextBlock
+        {
+            Text = label.FullName,
+            Foreground = Brushes.White,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 13,
+            FontWeight = label.IsCurrent ? FontWeights.SemiBold : FontWeights.Normal,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.NoWrap,
+        });
+
+        _singleBranchTooltipPanel.Children.Add(titleRow);
+
+        // 2. Location / sync row — describes whether the branch lives locally,
+        // remotely, or on both sides. Multi-remote branches list each remote.
+        var locationRow = BuildBranchLocationRow(label);
+        if (locationRow != null)
+        {
+            locationRow.Margin = new Thickness(0, 6, 0, 0);
+            _singleBranchTooltipPanel.Children.Add(locationRow);
+        }
+
+        // 3. "Current branch" marker — only when checked out. Green so it
+        // reads at a glance independent of the rest of the tooltip palette.
+        if (label.IsCurrent)
+        {
+            var currentRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 4, 0, 0),
+            };
+            currentRow.Children.Add(new TextBlock
+            {
+                Text = "", // CheckMark glyph from Segoe Fluent Icons
+                FontFamily = new FontFamily("Segoe Fluent Icons"),
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(127, 190, 127)),
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            currentRow.Children.Add(new TextBlock
+            {
+                Text = "Current branch",
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(127, 190, 127)),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            _singleBranchTooltipPanel.Children.Add(currentRow);
+        }
+
+        _singleBranchTooltipPopup.HorizontalOffset = cursor.X + 14;
+        _singleBranchTooltipPopup.VerticalOffset = cursor.Y + 18;
+        _singleBranchTooltipPopup.IsOpen = true;
+        _singleBranchTooltipKey = key;
+    }
+
+    private void HideSingleBranchTooltip()
+    {
+        if (_singleBranchTooltipPopup is { IsOpen: true })
+            _singleBranchTooltipPopup.IsOpen = false;
+        _singleBranchTooltipKey = null;
+    }
+
+    /// <summary>
+    /// Build the location row for the single-branch tooltip: icons paired
+    /// with short text describing where the branch exists (local, on which
+    /// remotes). Returns <c>null</c> when there's nothing meaningful to
+    /// show — a label with neither <see cref="BranchLabel.IsLocal"/> nor
+    /// <see cref="BranchLabel.IsRemote"/> is malformed but we don't crash.
+    /// </summary>
+    private StackPanel? BuildBranchLocationRow(BranchLabel label)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        var muted = new SolidColorBrush(Color.FromRgb(188, 188, 188));
+        var added = false;
+
+        if (label.IsLocal)
+        {
+            row.Children.Add(new TextBlock
+            {
+                Text = ComputerIcon,
+                FontFamily = new FontFamily("Segoe Fluent Icons"),
+                FontSize = 11,
+                Foreground = muted,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            row.Children.Add(new TextBlock
+            {
+                Text = "Local",
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 11,
+                Foreground = muted,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            added = true;
+        }
+
+        if (label.IsRemote)
+        {
+            if (added)
+            {
+                row.Children.Add(new TextBlock
+                {
+                    Text = "  ·  ",
+                    FontFamily = new FontFamily("Segoe UI"),
+                    FontSize = 11,
+                    Foreground = new SolidColorBrush(Color.FromRgb(120, 120, 120)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+            }
+
+            row.Children.Add(new TextBlock
+            {
+                Text = CloudIcon,
+                FontFamily = new FontFamily("Segoe Fluent Icons"),
+                FontSize = 11,
+                Foreground = muted,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+
+            // List every remote the branch exists on; for a typical single-
+            // remote branch this is just "origin". Multi-remote forks
+            // show "origin, upstream" so the user can see at a glance
+            // which remotes carry the branch.
+            var remoteNames = string.Join(", ", label.Remotes.Select(r => r.RemoteName));
+            row.Children.Add(new TextBlock
+            {
+                Text = remoteNames,
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 11,
+                Foreground = muted,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            added = true;
+        }
+
+        return added ? row : null;
     }
 }
