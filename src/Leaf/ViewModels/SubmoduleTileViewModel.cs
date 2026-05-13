@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Leaf.Composition;
 using Leaf.Models;
 using Leaf.Services;
@@ -68,8 +69,49 @@ public partial class SubmoduleTileViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private RepositoryInfo? _repository;
 
+    /// <summary>
+    /// True when this submodule is in the user's pinned tile order.
+    /// Drives the pushpin icon's filled-vs-outline state in the title
+    /// bar. Set by the workspace orchestrator during ordering — the
+    /// tile itself doesn't decide its own pin state.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isPinned;
+
+    /// <summary>
+    /// Back-reference set by <see cref="WorkspaceViewModel"/> after
+    /// constructing the tile. Tile-level commands (toggle pin, open in
+    /// single view, refresh) delegate here so the workspace stays the
+    /// single point of authority for tile-list ordering, parent
+    /// selection, and cross-tile state.
+    /// </summary>
+    internal WorkspaceViewModel? Workspace { get; set; }
+
     private readonly IServiceScope? _scope;
     private bool _disposed;
+
+    /// <summary>
+    /// Toggle this tile's pinned state. No-op on the parent tile —
+    /// parent always sits at position 0, pinning makes no sense.
+    /// </summary>
+    [RelayCommand]
+    public async Task TogglePinAsync()
+    {
+        if (IsParent || Workspace is null) return;
+        await Workspace.TogglePinAsync(this);
+    }
+
+    /// <summary>
+    /// Exit grid mode and surface this tile's repo as the active repo
+    /// in single view. Bound to the zoom-in icon in the title bar and
+    /// to the "Open in single view" overflow item.
+    /// </summary>
+    [RelayCommand]
+    public async Task OpenInSingleViewAsync()
+    {
+        if (Workspace is null) return;
+        await Workspace.OpenTileInSingleViewAsync(this);
+    }
 
     private SubmoduleTileViewModel(
         string repositoryPath,

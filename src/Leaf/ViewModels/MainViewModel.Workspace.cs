@@ -113,4 +113,53 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(IsGridMode));
         }
     }
+
+    /// <summary>
+    /// Subscribe to the workspace's "open this tile in single view"
+    /// event. Called once during MainViewModel construction so the
+    /// host can react to a user clicking the zoom-in icon on any tile
+    /// — drops grid mode, asks the repository service to surface the
+    /// tile's repo, and selects it through the existing single-view
+    /// path so the rest of the app sees a normal repo switch.
+    /// </summary>
+    internal void WireWorkspaceEvents()
+    {
+        Workspace.TileOpenInSingleViewRequested += OnTileOpenInSingleView;
+    }
+
+    private async void OnTileOpenInSingleView(object? sender, SubmoduleTileViewModel tile)
+    {
+        try
+        {
+            // Drop grid mode first so the centre column reverts to the
+            // normal single-view layout before we swap repos. Without
+            // this, the tile would briefly render inside the grid
+            // panel for the new active repo.
+            if (Workspace.Mode != WorkspaceMode.Single)
+            {
+                Workspace.Dispose();
+                Workspace.Mode = WorkspaceMode.Single;
+                OnPropertyChanged(nameof(IsGridMode));
+            }
+
+            // Find or auto-register the tile's repository entry, then
+            // select it via the normal flow so the sidebar tree
+            // selection, branch load, etc. all happen consistently.
+            var existing = _repositoryService.FindRepository(tile.RepositoryPath);
+            if (existing != null)
+            {
+                await SelectRepositoryAsync(existing);
+            }
+            else
+            {
+                var info = await _gitService.GetRepositoryInfoFastAsync(tile.RepositoryPath, CurrentRepositoryToken);
+                _repositoryService.AddRepository(info);
+                await SelectRepositoryAsync(info);
+            }
+        }
+        catch (Exception ex)
+        {
+            await ReportOperationFailureAsync("Open in single view", ex);
+        }
+    }
 }

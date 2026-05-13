@@ -16,6 +16,7 @@
          to keep the outer chrome clean. -->
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
     </UserControl.Resources>
 
     <Border BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
@@ -55,11 +56,37 @@
                                    TextTrimming="CharacterEllipsis" />
                     </StackPanel>
 
-                    <!-- Right cluster: quick-action icon buttons. Phase
-                         D fills in actual commands; for now the buttons
-                         render so the visual is complete and we have
-                         AutomationIds to drive from tests. -->
+                    <!-- Right cluster: quick-action icon buttons. The
+                         pin and overflow buttons sit alongside the
+                         four primary verbs; the zoom-in button is
+                         hidden on the parent tile (zooming the parent
+                         is the same gesture as exiting grid mode). -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Pin / unpin. Hidden on the parent tile —
+                             the parent is always at position 0, pinning
+                             it makes no sense. Filled glyph when
+                             pinned, outline when not, so the state is
+                             obvious at a glance. -->
+                        <Button Command="{Binding TogglePinCommand}"
+                                ToolTip="Pin to top"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Visibility="{Binding IsParent, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Tile.Pin">
+                            <ic:SymbolIcon FontSize="14">
+                                <ic:SymbolIcon.Style>
+                                    <Style TargetType="ic:SymbolIcon">
+                                        <Setter Property="Symbol" Value="Pin" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                                <Setter Property="Symbol" Value="PinOff" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ic:SymbolIcon.Style>
+                            </ic:SymbolIcon>
+                        </Button>
                         <Button ToolTip="Commit"
                                 Padding="6,2"
                                 Background="Transparent"
@@ -88,12 +115,49 @@
                                 AutomationProperties.AutomationId="Tile.Fetch">
                             <ic:SymbolIcon Symbol="ArrowSync" FontSize="14" />
                         </Button>
-                        <Button ToolTip="Open in single view"
+                        <!-- Zoom-in: open this tile's repo in single
+                             view. Hidden on the parent — zooming the
+                             parent is just "exit grid mode" which the
+                             top-bar Grid toggle already does. -->
+                        <Button Command="{Binding OpenInSingleViewCommand}"
+                                ToolTip="Open in single view"
                                 Padding="6,2"
                                 Background="Transparent"
                                 BorderThickness="0"
+                                Visibility="{Binding IsParent, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                 AutomationProperties.AutomationId="Tile.Zoom">
                             <ic:SymbolIcon Symbol="ArrowExpand" FontSize="14" />
+                        </Button>
+                        <!-- Overflow (kebab). Three vertical dots open
+                             a context menu of less-frequent verbs.
+                             More items land in Phase C / D (branch
+                             picker, stash, merge, rebase, repo
+                             settings) — for now the menu surfaces the
+                             pin / open / refresh affordances that
+                             would otherwise be the second click out of
+                             a power-user shortcut. -->
+                        <Button x:Name="OverflowButton"
+                                ToolTip="More actions"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Click="OverflowButton_Click"
+                                AutomationProperties.AutomationId="Tile.Overflow">
+                            <ic:SymbolIcon Symbol="MoreVertical" FontSize="14" />
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Pin to top"
+                                              Command="{Binding TogglePinCommand}"
+                                              Visibility="{Binding IsPinned, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                                    <MenuItem Header="Unpin"
+                                              Command="{Binding TogglePinCommand}"
+                                              Visibility="{Binding IsPinned, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <Separator />
+                                    <MenuItem Header="Open in single view"
+                                              Command="{Binding OpenInSingleViewCommand}"
+                                              Visibility="{Binding IsParent, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
                         </Button>
                     </StackPanel>
                 </Grid>

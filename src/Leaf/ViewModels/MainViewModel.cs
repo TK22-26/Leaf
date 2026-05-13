@@ -445,6 +445,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _branchColorPaletteRegistry = branchColorPaletteRegistry ?? throw new ArgumentNullException(nameof(branchColorPaletteRegistry));
         _commitTemplateService = commitTemplateService ?? throw new ArgumentNullException(nameof(commitTemplateService));
         _workspaceViewModel = workspaceViewModel ?? throw new ArgumentNullException(nameof(workspaceViewModel));
+        WireWorkspaceEvents();
         _gitFlowService = gitFlowService;
         _credentialService = credentialService;
         _settingsService = settingsService;

@@ -103,7 +103,9 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         var parentName = string.IsNullOrEmpty(parent.Name)
             ? Path.GetFileName(parent.Path) ?? parent.Path
             : parent.Name;
-        Tiles.Add(SubmoduleTileViewModel.CreateParent(parent.Path, parentName, parentGraph, parent));
+        var parentTile = SubmoduleTileViewModel.CreateParent(parent.Path, parentName, parentGraph, parent);
+        parentTile.Workspace = this;
+        Tiles.Add(parentTile);
 
         // Snapshot the parent's submodule list. We use the explicit
         // GitService call rather than rummaging through BranchCategories
@@ -144,6 +146,8 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 _scopeFactory, _gitService, _settingsService,
                 _repositoryService, _paletteRegistry,
                 fullPath, sm.Name);
+            tile.Workspace = this;
+            tile.IsPinned = pinnedSet.Contains(sm.Path);
             Tiles.Add(tile);
 
             // Kick off the tile's repo info + graph load in the
@@ -185,6 +189,125 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         if (Parent is null) return;
         await _workspaceConfig.SetModeAsync(Parent.Path, mode, cancellationToken).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Fires when a tile asks to be opened in single view (zoom-in
+    /// icon, "Open in single view" overflow item). The host
+    /// <c>MainViewModel</c> subscribes and re-routes single-view
+    /// selection through the existing repository-management flow so
+    /// the rest of the app sees a normal repo switch.
+    /// </summary>
+    public event EventHandler<SubmoduleTileViewModel>? TileOpenInSingleViewRequested;
+
+    /// <summary>
+    /// Flip a submodule's pinned state and reorder the tile list so
+    /// the change is reflected immediately. Persists through
+    /// <see cref="IWorkspaceConfigService"/> so the order survives a
+    /// restart and stays visible to other Git clients.
+    /// </summary>
+    public async Task TogglePinAsync(SubmoduleTileViewModel tile, CancellationToken cancellationToken = default)
+    {
+        if (Parent is null || tile.IsParent) return;
+
+        // Pin key is the submodule's PATH RELATIVE TO THE PARENT —
+        // matches what .gitmodules stores, so any Git client sees a
+        // stable identifier. Tiles hold an absolute repo path, so
+        // re-derive the relative segment.
+        var rel = ToRelativePath(Parent.Path, tile.RepositoryPath);
+        if (string.IsNullOrEmpty(rel)) return;
+
+        var current = (await _workspaceConfig.GetPinnedTileOrderAsync(Parent.Path, cancellationToken).ConfigureAwait(true)).ToList();
+        if (current.Remove(rel))
+        {
+            // Removed → unpinned. The tile falls back into the
+            // alphabetical block below the remaining pinned tiles.
+            tile.IsPinned = false;
+        }
+        else
+        {
+            // Newly pinned — append so the user's last-pinned tile
+            // lands at the bottom of the pinned section. (A future
+            // drag-to-reorder gesture can edit this list at arbitrary
+            // positions; the storage model already allows it.)
+            current.Add(rel);
+            tile.IsPinned = true;
+        }
+        await _workspaceConfig.SetPinnedTileOrderAsync(Parent.Path, current, cancellationToken).ConfigureAwait(true);
+        ReorderTiles(current);
+    }
+
+    /// <summary>
+    /// Invoked by a tile's <c>OpenInSingleView</c> command. Forwards
+    /// to <see cref="TileOpenInSingleViewRequested"/> so the host can
+    /// drop grid mode and route through its existing repo-selection
+    /// plumbing — the workspace deliberately doesn't manipulate
+    /// <c>MainViewModel.SelectedRepository</c> directly.
+    /// </summary>
+    public Task OpenTileInSingleViewAsync(SubmoduleTileViewModel tile)
+    {
+        TileOpenInSingleViewRequested?.Invoke(this, tile);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Reorder the live <see cref="Tiles"/> collection so the parent
+    /// stays at position 0, pinned tiles follow in user order, and the
+    /// remaining tiles fall into alphabetical order below. Mutates the
+    /// ObservableCollection in place so WPF re-arranges the panel
+    /// without rebuilding any tile views.
+    /// </summary>
+    private void ReorderTiles(IReadOnlyList<string> pinnedOrder)
+    {
+        if (Parent is null || Tiles.Count <= 1) return;
+
+        var snapshot = Tiles.ToList();
+        var parentTile = snapshot.FirstOrDefault(t => t.IsParent);
+        if (parentTile is null) return;
+
+        var others = snapshot.Where(t => !t.IsParent).ToList();
+        var pinnedLookup = new HashSet<string>(pinnedOrder, StringComparer.OrdinalIgnoreCase);
+
+        var pinned = new List<SubmoduleTileViewModel>();
+        foreach (var rel in pinnedOrder)
+        {
+            var absolute = Path.GetFullPath(Path.Combine(Parent.Path, rel));
+            var match = others.FirstOrDefault(t => string.Equals(t.RepositoryPath, absolute, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                match.IsPinned = true;
+                pinned.Add(match);
+            }
+        }
+        var unpinned = others
+            .Where(t => !pinned.Contains(t))
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (var t in unpinned) t.IsPinned = false;
+
+        Tiles.Clear();
+        Tiles.Add(parentTile);
+        foreach (var t in pinned) Tiles.Add(t);
+        foreach (var t in unpinned) Tiles.Add(t);
+    }
+
+    /// <summary>
+    /// Compute <paramref name="full"/>'s path relative to <paramref name="root"/>,
+    /// expressed with forward slashes so it round-trips identically to
+    /// the <c>.gitmodules</c> path field. Returns an empty string when
+    /// the paths can't be related (different volumes, etc.).
+    /// </summary>
+    private static string ToRelativePath(string root, string full)
+    {
+        try
+        {
+            var rel = Path.GetRelativePath(root, full);
+            return rel.Replace('\\', '/');
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     public void Dispose()
