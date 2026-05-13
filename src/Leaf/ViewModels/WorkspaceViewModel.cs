@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Services;
 using Leaf.Utils;
@@ -42,6 +43,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     private readonly CredentialService _credentialService;
     private readonly AutoCommitService _autoCommitService;
     private readonly INotificationService _notificationService;
+    private readonly IDialogService _dialogService;
 
     /// <summary>
     /// Ordered tile collection. WPF binds the workspace grid against
@@ -77,7 +79,8 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         IWorkspaceConfigService workspaceConfig,
         CredentialService credentialService,
         AutoCommitService autoCommitService,
-        INotificationService notificationService)
+        INotificationService notificationService,
+        IDialogService dialogService)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
@@ -88,6 +91,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
         _autoCommitService = autoCommitService ?? throw new ArgumentNullException(nameof(autoCommitService));
         _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
+        _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
     }
 
     /// <summary>
@@ -364,6 +368,328 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             Log.Error("Workspace", $"FetchTile {tile.RepositoryPath} threw", ex);
             _notificationService.Show("Fetch failed", $"{tile.Name}: {ex.Message}", NotificationType.Error);
         }
+    }
+
+    // ─── Workspace-level bulk commands ──────────────────────────────────
+
+    /// <summary>
+    /// True while any of the workspace bulk commands is in flight. Binds
+    /// to a progress strip above the grid so the user sees something
+    /// happening — N parallel git operations can run for tens of
+    /// seconds on a big monorepo.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isBulkOperationActive;
+
+    /// <summary>One-line description of the currently-running bulk op, shown in the progress strip.</summary>
+    [ObservableProperty]
+    private string _bulkOperationStatus = string.Empty;
+
+    /// <summary>
+    /// Tile-iteration order for write operations: submodules first,
+    /// parent last. Critical for Commit-all (submodule SHAs must exist
+    /// before the parent commits its new pointers) and Push-all (same
+    /// reason — pushing the parent first dangles its submodule
+    /// references).
+    /// </summary>
+    private IEnumerable<SubmoduleTileViewModel> WriteOrder() =>
+        Tiles.Where(t => !t.IsParent).Concat(Tiles.Where(t => t.IsParent));
+
+    /// <summary>
+    /// Commit every dirty repo in the workspace. Iterates in write order
+    /// (submodules first, parent last) so the parent records the
+    /// submodules' new SHAs in its own commit. Each repo's commit goes
+    /// through <see cref="AutoCommitService"/> for now — the popout
+    /// review dialog with editable per-repo messages lands separately;
+    /// this method is the one-click "just commit everything" path.
+    /// </summary>
+    [RelayCommand]
+    public async Task CommitAllAsync()
+    {
+        await RunBulkAsync("Committing all repos…", async () =>
+        {
+            foreach (var tile in WriteOrder())
+            {
+                BulkOperationStatus = $"Committing {tile.Name}…";
+                await CommitTileAsync(tile);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Push every repo. Submodules first, parent last. If any
+    /// submodule push fails, the parent push is skipped — its
+    /// submodule pointers would dangle on the remote otherwise.
+    /// </summary>
+    [RelayCommand]
+    public async Task PushAllAsync()
+    {
+        await RunBulkAsync("Pushing all repos…", async () =>
+        {
+            var subFailures = 0;
+            foreach (var tile in Tiles.Where(t => !t.IsParent))
+            {
+                BulkOperationStatus = $"Pushing {tile.Name}…";
+                try
+                {
+                    await PushTileAsync(tile);
+                }
+                catch
+                {
+                    subFailures++;
+                }
+            }
+
+            var parent = Tiles.FirstOrDefault(t => t.IsParent);
+            if (parent != null)
+            {
+                if (subFailures > 0)
+                {
+                    _notificationService.Show(
+                        "Parent push skipped",
+                        $"{subFailures} submodule push(es) failed — pushing the parent would dangle its submodule references.",
+                        NotificationType.Warning);
+                }
+                else
+                {
+                    BulkOperationStatus = $"Pushing {parent.Name}…";
+                    await PushTileAsync(parent);
+                }
+            }
+        });
+    }
+
+    /// <summary>
+    /// Pull every repo. Pulls run in parallel — conflicts in one repo
+    /// don't block the rest, they just leave that repo in a paused
+    /// state for the user to resolve via the merge editor (existing
+    /// pause-and-route path).
+    /// </summary>
+    [RelayCommand]
+    public async Task PullAllAsync()
+    {
+        await RunBulkAsync("Pulling all repos…", async () =>
+        {
+            BulkOperationStatus = $"Pulling {Tiles.Count} repo(s)…";
+            var tasks = Tiles.Select(PullTileAsync).ToList();
+            await Task.WhenAll(tasks);
+        });
+    }
+
+    /// <summary>Fetch every repo, in parallel.</summary>
+    [RelayCommand]
+    public async Task FetchAllAsync()
+    {
+        await RunBulkAsync("Fetching all repos…", async () =>
+        {
+            BulkOperationStatus = $"Fetching {Tiles.Count} repo(s)…";
+            var tasks = Tiles.Select(FetchTileAsync).ToList();
+            await Task.WhenAll(tasks);
+        });
+    }
+
+    /// <summary>
+    /// Shared bulk-op wrapper: flips the IsBulkOperationActive flag so
+    /// the progress strip shows, sets a status string, and clears both
+    /// on completion (success or failure).
+    /// </summary>
+    private async Task RunBulkAsync(string initialStatus, Func<Task> body)
+    {
+        if (IsBulkOperationActive) return;
+        IsBulkOperationActive = true;
+        BulkOperationStatus = initialStatus;
+        try
+        {
+            await body();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Workspace", $"Bulk op failed: {ex.Message}", ex);
+            _notificationService.Show("Workspace operation failed", ex.Message, NotificationType.Error);
+        }
+        finally
+        {
+            IsBulkOperationActive = false;
+            BulkOperationStatus = string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Open the Switch-workspace-to-branch dialog, then checkout the
+    /// chosen branch on every repo that has it. Repos without the
+    /// branch are skipped + counted; the summary toast reports the
+    /// outcome ("Switched 4 of 6 repos to feature/x; 2 don't have that
+    /// branch"). Repos with a dirty working tree fail-loud per repo
+    /// the same way single-repo checkout fails, so the user can't
+    /// accidentally trash uncommitted work.
+    /// </summary>
+    [RelayCommand]
+    public async Task SwitchWorkspaceBranchAsync()
+    {
+        var dialogVm = new WorkspaceSwitchBranchDialogViewModel();
+        var dialog = new Views.WorkspaceSwitchBranchDialog { DataContext = dialogVm };
+        if (!await _dialogService.ShowDialogAsync(dialog)) return;
+
+        var branchName = dialogVm.BranchName.Trim();
+        if (string.IsNullOrEmpty(branchName)) return;
+
+        await RunBulkAsync($"Switching workspace to {branchName}…", async () =>
+        {
+            var switched = new List<string>();
+            var skipped = new List<string>();
+            var failed = new List<(string Name, string Error)>();
+
+            foreach (var tile in Tiles)
+            {
+                BulkOperationStatus = $"Checking {tile.Name}…";
+
+                // git rev-parse --verify branchName checks if the
+                // branch exists. We don't intersect across all repos
+                // up-front because branches can be local-only OR
+                // remote-only — the simplest correct test is "try the
+                // checkout in this repo and see what happens", but a
+                // pre-check via rev-parse keeps the per-repo log clean
+                // for the skip case.
+                var hasBranchProbe = await TryRevParseAsync(tile.RepositoryPath, branchName, tile.Token);
+                if (!hasBranchProbe)
+                {
+                    skipped.Add(tile.Name);
+                    continue;
+                }
+
+                try
+                {
+                    await _gitService.CheckoutAsync(tile.RepositoryPath, branchName, cancellationToken: tile.Token);
+                    await LoadTileAsync(tile);
+                    switched.Add(tile.Name);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn("Workspace", $"SwitchBranch {tile.Name} → {branchName} failed: {ex.Message}");
+                    failed.Add((tile.Name, ex.Message));
+                }
+            }
+
+            BuildSwitchSummary(branchName, switched, skipped, failed);
+        });
+    }
+
+    private async Task<bool> TryRevParseAsync(string repoPath, string branchName, CancellationToken cancellationToken)
+    {
+        // Branch existence probe — enumerates the repo's branch list
+        // and matches on name. Both local and remote-only branches
+        // count; "feature/x" should match when only "origin/feature/x"
+        // exists too, because git checkout will create the local
+        // tracking branch in that case.
+        try
+        {
+            var branches = await _gitService.GetBranchesAsync(repoPath, cancellationToken);
+            return branches.Any(b =>
+                string.Equals(b.Name, branchName, StringComparison.Ordinal) ||
+                (b.IsRemote && b.RemoteName != null &&
+                 string.Equals($"{b.RemoteName}/{b.Name}", branchName, StringComparison.Ordinal)) ||
+                string.Equals(b.Name, branchName.Split('/').LastOrDefault() ?? branchName, StringComparison.Ordinal));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void BuildSwitchSummary(string branch, List<string> switched, List<string> skipped, List<(string, string)> failed)
+    {
+        var lines = new List<string>();
+        if (switched.Count > 0)
+            lines.Add($"Switched {switched.Count} repo(s).");
+        if (skipped.Count > 0)
+            lines.Add($"{skipped.Count} don't have '{branch}': {string.Join(", ", skipped)}.");
+        if (failed.Count > 0)
+            lines.Add($"{failed.Count} failed: {string.Join("; ", failed.Select(f => $"{f.Item1} — {f.Item2}"))}.");
+
+        var description = string.Join("\n", lines);
+        if (failed.Count > 0)
+            _notificationService.Show("Workspace switch finished with errors", description, NotificationType.Warning);
+        else
+            _notificationService.Show("Workspace switch complete", description, NotificationType.Success, Models.NotificationCategory.BranchCheckout);
+    }
+
+    /// <summary>
+    /// Open the workspace merge dialog, then merge every repo's
+    /// currently-checked-out branch into the chosen target. Submodules
+    /// merge first (so their tips advance before the parent records
+    /// new submodule SHAs), then the parent. A conflict in any repo
+    /// pauses the workflow at that repo — the existing merge editor
+    /// banner already exposes Continue / Skip / Abort.
+    /// </summary>
+    [RelayCommand]
+    public async Task MergeWorkspaceAsync()
+    {
+        var dialogVm = new WorkspaceMergeDialogViewModel();
+        var dialog = new Views.WorkspaceMergeDialog { DataContext = dialogVm };
+        if (!await _dialogService.ShowDialogAsync(dialog)) return;
+
+        var target = dialogVm.TargetBranch.Trim();
+        if (string.IsNullOrEmpty(target)) return;
+        var mergeType = dialogVm.MergeType;
+
+        await RunBulkAsync($"Merging workspace into {target}…", async () =>
+        {
+            foreach (var tile in WriteOrder())
+            {
+                BulkOperationStatus = $"Merging {tile.Name} into {target}…";
+                MergeResult result;
+                try
+                {
+                    result = mergeType switch
+                    {
+                        MergeType.Squash => await _gitService.SquashMergeAsync(tile.RepositoryPath, target, cancellationToken: tile.Token),
+                        MergeType.FastForwardOnly => await _gitService.FastForwardAsync(tile.RepositoryPath, target, cancellationToken: tile.Token),
+                        _ => await _gitService.MergeBranchAsync(tile.RepositoryPath, target, cancellationToken: tile.Token),
+                    };
+                }
+                catch (Exception ex)
+                {
+                    _notificationService.Show(
+                        "Workspace merge failed",
+                        $"{tile.Name}: {ex.Message}",
+                        NotificationType.Error);
+                    return;
+                }
+
+                await LoadTileAsync(tile);
+
+                if (result.HasConflicts)
+                {
+                    // Conflict in this repo pauses the entire workflow.
+                    // The existing merge editor / OperationType=Merge
+                    // banner is the user's continuation path for that
+                    // repo; the remaining tiles will only be merged on
+                    // a re-invocation of the workspace merge once this
+                    // one resolves.
+                    _notificationService.Show(
+                        "Workspace merge paused",
+                        $"Conflicts in {tile.Name}. Resolve them, then re-run the workspace merge to continue.",
+                        NotificationType.Warning,
+                        Models.NotificationCategory.MergeAndRebase);
+                    return;
+                }
+
+                if (!result.Success)
+                {
+                    _notificationService.Show(
+                        "Workspace merge halted",
+                        $"{tile.Name}: {result.ErrorMessage ?? "unknown failure"}.",
+                        NotificationType.Error);
+                    return;
+                }
+            }
+
+            _notificationService.Show(
+                "Workspace merge complete",
+                $"All repos merged into {target}.",
+                NotificationType.Success,
+                Models.NotificationCategory.MergeAndRebase);
+        });
     }
 
     /// <summary>
