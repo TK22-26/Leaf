@@ -503,6 +503,21 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 BulkOperationStatus = $"Committing {parent.Name}…";
                 await CommitTileAsync(parent);
             }
+
+            // Final sequential refresh. The per-tile LoadRepositoryAsync
+            // calls inside each CommitTileAsync ran concurrently and
+            // can leave a tile's canvas in a stale-render state — the
+            // new commit's IdenticonKey is set correctly on the
+            // GitTreeNode (verified by the commit-detail pane showing
+            // the right author/email) but the canvas's brush cache
+            // returns the pre-commit pattern until the next paint.
+            // Walk every tile once more on the dispatcher so each
+            // canvas redraws against fully-settled state.
+            BulkOperationStatus = "Refreshing tiles…";
+            foreach (var tile in Tiles)
+            {
+                await LoadTileAsync(tile);
+            }
         });
     }
 
