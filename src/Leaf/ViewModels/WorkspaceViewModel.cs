@@ -365,6 +365,15 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         try
         {
             var remotes = await _gitService.GetRemotesAsync(tile.RepositoryPath, cancellationToken: tile.Token);
+            if (remotes.Count == 0)
+            {
+                // Local-only repo (a fresh init without a remote
+                // configured). Nothing to push — surface as an info
+                // skip rather than a red "failed" toast.
+                _notificationService.Show("Push skipped", $"{tile.Name} has no remote configured.",
+                    NotificationType.Information, Models.NotificationCategory.SyncOperations);
+                return;
+            }
             var trackingRemote = remotes.FirstOrDefault(r => r.Name == "origin")?.Url
                                 ?? remotes.FirstOrDefault()?.Url;
             var credentialKey = _credentialService.ResolveActiveCredentialKey(trackingRemote);
@@ -385,6 +394,12 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         try
         {
             var remotes = await _gitService.GetRemotesAsync(tile.RepositoryPath, cancellationToken: tile.Token);
+            if (remotes.Count == 0)
+            {
+                _notificationService.Show("Pull skipped", $"{tile.Name} has no remote configured.",
+                    NotificationType.Information, Models.NotificationCategory.SyncOperations);
+                return;
+            }
             var trackingRemote = remotes.FirstOrDefault(r => r.Name == "origin")?.Url
                                 ?? remotes.FirstOrDefault()?.Url;
             var credentialKey = _credentialService.ResolveActiveCredentialKey(trackingRemote);
@@ -405,12 +420,18 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         try
         {
             var remotes = await _gitService.GetRemotesAsync(tile.RepositoryPath, cancellationToken: tile.Token);
-            var originRemote = remotes.FirstOrDefault(r => r.Name == "origin") ?? remotes.FirstOrDefault();
-            var credentialKey = _credentialService.ResolveActiveCredentialKey(originRemote?.Url);
+            if (remotes.Count == 0)
+            {
+                _notificationService.Show("Fetch skipped", $"{tile.Name} has no remote configured.",
+                    NotificationType.Information, Models.NotificationCategory.SyncOperations);
+                return;
+            }
+            var originRemote = remotes.FirstOrDefault(r => r.Name == "origin") ?? remotes.First();
+            var credentialKey = _credentialService.ResolveActiveCredentialKey(originRemote.Url);
 
             await _gitService.FetchAsync(
                 tile.RepositoryPath,
-                originRemote?.Name ?? "origin",
+                originRemote.Name,
                 credentialKey,
                 cancellationToken: tile.Token);
             await LoadTileAsync(tile);
