@@ -482,10 +482,26 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         await RunBulkAsync("Committing all repos…", async () =>
         {
-            foreach (var tile in WriteOrder())
+            // Parallelise the submodules' AI commit calls — the slow
+            // path is the network round-trip to the AI provider, and
+            // those are completely independent per repo. The parent
+            // still waits for every submodule to finish so its own
+            // commit can record the children's freshly-written SHAs;
+            // running it in parallel would race and produce a parent
+            // commit that points at half-stale submodule pointers.
+            var submodules = Tiles.Where(t => !t.IsParent).ToList();
+            var parent = Tiles.FirstOrDefault(t => t.IsParent);
+
+            if (submodules.Count > 0)
             {
-                BulkOperationStatus = $"Committing {tile.Name}…";
-                await CommitTileAsync(tile);
+                BulkOperationStatus = $"Committing {submodules.Count} submodule(s) in parallel…";
+                await Task.WhenAll(submodules.Select(CommitTileAsync));
+            }
+
+            if (parent != null)
+            {
+                BulkOperationStatus = $"Committing {parent.Name}…";
+                await CommitTileAsync(parent);
             }
         });
     }
