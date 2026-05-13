@@ -65,6 +65,13 @@ public partial class MainViewModel
     /// to <c>.git/config</c> so the next time the user opens this repo
     /// they land in the same view.
     /// </summary>
+    /// <remarks>
+    /// Entering grid mode does a submodule enumeration plus N parallel
+    /// repo-info loads — easily a couple of seconds on a sizable
+    /// monorepo. We wrap with <see cref="BeginBusyAsync"/> so the
+    /// existing action-bar loading indicator fires while it works,
+    /// rather than the UI appearing to hang on click.
+    /// </remarks>
     [RelayCommand]
     public async Task ToggleWorkspaceModeAsync()
     {
@@ -80,18 +87,29 @@ public partial class MainViewModel
 
         var next = Workspace.Mode == WorkspaceMode.Grid ? WorkspaceMode.Single : WorkspaceMode.Grid;
 
-        if (next == WorkspaceMode.Grid)
+        try
         {
-            await Workspace.LoadAsync(SelectedRepository, GitGraphViewModel, CurrentRepositoryToken);
-        }
-        else
-        {
-            Workspace.Dispose();
-        }
+            await BeginBusyAsync(next == WorkspaceMode.Grid
+                ? "Loading workspace…"
+                : "Closing workspace…");
 
-        Workspace.Mode = next;
-        OnPropertyChanged(nameof(IsGridMode));
-        await Workspace.SaveModeAsync(next, CurrentRepositoryToken);
+            if (next == WorkspaceMode.Grid)
+            {
+                await Workspace.LoadAsync(SelectedRepository, GitGraphViewModel, CurrentRepositoryToken);
+            }
+            else
+            {
+                Workspace.Dispose();
+            }
+
+            Workspace.Mode = next;
+            OnPropertyChanged(nameof(IsGridMode));
+            await Workspace.SaveModeAsync(next, CurrentRepositoryToken);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     /// <summary>
