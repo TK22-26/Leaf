@@ -328,23 +328,23 @@ public class AppSettings
     public Dictionary<string, bool> SuppressedMessageKeys { get; set; } = [];
 
     // ─── Toast notification toggles ─────────────────────────────────────
-    // One flag per Leaf.Models.NotificationCategory. The defaults below
-    // are tuned so a fresh install gets the high-value confirmations
-    // (sync results, checkout, merge / rebase completion, GitFlow,
-    // worktrees, repository management, PRs) without the routine
-    // housekeeping noise (branch admin, stash, remote config, cancel
-    // confirmations). Errors have no toggle and always show.
-    public bool NotifySyncOperations { get; set; } = true;
-    public bool NotifyBranchCheckout { get; set; } = true;
+    // One flag per Leaf.Models.NotificationCategory. EVERY category is
+    // off by default — a user-initiated action already shows its own
+    // visible result (graph refresh, branch list update, etc.), so the
+    // toast is redundant noise. The user can switch any category back on
+    // from Settings → Notifications if they want acknowledgement toasts
+    // for that class of operation. Errors have no toggle and always show.
+    public bool NotifySyncOperations { get; set; } = false;
+    public bool NotifyBranchCheckout { get; set; } = false;
     public bool NotifyBranchAdmin { get; set; } = false;
-    public bool NotifyMergeAndRebase { get; set; } = true;
-    public bool NotifyGitFlow { get; set; } = true;
-    public bool NotifyWorktree { get; set; } = true;
-    public bool NotifySubmodule { get; set; } = true;
+    public bool NotifyMergeAndRebase { get; set; } = false;
+    public bool NotifyGitFlow { get; set; } = false;
+    public bool NotifyWorktree { get; set; } = false;
+    public bool NotifySubmodule { get; set; } = false;
     public bool NotifyStash { get; set; } = false;
-    public bool NotifyPullRequest { get; set; } = true;
-    public bool NotifyPatch { get; set; } = true;
-    public bool NotifyRepository { get; set; } = true;
+    public bool NotifyPullRequest { get; set; } = false;
+    public bool NotifyPatch { get; set; } = false;
+    public bool NotifyRepository { get; set; } = false;
     public bool NotifyRemoteConfig { get; set; } = false;
     public bool NotifyCancelledOperations { get; set; } = false;
 

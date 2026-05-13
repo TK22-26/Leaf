@@ -79,36 +79,28 @@ public class NotificationServiceFilterTests : IDisposable
     }
 
     [Theory]
-    [InlineData(NotificationCategory.BranchAdmin)]
-    [InlineData(NotificationCategory.Stash)]
-    [InlineData(NotificationCategory.RemoteConfig)]
-    [InlineData(NotificationCategory.CancelledOperations)]
-    public void DefaultOff_CategoriesSkipOnFreshInstall(NotificationCategory category)
-    {
-        // Fresh settings (no prior write) — the categories we elected to
-        // mute by default must not fire. Catches a regression where
-        // someone changes a default to true.
-        _service.Show("Anything", "Anything", NotificationType.Success, category);
-
-        _firedCount.Should().Be(0);
-    }
-
-    [Theory]
     [InlineData(NotificationCategory.SyncOperations)]
     [InlineData(NotificationCategory.MergeAndRebase)]
     [InlineData(NotificationCategory.BranchCheckout)]
+    [InlineData(NotificationCategory.BranchAdmin)]
     [InlineData(NotificationCategory.GitFlow)]
     [InlineData(NotificationCategory.Worktree)]
     [InlineData(NotificationCategory.Submodule)]
+    [InlineData(NotificationCategory.Stash)]
     [InlineData(NotificationCategory.PullRequest)]
     [InlineData(NotificationCategory.Patch)]
     [InlineData(NotificationCategory.Repository)]
-    public void DefaultOn_CategoriesFireOnFreshInstall(NotificationCategory category)
+    [InlineData(NotificationCategory.RemoteConfig)]
+    [InlineData(NotificationCategory.CancelledOperations)]
+    public void EveryCategory_IsOffByDefault(NotificationCategory category)
     {
-        // The high-value categories must fire by default so a fresh
-        // install still gets push/pull/merge/checkout confirmations.
+        // Fresh settings (no prior write) — every user-driven category
+        // is muted by default. The action's own visible side effect
+        // (graph refresh, branch list change, etc.) is acknowledgement
+        // enough; the toast is opt-in noise. Errors take a null-category
+        // path and are covered by NullCategory_AlwaysFires above.
         _service.Show("Anything", "Anything", NotificationType.Success, category);
 
-        _firedCount.Should().Be(1);
+        _firedCount.Should().Be(0);
     }
 }
