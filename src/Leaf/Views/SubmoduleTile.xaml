@@ -87,44 +87,50 @@
                                 </ic:SymbolIcon.Style>
                             </ic:SymbolIcon>
                         </Button>
-                        <Button ToolTip="Commit"
+                        <Button Command="{Binding CommitCommand}"
+                                ToolTip="Stage all + AI commit"
                                 Padding="6,2"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 AutomationProperties.AutomationId="Tile.Commit">
                             <ic:SymbolIcon Symbol="Checkmark" FontSize="14" />
                         </Button>
-                        <Button ToolTip="Push"
+                        <Button Command="{Binding PushCommand}"
+                                ToolTip="Push"
                                 Padding="6,2"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 AutomationProperties.AutomationId="Tile.Push">
                             <ic:SymbolIcon Symbol="ArrowUpload" FontSize="14" />
                         </Button>
-                        <Button ToolTip="Pull"
+                        <Button Command="{Binding PullCommand}"
+                                ToolTip="Pull"
                                 Padding="6,2"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 AutomationProperties.AutomationId="Tile.Pull">
                             <ic:SymbolIcon Symbol="ArrowDownload" FontSize="14" />
                         </Button>
-                        <Button ToolTip="Fetch"
+                        <Button Command="{Binding FetchCommand}"
+                                ToolTip="Fetch"
                                 Padding="6,2"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 AutomationProperties.AutomationId="Tile.Fetch">
                             <ic:SymbolIcon Symbol="ArrowSync" FontSize="14" />
                         </Button>
-                        <!-- Zoom-in: open this tile's repo in single
-                             view. Hidden on the parent — zooming the
-                             parent is just "exit grid mode" which the
-                             top-bar Grid toggle already does. -->
+                        <!-- Zoom-in / open-in-single-view. Visible on
+                             every tile including the parent. For the
+                             parent it acts as "exit grid": the host
+                             handler resolves the parent's repo as the
+                             single-view selection (it's already
+                             SelectedRepository) and drops grid mode in
+                             the process. -->
                         <Button Command="{Binding OpenInSingleViewCommand}"
                                 ToolTip="Open in single view"
                                 Padding="6,2"
                                 Background="Transparent"
                                 BorderThickness="0"
-                                Visibility="{Binding IsParent, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                 AutomationProperties.AutomationId="Tile.Zoom">
                             <ic:SymbolIcon Symbol="ArrowExpand" FontSize="14" />
                         </Button>

@@ -5,6 +5,7 @@ using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Utils;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Leaf.ViewModels;
@@ -38,6 +39,9 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     private readonly IRepositoryManagementService _repositoryService;
     private readonly IBranchColorPaletteRegistry _paletteRegistry;
     private readonly IWorkspaceConfigService _workspaceConfig;
+    private readonly CredentialService _credentialService;
+    private readonly AutoCommitService _autoCommitService;
+    private readonly INotificationService _notificationService;
 
     /// <summary>
     /// Ordered tile collection. WPF binds the workspace grid against
@@ -70,7 +74,10 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         SettingsService settingsService,
         IRepositoryManagementService repositoryService,
         IBranchColorPaletteRegistry paletteRegistry,
-        IWorkspaceConfigService workspaceConfig)
+        IWorkspaceConfigService workspaceConfig,
+        CredentialService credentialService,
+        AutoCommitService autoCommitService,
+        INotificationService notificationService)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
@@ -78,6 +85,9 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         _repositoryService = repositoryService ?? throw new ArgumentNullException(nameof(repositoryService));
         _paletteRegistry = paletteRegistry ?? throw new ArgumentNullException(nameof(paletteRegistry));
         _workspaceConfig = workspaceConfig ?? throw new ArgumentNullException(nameof(workspaceConfig));
+        _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
+        _autoCommitService = autoCommitService ?? throw new ArgumentNullException(nameof(autoCommitService));
+        _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
     }
 
     /// <summary>
@@ -259,6 +269,101 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     public Task RefreshTileAsync(SubmoduleTileViewModel tile)
     {
         return LoadTileAsync(tile);
+    }
+
+    /// <summary>
+    /// Auto-commit the tile's working changes — stages everything,
+    /// generates an AI commit message, commits. Reuses the headless
+    /// <see cref="AutoCommitService"/> the CLI flag already drives so
+    /// behaviour matches what the user gets from <c>--auto-commit</c>.
+    /// </summary>
+    public async Task CommitTileAsync(SubmoduleTileViewModel tile)
+    {
+        try
+        {
+            var (success, message) = await _autoCommitService.AutoCommitAsync(tile.RepositoryPath);
+            await LoadTileAsync(tile);
+            _notificationService.Show(
+                success ? "Commit complete" : "Commit failed",
+                $"{tile.Name}: {message}",
+                success ? NotificationType.Success : NotificationType.Error,
+                success ? Models.NotificationCategory.MergeAndRebase : null);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Workspace", $"CommitTile {tile.RepositoryPath} threw", ex);
+            _notificationService.Show("Commit failed", $"{tile.Name}: {ex.Message}", NotificationType.Error);
+        }
+    }
+
+    /// <summary>
+    /// Push the tile's current branch using the credential key
+    /// resolved from its tracking remote URL. Path-only call into
+    /// <see cref="IGitService.PushAsync"/> — no per-repo session
+    /// rotation, just the same code the toolbar Push button drives
+    /// against a single repo, parameterised by the tile's path.
+    /// </summary>
+    public async Task PushTileAsync(SubmoduleTileViewModel tile)
+    {
+        try
+        {
+            var remotes = await _gitService.GetRemotesAsync(tile.RepositoryPath, cancellationToken: tile.Token);
+            var trackingRemote = remotes.FirstOrDefault(r => r.Name == "origin")?.Url
+                                ?? remotes.FirstOrDefault()?.Url;
+            var credentialKey = _credentialService.ResolveActiveCredentialKey(trackingRemote);
+
+            await _gitService.PushAsync(tile.RepositoryPath, credentialKey: credentialKey, cancellationToken: tile.Token);
+            await LoadTileAsync(tile);
+            _notificationService.Show("Push complete", $"{tile.Name}", NotificationType.Success, Models.NotificationCategory.SyncOperations);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Workspace", $"PushTile {tile.RepositoryPath} threw", ex);
+            _notificationService.Show("Push failed", $"{tile.Name}: {ex.Message}", NotificationType.Error);
+        }
+    }
+
+    public async Task PullTileAsync(SubmoduleTileViewModel tile)
+    {
+        try
+        {
+            var remotes = await _gitService.GetRemotesAsync(tile.RepositoryPath, cancellationToken: tile.Token);
+            var trackingRemote = remotes.FirstOrDefault(r => r.Name == "origin")?.Url
+                                ?? remotes.FirstOrDefault()?.Url;
+            var credentialKey = _credentialService.ResolveActiveCredentialKey(trackingRemote);
+
+            await _gitService.PullAsync(tile.RepositoryPath, credentialKey, cancellationToken: tile.Token);
+            await LoadTileAsync(tile);
+            _notificationService.Show("Pull complete", $"{tile.Name}", NotificationType.Success, Models.NotificationCategory.SyncOperations);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Workspace", $"PullTile {tile.RepositoryPath} threw", ex);
+            _notificationService.Show("Pull failed", $"{tile.Name}: {ex.Message}", NotificationType.Error);
+        }
+    }
+
+    public async Task FetchTileAsync(SubmoduleTileViewModel tile)
+    {
+        try
+        {
+            var remotes = await _gitService.GetRemotesAsync(tile.RepositoryPath, cancellationToken: tile.Token);
+            var originRemote = remotes.FirstOrDefault(r => r.Name == "origin") ?? remotes.FirstOrDefault();
+            var credentialKey = _credentialService.ResolveActiveCredentialKey(originRemote?.Url);
+
+            await _gitService.FetchAsync(
+                tile.RepositoryPath,
+                originRemote?.Name ?? "origin",
+                credentialKey,
+                cancellationToken: tile.Token);
+            await LoadTileAsync(tile);
+            _notificationService.Show("Fetch complete", $"{tile.Name}", NotificationType.Success, Models.NotificationCategory.SyncOperations);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Workspace", $"FetchTile {tile.RepositoryPath} threw", ex);
+            _notificationService.Show("Fetch failed", $"{tile.Name}: {ex.Message}", NotificationType.Error);
+        }
     }
 
     /// <summary>

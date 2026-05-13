@@ -127,6 +127,41 @@ public partial class SubmoduleTileViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Stage + AI-commit this tile's working changes. Delegates to
+    /// <see cref="WorkspaceViewModel.CommitTileAsync"/> which reuses
+    /// the headless <c>AutoCommitService</c> so v1 has a real commit
+    /// path without depending on a per-tile composer popout (the
+    /// proper popout lands with the workspace bulk commit dialog).
+    /// </summary>
+    [RelayCommand]
+    public async Task CommitAsync()
+    {
+        if (Workspace is null) return;
+        await Workspace.CommitTileAsync(this);
+    }
+
+    [RelayCommand]
+    public async Task PushAsync()
+    {
+        if (Workspace is null) return;
+        await Workspace.PushTileAsync(this);
+    }
+
+    [RelayCommand]
+    public async Task PullAsync()
+    {
+        if (Workspace is null) return;
+        await Workspace.PullTileAsync(this);
+    }
+
+    [RelayCommand]
+    public async Task FetchAsync()
+    {
+        if (Workspace is null) return;
+        await Workspace.FetchTileAsync(this);
+    }
+
+    /// <summary>
     /// Open the tile's repository folder in Windows File Explorer.
     /// Useful when the user wants to drag a file into the working tree
     /// or run an external tool against the checkout.
