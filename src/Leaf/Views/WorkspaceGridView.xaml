@@ -96,7 +96,7 @@
                         ToolTip="Merge every repo's current branch into a target. Submodules merge first; conflicts pause the workflow."
                         AutomationProperties.AutomationId="Workspace.Merge">
                     <StackPanel HorizontalAlignment="Center">
-                        <ic:SymbolIcon HorizontalAlignment="Center" Symbol="BranchMerge" FontSize="16" />
+                        <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Merge" FontSize="16" />
                         <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Merge" />
                     </StackPanel>
                 </Button>
