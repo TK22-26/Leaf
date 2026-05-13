@@ -179,6 +179,22 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         {
             var info = await _gitService.GetRepositoryInfoFastAsync(tile.RepositoryPath, tile.Token).ConfigureAwait(true);
             tile.Repository = info;
+
+            // Auto-register submodule tiles as tracked repositories so
+            // path-keyed services (AutoCommitService, the repo lookup
+            // used by some toast clicks, etc.) can find them. Mirrors
+            // OpenSubmoduleAsRepositoryAsync's contract: IsUserAdded
+            // stays false so the submodule shows up under its parent
+            // in the sidebar rather than as a top-level entry. Parent
+            // tiles are already registered by definition — they're
+            // SelectedRepository — so skip.
+            if (!tile.IsParent && _repositoryService.FindRepository(tile.RepositoryPath) is null)
+            {
+                info.ParentRepositoryPath = Parent?.Path;
+                info.IsUserAdded = false;
+                _repositoryService.AddRepository(info);
+            }
+
             if (tile.Graph != null)
             {
                 await tile.Graph.LoadRepositoryAsync(tile.RepositoryPath).ConfigureAwait(true);
@@ -285,6 +301,16 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         try
         {
+            // AutoCommitService looks the repo up in the management
+            // service before doing anything; the tile's LoadTileAsync
+            // is what would normally have registered it, but a fast
+            // Commit-all click right after grid-mode entry can beat
+            // that load. Make sure we're registered before we hand
+            // off to the service — same registration shape the load
+            // path uses (IsUserAdded=false + ParentRepositoryPath
+            // set).
+            await EnsureTileRegisteredAsync(tile);
+
             var (success, message) = await _autoCommitService.AutoCommitAsync(tile.RepositoryPath);
             await LoadTileAsync(tile);
             _notificationService.Show(
@@ -297,6 +323,26 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         {
             Log.Error("Workspace", $"CommitTile {tile.RepositoryPath} threw", ex);
             _notificationService.Show("Commit failed", $"{tile.Name}: {ex.Message}", NotificationType.Error);
+        }
+    }
+
+    private async Task EnsureTileRegisteredAsync(SubmoduleTileViewModel tile)
+    {
+        if (_repositoryService.FindRepository(tile.RepositoryPath) != null) return;
+        try
+        {
+            var info = await _gitService.GetRepositoryInfoFastAsync(tile.RepositoryPath, tile.Token).ConfigureAwait(true);
+            info.ParentRepositoryPath = tile.IsParent ? null : Parent?.Path;
+            info.IsUserAdded = false;
+            _repositoryService.AddRepository(info);
+            tile.Repository = info;
+        }
+        catch (Exception ex)
+        {
+            // Best-effort — the caller will hit its own failure path
+            // (likely "repo not found") and the user gets a clear
+            // toast either way.
+            Log.Warn("Workspace", $"EnsureTileRegistered failed for {tile.RepositoryPath}: {ex.Message}");
         }
     }
 
