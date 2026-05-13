@@ -4,25 +4,23 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="clr-namespace:Leaf.ViewModels"
     xmlns:views="clr-namespace:Leaf.Views"
+    xmlns:controls="clr-namespace:Leaf.Controls"
     d:DataContext="{d:DesignInstance Type=vm:WorkspaceViewModel}"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     AutomationProperties.AutomationId="WorkspaceGridView">
 
-    <!-- Tile layout. UniformGrid auto-distributes the tile collection
-         into the available space — for N tiles it picks a row × column
-         shape that minimises wasted area and gives every tile equal
-         dimensions (matches the "full-bleed, divided by straight
-         lines" visual the user asked for). Code-behind picks the
-         exact rows / columns on count change so the parent's top-left
-         placement holds. -->
+    <!-- Tile layout. WorkspaceTilePanel arranges children into
+         rectangles based on tile count, with bespoke shapes for the
+         awkward counts (3 = parent-fills-left-half + 2 right tiles
+         stacked). For 1, 2, 4, 6, 8 the layout is the obvious
+         equal-split grid; for 5 and 7 we accept one empty slot
+         rather than warp the geometry. -->
     <ItemsControl ItemsSource="{Binding Tiles}">
         <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-                <UniformGrid x:Name="TileGrid"
-                             Rows="0"
-                             Columns="0" />
+                <controls:WorkspaceTilePanel />
             </ItemsPanelTemplate>
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
