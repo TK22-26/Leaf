@@ -217,12 +217,21 @@
                     Margin="10,0"
                     Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
 
-                <!-- Description (bottom) -->
+                <!-- Description (bottom). VerticalContentAlignment=Top
+                     so text starts at the top of the box and grows
+                     downward as the user types — centred vertical
+                     alignment would keep dragging the caret toward
+                     the middle line as each new line is added. The
+                     placeholder mirrors that alignment so the hint
+                     text doesn't float in the middle of an empty box.
+                     Padding's top value matches the placeholder
+                     TextBlock's margin so the two read as one row
+                     until the user starts typing. -->
                 <Grid Grid.Row="2" MinHeight="60">
                     <TextBox
                         x:Name="CommitDescriptionBox"
                         Padding="10,6"
-                        VerticalContentAlignment="Center"
+                        VerticalContentAlignment="Top"
                         AcceptsReturn="True"
                         Background="Transparent"
                         BorderThickness="0"
@@ -234,8 +243,8 @@
                         VerticalScrollBarVisibility="Auto" />
                     <!-- Placeholder -->
                     <TextBlock
-                        Margin="12,0,0,0"
-                        VerticalAlignment="Center"
+                        Margin="12,6,0,0"
+                        VerticalAlignment="Top"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                         IsHitTestVisible="False"

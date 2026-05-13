@@ -41,7 +41,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     private readonly IBranchColorPaletteRegistry _paletteRegistry;
     private readonly IWorkspaceConfigService _workspaceConfig;
     private readonly CredentialService _credentialService;
-    private readonly AutoCommitService _autoCommitService;
+    private readonly IAiCommitMessageService _aiCommitService;
     private readonly INotificationService _notificationService;
     private readonly IDialogService _dialogService;
 
@@ -78,7 +78,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         IBranchColorPaletteRegistry paletteRegistry,
         IWorkspaceConfigService workspaceConfig,
         CredentialService credentialService,
-        AutoCommitService autoCommitService,
+        IAiCommitMessageService aiCommitService,
         INotificationService notificationService,
         IDialogService dialogService)
     {
@@ -89,7 +89,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         _paletteRegistry = paletteRegistry ?? throw new ArgumentNullException(nameof(paletteRegistry));
         _workspaceConfig = workspaceConfig ?? throw new ArgumentNullException(nameof(workspaceConfig));
         _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
-        _autoCommitService = autoCommitService ?? throw new ArgumentNullException(nameof(autoCommitService));
+        _aiCommitService = aiCommitService ?? throw new ArgumentNullException(nameof(aiCommitService));
         _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
     }
@@ -297,52 +297,59 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     /// <see cref="AutoCommitService"/> the CLI flag already drives so
     /// behaviour matches what the user gets from <c>--auto-commit</c>.
     /// </summary>
+    /// <summary>
+    /// Stage-all + AI-commit a single tile. Uses the same
+    /// <see cref="IAiCommitMessageService"/> the single-repo
+    /// working-changes pane uses, so PATH resolution / .cmd-wrapper
+    /// handling / provider selection all match what the user gets
+    /// elsewhere in the app. AutoCommitService's bespoke
+    /// Process.Start("codex", ...) bypassed all of that and failed
+    /// when the CLI was installed as codex.cmd or only on the user's
+    /// per-user PATH.
+    /// </summary>
     public async Task CommitTileAsync(SubmoduleTileViewModel tile)
     {
         try
         {
-            // AutoCommitService looks the repo up in the management
-            // service before doing anything; the tile's LoadTileAsync
-            // is what would normally have registered it, but a fast
-            // Commit-all click right after grid-mode entry can beat
-            // that load. Make sure we're registered before we hand
-            // off to the service — same registration shape the load
-            // path uses (IsUserAdded=false + ParentRepositoryPath
-            // set).
-            await EnsureTileRegisteredAsync(tile);
+            // Empty repo guard — nothing to commit, don't drag the user through an AI call.
+            var changes = await _gitService.GetWorkingChangesAsync(tile.RepositoryPath, tile.Token);
+            if (!changes.HasChanges)
+            {
+                _notificationService.Show("Nothing to commit", $"{tile.Name}: no changes.",
+                    NotificationType.Information, Models.NotificationCategory.MergeAndRebase);
+                return;
+            }
 
-            var (success, message) = await _autoCommitService.AutoCommitAsync(tile.RepositoryPath);
+            // Stage everything.
+            await _gitService.StageAllAsync(tile.RepositoryPath, tile.Token);
+
+            // Generate the message via the real AI pipeline (same path
+            // the single-repo working-changes pane drives). The
+            // service handles provider selection, PATH resolution
+            // through AiCliRunner, .cmd-wrapper invocation, etc.
+            var diffText = await _gitService.GetStagedSummaryAsync(tile.RepositoryPath, cancellationToken: tile.Token);
+            var (msg, desc, err) = await _aiCommitService.GenerateCommitMessageAsync(diffText, tile.RepositoryPath, tile.Token);
+            if (!string.IsNullOrEmpty(err) || string.IsNullOrWhiteSpace(msg))
+            {
+                _notificationService.Show(
+                    "Commit failed",
+                    $"{tile.Name}: AI commit message generation failed: {err ?? "empty message"}",
+                    NotificationType.Error);
+                return;
+            }
+
+            await _gitService.CommitAsync(tile.RepositoryPath, msg!, desc, cancellationToken: tile.Token);
             await LoadTileAsync(tile);
             _notificationService.Show(
-                success ? "Commit complete" : "Commit failed",
-                $"{tile.Name}: {message}",
-                success ? NotificationType.Success : NotificationType.Error,
-                success ? Models.NotificationCategory.MergeAndRebase : null);
+                "Commit complete",
+                $"{tile.Name}: {msg}",
+                NotificationType.Success,
+                Models.NotificationCategory.MergeAndRebase);
         }
         catch (Exception ex)
         {
             Log.Error("Workspace", $"CommitTile {tile.RepositoryPath} threw", ex);
             _notificationService.Show("Commit failed", $"{tile.Name}: {ex.Message}", NotificationType.Error);
-        }
-    }
-
-    private async Task EnsureTileRegisteredAsync(SubmoduleTileViewModel tile)
-    {
-        if (_repositoryService.FindRepository(tile.RepositoryPath) != null) return;
-        try
-        {
-            var info = await _gitService.GetRepositoryInfoFastAsync(tile.RepositoryPath, tile.Token).ConfigureAwait(true);
-            info.ParentRepositoryPath = tile.IsParent ? null : Parent?.Path;
-            info.IsUserAdded = false;
-            _repositoryService.AddRepository(info);
-            tile.Repository = info;
-        }
-        catch (Exception ex)
-        {
-            // Best-effort — the caller will hit its own failure path
-            // (likely "repo not found") and the user gets a clear
-            // toast either way.
-            Log.Warn("Workspace", $"EnsureTileRegistered failed for {tile.RepositoryPath}: {ex.Message}");
         }
     }
 
