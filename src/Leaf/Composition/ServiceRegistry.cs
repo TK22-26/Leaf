@@ -84,6 +84,7 @@ public static class ServiceRegistry
         services.AddSingleton<IExternalToolLauncherService, ExternalToolLauncherService>();
         services.AddSingleton<IInteractiveRebaseService, InteractiveRebaseService>();
         services.AddSingleton<IRebaseService, RebaseService>();
+        services.AddSingleton<IWorkspaceConfigService, WorkspaceConfigService>();
         services.AddSingleton<IPatchService, PatchService>();
         services.AddSingleton<IBisectService, BisectService>();
         services.AddSingleton<Leaf.Services.Shortcuts.IShortcutService, Leaf.Services.Shortcuts.ShortcutService>();
@@ -201,5 +202,9 @@ public static class ServiceRegistry
     private static void AddViewModels(IServiceCollection services)
     {
         services.AddSingleton<MainViewModel>();
+        // Workspace VM is per-host-VM so it shares MainViewModel's
+        // lifetime. Singleton matches that — the host owns it directly
+        // and rebuilds its tile set on every grid-mode entry.
+        services.AddSingleton<WorkspaceViewModel>();
     }
 }

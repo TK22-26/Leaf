@@ -203,7 +203,9 @@ public partial class MainWindow : Window
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is "IsGraphMode" && sender is MainViewModel vm)
+        if (sender is not MainViewModel vm) return;
+
+        if (e.PropertyName is "IsGraphMode")
         {
             if (vm.IsGraphMode)
             {
@@ -216,7 +218,45 @@ public partial class MainWindow : Window
                 RightPanelColumn.Width = new GridLength(0);
             }
         }
+
+        // Workspace grid mode collapses BOTH the Branches rail (col 1)
+        // and the right detail pane (col 3) so the centre column has
+        // the whole body to spread the tile grid across. The widths
+        // are stashed on the way in and restored on the way out so the
+        // user's chosen pane sizes survive a round-trip through grid
+        // mode.
+        if (e.PropertyName is "IsGridMode")
+        {
+            if (vm.IsGridMode)
+            {
+                if (BranchesColumn.Width.Value > 0)
+                    _savedBranchesWidth = BranchesColumn.Width;
+                if (BranchesColumn.MinWidth > 0)
+                    _savedBranchesMinWidth = BranchesColumn.MinWidth;
+                BranchesColumn.MinWidth = 0;
+                BranchesColumn.Width = new GridLength(0);
+
+                if (RightPanelColumn.Width.Value > 0)
+                    _savedRightPanelWidth = RightPanelColumn.Width;
+                RightPanelColumn.Width = new GridLength(0);
+            }
+            else
+            {
+                BranchesColumn.Width = _savedBranchesWidth;
+                BranchesColumn.MinWidth = _savedBranchesMinWidth;
+                if (vm.IsGraphMode)
+                {
+                    RightPanelColumn.Width = _savedRightPanelWidth;
+                }
+            }
+        }
     }
+
+    // Defaults match the ColumnDefinition declarations in XAML so the
+    // first toggle-into-grid-and-back round trip restores the panel
+    // sizes the user originally saw.
+    private GridLength _savedBranchesWidth = new(250);
+    private double _savedBranchesMinWidth = 200;
 
     private void RepoPaneSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
     {

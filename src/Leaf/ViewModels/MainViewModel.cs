@@ -50,6 +50,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IBisectService _bisectService;
     private readonly IBranchColorPaletteRegistry _branchColorPaletteRegistry;
     private readonly ICommitTemplateService _commitTemplateService;
+    private readonly WorkspaceViewModel _workspaceViewModel;
+
+    /// <summary>
+    /// Workspace orchestrator — owns the per-tile state for the grid
+    /// view of the active parent's submodules. Exposed so the
+    /// MainWindow XAML can bind the grid host control directly. Always
+    /// non-null after MainViewModel construction; the workspace stays
+    /// in <see cref="Models.WorkspaceMode.Single"/> mode until the user
+    /// flips the toggle for a parent that has submodules.
+    /// </summary>
+    public WorkspaceViewModel Workspace => _workspaceViewModel;
 
     // The per-repo DI scope. Owns the current IRepositorySession (scoped)
     // and — in future phases — the per-repo ViewModels. Disposed on repo
@@ -416,6 +427,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IBisectService bisectService,
         IBranchColorPaletteRegistry branchColorPaletteRegistry,
         ICommitTemplateService commitTemplateService,
+        WorkspaceViewModel workspaceViewModel,
         INotificationService? notificationService = null,
         Services.Merge.IAiMergeAssistant? aiMergeAssistant = null,
         Services.Merge.IImageMergeService? imageMergeService = null)
@@ -432,6 +444,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _bisectService = bisectService ?? throw new ArgumentNullException(nameof(bisectService));
         _branchColorPaletteRegistry = branchColorPaletteRegistry ?? throw new ArgumentNullException(nameof(branchColorPaletteRegistry));
         _commitTemplateService = commitTemplateService ?? throw new ArgumentNullException(nameof(commitTemplateService));
+        _workspaceViewModel = workspaceViewModel ?? throw new ArgumentNullException(nameof(workspaceViewModel));
         _gitFlowService = gitFlowService;
         _credentialService = credentialService;
         _settingsService = settingsService;
@@ -672,6 +685,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     partial void OnSelectedRepositoryChanged(RepositoryInfo? value)
     {
         TerminalViewModel?.SetWorkingDirectory(value?.Path);
+
+        // Refresh workspace-mode bindings (HasSubmodules visibility,
+        // drop back to Single view) for the new active repo. Lives in
+        // MainViewModel.Workspace.cs so the partial that owns those
+        // properties stays self-contained.
+        OnSelectedRepositoryChangedForWorkspace();
 
         // §5.17 — drop the tag detail pane on every repo switch (and
         // when the user clears the selection). Without this, switching

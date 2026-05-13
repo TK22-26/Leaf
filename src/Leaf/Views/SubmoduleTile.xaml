@@ -1,0 +1,116 @@
+<UserControl
+    x:Class="Leaf.Views.SubmoduleTile"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="clr-namespace:Leaf.ViewModels"
+    xmlns:views="clr-namespace:Leaf.Views"
+    xmlns:converters="clr-namespace:Leaf.Converters"
+    xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+    d:DataContext="{d:DesignInstance Type=vm:SubmoduleTileViewModel}"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <!-- Full-bleed tile. Right + bottom 1px borders so adjacent tiles
+         share exactly one hairline between them. The outer Grid in the
+         workspace view sets right-edge / bottom-edge tiles' borders to 0
+         to keep the outer chrome clean. -->
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </UserControl.Resources>
+
+    <Border BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="0,0,1,1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Title bar — slim strip with parent-dot, name, action
+                 icons. Background slightly darker than the body so the
+                 strip reads as chrome even without a separator. -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                    BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="10,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left cluster: ROOT dot + tile name -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="8" Height="8"
+                                 Fill="{DynamicResource AccentFillColorDefaultBrush}"
+                                 Margin="0,0,8,0"
+                                 VerticalAlignment="Center"
+                                 ToolTip="Parent (root) repository"
+                                 Visibility="{Binding IsParent, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <TextBlock Text="{Binding Name}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <!-- Right cluster: quick-action icon buttons. Phase
+                         D fills in actual commands; for now the buttons
+                         render so the visual is complete and we have
+                         AutomationIds to drive from tests. -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button ToolTip="Commit"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                AutomationProperties.AutomationId="Tile.Commit">
+                            <ic:SymbolIcon Symbol="Checkmark" FontSize="14" />
+                        </Button>
+                        <Button ToolTip="Push"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                AutomationProperties.AutomationId="Tile.Push">
+                            <ic:SymbolIcon Symbol="ArrowUpload" FontSize="14" />
+                        </Button>
+                        <Button ToolTip="Pull"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                AutomationProperties.AutomationId="Tile.Pull">
+                            <ic:SymbolIcon Symbol="ArrowDownload" FontSize="14" />
+                        </Button>
+                        <Button ToolTip="Fetch"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                AutomationProperties.AutomationId="Tile.Fetch">
+                            <ic:SymbolIcon Symbol="ArrowSync" FontSize="14" />
+                        </Button>
+                        <Button ToolTip="Open in single view"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                AutomationProperties.AutomationId="Tile.Zoom">
+                            <ic:SymbolIcon Symbol="ArrowExpand" FontSize="14" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Body — the tile's git graph. Reuses GitGraphView as-is;
+                 the view binds to whatever GitGraphViewModel the tile
+                 holds (parent tile uses the host's shared VM, submodule
+                 tiles get their own scope-resolved instance). -->
+            <ContentControl Grid.Row="1"
+                            Content="{Binding Graph}">
+                <ContentControl.ContentTemplate>
+                    <DataTemplate>
+                        <views:GitGraphView />
+                    </DataTemplate>
+                </ContentControl.ContentTemplate>
+            </ContentControl>
+        </Grid>
+    </Border>
+</UserControl>

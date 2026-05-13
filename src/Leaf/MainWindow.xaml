@@ -441,6 +441,45 @@
                                 Text="Pop" />
                         </StackPanel>
                     </Button>
+                    <!-- Divider between the stash group (Stash / Pop)
+                         and the workspace grid toggle so the visual
+                         grouping reads "stash stuff | workspace stuff"
+                         the same way the rest of the bar separates
+                         related buttons. Visibility tracks the toggle
+                         itself so the divider isn't a dangling line
+                         when the active repo has no submodules. -->
+                    <Rectangle
+                        Width="1"
+                        Height="28"
+                        Margin="8,0"
+                        VerticalAlignment="Center"
+                        Fill="{DynamicResource TextFillColorSecondaryBrush}"
+                        Visibility="{Binding HasSubmodules, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <!--  Workspace grid toggle — only visible when the
+                          active repo has submodules. Flips between the
+                          single-active-repo view and the tiled grid of
+                          the parent plus every submodule. -->
+                    <Button Command="{Binding ToggleWorkspaceModeCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="Toggle submodule workspace grid"
+                            Visibility="{Binding HasSubmodules, Converter={StaticResource BoolToVisibilityConverter}}"
+                            AutomationProperties.AutomationId="ToggleWorkspaceMode">
+                        <StackPanel HorizontalAlignment="Center">
+                            <!-- F0E2 = GridView (Win 11 Snap Layouts
+                                 2×2 squares). The earlier E8B0 was a
+                                 cursor glyph in this version of the
+                                 Segoe Fluent Icons font. -->
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="16"
+                                Text="&#xF0E2;" />
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                FontSize="10"
+                                Text="Grid" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
 
                 <!--  Right: Search (live search, no button needed)  -->
@@ -568,7 +607,11 @@
             <Grid x:Name="MainPanelGrid" Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="250" MinWidth="200" />
+                    <!-- Branches column. Width collapses to 0 in grid
+                         mode so the centre tile region takes the
+                         reclaimed space; MinWidth follows so the
+                         splitter can't tug it back open. -->
+                    <ColumnDefinition x:Name="BranchesColumn" Width="250" MinWidth="200" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition x:Name="RightPanelColumn" Width="350" MinWidth="0" />
                 </Grid.ColumnDefinitions>
@@ -682,11 +725,16 @@
                     Focusable="False"
                     Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
 
-                <!--  Second panel: Branches for selected repo  -->
+                <!--  Second panel: Branches for selected repo. Hidden
+                      in workspace-grid mode — the parent + every
+                      submodule each show their own graph as a tile in
+                      the centre, so the host-level branches panel
+                      would just be a redundant rail. -->
                 <Border
                     Grid.Column="1"
                     BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                    BorderThickness="0,0,1,0">
+                    BorderThickness="0,0,1,0"
+                    Visibility="{Binding IsGridMode, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                     <views:BranchListView DataContext="{Binding}" />
                 </Border>
 
@@ -697,6 +745,15 @@
                       current sha, steps, End Bisect), so the banner was
                       removed as redundant.  -->
                 <Grid Grid.Column="2">
+                    <!--  Workspace grid view — submodule dashboard. Takes
+                          over the centre column when IsGridMode is true;
+                          all the other content-takeover panes below
+                          stay hidden in grid mode because they're keyed
+                          off the single-repo modes (graph / PR / bisect)
+                          that grid mode supersedes. -->
+                    <views:WorkspaceGridView DataContext="{Binding Workspace}"
+                                             Visibility="{Binding DataContext.IsGridMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
+
                     <!--  Git graph: visible when in Graph mode and diff viewer not active  -->
                     <views:GitGraphView DataContext="{Binding GitGraphViewModel}">
                         <views:GitGraphView.Style>
@@ -713,6 +770,10 @@
                                           the bisect detail view (full content takeover,
                                           like PR mode).  -->
                                     <DataTrigger Binding="{Binding DataContext.IsBisectMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <!--  Grid mode supersedes the single-repo graph. -->
+                                    <DataTrigger Binding="{Binding DataContext.IsGridMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
                                         <Setter Property="Visibility" Value="Collapsed" />
                                     </DataTrigger>
                                 </Style.Triggers>
