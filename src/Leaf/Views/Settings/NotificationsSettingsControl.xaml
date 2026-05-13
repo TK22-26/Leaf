@@ -1,0 +1,72 @@
+<UserControl
+    x:Class="Leaf.Views.Settings.NotificationsSettingsControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf">
+
+    <UserControl.Resources>
+        <!-- Toggle row style — each NotificationCategory gets one of
+             these. Vertical-aligned title + subtitle on the left, a
+             ToggleButton on the right. Padding + a thin bottom border
+             demarcate each row inside the surrounding Card. -->
+        <Style x:Key="NotificationRow" TargetType="Grid">
+            <Setter Property="Margin" Value="0,8,0,8"/>
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel>
+        <TextBlock Text="Notifications"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                   Margin="0,0,0,4" />
+        <TextBlock TextWrapping="Wrap"
+                   FontSize="12"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   Margin="0,0,0,16">
+            Switch toast categories off to silence routine confirmations.
+            Errors always show — they can't be muted from here.
+        </TextBlock>
+
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16,4,16,4"
+                Margin="0,0,0,16">
+            <StackPanel x:Name="ToggleList">
+                <!-- Rows are appended in code-behind so the table of
+                     (category, title, subtitle) lives in one place. -->
+            </StackPanel>
+        </Border>
+
+        <!-- Errors row — always-on, disabled toggle, explained in subtitle. -->
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Errors"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <TextBlock TextWrapping="Wrap"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,2,0,0">
+                        Operation failures always surface — pinned on so a muted setting can't hide a real problem.
+                    </TextBlock>
+                </StackPanel>
+                <ToggleButton Grid.Column="1"
+                              IsChecked="True"
+                              IsEnabled="False"
+                              VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+    </StackPanel>
+</UserControl>

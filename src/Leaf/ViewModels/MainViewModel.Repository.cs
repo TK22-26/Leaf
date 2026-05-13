@@ -100,7 +100,7 @@ public partial class MainViewModel
             // the user's add-repo action mid-flight.
             if (!await _gitService.IsValidRepositoryAsync(path))
             {
-                NotifyWarning("Not a Git repository", "Selected folder is not a valid Git repository.");
+                NotifyWarning(Models.NotificationCategory.Repository, "Not a Git repository", "Selected folder is not a valid Git repository.");
                 return;
             }
 
@@ -156,9 +156,9 @@ public partial class MainViewModel
 
                 Log.Info("Repository", $"Folder scan complete: added {addedCount} of {gitDirs.Length} found");
                 if (addedCount > 0)
-                    NotifySuccess("Repositories added", $"Added {addedCount} repositor{(addedCount == 1 ? "y" : "ies")}.");
+                    NotifySuccess(Models.NotificationCategory.Repository, "Repositories added", $"Added {addedCount} repositor{(addedCount == 1 ? "y" : "ies")}.");
                 else
-                    NotifyInfo("Scan complete", "No new repositories found.");
+                    NotifyInfo(Models.NotificationCategory.Repository, "Scan complete", "No new repositories found.");
             }
             catch (Exception ex)
             {
@@ -269,7 +269,7 @@ public partial class MainViewModel
             var repoInfo = await _gitService.GetRepositoryInfoFastAsync(dialog.ClonedRepositoryPath);
             var canonical = _repositoryService.AddRepository(repoInfo);
             await SelectRepositoryAsync(canonical);
-            NotifySuccess("Repository cloned", $"Cloned {canonical.Name} successfully.");
+            NotifySuccess(Models.NotificationCategory.Repository, "Repository cloned", $"Cloned {canonical.Name} successfully.");
         }
     }
 
@@ -677,7 +677,7 @@ public partial class MainViewModel
         }
 
         group.IsWatched = true;
-        NotifySuccess("Watching folder", $"Now watching {group.Name} for new repositories.");
+        NotifySuccess(Models.NotificationCategory.Repository, "Watching folder", $"Now watching {group.Name} for new repositories.");
     }
 
     /// <summary>
@@ -705,6 +705,6 @@ public partial class MainViewModel
         _folderWatcherService.RemoveWatchedFolder(folderPath);
 
         group.IsWatched = false;
-        NotifyInfo("Watch stopped", $"Stopped watching {group.Name}.");
+        NotifyInfo(Models.NotificationCategory.Repository, "Watch stopped", $"Stopped watching {group.Name}.");
     }
 }

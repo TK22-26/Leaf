@@ -209,7 +209,7 @@ public partial class MainViewModel
                 var converged = result.FirstBadSha != null
                     ? $"{Shorten(result.FirstBadSha)} is the first bad commit."
                     : "Bisect ended immediately.";
-                NotifySuccess("Bisect converged", converged);
+                NotifySuccess(Models.NotificationCategory.MergeAndRebase, "Bisect converged", converged);
             }
             await RefreshAsync();
         }
@@ -267,7 +267,7 @@ public partial class MainViewModel
                 var summary = result.FirstBadSha != null
                     ? $"{Shorten(result.FirstBadSha)} is the first bad commit."
                     : "Bisect ended (every remaining candidate was skipped).";
-                NotifySuccess("Bisect converged", summary);
+                NotifySuccess(Models.NotificationCategory.MergeAndRebase, "Bisect converged", summary);
             }
             // Mid-bisect testing state has no toast — the banner + right
             // pane show "Testing <sha> (K steps left)" + the diff
@@ -318,7 +318,7 @@ public partial class MainViewModel
             // the diff viewer — leaving stale commit metadata visible
             // after the user ended the bisect.
             ClearBisectState();
-            NotifyInfo("Bisect ended", "HEAD has been restored.");
+            NotifyInfo(Models.NotificationCategory.MergeAndRebase, "Bisect ended", "HEAD has been restored.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -551,7 +551,7 @@ public partial class MainViewModel
         var sha = EffectiveBisectSha;
         if (string.IsNullOrEmpty(sha)) return;
         _clipboardService.SetText(sha);
-        NotifyInfo("Copied", $"SHA {Shorten(sha)} copied to clipboard.");
+        NotifyInfo(Models.NotificationCategory.MergeAndRebase, "Copied", $"SHA {Shorten(sha)} copied to clipboard.");
     }
 
     [RelayCommand]
@@ -560,7 +560,7 @@ public partial class MainViewModel
         if (_currentSession == null || CurrentBisectState == null) return;
         if (BisectLog.Count == 0)
         {
-            NotifyInfo("Nothing to undo", "No verdicts have been issued in this bisect yet.");
+            NotifyInfo(Models.NotificationCategory.MergeAndRebase, "Nothing to undo", "No verdicts have been issued in this bisect yet.");
             return;
         }
 
@@ -595,7 +595,7 @@ public partial class MainViewModel
                 undoMessage = $"Re-testing {CurrentBisectState.CurrentShortSha}.";
             else
                 undoMessage = "Bisect state restored.";
-            NotifyInfo("Verdict undone", undoMessage);
+            NotifyInfo(Models.NotificationCategory.MergeAndRebase, "Verdict undone", undoMessage);
             await RefreshAsync();
         }
         catch (Exception ex)

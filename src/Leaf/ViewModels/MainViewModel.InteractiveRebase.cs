@@ -111,7 +111,7 @@ public partial class MainViewModel
         else if (terminalResult?.Success == true)
         {
             Log.Info("InteractiveRebase", "Rebase completed cleanly; refreshing repository view.");
-            NotifySuccess("Interactive rebase complete", "Your commits have been rewritten.");
+            NotifySuccess(Models.NotificationCategory.MergeAndRebase, "Interactive rebase complete", "Your commits have been rewritten.");
         }
         else if (terminalResult is { Success: false, HasConflicts: false } && !string.IsNullOrEmpty(terminalResult.ErrorMessage))
         {

@@ -215,20 +215,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Fire a success toast. Helper around <see cref="INotificationService.Show"/>
-    /// so call sites stay readable. Safe when <see cref="_notificationService"/>
-    /// is null (test context, headless runs).
+    /// Fire a success toast in a user-toggleable category. Helper around
+    /// <see cref="INotificationService.Show"/> so call sites stay
+    /// readable. Safe when <see cref="_notificationService"/> is null
+    /// (test context, headless runs). The user can switch each category
+    /// off from Settings → Notifications; errors never go through this
+    /// helper, they take the no-category path on
+    /// <see cref="IDialogService.ShowErrorToastAsync"/>.
     /// </summary>
-    private void NotifySuccess(string title, string description) =>
-        _notificationService?.Show(title, description, NotificationType.Success);
+    private void NotifySuccess(Models.NotificationCategory category, string title, string description) =>
+        _notificationService?.Show(title, description, NotificationType.Success, category);
 
-    /// <summary>Fire an informational toast.</summary>
-    private void NotifyInfo(string title, string description) =>
-        _notificationService?.Show(title, description, NotificationType.Information);
+    /// <summary>Fire an informational toast in a user-toggleable category.</summary>
+    private void NotifyInfo(Models.NotificationCategory category, string title, string description) =>
+        _notificationService?.Show(title, description, NotificationType.Information, category);
 
-    /// <summary>Fire a warning toast.</summary>
-    private void NotifyWarning(string title, string description) =>
-        _notificationService?.Show(title, description, NotificationType.Warning);
+    /// <summary>Fire a warning toast in a user-toggleable category.</summary>
+    private void NotifyWarning(Models.NotificationCategory category, string title, string description) =>
+        _notificationService?.Show(title, description, NotificationType.Warning, category);
 
     /// <summary>
     /// Convenience overload that pulls the detail string from an exception.

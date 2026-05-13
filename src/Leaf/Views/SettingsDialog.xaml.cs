@@ -242,6 +242,9 @@ public partial class SettingsDialog : Window
             case "SshKeys":
                 SshKeysSettings.Visibility = Visibility.Visible;
                 break;
+            case "Notifications":
+                NotificationsSettings.Visibility = Visibility.Visible;
+                break;
         }
     }
 
@@ -317,6 +320,7 @@ public partial class SettingsDialog : Window
         CommitTemplatesSettings.Visibility = Visibility.Collapsed;
         CommitSigningSettings.Visibility = Visibility.Collapsed;
         SshKeysSettings.Visibility = Visibility.Collapsed;
+        NotificationsSettings.Visibility = Visibility.Collapsed;
 
         // Show search results
         ContentSearchResults.Visibility = Visibility.Visible;
@@ -368,6 +372,7 @@ public partial class SettingsDialog : Window
             "CommitTemplates" => NavCommitTemplates,
             "CommitSigning" => NavCommitSigning,
             "SshKeys" => NavSshKeys,
+            "Notifications" => NavNotifications,
             _ => null
         };
 
@@ -413,6 +418,7 @@ public partial class SettingsDialog : Window
         CommitSigningSettings.ActiveRepositoryPath = _currentRepoPath;
         CommitSigningSettings.LoadSettings(_settings, _credentialService);
         SshKeysSettings.LoadSettings(_settings, _credentialService);
+        NotificationsSettings.LoadSettings(_settings, _credentialService);
     }
 
     private void BrowseClonePath_Click(object sender, RoutedEventArgs e)
@@ -467,6 +473,7 @@ public partial class SettingsDialog : Window
         CommitTemplatesSettings.SaveSettings(_settings, _credentialService);
         CommitSigningSettings.SaveSettings(_settings, _credentialService);
         SshKeysSettings.SaveSettings(_settings, _credentialService);
+        NotificationsSettings.SaveSettings(_settings, _credentialService);
 
         // Save all settings
         _settingsService.SaveSettings(_settings);

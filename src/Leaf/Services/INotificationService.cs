@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using Leaf.Models;
 
 namespace Leaf.Services;
 
@@ -23,10 +24,24 @@ public class NotificationMessage
     public IReadOnlyList<NotificationAction> Actions { get; init; } = [];
 }
 
+/// <summary>
+/// Fires toast notifications. A <c>category</c> argument lets the user
+/// filter classes of toast from Settings; passing <c>null</c> (the
+/// default) bypasses the filter and always shows the message — used by
+/// error toasts so failures can never be muted accidentally.
+/// </summary>
 public interface INotificationService
 {
     event Action<NotificationMessage>? NotificationRequested;
-    void Show(string title, string description, NotificationType type = NotificationType.Error);
-    void Show(string title, string description, NotificationType type, params NotificationAction[] actions);
-    void Show(string title, string description, NotificationType type, ICommand clickCommand, object? clickCommandParameter = null, params NotificationAction[] actions);
+
+    /// <param name="category">
+    /// When non-null, the user's Notifications settings decide whether the
+    /// toast is rendered. When <c>null</c>, the toast always shows
+    /// (errors and other un-mutable messages take this path).
+    /// </param>
+    void Show(string title, string description, NotificationType type = NotificationType.Error, NotificationCategory? category = null);
+
+    void Show(string title, string description, NotificationType type, NotificationCategory? category, params NotificationAction[] actions);
+
+    void Show(string title, string description, NotificationType type, NotificationCategory? category, ICommand clickCommand, object? clickCommandParameter = null, params NotificationAction[] actions);
 }

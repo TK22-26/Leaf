@@ -156,7 +156,7 @@ public partial class MainViewModel
         {
             var dropped = autosquash && updateRefs ? "Autosquash and Update-refs"
                 : autosquash ? "Autosquash" : "Update-refs";
-            NotifyInfo("Interactive rebase",
+            NotifyInfo(Models.NotificationCategory.MergeAndRebase, "Interactive rebase",
                 $"{dropped} option(s) are only applied in Standard mode. Edit the plan manually if needed.");
         }
 
@@ -196,7 +196,7 @@ public partial class MainViewModel
         }
         else if (terminalResult?.Success == true)
         {
-            NotifySuccess("Interactive rebase complete", $"Rebased onto {ontoName}.");
+            NotifySuccess(Models.NotificationCategory.MergeAndRebase, "Interactive rebase complete", $"Rebased onto {ontoName}.");
         }
         else if (terminalResult is { Success: false, HasConflicts: false } && !string.IsNullOrEmpty(terminalResult.ErrorMessage))
         {
@@ -214,7 +214,7 @@ public partial class MainViewModel
     {
         if (result.Success)
         {
-            NotifySuccess("Rebase complete", $"Rebased onto {ontoName}.");
+            NotifySuccess(Models.NotificationCategory.MergeAndRebase, "Rebase complete", $"Rebased onto {ontoName}.");
             if (GitGraphViewModel != null)
             {
                 await GitGraphViewModel.LoadRepositoryAsync(SelectedRepository!.Path);
@@ -224,7 +224,7 @@ public partial class MainViewModel
 
         if (result.HasConflicts)
         {
-            NotifyWarning("Rebase paused", "Resolve conflicts to continue the rebase.");
+            NotifyWarning(Models.NotificationCategory.MergeAndRebase, "Rebase paused", "Resolve conflicts to continue the rebase.");
 
             var info = await _gitService.GetRepositoryInfoFastAsync(
                 SelectedRepository!.Path, cancellationToken: CurrentRepositoryToken);

@@ -79,7 +79,7 @@ public partial class MainViewModel
             var toastBody = result.Files.Count == 1
                 ? $"{Path.GetFileName(result.Files[0])}\n{result.OutputDirectory}"
                 : $"Saved {result.Files.Count} patch files to:\n{result.OutputDirectory}";
-            NotifySuccess("Patch created", toastBody);
+            NotifySuccess(Models.NotificationCategory.Patch, "Patch created", toastBody);
         }
         catch (Exception ex)
         {
@@ -121,6 +121,7 @@ public partial class MainViewModel
             }
             _clipboardService.SetText(text);
             NotifySuccess(
+                Models.NotificationCategory.Patch,
                 "Patch copied",
                 $"Patch for {commit.ShortSha} is on your clipboard ({text.Length:N0} chars).");
         }
@@ -245,7 +246,7 @@ public partial class MainViewModel
                 var summary = dialog.Strategy == ApplyPatchStrategy.Am
                     ? $"Applied {dialog.PatchFiles.Count} patch(es) as new commits."
                     : "Patch applied to working tree.";
-                NotifySuccess("Patch applied", summary);
+                NotifySuccess(Models.NotificationCategory.Patch, "Patch applied", summary);
                 await RefreshAsync();
                 return;
             }

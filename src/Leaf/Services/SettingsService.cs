@@ -327,6 +327,27 @@ public class AppSettings
     /// </summary>
     public Dictionary<string, bool> SuppressedMessageKeys { get; set; } = [];
 
+    // ─── Toast notification toggles ─────────────────────────────────────
+    // One flag per Leaf.Models.NotificationCategory. The defaults below
+    // are tuned so a fresh install gets the high-value confirmations
+    // (sync results, checkout, merge / rebase completion, GitFlow,
+    // worktrees, repository management, PRs) without the routine
+    // housekeeping noise (branch admin, stash, remote config, cancel
+    // confirmations). Errors have no toggle and always show.
+    public bool NotifySyncOperations { get; set; } = true;
+    public bool NotifyBranchCheckout { get; set; } = true;
+    public bool NotifyBranchAdmin { get; set; } = false;
+    public bool NotifyMergeAndRebase { get; set; } = true;
+    public bool NotifyGitFlow { get; set; } = true;
+    public bool NotifyWorktree { get; set; } = true;
+    public bool NotifySubmodule { get; set; } = true;
+    public bool NotifyStash { get; set; } = false;
+    public bool NotifyPullRequest { get; set; } = true;
+    public bool NotifyPatch { get; set; } = true;
+    public bool NotifyRepository { get; set; } = true;
+    public bool NotifyRemoteConfig { get; set; } = false;
+    public bool NotifyCancelledOperations { get; set; } = false;
+
     // Multi-remote sync behavior
     public bool SyncAllRemotes { get; set; } = false;
 

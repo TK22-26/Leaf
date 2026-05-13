@@ -98,7 +98,7 @@ public partial class MainViewModel
 
                 if (result == MessageBoxResult.Cancel)
                 {
-                    NotifyInfo("Recovery cancelled", "Repository state unchanged.");
+                    NotifyInfo(Models.NotificationCategory.CancelledOperations, "Recovery cancelled", "Repository state unchanged.");
                     return;
                 }
 
@@ -114,7 +114,7 @@ public partial class MainViewModel
 
                     if (!confirmed)
                     {
-                        NotifyInfo("Recovery cancelled", "Repository state unchanged.");
+                        NotifyInfo(Models.NotificationCategory.CancelledOperations, "Recovery cancelled", "Repository state unchanged.");
                         return;
                     }
                 }
@@ -134,7 +134,7 @@ public partial class MainViewModel
                     Log.Info("Merge", $"Clear stored merge conflicts failed: {clearEx.Message}");
                 }
 
-                NotifySuccess("Index reset", discardChanges
+                NotifySuccess(Models.NotificationCategory.MergeAndRebase, "Index reset", discardChanges
                     ? "Index reset and files restored."
                     : "Index reset (working directory preserved).");
             }
@@ -148,27 +148,27 @@ public partial class MainViewModel
                 {
                     case Models.GitOperationType.CherryPick:
                         await _gitService.AbortCherryPickAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                        NotifySuccess("Cherry-pick aborted", "Working tree restored to pre-cherry-pick state.");
+                        NotifySuccess(Models.NotificationCategory.CancelledOperations, "Cherry-pick aborted", "Working tree restored to pre-cherry-pick state.");
                         break;
 
                     case Models.GitOperationType.Revert:
                         await _gitService.AbortRevertAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                        NotifySuccess("Revert aborted", "Working tree restored to pre-revert state.");
+                        NotifySuccess(Models.NotificationCategory.CancelledOperations, "Revert aborted", "Working tree restored to pre-revert state.");
                         break;
 
                     case Models.GitOperationType.Rebase:
                         await _gitService.AbortRebaseAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                        NotifySuccess("Rebase aborted", "Working tree restored to pre-rebase state.");
+                        NotifySuccess(Models.NotificationCategory.CancelledOperations, "Rebase aborted", "Working tree restored to pre-rebase state.");
                         break;
 
                     case Models.GitOperationType.Am:
                         await _gitService.AbortAmAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                        NotifySuccess("Patch apply aborted", "Working tree restored to pre-apply state.");
+                        NotifySuccess(Models.NotificationCategory.CancelledOperations, "Patch apply aborted", "Working tree restored to pre-apply state.");
                         break;
 
                     default:
                         await _gitService.AbortMergeAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
-                        NotifySuccess("Merge aborted", "Working tree restored to pre-merge state.");
+                        NotifySuccess(Models.NotificationCategory.CancelledOperations, "Merge aborted", "Working tree restored to pre-merge state.");
                         break;
                 }
 
@@ -222,7 +222,7 @@ public partial class MainViewModel
             // gets picked up by the re-fetch below. If they close without
             // Apply, no tool is saved — explicit user choice, we honour
             // it by returning early.
-            NotifyInfo("Merge tool needed", "Configure an external merge tool to resolve conflicts in it.");
+            NotifyInfo(Models.NotificationCategory.MergeAndRebase, "Merge tool needed", "Configure an external merge tool to resolve conflicts in it.");
             await OpenSettingsAsync("ExternalTools");
             // OpenSettingsAsync calls RefreshExternalMergeToolAvailabilityAsync
             // on close, which updates HasExternalMergeTool — no need to
@@ -232,7 +232,7 @@ public partial class MainViewModel
                 SelectedRepository.Path, ExternalToolKind.Merge, CurrentRepositoryToken);
             if (mergeTool == null)
             {
-                NotifyWarning("No merge tool", "No external merge tool configured.");
+                NotifyWarning(Models.NotificationCategory.MergeAndRebase, "No merge tool", "No external merge tool configured.");
                 return;
             }
         }
@@ -254,11 +254,11 @@ public partial class MainViewModel
             // external merge silently returns as if nothing happened.
             if (staged)
             {
-                NotifySuccess("Conflict resolved", $"{conflict.FilePath} resolved in {mergeTool.DisplayName}.");
+                NotifySuccess(Models.NotificationCategory.MergeAndRebase, "Conflict resolved", $"{conflict.FilePath} resolved in {mergeTool.DisplayName}.");
             }
             else
             {
-                NotifyWarning("Merge tool exited", $"{mergeTool.DisplayName} did not produce a staged result for {conflict.FilePath}.");
+                NotifyWarning(Models.NotificationCategory.MergeAndRebase, "Merge tool exited", $"{mergeTool.DisplayName} did not produce a staged result for {conflict.FilePath}.");
             }
         }
         catch (Exception ex)
@@ -490,9 +490,9 @@ public partial class MainViewModel
             };
 
             if (success)
-                NotifySuccess($"{verb} complete", $"{what} completed successfully.");
+                NotifySuccess(Models.NotificationCategory.MergeAndRebase, $"{verb} complete", $"{what} completed successfully.");
             else
-                NotifyInfo($"{verb} aborted", "Working tree restored.");
+                NotifyInfo(Models.NotificationCategory.CancelledOperations, $"{verb} aborted", "Working tree restored.");
 
             await RefreshAsync();
         }

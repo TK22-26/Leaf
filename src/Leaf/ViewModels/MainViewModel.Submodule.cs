@@ -47,7 +47,7 @@ public partial class MainViewModel
                 [submodule.Path],
                 recursive: false,
                 CurrentRepositoryToken);
-            NotifySuccess("Submodule updated", $"{verbPast} {submodule.Path}.");
+            NotifySuccess(Models.NotificationCategory.Submodule, "Submodule updated", $"{verbPast} {submodule.Path}.");
         }
         catch (Exception ex)
         {
@@ -78,7 +78,7 @@ public partial class MainViewModel
                 [],
                 recursive: true,
                 CurrentRepositoryToken);
-            NotifySuccess("Submodules updated", "All registered submodules initialized and updated.");
+            NotifySuccess(Models.NotificationCategory.Submodule, "Submodules updated", "All registered submodules initialized and updated.");
         }
         catch (Exception ex)
         {
@@ -109,7 +109,7 @@ public partial class MainViewModel
                 [submodule.Path],
                 recursive: false,
                 CurrentRepositoryToken);
-            NotifySuccess("Submodule synced", $"{submodule.Path} URL copied to .git/config.");
+            NotifySuccess(Models.NotificationCategory.Submodule, "Submodule synced", $"{submodule.Path} URL copied to .git/config.");
         }
         catch (Exception ex)
         {
@@ -151,7 +151,7 @@ public partial class MainViewModel
                 submodule.Path,
                 force,
                 CurrentRepositoryToken);
-            NotifySuccess("Submodule deinitialized", $"{submodule.Path} working tree removed.");
+            NotifySuccess(Models.NotificationCategory.Submodule, "Submodule deinitialized", $"{submodule.Path} working tree removed.");
         }
         catch (Exception ex)
         {
@@ -176,7 +176,7 @@ public partial class MainViewModel
         if (SelectedRepository == null || submodule == null) return;
         if (!submodule.IsInitialized)
         {
-            NotifyWarning("Submodule not initialized", $"{submodule.Path} is not initialized. Init it first.");
+            NotifyWarning(Models.NotificationCategory.Submodule, "Submodule not initialized", $"{submodule.Path} is not initialized. Init it first.");
             return;
         }
 
@@ -196,13 +196,13 @@ public partial class MainViewModel
                 : repoRoot + Path.DirectorySeparatorChar;
             if (!fullPath.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase))
             {
-                NotifyWarning("Submodule refused", $"Refusing to open '{submodule.Path}': resolves outside the repository.");
+                NotifyWarning(Models.NotificationCategory.Submodule, "Submodule refused", $"Refusing to open '{submodule.Path}': resolves outside the repository.");
                 return;
             }
 
             if (!Directory.Exists(fullPath))
             {
-                NotifyWarning("Submodule missing", $"Submodule directory not found on disk: {fullPath}");
+                NotifyWarning(Models.NotificationCategory.Submodule, "Submodule missing", $"Submodule directory not found on disk: {fullPath}");
                 return;
             }
 
@@ -275,7 +275,7 @@ public partial class MainViewModel
                 dialog.Path,
                 dialog.Branch,
                 CurrentRepositoryToken);
-            NotifySuccess("Submodule added", $"Added at {dialog.Path}. Commit to finalize.");
+            NotifySuccess(Models.NotificationCategory.Submodule, "Submodule added", $"Added at {dialog.Path}. Commit to finalize.");
         }
         catch (Exception ex)
         {
@@ -302,7 +302,7 @@ public partial class MainViewModel
         if (originRepo == null || submodule == null) return;
         if (string.IsNullOrWhiteSpace(submodule.Branch))
         {
-            NotifyWarning("No tracking branch", $"{submodule.Path} has no tracking branch configured.");
+            NotifyWarning(Models.NotificationCategory.Submodule, "No tracking branch", $"{submodule.Path} has no tracking branch configured.");
             return;
         }
 
@@ -313,7 +313,7 @@ public partial class MainViewModel
                 originRepo.Path,
                 submodule.Path,
                 CurrentRepositoryToken);
-            NotifySuccess("Submodule updated", $"Updated {submodule.Path} to latest on {submodule.Branch}.");
+            NotifySuccess(Models.NotificationCategory.Submodule, "Submodule updated", $"Updated {submodule.Path} to latest on {submodule.Branch}.");
         }
         catch (Exception ex)
         {
@@ -351,7 +351,7 @@ public partial class MainViewModel
                 originRepo.Path,
                 submodule,
                 CurrentRepositoryToken);
-            NotifySuccess("Submodule removed", $"Removed {submodule.Path}. Commit to finalize.");
+            NotifySuccess(Models.NotificationCategory.Submodule, "Submodule removed", $"Removed {submodule.Path}. Commit to finalize.");
         }
         catch (Exception ex)
         {

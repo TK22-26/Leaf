@@ -120,7 +120,7 @@ public partial class MainViewModel
                 MergeType.FastForwardOnly => ("Fast-forward complete", "Fast-forwarded to"),
                 _ => ("Merge complete", "Merged"),
             };
-            NotifySuccess(title, $"{action} {branchName}.");
+            NotifySuccess(Models.NotificationCategory.MergeAndRebase, title, $"{action} {branchName}.");
 
             // Refresh git graph
             if (GitGraphViewModel != null)
@@ -130,7 +130,7 @@ public partial class MainViewModel
         }
         else if (result.HasConflicts)
         {
-            NotifyWarning("Merge conflicts", "Merge has conflicts — resolve to complete.");
+            NotifyWarning(Models.NotificationCategory.MergeAndRebase, "Merge conflicts", "Merge has conflicts — resolve to complete.");
 
             // Refresh repo info to update merge banner and conflicts immediately
             var info = await _gitService.GetRepositoryInfoFastAsync(SelectedRepository!.Path, cancellationToken: CurrentRepositoryToken);
@@ -205,7 +205,7 @@ public partial class MainViewModel
 
             if (result.Success)
             {
-                NotifySuccess("Fast-forwarded", $"Fast-forwarded to {targetName}.");
+                NotifySuccess(Models.NotificationCategory.MergeAndRebase, "Fast-forwarded", $"Fast-forwarded to {targetName}.");
                 await RefreshAsync();
             }
             else

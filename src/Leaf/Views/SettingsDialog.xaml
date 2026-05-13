@@ -306,6 +306,16 @@
                             </StackPanel>
                         </TreeViewItem.Header>
                     </TreeViewItem>
+
+                    <!-- Notifications — toast toggle list. -->
+                    <TreeViewItem x:Name="NavNotifications" Tag="Notifications">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <ic:SymbolIcon Symbol="Alert" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Notifications" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
                 </TreeView>
             </Grid>
         </Border>
@@ -766,6 +776,9 @@
 
                     <!-- SSH Keys Content (§5.13) -->
                     <settings:SshKeysSettingsControl x:Name="SshKeysSettings" Visibility="Collapsed" />
+
+                    <!-- Notifications Content -->
+                    <settings:NotificationsSettingsControl x:Name="NotificationsSettings" Visibility="Collapsed" />
 
                     <!-- Search Results (shown when searching) -->
                     <StackPanel x:Name="ContentSearchResults" Visibility="Collapsed">

@@ -49,7 +49,7 @@ public partial class MainViewModel
 
             if (succeeded == total)
             {
-                NotifySuccess("Fetch complete", $"Fetched {succeeded} repositor{(succeeded == 1 ? "y" : "ies")}.");
+                NotifySuccess(Models.NotificationCategory.SyncOperations, "Fetch complete", $"Fetched {succeeded} repositor{(succeeded == 1 ? "y" : "ies")}.");
             }
             else
             {
@@ -63,6 +63,7 @@ public partial class MainViewModel
                     listed += $", +{failedNames.Count - MaxNamesInToast} more";
                 }
                 NotifyWarning(
+                    Models.NotificationCategory.SyncOperations,
                     "Fetch finished with errors",
                     $"Fetched {succeeded} of {total} repositories.\nFailed: {listed}");
             }
@@ -101,7 +102,7 @@ public partial class MainViewModel
 
             await _gitService.FetchAsync(SelectedRepository.Path, remoteName, credentialKey: credentialKey, cancellationToken: CurrentRepositoryToken);
 
-            NotifySuccess("Fetch complete", $"Fetched from {remoteName}.");
+            NotifySuccess(Models.NotificationCategory.SyncOperations, "Fetch complete", $"Fetched from {remoteName}.");
             await SelectRepositoryAsync(SelectedRepository, fetchInBackground: false);
         }
         catch (Exception ex)
@@ -209,7 +210,7 @@ public partial class MainViewModel
             var successDescription = rebaseOverride == true
                 ? "Your branch was rebased onto the remote."
                 : "Your branch is up to date with the remote.";
-            NotifySuccess("Pull complete", successDescription);
+            NotifySuccess(Models.NotificationCategory.SyncOperations, "Pull complete", successDescription);
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -282,6 +283,7 @@ public partial class MainViewModel
             // remote we never enumerate); the toast then drops the
             // target name.
             NotifySuccess(
+                Models.NotificationCategory.SyncOperations,
                 "Push complete",
                 remote != null ? $"Pushed to {remote.Name}." : "Push completed.");
             await RefreshAsync();
@@ -348,7 +350,7 @@ public partial class MainViewModel
         }
         else if (successCount > 0)
         {
-            NotifySuccess("Push complete",
+            NotifySuccess(Models.NotificationCategory.SyncOperations, "Push complete",
                 $"Pushed to {successCount} of {remotes.Count} remote(s).");
         }
 

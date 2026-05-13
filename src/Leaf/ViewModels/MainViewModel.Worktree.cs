@@ -144,7 +144,7 @@ public partial class MainViewModel
             // Update IsCurrent flags on all worktree collections so the checkmark moves
             UpdateWorktreeCurrentFlags(worktree.Path);
 
-            NotifySuccess("Worktree switched", $"Now viewing {worktree.DisplayName}.");
+            NotifySuccess(Models.NotificationCategory.Worktree, "Worktree switched", $"Now viewing {worktree.DisplayName}.");
         }
         catch (Exception ex)
         {
@@ -209,7 +209,7 @@ public partial class MainViewModel
                 }
 
                 await _gitService.CreateWorktreeAsync(SelectedRepository.Path, defaultPath, branch.Name, cancellationToken: CurrentRepositoryToken);
-                NotifySuccess("Worktree created", $"Created at {defaultPath}.");
+                NotifySuccess(Models.NotificationCategory.Worktree, "Worktree created", $"Created at {defaultPath}.");
 
                 // Reload branches to show new worktree
                 SelectedRepository.BranchesLoaded = false;
@@ -230,19 +230,19 @@ public partial class MainViewModel
                     var tipSha = branch.TipSha;
                     if (string.IsNullOrEmpty(tipSha))
                     {
-                        NotifyWarning("Cannot create worktree", "Cannot determine branch tip SHA.");
+                        NotifyWarning(Models.NotificationCategory.Worktree, "Cannot create worktree", "Cannot determine branch tip SHA.");
                         return;
                     }
 
                     await _gitService.CreateWorktreeDetachedAsync(SelectedRepository.Path, defaultPath, tipSha, cancellationToken: CurrentRepositoryToken);
-                    NotifySuccess("Worktree created", $"Detached worktree created at {defaultPath}.");
+                    NotifySuccess(Models.NotificationCategory.Worktree, "Worktree created", $"Detached worktree created at {defaultPath}.");
 
                     SelectedRepository.BranchesLoaded = false;
                     await LoadBranchesForRepoAsync(SelectedRepository);
                 }
                 else
                 {
-                    NotifyInfo("Worktree cancelled", "Worktree creation cancelled.");
+                    NotifyInfo(Models.NotificationCategory.Worktree, "Worktree cancelled", "Worktree creation cancelled.");
                 }
             }
         }
@@ -291,7 +291,7 @@ public partial class MainViewModel
             var defaultPath = WorktreeOperations.GenerateDefaultWorktreePath(SelectedRepository.Path, newBranchName);
             await BeginBusyAsync($"Creating worktree with new branch {newBranchName}...");
             await _gitService.CreateWorktreeWithNewBranchAsync(SelectedRepository.Path, defaultPath, newBranchName, startPoint, cancellationToken: CurrentRepositoryToken);
-            NotifySuccess("Worktree created", $"Created at {defaultPath} on new branch {newBranchName}.");
+            NotifySuccess(Models.NotificationCategory.Worktree, "Worktree created", $"Created at {defaultPath} on new branch {newBranchName}.");
 
             // Reload branches to show new worktree
             SelectedRepository.BranchesLoaded = false;
@@ -322,7 +322,7 @@ public partial class MainViewModel
             var defaultPath = WorktreeOperations.GenerateDefaultWorktreePath(SelectedRepository.Path, shortSha);
             await BeginBusyAsync($"Creating detached worktree at {shortSha}...");
             await _gitService.CreateWorktreeDetachedAsync(SelectedRepository.Path, defaultPath, commit.Sha, cancellationToken: CurrentRepositoryToken);
-            NotifySuccess("Worktree created", $"Detached worktree created at {defaultPath}.");
+            NotifySuccess(Models.NotificationCategory.Worktree, "Worktree created", $"Detached worktree created at {defaultPath}.");
 
             // Reload branches to show new worktree
             SelectedRepository.BranchesLoaded = false;
@@ -408,7 +408,7 @@ public partial class MainViewModel
                     }
                     else
                     {
-                        NotifyInfo("Worktree remove cancelled", "Worktree was not removed.");
+                        NotifyInfo(Models.NotificationCategory.Worktree, "Worktree remove cancelled", "Worktree was not removed.");
                         return;
                     }
                 }
@@ -422,7 +422,7 @@ public partial class MainViewModel
             // Successful-removal cleanup: toast + repo-list pruning + branch reload.
             if (removed)
             {
-                NotifySuccess("Worktree removed", $"Removed worktree {worktree.DisplayName}.");
+                NotifySuccess(Models.NotificationCategory.Worktree, "Worktree removed", $"Removed worktree {worktree.DisplayName}.");
 
                 var repoInList = _repositoryService.FindRepository(worktree.Path);
                 if (repoInList != null)
@@ -460,7 +460,7 @@ public partial class MainViewModel
             await _gitService.LockWorktreeAsync(SelectedRepository.Path, worktree.Path, cancellationToken: CurrentRepositoryToken);
             worktree.IsLocked = true;
 
-            NotifySuccess("Worktree locked", $"Locked {worktree.DisplayName}.");
+            NotifySuccess(Models.NotificationCategory.Worktree, "Worktree locked", $"Locked {worktree.DisplayName}.");
         }
         catch (Exception ex)
         {
@@ -488,7 +488,7 @@ public partial class MainViewModel
             await _gitService.UnlockWorktreeAsync(SelectedRepository.Path, worktree.Path, cancellationToken: CurrentRepositoryToken);
             worktree.IsLocked = false;
 
-            NotifySuccess("Worktree unlocked", $"Unlocked {worktree.DisplayName}.");
+            NotifySuccess(Models.NotificationCategory.Worktree, "Worktree unlocked", $"Unlocked {worktree.DisplayName}.");
         }
         catch (Exception ex)
         {
@@ -515,7 +515,7 @@ public partial class MainViewModel
 
             await _gitService.PruneWorktreesAsync(SelectedRepository.Path, cancellationToken: CurrentRepositoryToken);
 
-            NotifySuccess("Worktrees pruned", "Stale worktree references removed.");
+            NotifySuccess(Models.NotificationCategory.Worktree, "Worktrees pruned", "Stale worktree references removed.");
 
             // Reload branches to update worktree list
             SelectedRepository.BranchesLoaded = false;

@@ -230,6 +230,7 @@ public partial class MainViewModel
             "Pull Request Created",
             $"#{pr.Number} {pr.Title}",
             NotificationType.Success,
+            Models.NotificationCategory.PullRequest,
             OpenPullRequestInBrowserCommand,
             pr,
             new NotificationAction("Open in browser", () =>
@@ -343,7 +344,7 @@ public partial class MainViewModel
 
             if (pr == null)
             {
-                NotifyInfo("No pull request found",
+                NotifyInfo(Models.NotificationCategory.PullRequest, "No pull request found",
                     $"No pull request is associated with commit {commit.ShortSha}.");
                 return;
             }
