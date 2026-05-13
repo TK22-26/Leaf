@@ -465,15 +465,19 @@
                             Visibility="{Binding HasSubmodules, Converter={StaticResource BoolToVisibilityConverter}}"
                             AutomationProperties.AutomationId="ToggleWorkspaceMode">
                         <StackPanel HorizontalAlignment="Center">
-                            <!-- F0E2 = GridView (Win 11 Snap Layouts
-                                 2×2 squares). The earlier E8B0 was a
-                                 cursor glyph in this version of the
-                                 Segoe Fluent Icons font. -->
-                            <TextBlock
+                            <!-- Use the FluentIcons named symbol set
+                                 (already a dep elsewhere — message
+                                 boxes, dialogs, rebase). Named symbols
+                                 are version-stable across the Segoe
+                                 Fluent Icons font, where raw codepoints
+                                 drift between Windows builds (e.g.
+                                 E8B0 renders as a cursor on some
+                                 versions). LayoutCellFour is the
+                                 unambiguous 2x2-grid glyph. -->
+                            <ic:SymbolIcon
                                 HorizontalAlignment="Center"
-                                FontFamily="Segoe Fluent Icons"
-                                FontSize="16"
-                                Text="&#xF0E2;" />
+                                Symbol="LayoutCellFour"
+                                FontSize="16" />
                             <TextBlock
                                 HorizontalAlignment="Center"
                                 FontSize="10"
