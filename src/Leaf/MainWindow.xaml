@@ -27,22 +27,11 @@
         <converters:IntGreaterThanZeroConverter x:Key="IntGreaterThanZeroConverter" />
         <converters:TerminalRowHeightConverter x:Key="TerminalRowHeightConverter" />
 
-        <!--  Action bar button style with green hover (stacked icon + text)  -->
-        <Style
-            x:Key="ActionBarButtonStyle"
-            BasedOn="{StaticResource {x:Type Button}}"
-            TargetType="Button">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Margin" Value="1,0" />
-            <Setter Property="Padding" Value="8,4" />
-            <Setter Property="MinWidth" Value="46" />
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
-                </Trigger>
-            </Style.Triggers>
-        </Style>
+        <!-- ActionBarButtonStyle moved to App.xaml so descendant
+             UserControls (workspace grid toolbar, etc.) can resolve it
+             via StaticResource at parse time. MainWindow's references
+             still work because the App-level resources are part of
+             every StaticResource lookup chain. -->
     </Window.Resources>
 
     <!-- Window.InputBindings are populated at runtime by
