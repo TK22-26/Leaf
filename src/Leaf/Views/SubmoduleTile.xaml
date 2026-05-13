@@ -145,17 +145,28 @@
                                 AutomationProperties.AutomationId="Tile.Overflow">
                             <ic:SymbolIcon Symbol="MoreVertical" FontSize="14" />
                             <Button.ContextMenu>
+                                <!-- Less-frequent verbs that don't earn
+                                     a dedicated title-bar button. Pin
+                                     and "Open in single view" live as
+                                     their own icons, so they don't
+                                     appear here — keep the menu for
+                                     things you reach for once a
+                                     session, not once a minute. The
+                                     git-ops items wire up in Phase D;
+                                     marked IsEnabled=False until then
+                                     so users see what's coming. -->
                                 <ContextMenu>
-                                    <MenuItem Header="Pin to top"
-                                              Command="{Binding TogglePinCommand}"
-                                              Visibility="{Binding IsPinned, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
-                                    <MenuItem Header="Unpin"
-                                              Command="{Binding TogglePinCommand}"
-                                              Visibility="{Binding IsPinned, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <MenuItem Header="Switch branch…" IsEnabled="False" />
+                                    <MenuItem Header="Stash changes" IsEnabled="False" />
+                                    <MenuItem Header="Pop stash" IsEnabled="False" />
                                     <Separator />
-                                    <MenuItem Header="Open in single view"
-                                              Command="{Binding OpenInSingleViewCommand}"
-                                              Visibility="{Binding IsParent, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                                    <MenuItem Header="Merge into current…" IsEnabled="False" />
+                                    <MenuItem Header="Rebase onto…" IsEnabled="False" />
+                                    <Separator />
+                                    <MenuItem Header="Refresh"
+                                              Command="{Binding RefreshTileCommand}" />
+                                    <MenuItem Header="Reveal in File Explorer"
+                                              Command="{Binding RevealInExplorerCommand}" />
                                 </ContextMenu>
                             </Button.ContextMenu>
                         </Button>

@@ -251,6 +251,17 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Re-run the per-tile load for <paramref name="tile"/>. Pulls a
+    /// fresh RepositoryInfo and asks the tile's GitGraphViewModel to
+    /// reload. The parent tile reuses the host's graph, so a parent
+    /// refresh updates that single shared VM.
+    /// </summary>
+    public Task RefreshTileAsync(SubmoduleTileViewModel tile)
+    {
+        return LoadTileAsync(tile);
+    }
+
+    /// <summary>
     /// Reorder the live <see cref="Tiles"/> collection so the parent
     /// stays at position 0, pinned tiles follow in user order, and the
     /// remaining tiles fall into alphabetical order below. Mutates the

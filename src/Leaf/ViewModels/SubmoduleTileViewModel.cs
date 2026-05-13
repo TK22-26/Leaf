@@ -113,6 +113,45 @@ public partial class SubmoduleTileViewModel : ObservableObject, IDisposable
         await Workspace.OpenTileInSingleViewAsync(this);
     }
 
+    /// <summary>
+    /// Re-run the per-tile load — fetches a fresh RepositoryInfo, then
+    /// asks the tile's GitGraphViewModel to rebuild against it. Used
+    /// from the kebab menu's Refresh item; the rest of the tile keeps
+    /// rendering its current state until the new data arrives.
+    /// </summary>
+    [RelayCommand]
+    public async Task RefreshTileAsync()
+    {
+        if (Workspace is null) return;
+        await Workspace.RefreshTileAsync(this);
+    }
+
+    /// <summary>
+    /// Open the tile's repository folder in Windows File Explorer.
+    /// Useful when the user wants to drag a file into the working tree
+    /// or run an external tool against the checkout.
+    /// </summary>
+    [RelayCommand]
+    public void RevealInExplorer()
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{RepositoryPath}\"",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            // Swallow + log — RevealInExplorer is a convenience verb.
+            // The button doesn't owe the user a modal failure dialog
+            // if explorer.exe is unavailable for some reason.
+            Log.Warn("Workspace", $"RevealInExplorer failed for {RepositoryPath}: {ex.Message}");
+        }
+    }
+
     private SubmoduleTileViewModel(
         string repositoryPath,
         string name,
