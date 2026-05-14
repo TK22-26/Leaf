@@ -119,6 +119,32 @@ public static class ServiceRegistry
         services.AddSingleton<Leaf.Services.Ai.Adapters.IAiCliAdapter, Leaf.Services.Ai.Adapters.CodexCliAdapter>();
         services.AddSingleton<IAiCommitMessageService, AiCommitMessageService>();
 
+        // Direct-billing HTTP transport. Single shared HttpClient with a
+        // bounded connection lifetime so DNS rotation eventually picks
+        // up — auth is set per-request inside each IAiApiClient so the
+        // shared instance never holds a provider-specific header on
+        // DefaultRequestHeaders.
+        services.AddSingleton(_ =>
+        {
+            var handler = new System.Net.Http.SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            };
+            return new System.Net.Http.HttpClient(handler);
+        });
+        services.AddSingleton<Leaf.Services.Ai.Http.IAiApiClient>(sp =>
+        {
+            var settings = sp.GetRequiredService<SettingsService>();
+            var creds = sp.GetRequiredService<CredentialService>();
+            var http = sp.GetRequiredService<System.Net.Http.HttpClient>();
+            int Timeout() => Math.Max(1, settings.LoadSettings().AiCliTimeoutSeconds);
+            return new Leaf.Services.Ai.Http.ClaudeApiClient(
+                http,
+                keyReader: () => creds.GetAiApiKey("Claude"),
+                modelProvider: () => settings.LoadSettings().ClaudeApiModel,
+                timeoutSecondsProvider: Timeout);
+        });
+
         // AI-assisted merge resolution. The router holds one of every
         // provider implementation and dispatches to whichever is selected
         // in AppSettings.AiMergeProvider — re-read on every call so a
@@ -162,11 +188,20 @@ public static class ServiceRegistry
                 enabledProvider: Enabled,
                 consentGivenProvider: Consent);
 
+            // API-key variant. Pulls the Claude API client out of DI —
+            // it lives at IAiApiClient because v1 only ships one. When
+            // Gemini/OpenAI land, this becomes IEnumerable<IAiApiClient>
+            // and we match by Provider == ClaudeApi.
+            var claudeApiClient = sp.GetRequiredService<Leaf.Services.Ai.Http.IAiApiClient>();
+            var claudeApi = new Leaf.Services.Merge.Providers.ClaudeApiMergeAssistant(
+                claudeApiClient, Enabled, Consent,
+                () => settings.LoadSettings().IsClaudeApiConnected);
+
             return new Leaf.Services.Merge.AiMergeAssistantRouter(
                 selectedProviderProvider: () => settings.LoadSettings().AiMergeProvider,
                 enabledProvider: Enabled,
                 consentProvider: Consent,
-                claude, gemini, codex, ollamaAssistant, externalServer);
+                claude, gemini, codex, ollamaAssistant, externalServer, claudeApi);
         });
     }
 

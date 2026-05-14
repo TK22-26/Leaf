@@ -78,12 +78,28 @@
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                        Margin="0,0,0,4" />
-            <TextBlock Text="Connect to Claude CLI for AI-powered features"
+            <TextBlock Text="Use the local Claude CLI (subscription login) or your own Anthropic API key for direct-billing HTTP access."
                        FontSize="12"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Margin="0,0,0,16" />
+                       Margin="0,0,0,16"
+                       TextWrapping="Wrap" />
 
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            <!-- Transport selector -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <RadioButton x:Name="ClaudeTransportCliRadio"
+                             Content="CLI"
+                             GroupName="ClaudeTransport"
+                             Margin="0,0,16,0"
+                             Checked="ClaudeTransport_Changed" />
+                <RadioButton x:Name="ClaudeTransportApiRadio"
+                             Content="API key"
+                             GroupName="ClaudeTransport"
+                             Checked="ClaudeTransport_Changed" />
+            </StackPanel>
+
+            <!-- CLI body -->
+            <Border x:Name="ClaudeCliBody"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="8"
@@ -116,6 +132,73 @@
                             Content="Disconnect"
                             IsEnabled="False" />
                 </Grid>
+            </Border>
+
+            <!-- API body -->
+            <Border x:Name="ClaudeApiBody"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16"
+                    Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock Text="Anthropic API key"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <PasswordBox x:Name="ClaudeApiKeyPasswordBox"
+                                 Margin="0,0,0,4"
+                                 Padding="8,6" />
+                    <TextBlock Text="Stored securely in Windows Credential Manager. Format: sk-ant-…"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="Model"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <TextBox x:Name="ClaudeApiModelTextBox"
+                             Margin="0,0,0,4"
+                             Padding="8,6"
+                             TextChanged="ClaudeApiModel_Changed" />
+                    <TextBlock Text="Examples: claude-sonnet-4-5, claude-opus-4-7, claude-haiku-4-5"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Connection Status"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock x:Name="ClaudeApiStatusText"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Not connected" />
+                        </StackPanel>
+                        <Button x:Name="ClaudeApiSaveTestButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="ClaudeApiSaveTest_Click"
+                                Content="Save &amp; Test" />
+                        <Button x:Name="ClaudeApiDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="ClaudeApiDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
+                    </Grid>
+                </StackPanel>
             </Border>
         </StackPanel>
 

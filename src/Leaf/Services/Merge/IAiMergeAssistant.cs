@@ -79,6 +79,16 @@ public enum AiProviderKind
     Codex,
     Ollama,
     ExternalServer,
+    // Direct-billing HTTP variants. ProviderKind is the routing key on
+    // AiMergeAssistantRouter, so each (provider, transport) pair needs
+    // its own value — CLI Claude and API Claude are different concrete
+    // assistants and can't share a key. The user-facing settings string
+    // is "Claude (API)" / "Gemini (API)" / "OpenAI (API)" /
+    // "OpenAI-Compatible".
+    ClaudeApi,
+    GeminiApi,
+    OpenAi,
+    OpenAiCompatible,
 }
 
 /// <summary>Input payload sent to the MCP server.</summary>

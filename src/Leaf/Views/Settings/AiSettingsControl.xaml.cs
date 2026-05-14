@@ -1,11 +1,15 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Services.Ai.Http;
+using Leaf.Services.Merge;
 
 namespace Leaf.Views.Settings;
 
@@ -18,12 +22,15 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     private SettingsService? _settingsService;
 
     private bool _isClaudeConnected;
+    private bool _isClaudeApiConnected;
     private bool _isGeminiConnected;
     private bool _isCodexConnected;
     private bool _isOllamaConnected;
     private bool _suppressAiSelectionSync;
+    private bool _suppressClaudeTransportSync;
 
     private readonly OllamaService _ollamaService = new();
+    private CredentialService? _credentialService;
 
     public AiSettingsControl()
     {
@@ -41,6 +48,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     public void LoadSettings(AppSettings settings, CredentialService credentialService)
     {
         _settings = settings;
+        _credentialService = credentialService;
 
         // Load timeout
         AiTimeoutTextBox.Text = settings.AiCliTimeoutSeconds.ToString();
@@ -55,6 +63,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
         // Load connection states
         _isClaudeConnected = settings.IsClaudeConnected;
+        _isClaudeApiConnected = settings.IsClaudeApiConnected;
         _isGeminiConnected = settings.IsGeminiConnected;
         _isCodexConnected = settings.IsCodexConnected;
         _isOllamaConnected = !string.IsNullOrEmpty(settings.OllamaSelectedModel);
@@ -62,6 +71,22 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         ApplyConnectionState(ClaudeStatusText, ClaudeConnectButton, ClaudeDisconnectButton, _isClaudeConnected);
         ApplyConnectionState(GeminiStatusText, GeminiConnectButton, GeminiDisconnectButton, _isGeminiConnected);
         ApplyConnectionState(CodexStatusText, CodexConnectButton, CodexDisconnectButton, _isCodexConnected);
+
+        // Claude transport (CLI vs API) and the API body state. The
+        // password field is intentionally left blank on load — we never
+        // round-trip the plaintext key back to the UI. The status line
+        // shows a masked tail if a key is currently stored.
+        _suppressClaudeTransportSync = true;
+        var transport = (settings.ClaudeTransport ?? "Cli").Trim();
+        ClaudeTransportApiRadio.IsChecked = transport.Equals("Api", StringComparison.OrdinalIgnoreCase);
+        ClaudeTransportCliRadio.IsChecked = !ClaudeTransportApiRadio.IsChecked.GetValueOrDefault();
+        _suppressClaudeTransportSync = false;
+        ApplyClaudeTransportVisibility();
+
+        ClaudeApiModelTextBox.Text = string.IsNullOrWhiteSpace(settings.ClaudeApiModel)
+            ? "claude-sonnet-4-5"
+            : settings.ClaudeApiModel;
+        UpdateClaudeApiStatusLine();
 
         // Load Ollama settings
         OllamaBaseUrlTextBox.Text = settings.OllamaBaseUrl;
@@ -96,6 +121,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         {
             AiMergeProviderComboBox.Items.Clear();
             AiMergeProviderComboBox.Items.Add(BuildOption("Claude", _isClaudeConnected));
+            AiMergeProviderComboBox.Items.Add(BuildOption("Claude (API)", _isClaudeApiConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Gemini", _isGeminiConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Codex",  _isCodexConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Ollama", _isOllamaConnected));
@@ -106,6 +132,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             var target = current switch
             {
                 "Claude" => BuildOption("Claude", _isClaudeConnected),
+                "Claude (API)" or "ClaudeApi" => BuildOption("Claude (API)", _isClaudeApiConnected),
                 "Gemini" => BuildOption("Gemini", _isGeminiConnected),
                 "Codex"  => BuildOption("Codex",  _isCodexConnected),
                 "Ollama" => BuildOption("Ollama", _isOllamaConnected),
@@ -178,6 +205,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
         // Save connection states
         settings.IsClaudeConnected = _isClaudeConnected;
+        settings.IsClaudeApiConnected = _isClaudeApiConnected;
         settings.IsGeminiConnected = _isGeminiConnected;
         settings.IsCodexConnected = _isCodexConnected;
 
@@ -300,6 +328,173 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _settings.IsClaudeConnected = false;
         _settingsService.SaveSettings(_settings);
         UpdateAiDefaults();
+    }
+
+    // --- Claude API transport ---
+
+    private void ClaudeTransport_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressClaudeTransportSync || _settings == null || _settingsService == null) return;
+        _settings.ClaudeTransport = ClaudeTransportApiRadio.IsChecked == true ? "Api" : "Cli";
+        _settingsService.SaveSettings(_settings);
+        ApplyClaudeTransportVisibility();
+    }
+
+    private void ApplyClaudeTransportVisibility()
+    {
+        if (ClaudeCliBody == null || ClaudeApiBody == null) return;
+        var api = ClaudeTransportApiRadio.IsChecked == true;
+        ClaudeCliBody.Visibility = api ? Visibility.Collapsed : Visibility.Visible;
+        ClaudeApiBody.Visibility = api ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ClaudeApiModel_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (_settings == null || _settingsService == null) return;
+        var model = ClaudeApiModelTextBox.Text.Trim();
+        if (string.IsNullOrEmpty(model)) return; // ignore transient empty during editing
+        _settings.ClaudeApiModel = model;
+        _settingsService.SaveSettings(_settings);
+    }
+
+    private async void ClaudeApiSaveTest_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+            var typed = ClaudeApiKeyPasswordBox.Password ?? string.Empty;
+            // Allow re-test without re-entering the key: if the field is
+            // blank and we already have one stored, just re-validate.
+            var existing = _credentialService.GetAiApiKey("Claude");
+            var keyToTest = string.IsNullOrEmpty(typed) ? existing : typed;
+            if (string.IsNullOrEmpty(keyToTest))
+            {
+                ClaudeApiStatusText.Text = "Enter an API key first.";
+                ClaudeApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            var model = ClaudeApiModelTextBox.Text.Trim();
+            if (string.IsNullOrEmpty(model))
+            {
+                ClaudeApiStatusText.Text = "Enter a model name first.";
+                ClaudeApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            ClaudeApiSaveTestButton.IsEnabled = false;
+            ClaudeApiStatusText.Text = "Testing…";
+            ClaudeApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+
+            // If the user typed a new key, persist it before testing so
+            // the test exercises exactly what subsequent merge calls
+            // will use.
+            if (!string.IsNullOrEmpty(typed))
+            {
+                _credentialService.SetAiApiKey("Claude", typed);
+                // Clear the field so a shoulder-surfer can't read it from
+                // the saved state. The status line shows a masked tail.
+                ClaudeApiKeyPasswordBox.Clear();
+            }
+            _settings.ClaudeApiModel = model;
+            _settingsService.SaveSettings(_settings);
+
+            // Probe with a one-shot client — avoids needing the singleton
+            // IAiApiClient to be wired into this control. This client is
+            // discarded after the probe; the singleton is what actually
+            // serves merge requests at runtime.
+            var timeout = GetAiTimeoutSeconds();
+            using var probeHttp = new HttpClient();
+            var probe = new ClaudeApiClient(
+                probeHttp,
+                keyReader: () => keyToTest,
+                modelProvider: () => model,
+                timeoutSecondsProvider: () => timeout);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(2, timeout)));
+            var error = await probe.TestConnectionAsync(cts.Token);
+
+            if (error == null)
+            {
+                _isClaudeApiConnected = true;
+                _settings.IsClaudeApiConnected = true;
+                _settingsService.SaveSettings(_settings);
+                UpdateClaudeApiStatusLine();
+                ClaudeApiDisconnectButton.IsEnabled = true;
+                UpdateAiDefaults();
+            }
+            else
+            {
+                _isClaudeApiConnected = false;
+                _settings.IsClaudeApiConnected = false;
+                _settingsService.SaveSettings(_settings);
+                ClaudeApiStatusText.Text = TrimDetail(error);
+                ClaudeApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                ClaudeApiDisconnectButton.IsEnabled = _credentialService.HasAiApiKey("Claude");
+            }
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(ClaudeApiSaveTest_Click), isUserAction: true);
+        }
+        finally
+        {
+            ClaudeApiSaveTestButton.IsEnabled = true;
+        }
+    }
+
+    private void ClaudeApiDisconnect_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+        _credentialService.DeleteAiApiKey("Claude");
+        _isClaudeApiConnected = false;
+        _settings.IsClaudeApiConnected = false;
+        _settingsService.SaveSettings(_settings);
+        ClaudeApiKeyPasswordBox.Clear();
+        UpdateClaudeApiStatusLine();
+        ClaudeApiDisconnectButton.IsEnabled = false;
+        UpdateAiDefaults();
+    }
+
+    /// <summary>
+    /// Refresh the API-section status line based on stored key + connected
+    /// flag. Shows a masked tail like <c>sk-ant-…••••1234</c> when a key
+    /// is present so the user has a visual cue that one is saved without
+    /// ever revealing the plaintext.
+    /// </summary>
+    private void UpdateClaudeApiStatusLine()
+    {
+        if (_credentialService == null || ClaudeApiStatusText == null) return;
+        var key = _credentialService.GetAiApiKey("Claude");
+        var hasKey = !string.IsNullOrEmpty(key);
+        if (hasKey && _isClaudeApiConnected)
+        {
+            ClaudeApiStatusText.Text = $"Connected — {MaskKey(key!)}";
+            ClaudeApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            ClaudeApiDisconnectButton.IsEnabled = true;
+        }
+        else if (hasKey)
+        {
+            ClaudeApiStatusText.Text = $"Key saved ({MaskKey(key!)}) — click Save & Test to validate.";
+            ClaudeApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            ClaudeApiDisconnectButton.IsEnabled = true;
+        }
+        else
+        {
+            ClaudeApiStatusText.Text = "Not connected";
+            ClaudeApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            ClaudeApiDisconnectButton.IsEnabled = false;
+        }
+    }
+
+    private static string MaskKey(string key)
+    {
+        if (key.Length <= 12) return "••••";
+        var prefix = key[..Math.Min(7, key.Length)];
+        var suffix = key[^Math.Min(4, key.Length)..];
+        return $"{prefix}…••••{suffix}";
     }
 
     #endregion

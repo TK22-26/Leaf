@@ -284,6 +284,16 @@ public class AppSettings
     public bool IsGeminiConnected { get; set; }
     public bool IsCodexConnected { get; set; }
     public int AiCliTimeoutSeconds { get; set; } = 60;
+
+    // API-key (direct-billing HTTP) transport for Claude. The actual key
+    // lives in Windows Credential Manager at Leaf:AI:Claude — this file
+    // only stores the connection flag, the user's chosen model, and the
+    // transport selector that decides whether the merge/commit pipeline
+    // dispatches to the CLI or the API client. The CLI path is unchanged
+    // and remains the default for installs that don't opt in.
+    public string ClaudeTransport { get; set; } = "Cli";
+    public bool IsClaudeApiConnected { get; set; }
+    public string ClaudeApiModel { get; set; } = "claude-sonnet-4-5";
     public double WindowWidth { get; set; } = 1200;
     public double WindowHeight { get; set; } = 700;
     public double WindowLeft { get; set; } = -1;

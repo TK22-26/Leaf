@@ -1,0 +1,162 @@
+#nullable enable
+using System.Net;
+using System.Net.Http;
+using Leaf.Services.Merge;
+
+namespace Leaf.Services.Ai.Http;
+
+/// <summary>
+/// Shared scaffolding for every <see cref="IAiApiClient"/>. Owns the
+/// HttpClient, the cached API key, the 401/429 surfacing, and the
+/// timeout wiring — derived classes only build the request body, set
+/// the auth header, and unwrap the provider's response envelope.
+/// </summary>
+/// <remarks>
+/// HttpClient is supplied by DI and shared across providers — auth is
+/// set per-request (never on <c>DefaultRequestHeaders</c>) so we don't
+/// accidentally leak one provider's key onto another's request.
+/// </remarks>
+public abstract class AiApiClientBase : IAiApiClient
+{
+    private readonly HttpClient _http;
+    private readonly Func<string?> _keyReader;
+    private readonly Func<int> _timeoutSecondsProvider;
+    private string? _cachedKey;
+    private readonly object _keyLock = new();
+
+    protected AiApiClientBase(
+        HttpClient httpClient,
+        Func<string?> keyReader,
+        Func<int> timeoutSecondsProvider)
+    {
+        _http = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _keyReader = keyReader ?? throw new ArgumentNullException(nameof(keyReader));
+        _timeoutSecondsProvider = timeoutSecondsProvider ?? throw new ArgumentNullException(nameof(timeoutSecondsProvider));
+    }
+
+    public abstract AiProviderKind Provider { get; }
+
+    /// <summary>Human-readable name for error messages: "Claude (API)" etc.</summary>
+    protected abstract string ProviderLabel { get; }
+
+    public bool HasKey => !string.IsNullOrEmpty(GetKey());
+
+    public void RefreshKey()
+    {
+        lock (_keyLock) _cachedKey = null;
+    }
+
+    /// <summary>
+    /// Cached key access. The credential read goes through DPAPI under
+    /// the hood — re-reading on every merge click is wasteful, so we
+    /// cache for the lifetime of the singleton and invalidate via
+    /// <see cref="RefreshKey"/> when the Settings UI changes it.
+    /// </summary>
+    protected string? GetKey()
+    {
+        lock (_keyLock)
+        {
+            if (_cachedKey is null)
+            {
+                _cachedKey = _keyReader();
+            }
+            return string.IsNullOrEmpty(_cachedKey) ? null : _cachedKey;
+        }
+    }
+
+    public async Task<string> SendAsync(string prompt, string jsonSchema, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(prompt);
+        ArgumentNullException.ThrowIfNull(jsonSchema);
+
+        var key = GetKey()
+            ?? throw new AiMergeAssistantException(
+                $"{ProviderLabel}: no API key configured. Open Settings → AI to set one.");
+
+        using var request = BuildRequest(prompt, jsonSchema, key);
+        return await ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<string?> TestConnectionAsync(CancellationToken cancellationToken)
+    {
+        var key = GetKey();
+        if (string.IsNullOrEmpty(key)) return "No API key configured.";
+        try
+        {
+            using var request = BuildTestRequest(key);
+            _ = await ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+        catch (AiMergeAssistantException ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Build the merge-resolution HTTP request. Derived classes set the
+    /// URL, auth header, content-type, and serialize the provider-specific
+    /// request body.
+    /// </summary>
+    protected abstract HttpRequestMessage BuildRequest(string prompt, string jsonSchema, string apiKey);
+
+    /// <summary>
+    /// Build a minimal request used by <see cref="TestConnectionAsync"/>.
+    /// Default implementation reuses <see cref="BuildRequest"/> with a
+    /// 1-token ping payload — providers can override for cheaper probes.
+    /// </summary>
+    protected virtual HttpRequestMessage BuildTestRequest(string apiKey)
+        => BuildRequest("ping", "{\"type\":\"object\"}", apiKey);
+
+    /// <summary>
+    /// Parse the provider's response envelope and return the inner JSON
+    /// object string. The downstream <see cref="AiResolutionParser"/>
+    /// expects exactly the resolution JSON — strip everything else here.
+    /// </summary>
+    protected abstract string ExtractStructuredOutput(string rawBody);
+
+    private async Task<string> ExecuteAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var timeoutSeconds = Math.Max(1, _timeoutSecondsProvider());
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new AiMergeAssistantException($"{ProviderLabel}: request timed out after {timeoutSeconds}s.");
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new AiMergeAssistantException($"{ProviderLabel}: network error ({ex.Message}).", ex);
+        }
+
+        using (response)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new AiMergeAssistantException(BuildHttpErrorMessage(response.StatusCode, body));
+            }
+            return ExtractStructuredOutput(body);
+        }
+    }
+
+    private string BuildHttpErrorMessage(HttpStatusCode status, string body)
+    {
+        var compact = body.Replace("\r", " ").Replace("\n", " ");
+        if (compact.Length > 240) compact = compact[..240] + "…";
+        return status switch
+        {
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
+                $"{ProviderLabel}: API key rejected ({(int)status}). Update it in Settings → AI.",
+            (HttpStatusCode)429 =>
+                $"{ProviderLabel}: rate limited (429). Retry shortly.",
+            _ => $"{ProviderLabel}: HTTP {(int)status} {status} — {compact}",
+        };
+    }
+}
