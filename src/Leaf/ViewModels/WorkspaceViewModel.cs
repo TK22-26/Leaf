@@ -292,20 +292,11 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Auto-commit the tile's working changes — stages everything,
-    /// generates an AI commit message, commits. Reuses the headless
-    /// <see cref="AutoCommitService"/> the CLI flag already drives so
-    /// behaviour matches what the user gets from <c>--auto-commit</c>.
-    /// </summary>
-    /// <summary>
     /// Stage-all + AI-commit a single tile. Uses the same
     /// <see cref="IAiCommitMessageService"/> the single-repo
     /// working-changes pane uses, so PATH resolution / .cmd-wrapper
     /// handling / provider selection all match what the user gets
-    /// elsewhere in the app. AutoCommitService's bespoke
-    /// Process.Start("codex", ...) bypassed all of that and failed
-    /// when the CLI was installed as codex.cmd or only on the user's
-    /// per-user PATH.
+    /// elsewhere in the app.
     /// </summary>
     public async Task CommitTileAsync(SubmoduleTileViewModel tile)
     {
@@ -470,12 +461,12 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         Tiles.Where(t => !t.IsParent).Concat(Tiles.Where(t => t.IsParent));
 
     /// <summary>
-    /// Commit every dirty repo in the workspace. Iterates in write order
-    /// (submodules first, parent last) so the parent records the
-    /// submodules' new SHAs in its own commit. Each repo's commit goes
-    /// through <see cref="AutoCommitService"/> for now — the popout
-    /// review dialog with editable per-repo messages lands separately;
-    /// this method is the one-click "just commit everything" path.
+    /// Commit every dirty repo in the workspace. Iterates in write
+    /// order (submodules first, parent last) so the parent records the
+    /// submodules' new SHAs in its own commit. AI messages are
+    /// generated in parallel per repo via <see cref="IAiCommitMessageService"/>;
+    /// the popout review dialog (editable per-repo messages with a
+    /// "skip review" setting) is built separately.
     /// </summary>
     [RelayCommand]
     public async Task CommitAllAsync()
@@ -489,6 +480,9 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             // commit can record the children's freshly-written SHAs;
             // running it in parallel would race and produce a parent
             // commit that points at half-stale submodule pointers.
+            // (Same ordering rule as WriteOrder(): submodules first,
+            // parent last — split here so we can fan the submodules
+            // into Task.WhenAll while the parent stays sequential.)
             var submodules = Tiles.Where(t => !t.IsParent).ToList();
             var parent = Tiles.FirstOrDefault(t => t.IsParent);
 
@@ -553,7 +547,8 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                     _notificationService.Show(
                         "Parent push skipped",
                         $"{subFailures} submodule push(es) failed — pushing the parent would dangle its submodule references.",
-                        NotificationType.Warning);
+                        NotificationType.Warning,
+                        Models.NotificationCategory.SyncOperations);
                 }
                 else
                 {
@@ -813,7 +808,6 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         if (parentTile is null) return;
 
         var others = snapshot.Where(t => !t.IsParent).ToList();
-        var pinnedLookup = new HashSet<string>(pinnedOrder, StringComparer.OrdinalIgnoreCase);
 
         var pinned = new List<SubmoduleTileViewModel>();
         foreach (var rel in pinnedOrder)
