@@ -51,6 +51,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IBranchColorPaletteRegistry _branchColorPaletteRegistry;
     private readonly ICommitTemplateService _commitTemplateService;
     private readonly WorkspaceViewModel _workspaceViewModel;
+    private readonly IWorkspaceConfigService _workspaceConfigService;
 
     /// <summary>
     /// Workspace orchestrator — owns the per-tile state for the grid
@@ -428,6 +429,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IBranchColorPaletteRegistry branchColorPaletteRegistry,
         ICommitTemplateService commitTemplateService,
         WorkspaceViewModel workspaceViewModel,
+        IWorkspaceConfigService workspaceConfigService,
         INotificationService? notificationService = null,
         Services.Merge.IAiMergeAssistant? aiMergeAssistant = null,
         Services.Merge.IImageMergeService? imageMergeService = null)
@@ -445,6 +447,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _branchColorPaletteRegistry = branchColorPaletteRegistry ?? throw new ArgumentNullException(nameof(branchColorPaletteRegistry));
         _commitTemplateService = commitTemplateService ?? throw new ArgumentNullException(nameof(commitTemplateService));
         _workspaceViewModel = workspaceViewModel ?? throw new ArgumentNullException(nameof(workspaceViewModel));
+        _workspaceConfigService = workspaceConfigService ?? throw new ArgumentNullException(nameof(workspaceConfigService));
         WireWorkspaceEvents();
         _gitFlowService = gitFlowService;
         _credentialService = credentialService;

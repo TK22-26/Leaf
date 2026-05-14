@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
+using Leaf.Services;
 
 namespace Leaf.ViewModels;
 
@@ -115,10 +116,13 @@ public partial class MainViewModel
     /// <summary>
     /// Refresh the workspace-specific bindings after the active repo
     /// changes — invoked from <c>OnSelectedRepositoryChanged</c> in
-    /// <c>MainViewModel.cs</c>. Updates <see cref="HasSubmodules"/> so
-    /// the toggle visibility tracks the new repo, and resets the
-    /// workspace back to Single so a stale tile set from the previous
-    /// parent doesn't linger.
+    /// <c>MainViewModel.cs</c>. Disposes the prior workspace's tiles
+    /// (they belong to the previous parent) and then asynchronously
+    /// reads the new repo's saved <see cref="WorkspaceMode"/> from
+    /// <c>.git/config</c>. If the user previously left this repo in
+    /// Grid mode and it still has submodules, we re-enter Grid so the
+    /// view is sticky across app restarts; otherwise we stay in
+    /// Single.
     /// </summary>
     internal void OnSelectedRepositoryChangedForWorkspace()
     {
@@ -129,6 +133,37 @@ public partial class MainViewModel
             Workspace.Dispose();
             Workspace.Mode = WorkspaceMode.Single;
             OnPropertyChanged(nameof(IsGridMode));
+        }
+
+        // Restore the persisted mode asynchronously — fire-and-forget so
+        // the (sync) property-changed partial doesn't block. A repo
+        // without submodules can never be in Grid; the toggle would be
+        // hidden so we skip the read entirely.
+        if (SelectedRepository is { } repo && HasSubmodules)
+        {
+            _ = RestoreWorkspaceModeAsync(repo);
+        }
+    }
+
+    private async Task RestoreWorkspaceModeAsync(RepositoryInfo repo)
+    {
+        try
+        {
+            var savedMode = await _workspaceConfigService.GetModeAsync(repo.Path, CurrentRepositoryToken);
+            if (savedMode != WorkspaceMode.Grid) return;
+
+            // The user changed repos again before the config read
+            // finished — bail rather than load tiles for a stale parent.
+            if (!ReferenceEquals(SelectedRepository, repo)) return;
+            if (GitGraphViewModel == null) return;
+
+            await Workspace.LoadAsync(repo, GitGraphViewModel, CurrentRepositoryToken);
+            Workspace.Mode = WorkspaceMode.Grid;
+            OnPropertyChanged(nameof(IsGridMode));
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Workspace", $"RestoreWorkspaceModeAsync failed: {ex.Message}");
         }
     }
 

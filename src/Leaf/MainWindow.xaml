@@ -295,141 +295,217 @@
                         Margin="8,0"
                         VerticalAlignment="Center"
                         Fill="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <!--  Pull  -->
-                    <Button
-                        Command="{Binding PullCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Pull changes from remote (right-click for rebase variant)">
-                        <Button.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem
-                                    Command="{Binding PullCommand}"
-                                    Header="Pull"
-                                    ToolTip="Use the strategy from your pull.rebase git config" />
-                                <MenuItem
-                                    Command="{Binding PullRebaseCommand}"
-                                    Header="Pull (rebase)"
-                                    ToolTip="git pull --rebase — replay local commits on top of incoming work" />
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontFamily="Segoe Fluent Icons"
-                                FontSize="16"
-                                Text="&#xE74B;" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="10"
-                                Text="Pull" />
-                        </StackPanel>
-                    </Button>
-                    <!--  Push  -->
-                    <Button
-                        Command="{Binding PushCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Push changes to remote">
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontFamily="Segoe Fluent Icons"
-                                FontSize="16"
-                                Text="&#xE74A;" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="10"
-                                Text="Push" />
-                        </StackPanel>
-                    </Button>
-                    <Rectangle
-                        Width="1"
-                        Height="28"
-                        Margin="8,0"
-                        VerticalAlignment="Center"
-                        Fill="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <!--  Branch  -->
-                    <Button
-                        Command="{Binding CreateBranchCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Create new branch">
-                        <StackPanel HorizontalAlignment="Center">
-                            <ic:SymbolIcon
-                                HorizontalAlignment="Center"
-                                FontSize="16"
-                                Symbol="BranchFork" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="10"
-                                Text="Branch" />
-                        </StackPanel>
-                    </Button>
-                    <!--  GitFlow  -->
-                    <Button
-                        x:Name="GitFlowActionBarButton"
-                        Command="{Binding GitFlowButtonCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="GitFlow">
-                        <StackPanel HorizontalAlignment="Center">
-                            <ic:SymbolIcon
-                                HorizontalAlignment="Center"
-                                FontSize="16"
-                                Symbol="Flow" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="10"
-                                Text="GitFlow" />
-                        </StackPanel>
-                        <Button.ContextMenu>
-                            <ContextMenu />
-                        </Button.ContextMenu>
-                    </Button>
-                    <Rectangle
-                        Width="1"
-                        Height="28"
-                        Margin="8,0"
-                        VerticalAlignment="Center"
-                        Fill="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <!--  Stash  -->
-                    <Button
-                        Command="{Binding StashCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Stash changes">
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontFamily="Segoe Fluent Icons"
-                                FontSize="16"
-                                Text="&#xE7B8;" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="10"
-                                Text="Stash" />
-                        </StackPanel>
-                    </Button>
-                    <!--  Pop  -->
-                    <Button Command="{Binding PopStashCommand}" ToolTip="Pop stashed changes (select a stash first)">
-                        <Button.Style>
-                            <Style BasedOn="{StaticResource ActionBarButtonStyle}" TargetType="Button">
-                                <Setter Property="Opacity" Value="1" />
-                                <Style.Triggers>
-                                    <Trigger Property="IsEnabled" Value="False">
-                                        <Setter Property="Opacity" Value="0.4" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontFamily="Segoe Fluent Icons"
-                                FontSize="16"
-                                Text="&#xE7B7;" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="10"
-                                Text="Pop" />
-                        </StackPanel>
-                    </Button>
+
+                    <!--  Single-repo verbs. Hidden in workspace grid mode
+                          because each verb is exposed per-tile (or as a
+                          workspace-level bulk action below); leaving the
+                          per-repo strip visible would be misleading
+                          (which repo does Pull act on?) and waste the
+                          horizontal real estate that grid mode needs for
+                          its own verbs.  -->
+                    <StackPanel Orientation="Horizontal"
+                                Visibility="{Binding IsGridMode, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        <!--  Pull  -->
+                        <Button
+                            Command="{Binding PullCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="Pull changes from remote (right-click for rebase variant)">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem
+                                        Command="{Binding PullCommand}"
+                                        Header="Pull"
+                                        ToolTip="Use the strategy from your pull.rebase git config" />
+                                    <MenuItem
+                                        Command="{Binding PullRebaseCommand}"
+                                        Header="Pull (rebase)"
+                                        ToolTip="git pull --rebase — replay local commits on top of incoming work" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="16"
+                                    Text="&#xE74B;" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="Pull" />
+                            </StackPanel>
+                        </Button>
+                        <!--  Push  -->
+                        <Button
+                            Command="{Binding PushCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="Push changes to remote">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="16"
+                                    Text="&#xE74A;" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="Push" />
+                            </StackPanel>
+                        </Button>
+                        <Rectangle
+                            Width="1"
+                            Height="28"
+                            Margin="8,0"
+                            VerticalAlignment="Center"
+                            Fill="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <!--  Branch  -->
+                        <Button
+                            Command="{Binding CreateBranchCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="Create new branch">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon
+                                    HorizontalAlignment="Center"
+                                    FontSize="16"
+                                    Symbol="BranchFork" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="Branch" />
+                            </StackPanel>
+                        </Button>
+                        <!--  GitFlow  -->
+                        <Button
+                            x:Name="GitFlowActionBarButton"
+                            Command="{Binding GitFlowButtonCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="GitFlow">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon
+                                    HorizontalAlignment="Center"
+                                    FontSize="16"
+                                    Symbol="Flow" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="GitFlow" />
+                            </StackPanel>
+                            <Button.ContextMenu>
+                                <ContextMenu />
+                            </Button.ContextMenu>
+                        </Button>
+                        <Rectangle
+                            Width="1"
+                            Height="28"
+                            Margin="8,0"
+                            VerticalAlignment="Center"
+                            Fill="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <!--  Stash  -->
+                        <Button
+                            Command="{Binding StashCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="Stash changes">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="16"
+                                    Text="&#xE7B8;" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="Stash" />
+                            </StackPanel>
+                        </Button>
+                        <!--  Pop  -->
+                        <Button Command="{Binding PopStashCommand}" ToolTip="Pop stashed changes (select a stash first)">
+                            <Button.Style>
+                                <Style BasedOn="{StaticResource ActionBarButtonStyle}" TargetType="Button">
+                                    <Setter Property="Opacity" Value="1" />
+                                    <Style.Triggers>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="Opacity" Value="0.4" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="16"
+                                    Text="&#xE7B7;" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="Pop" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <!--  Workspace bulk verbs (mirror swap of the
+                          single-repo strip above). Bound to Workspace.*
+                          commands; the action bar's DataContext is
+                          MainViewModel, which exposes Workspace as a
+                          property, so we walk through that here.  -->
+                    <StackPanel Orientation="Horizontal"
+                                Visibility="{Binding IsGridMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Button Command="{Binding Workspace.CommitAllCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Stage and AI-commit every dirty repo. Submodules commit first; the parent commits last so its submodule pointers move with the children."
+                                AutomationProperties.AutomationId="Workspace.CommitAll">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Checkmark" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Commit all" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding Workspace.PushAllCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Push every repo. Submodules push first; if any fail the parent push is skipped to avoid dangling pointers."
+                                AutomationProperties.AutomationId="Workspace.PushAll">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowUpload" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Push all" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding Workspace.PullAllCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Pull every repo in parallel. A conflict in any one drops you into the merge editor for that repo; the others continue."
+                                AutomationProperties.AutomationId="Workspace.PullAll">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowDownload" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Pull all" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding Workspace.FetchAllCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Fetch every repo from origin in parallel."
+                                AutomationProperties.AutomationId="Workspace.FetchAll">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowSync" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Fetch all" />
+                            </StackPanel>
+                        </Button>
+                        <Rectangle Width="1" Height="28" Margin="8,0" VerticalAlignment="Center"
+                                   Fill="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <Button Command="{Binding Workspace.SwitchWorkspaceBranchCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Switch every repo to a branch (skips repos that don't have that branch)."
+                                AutomationProperties.AutomationId="Workspace.SwitchBranch">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="BranchFork" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Switch branch" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding Workspace.MergeWorkspaceCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Merge every repo's current branch into a target. Submodules merge first; conflicts pause the workflow."
+                                AutomationProperties.AutomationId="Workspace.Merge">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Merge" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Merge" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                     <!-- Divider between the stash group (Stash / Pop)
                          and the workspace grid toggle so the visual
                          grouping reads "stash stuff | workspace stuff"

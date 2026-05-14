@@ -19,94 +19,21 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <!-- Workspace toolbar strip — bulk verbs that act on every
-                 tile in dependency order. Sits above the tile grid; in
-                 single mode the whole control is hidden, so this row
-                 only ever renders in grid mode. -->
-            <RowDefinition Height="Auto" />
             <!-- Progress strip — visible only while a bulk op runs. -->
             <RowDefinition Height="Auto" />
             <!-- Tiles. -->
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Workspace bulk-action toolbar. Same chrome family as the
-             main action bar (action-bar button style, vertical
-             dividers between groups) so the two feel consistent. -->
+        <!-- Bulk-operation progress strip. Indeterminate progress bar
+             + status text. Shown only while a bulk op runs so it
+             doesn't eat tile space at rest. The bulk-action buttons
+             themselves live in the host MainWindow action bar — when
+             grid mode is on, the single-repo verbs (Pull / Push /
+             Branch / GitFlow / Stash / Pop) swap out for the
+             workspace verbs (Commit-all / Push-all / etc.) so the
+             chrome stays one row tall. -->
         <Border Grid.Row="0"
-                Padding="12,6"
-                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
-                BorderThickness="0,0,0,1"
-                Background="{DynamicResource SubtleFillColorSecondaryBrush}">
-            <StackPanel Orientation="Horizontal">
-                <Button Command="{Binding CommitAllCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Stage and AI-commit every dirty repo. Submodules commit first; the parent commits last so its submodule pointers move with the children."
-                        AutomationProperties.AutomationId="Workspace.CommitAll">
-                    <StackPanel HorizontalAlignment="Center">
-                        <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Checkmark" FontSize="16" />
-                        <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Commit all" />
-                    </StackPanel>
-                </Button>
-                <Button Command="{Binding PushAllCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Push every repo. Submodules push first; if any fail the parent push is skipped to avoid dangling pointers."
-                        AutomationProperties.AutomationId="Workspace.PushAll">
-                    <StackPanel HorizontalAlignment="Center">
-                        <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowUpload" FontSize="16" />
-                        <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Push all" />
-                    </StackPanel>
-                </Button>
-                <Button Command="{Binding PullAllCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Pull every repo in parallel. A conflict in any one drops you into the merge editor for that repo; the others continue."
-                        AutomationProperties.AutomationId="Workspace.PullAll">
-                    <StackPanel HorizontalAlignment="Center">
-                        <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowDownload" FontSize="16" />
-                        <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Pull all" />
-                    </StackPanel>
-                </Button>
-                <Button Command="{Binding FetchAllCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Fetch every repo from origin in parallel."
-                        AutomationProperties.AutomationId="Workspace.FetchAll">
-                    <StackPanel HorizontalAlignment="Center">
-                        <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowSync" FontSize="16" />
-                        <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Fetch all" />
-                    </StackPanel>
-                </Button>
-                <Rectangle Width="1" Height="28" Margin="8,0" VerticalAlignment="Center"
-                           Fill="{DynamicResource TextFillColorSecondaryBrush}" />
-                <!-- Workspace ▼ — Switch branch / Merge across the
-                     whole workspace. These verbs need dialogs and land
-                     alongside the per-tile composer popout in Phase
-                     C-finish (see the WorkspaceCommand binding stubs
-                     on the VM). -->
-                <Button Command="{Binding SwitchWorkspaceBranchCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Switch every repo to a branch (skips repos that don't have that branch)."
-                        AutomationProperties.AutomationId="Workspace.SwitchBranch">
-                    <StackPanel HorizontalAlignment="Center">
-                        <ic:SymbolIcon HorizontalAlignment="Center" Symbol="BranchFork" FontSize="16" />
-                        <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Switch branch" />
-                    </StackPanel>
-                </Button>
-                <Button Command="{Binding MergeWorkspaceCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Merge every repo's current branch into a target. Submodules merge first; conflicts pause the workflow."
-                        AutomationProperties.AutomationId="Workspace.Merge">
-                    <StackPanel HorizontalAlignment="Center">
-                        <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Merge" FontSize="16" />
-                        <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Merge" />
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-        </Border>
-
-        <!-- Bulk-operation progress strip. Indeterminate progress bar +
-             status text. Shown only while a bulk op runs so it doesn't
-             eat tile space at rest. -->
-        <Border Grid.Row="1"
                 Padding="12,6"
                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
                 BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
@@ -127,7 +54,7 @@
              tiles stacked). For 1, 2, 4, 6, 8 the layout is the
              obvious equal-split grid; for 5 and 7 we accept one empty
              slot rather than warp the geometry. -->
-        <ItemsControl Grid.Row="2" ItemsSource="{Binding Tiles}">
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding Tiles}">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
                     <controls:WorkspaceTilePanel />
