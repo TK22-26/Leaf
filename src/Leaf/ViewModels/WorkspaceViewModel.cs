@@ -200,6 +200,20 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         try
         {
+            // Uninitialized-submodule probe. If the recorded path has
+            // no .git entry (file or directory) the submodule was
+            // declared in .gitmodules but never checked out — common
+            // after a fresh non-recursive clone of the parent. Flag
+            // the tile so the body switches to the Initialize CTA;
+            // skip the rest of the load since GetRepositoryInfoFastAsync
+            // would just throw on an empty directory.
+            if (!tile.IsParent && IsSubmoduleUninitialized(tile.RepositoryPath))
+            {
+                tile.IsUninitialized = true;
+                return;
+            }
+            tile.IsUninitialized = false;
+
             var info = await _gitService.GetRepositoryInfoFastAsync(tile.RepositoryPath, tile.Token).ConfigureAwait(true);
             tile.Repository = info;
 
@@ -301,6 +315,23 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         TileOpenInSingleViewRequested?.Invoke(this, tile);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Drilldown shortcut: Ctrl+1..9 opens the tile at position
+    /// <paramref name="oneBasedIndex"/> in single view. Index 1 is the
+    /// parent (always first), 2..N follow the displayed tile order
+    /// (pinned submodules first, then the rest). Out-of-range indices
+    /// are no-ops so an unused Ctrl+N gesture doesn't surprise the
+    /// user with an error.
+    /// </summary>
+    [RelayCommand]
+    public async Task FocusTileByIndexAsync(int oneBasedIndex)
+    {
+        if (Mode != WorkspaceMode.Grid) return;
+        var zero = oneBasedIndex - 1;
+        if (zero < 0 || zero >= Tiles.Count) return;
+        await OpenTileInSingleViewAsync(Tiles[zero]);
     }
 
     /// <summary>
@@ -458,6 +489,58 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// True when <paramref name="path"/> looks like an uninitialized
+    /// submodule checkout — the directory exists (or doesn't yet) but
+    /// has no <c>.git</c> file/dir, so git would refuse to operate on
+    /// it. Used by <see cref="LoadTileAsync"/> to swap the tile body
+    /// to an Initialize CTA instead of letting the normal load path
+    /// throw.
+    /// </summary>
+    internal static bool IsSubmoduleUninitialized(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+        if (!Directory.Exists(path)) return true;
+        var dotGit = Path.Combine(path, ".git");
+        // .git can be a directory (standalone) or a file (linked / submodule pointing into parent's modules store).
+        return !Directory.Exists(dotGit) && !File.Exists(dotGit);
+    }
+
+    /// <summary>
+    /// Run <c>git submodule update --init -- &lt;relativePath&gt;</c>
+    /// from the parent repo, then reload the tile. Fired from the
+    /// per-tile Initialize CTA when <see cref="SubmoduleTileViewModel.IsUninitialized"/>
+    /// is true.
+    /// </summary>
+    internal async Task InitializeSubmoduleTileAsync(SubmoduleTileViewModel tile)
+    {
+        if (Parent is null || tile.IsParent) return;
+        if (tile.IsInitializing) return;
+        var rel = ToRelativePath(Parent.Path, tile.RepositoryPath);
+        if (string.IsNullOrEmpty(rel)) return;
+
+        tile.IsInitializing = true;
+        try
+        {
+            await _gitService.InitAndUpdateSubmodulesAsync(Parent.Path, new[] { rel }, recursive: false, tile.Token);
+            await LoadTileAsync(tile);
+            _notificationService.Show(
+                "Submodule initialized",
+                $"{tile.Name} is ready.",
+                NotificationType.Success,
+                Models.NotificationCategory.SyncOperations);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Workspace", $"InitializeSubmodule {tile.RepositoryPath} threw", ex);
+            _notificationService.Show("Initialize failed", $"{tile.Name}: {ex.Message}", NotificationType.Error);
+        }
+        finally
+        {
+            tile.IsInitializing = false;
+        }
+    }
+
     // ─── Workspace-level bulk commands ──────────────────────────────────
 
     /// <summary>
@@ -567,7 +650,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             if (submodules.Count > 0)
             {
                 BulkOperationStatus = $"Committing {submodules.Count} submodule(s) in parallel…";
-                await Task.WhenAll(submodules.Select(CommitTileAsync));
+                await RunTilesThrottledAsync(submodules, CommitTileAsync);
             }
 
             if (parent != null)
@@ -636,7 +719,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         // ComposingMessage / AiError independently when its generation
         // completes; the user can start editing tile #1 while tile #5
         // is still on the network.
-        await Task.WhenAll(dirtyTiles.Select(GenerateAiMessageForTileAsync));
+        await RunTilesThrottledAsync(dirtyTiles, GenerateAiMessageForTileAsync);
     }
 
     /// <summary>
@@ -869,8 +952,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         await RunBulkAsync("Pulling all repos…", async () =>
         {
             BulkOperationStatus = $"Pulling {Tiles.Count} repo(s)…";
-            var tasks = Tiles.Select(PullTileAsync).ToList();
-            await Task.WhenAll(tasks);
+            await RunTilesThrottledAsync(Tiles, PullTileAsync);
         });
     }
 
@@ -881,9 +963,38 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         await RunBulkAsync("Fetching all repos…", async () =>
         {
             BulkOperationStatus = $"Fetching {Tiles.Count} repo(s)…";
-            var tasks = Tiles.Select(FetchTileAsync).ToList();
-            await Task.WhenAll(tasks);
+            await RunTilesThrottledAsync(Tiles, FetchTileAsync);
         });
+    }
+
+    /// <summary>
+    /// Cap on concurrent per-tile git operations during bulk commands.
+    /// Each tile op spins up a process (git CLI) or a LibGit2Sharp call;
+    /// without a cap, a 20-submodule monorepo would fork 20 gits at
+    /// once and hammer disk + creds. Four is a pragmatic default —
+    /// matches typical fetch/clone parallelism in other tools.
+    /// </summary>
+    private const int MaxParallelTileOps = 4;
+
+    /// <summary>
+    /// Run <paramref name="op"/> over every tile in <paramref name="tiles"/>
+    /// with a parallelism cap. Preserves the "fire all in parallel"
+    /// shape of the caller while preventing the unbounded process
+    /// fan-out that <c>Task.WhenAll(Select(op))</c> would produce.
+    /// </summary>
+    internal static async Task RunTilesThrottledAsync(
+        IEnumerable<SubmoduleTileViewModel> tiles,
+        Func<SubmoduleTileViewModel, Task> op,
+        int maxParallel = MaxParallelTileOps)
+    {
+        using var gate = new SemaphoreSlim(maxParallel, maxParallel);
+        var tasks = tiles.Select(async tile =>
+        {
+            await gate.WaitAsync().ConfigureAwait(false);
+            try { await op(tile).ConfigureAwait(false); }
+            finally { gate.Release(); }
+        });
+        await Task.WhenAll(tasks).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1058,12 +1169,33 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Snapshot of a workspace merge that paused on a conflict.
+    /// Carries the merge parameters + the tile we stopped on so
+    /// <see cref="ContinueMergeAsync"/> can pick up without
+    /// re-asking the user for branch + merge type.
+    /// </summary>
+    public sealed record PausedMergeState(string Target, MergeType MergeType, string PausedAtTilePath);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPausedMerge))]
+    [NotifyCanExecuteChangedFor(nameof(ContinueMergeCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelPausedMergeCommand))]
+    private PausedMergeState? _pausedMerge;
+
+    /// <summary>
+    /// True when the previous <see cref="MergeWorkspaceAsync"/> paused
+    /// on a conflict. Drives the visibility of the Continue / Cancel
+    /// merge buttons in the workspace action bar.
+    /// </summary>
+    public bool HasPausedMerge => PausedMerge is not null;
+
+    /// <summary>
     /// Open the workspace merge dialog, then merge every repo's
     /// currently-checked-out branch into the chosen target. Submodules
     /// merge first (so their tips advance before the parent records
     /// new submodule SHAs), then the parent. A conflict in any repo
-    /// pauses the workflow at that repo — the existing merge editor
-    /// banner already exposes Continue / Skip / Abort.
+    /// pauses the workflow at that repo and stores the resume state
+    /// so the user can hit "Continue merge" once they've resolved.
     /// </summary>
     [RelayCommand]
     public async Task MergeWorkspaceAsync()
@@ -1076,10 +1208,57 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         if (string.IsNullOrEmpty(target)) return;
         var mergeType = dialogVm.MergeType;
 
+        // Fresh run — clear any prior pause state.
+        PausedMerge = null;
+        await RunMergeLoopAsync(target, mergeType, resumeFromTilePath: null);
+    }
+
+    /// <summary>
+    /// Resume a workspace merge that paused on a conflict. Re-enters
+    /// the loop at the paused tile (so if the user committed the
+    /// merge resolution, it's already done and the loop moves past
+    /// it; if they only resolved partially, the merge attempt
+    /// recurs and the pause survives).
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanContinueMerge))]
+    public async Task ContinueMergeAsync()
+    {
+        if (PausedMerge is null) return;
+        var snapshot = PausedMerge;
+        await RunMergeLoopAsync(snapshot.Target, snapshot.MergeType, resumeFromTilePath: snapshot.PausedAtTilePath);
+    }
+
+    private bool CanContinueMerge() => PausedMerge is not null;
+
+    /// <summary>
+    /// Discard the paused-merge state without resuming. Used when
+    /// the user decides not to finish the workspace-wide merge —
+    /// the individual repo-level merge state (MERGE_HEAD on the
+    /// conflicted repo) is unaffected; only the workspace's
+    /// "continue across all repos" intent is dropped.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanContinueMerge))]
+    public void CancelPausedMerge()
+    {
+        PausedMerge = null;
+    }
+
+    private async Task RunMergeLoopAsync(string target, MergeType mergeType, string? resumeFromTilePath)
+    {
         await RunBulkAsync($"Merging workspace into {target}…", async () =>
         {
-            foreach (var tile in WriteOrder())
+            var tiles = WriteOrder().ToList();
+            var startIndex = 0;
+            if (resumeFromTilePath is not null)
             {
+                var idx = tiles.FindIndex(t =>
+                    string.Equals(t.RepositoryPath, resumeFromTilePath, StringComparison.OrdinalIgnoreCase));
+                if (idx >= 0) startIndex = idx;
+            }
+
+            for (var i = startIndex; i < tiles.Count; i++)
+            {
+                var tile = tiles[i];
                 BulkOperationStatus = $"Merging {tile.Name} into {target}…";
                 MergeResult result;
                 try
@@ -1104,15 +1283,10 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
 
                 if (result.HasConflicts)
                 {
-                    // Conflict in this repo pauses the entire workflow.
-                    // The existing merge editor / OperationType=Merge
-                    // banner is the user's continuation path for that
-                    // repo; the remaining tiles will only be merged on
-                    // a re-invocation of the workspace merge once this
-                    // one resolves.
+                    PausedMerge = new PausedMergeState(target, mergeType, tile.RepositoryPath);
                     _notificationService.Show(
                         "Workspace merge paused",
-                        $"Conflicts in {tile.Name}. Resolve them, then re-run the workspace merge to continue.",
+                        $"Conflicts in {tile.Name}. Resolve them, then hit Continue merge to finish the remaining repos.",
                         NotificationType.Warning,
                         Models.NotificationCategory.MergeAndRebase);
                     return;
@@ -1120,6 +1294,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
 
                 if (!result.Success)
                 {
+                    PausedMerge = new PausedMergeState(target, mergeType, tile.RepositoryPath);
                     _notificationService.Show(
                         "Workspace merge halted",
                         $"{tile.Name}: {result.ErrorMessage ?? "unknown failure"}.",
@@ -1128,6 +1303,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 }
             }
 
+            PausedMerge = null;
             _notificationService.Show(
                 "Workspace merge complete",
                 $"All repos merged into {target}.",

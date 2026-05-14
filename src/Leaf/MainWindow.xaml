@@ -541,10 +541,40 @@
                                 Style="{StaticResource ActionBarButtonStyle}"
                                 ToolTip="Merge every repo's current branch into a target. Submodules merge first; conflicts pause the workflow."
                                 IsEnabled="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolConverter}}"
+                                Visibility="{Binding Workspace.HasPausedMerge, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                 AutomationProperties.AutomationId="Workspace.Merge">
                             <StackPanel HorizontalAlignment="Center">
                                 <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Merge" FontSize="16" />
                                 <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Merge" />
+                            </StackPanel>
+                        </Button>
+                        <!-- Paused-merge resume affordance. The Merge
+                             button collapses while HasPausedMerge is
+                             true and these two buttons take its place
+                             — Continue (resume the loop from the
+                             tile we stopped at) and Cancel (drop the
+                             workspace-level pause state without
+                             affecting any individual repo's MERGE_HEAD,
+                             which the user can still finish or abort
+                             via the merge editor). -->
+                        <Button Command="{Binding Workspace.ContinueMergeCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Resume the paused workspace merge from where it stopped."
+                                Visibility="{Binding Workspace.HasPausedMerge, Converter={StaticResource BoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Workspace.ContinueMerge">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Play" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Continue merge" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding Workspace.CancelPausedMergeCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Discard the workspace-level merge resume state. Individual repo MERGE_HEADs are unaffected."
+                                Visibility="{Binding Workspace.HasPausedMerge, Converter={StaticResource BoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Workspace.CancelPausedMerge">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Dismiss" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Cancel merge" />
                             </StackPanel>
                         </Button>
                     </StackPanel>

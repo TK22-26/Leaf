@@ -79,6 +79,26 @@ public partial class SubmoduleTileViewModel : ObservableObject, IDisposable
     private bool _isPinned;
 
     /// <summary>
+    /// True when the submodule is registered in <c>.gitmodules</c> but
+    /// the working-tree directory doesn't have a <c>.git</c> entry —
+    /// the user has never run <c>git submodule update --init</c> here
+    /// (a fresh clone of the parent without <c>--recursive</c>, for
+    /// example). The tile body swaps to an initialize CTA when set;
+    /// the title bar's quick-action buttons stay hidden because none
+    /// of them make sense without a checkout.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsInitialized))]
+    private bool _isUninitialized;
+
+    /// <summary>Inverse of <see cref="IsUninitialized"/>. Convenience for binding the normal body Visibility.</summary>
+    public bool IsInitialized => !IsUninitialized;
+
+    /// <summary>True while the per-tile Initialize command is in flight.</summary>
+    [ObservableProperty]
+    private bool _isInitializing;
+
+    /// <summary>
     /// Current tile mode. <see cref="Models.TileMode.Normal"/> shows the
     /// graph + working changes; <see cref="Models.TileMode.Composing"/>
     /// hides the graph and renders an inline commit composer pre-filled
@@ -219,6 +239,18 @@ public partial class SubmoduleTileViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Run <c>git submodule update --init -- &lt;this submodule's path&gt;</c>
+    /// from the parent repo to clone + check out the recorded SHA.
+    /// Fired from the uninitialized-submodule CTA in the tile body.
+    /// </summary>
+    [RelayCommand]
+    public async Task InitializeAsync()
+    {
+        if (Workspace is null || IsParent) return;
+        await Workspace.InitializeSubmoduleTileAsync(this);
+    }
+
+    /// <summary>
     /// True when the per-tile Commit button can fire — non-empty
     /// message, not currently generating or committing, and (for the
     /// parent tile) no submodule is still in compose mode. The last
@@ -326,7 +358,7 @@ public partial class SubmoduleTileViewModel : ObservableObject, IDisposable
         }
     }
 
-    private SubmoduleTileViewModel(
+    internal SubmoduleTileViewModel(
         string repositoryPath,
         string name,
         bool isParent,

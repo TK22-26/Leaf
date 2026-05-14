@@ -148,6 +148,27 @@ public partial class MainWindow : Window
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Ctrl+1..9 drilldown into workspace tiles. Only fires when
+        // grid mode is active; otherwise the keystroke falls through
+        // to anything else that wants it (e.g. text inputs accepting
+        // digit characters). Text inputs are skipped explicitly so a
+        // user typing in the composer can still emit digits even
+        // with Ctrl held.
+        if (Keyboard.Modifiers == ModifierKeys.Control &&
+            e.Key >= Key.D1 && e.Key <= Key.D9 &&
+            Keyboard.FocusedElement is not TextBox &&
+            DataContext is MainViewModel mainVm &&
+            mainVm.Workspace.Mode == Models.WorkspaceMode.Grid)
+        {
+            var index = e.Key - Key.D0; // Key.D1 → 1, Key.D9 → 9
+            if (mainVm.Workspace.FocusTileByIndexCommand.CanExecute(index))
+            {
+                mainVm.Workspace.FocusTileByIndexCommand.Execute(index);
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (e.Key != Key.Space) return;
 
         // Don't intercept space when typing in a text input

@@ -191,16 +191,74 @@
                  right-pane so message-template + conventional-commits
                  affordances transfer for free. -->
 
-            <!-- Graph — visible in Normal mode. -->
+            <!-- Graph — visible in Normal mode, when not in Composing
+                 AND when the submodule is initialized. A Style with
+                 DataTriggers lets us hide on either condition without
+                 needing a multi-binding converter. -->
             <ContentControl Grid.Row="1"
-                            Content="{Binding Graph}"
-                            Visibility="{Binding IsComposing, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                            Content="{Binding Graph}">
+                <ContentControl.Style>
+                    <Style TargetType="ContentControl">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsComposing}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsUninitialized}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ContentControl.Style>
                 <ContentControl.ContentTemplate>
                     <DataTemplate>
                         <views:GitGraphView />
                     </DataTemplate>
                 </ContentControl.ContentTemplate>
             </ContentControl>
+
+            <!-- Uninitialized-submodule CTA. Shown when the recorded
+                 path has no .git entry (the user cloned the parent
+                 non-recursively, or pruned this submodule). One
+                 button runs `git submodule update init` against the
+                 parent for this path. Progress bar shows while the
+                 initialize command runs. -->
+            <Border Grid.Row="1"
+                    Visibility="{Binding IsUninitialized, Converter={StaticResource BoolToVisibilityConverter}}"
+                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                    Padding="24">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="320">
+                    <ic:SymbolIcon Symbol="BoxToolbox" FontSize="32"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,12" />
+                    <TextBlock Text="Submodule not initialized"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               TextAlignment="Center"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <TextBlock FontSize="11"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Text="This submodule is registered but not checked out. Run init to clone it from the URL recorded in .gitmodules." />
+                    <Button Command="{Binding InitializeCommand}"
+                            HorizontalAlignment="Center"
+                            Padding="16,6"
+                            MinWidth="140"
+                            IsEnabled="{Binding IsInitializing, Converter={StaticResource InverseBoolConverter}}"
+                            AutomationProperties.AutomationId="Tile.Initialize">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="ArrowDownload" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Text="Initialize" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <ProgressBar IsIndeterminate="True" Width="140" Height="3"
+                                 Margin="0,10,0,0"
+                                 Visibility="{Binding IsInitializing, Converter={StaticResource BoolToVisibilityConverter}}" />
+                </StackPanel>
+            </Border>
 
             <!-- Composer — visible in Composing mode. -->
             <Grid Grid.Row="1"
