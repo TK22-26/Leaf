@@ -1256,7 +1256,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         });
     }
 
-    private async Task<bool> TryRevParseAsync(string repoPath, string branchName, CancellationToken cancellationToken)
+    internal async Task<bool> TryRevParseAsync(string repoPath, string branchName, CancellationToken cancellationToken)
     {
         // Branch existence probe — enumerates the repo's branch list
         // and matches on name. Both local and remote-only branches
@@ -1265,13 +1265,20 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         // local tracking branch in the latter case). Exact match only:
         // an earlier last-segment fallback let "release/v2" silently
         // resolve to a local "v2", which is wrong.
+        //
+        // BranchInfo.Name is libgit2's FriendlyName: local branches
+        // come through as "feature/x"; remote branches come through
+        // with the remote prefix already attached ("origin/feature/x").
+        // So the remote check compares b.Name against the prefixed
+        // form rather than building $"{Remote}/{b.Name}" — which would
+        // double-prefix to "origin/origin/feature/x" and never match.
         try
         {
             var branches = await _gitService.GetBranchesAsync(repoPath, cancellationToken);
             return branches.Any(b =>
                 string.Equals(b.Name, branchName, StringComparison.Ordinal) ||
                 (b.IsRemote && b.RemoteName != null &&
-                 string.Equals($"{b.RemoteName}/{b.Name}", branchName, StringComparison.Ordinal)));
+                 string.Equals(b.Name, $"{b.RemoteName}/{branchName}", StringComparison.Ordinal)));
         }
         catch (Exception ex)
         {

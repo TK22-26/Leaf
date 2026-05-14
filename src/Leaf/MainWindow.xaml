@@ -598,7 +598,7 @@
                           the parent plus every submodule. -->
                     <Button Command="{Binding ToggleWorkspaceModeCommand}"
                             Style="{StaticResource ActionBarButtonStyle}"
-                            ToolTip="Toggle submodule workspace grid"
+                            ToolTip="Toggle submodule workspace view"
                             Visibility="{Binding HasSubmodules, Converter={StaticResource BoolToVisibilityConverter}}"
                             AutomationProperties.AutomationId="ToggleWorkspaceMode">
                         <StackPanel HorizontalAlignment="Center">
@@ -618,7 +618,7 @@
                             <TextBlock
                                 HorizontalAlignment="Center"
                                 FontSize="10"
-                                Text="Grid" />
+                                Text="Workspace" />
                         </StackPanel>
                     </Button>
                 </StackPanel>

@@ -222,6 +222,36 @@ public class WorkspaceViewModelIntegrationTests
         mergeAttempts["C:/r/parent"].Should().Be(1);
     }
 
+    // ─── TryRevParseAsync — remote-branch detection ──────────────
+
+    [Theory]
+    [InlineData("feature/x", true)]   // matches origin/feature/x via remote check
+    [InlineData("main", true)]        // matches local main
+    [InlineData("origin/main", true)] // matches remote main by full friendly name
+    [InlineData("missing", false)]    // does not exist anywhere
+    [InlineData("x", false)]          // last-segment fallback dropped — was a bug
+    public async Task TryRevParseAsync_HandlesRemoteOnlyBranchWithSlash(string query, bool expected)
+    {
+        // The pen-test discovered that after the audit cleanup,
+        // BranchInfo.Name comes through as the libgit2 FriendlyName
+        // ("origin/feature/x" for remotes), so the second condition
+        // had to compare against $"{RemoteName}/{branchName}", NOT
+        // $"{RemoteName}/{b.Name}" (which would double-prefix to
+        // "origin/origin/feature/x"). This test pins the contract.
+        var (ws, git) = BuildWorkspaceWithMockGit();
+        git.Setup(g => g.GetBranchesAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+           .ReturnsAsync(new List<BranchInfo>
+           {
+               new() { Name = "main",              IsRemote = false },
+               new() { Name = "origin/main",       IsRemote = true,  RemoteName = "origin" },
+               new() { Name = "origin/feature/x",  IsRemote = true,  RemoteName = "origin" },
+           });
+
+        var result = await ws.TryRevParseAsync("C:/repo", query, CancellationToken.None);
+
+        result.Should().Be(expected);
+    }
+
     // ─── #3: LoadAsync reentrancy ────────────────────────────────
 
     [Fact]
