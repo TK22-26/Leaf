@@ -209,12 +209,28 @@
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                        Margin="0,0,0,4" />
-            <TextBlock Text="Connect to Gemini CLI for AI-powered features"
+            <TextBlock Text="Use the local Gemini CLI (Google login) or your own Google API key for direct-billing HTTP access."
                        FontSize="12"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Margin="0,0,0,16" />
+                       Margin="0,0,0,16"
+                       TextWrapping="Wrap" />
 
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            <!-- Transport selector -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <RadioButton x:Name="GeminiTransportCliRadio"
+                             Content="CLI"
+                             GroupName="GeminiTransport"
+                             Margin="0,0,16,0"
+                             Checked="GeminiTransport_Changed" />
+                <RadioButton x:Name="GeminiTransportApiRadio"
+                             Content="API key"
+                             GroupName="GeminiTransport"
+                             Checked="GeminiTransport_Changed" />
+            </StackPanel>
+
+            <!-- CLI body -->
+            <Border x:Name="GeminiCliBody"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="8"
@@ -247,6 +263,73 @@
                             Content="Disconnect"
                             IsEnabled="False" />
                 </Grid>
+            </Border>
+
+            <!-- API body -->
+            <Border x:Name="GeminiApiBody"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16"
+                    Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock Text="Google API key"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <PasswordBox x:Name="GeminiApiKeyPasswordBox"
+                                 Margin="0,0,0,4"
+                                 Padding="8,6" />
+                    <TextBlock Text="Stored securely in Windows Credential Manager. Get one from Google AI Studio."
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="Model"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <TextBox x:Name="GeminiApiModelTextBox"
+                             Margin="0,0,0,4"
+                             Padding="8,6"
+                             TextChanged="GeminiApiModel_Changed" />
+                    <TextBlock Text="Examples: gemini-2.5-pro, gemini-2.5-flash, gemini-2.0-flash"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Connection Status"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock x:Name="GeminiApiStatusText"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Not connected" />
+                        </StackPanel>
+                        <Button x:Name="GeminiApiSaveTestButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="GeminiApiSaveTest_Click"
+                                Content="Save &amp; Test" />
+                        <Button x:Name="GeminiApiDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="GeminiApiDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
+                    </Grid>
+                </StackPanel>
             </Border>
         </StackPanel>
 

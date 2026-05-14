@@ -42,7 +42,8 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
         CodexMergeAssistant codex,
         OllamaMergeAssistant ollama,
         ExternalServerMergeAssistant externalServer,
-        ClaudeApiMergeAssistant claudeApi)
+        ClaudeApiMergeAssistant claudeApi,
+        GeminiApiMergeAssistant geminiApi)
     {
         _selectedProviderProvider = selectedProviderProvider ?? throw new ArgumentNullException(nameof(selectedProviderProvider));
         _enabledProvider = enabledProvider ?? throw new ArgumentNullException(nameof(enabledProvider));
@@ -56,6 +57,7 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
             [AiProviderKind.Ollama] = ollama,
             [AiProviderKind.ExternalServer] = externalServer,
             [AiProviderKind.ClaudeApi] = claudeApi,
+            [AiProviderKind.GeminiApi] = geminiApi,
         };
     }
 
@@ -133,9 +135,12 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
             string s when s.Equals("Claude (API)", StringComparison.OrdinalIgnoreCase)
                        || s.Equals("ClaudeApi", StringComparison.OrdinalIgnoreCase)
                 => AiProviderKind.ClaudeApi,
+            string s when s.Equals("Gemini (API)", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("GeminiApi", StringComparison.OrdinalIgnoreCase)
+                => AiProviderKind.GeminiApi,
             _ => throw new AiMergeAssistantException(
                 $"Unknown AI merge provider '{raw}' in settings. Expected one of: " +
-                "Claude, Claude (API), Gemini, Codex, Ollama, ExternalServer."),
+                "Claude, Claude (API), Gemini, Gemini (API), Codex, Ollama, ExternalServer."),
         };
 
         return _providers[kind];

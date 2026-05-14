@@ -24,10 +24,12 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     private bool _isClaudeConnected;
     private bool _isClaudeApiConnected;
     private bool _isGeminiConnected;
+    private bool _isGeminiApiConnected;
     private bool _isCodexConnected;
     private bool _isOllamaConnected;
     private bool _suppressAiSelectionSync;
     private bool _suppressClaudeTransportSync;
+    private bool _suppressGeminiTransportSync;
 
     private readonly OllamaService _ollamaService = new();
     private CredentialService? _credentialService;
@@ -65,6 +67,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _isClaudeConnected = settings.IsClaudeConnected;
         _isClaudeApiConnected = settings.IsClaudeApiConnected;
         _isGeminiConnected = settings.IsGeminiConnected;
+        _isGeminiApiConnected = settings.IsGeminiApiConnected;
         _isCodexConnected = settings.IsCodexConnected;
         _isOllamaConnected = !string.IsNullOrEmpty(settings.OllamaSelectedModel);
 
@@ -87,6 +90,19 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             ? "claude-sonnet-4-5"
             : settings.ClaudeApiModel;
         UpdateClaudeApiStatusLine();
+
+        // Gemini transport mirror.
+        _suppressGeminiTransportSync = true;
+        var geminiTransport = (settings.GeminiTransport ?? "Cli").Trim();
+        GeminiTransportApiRadio.IsChecked = geminiTransport.Equals("Api", StringComparison.OrdinalIgnoreCase);
+        GeminiTransportCliRadio.IsChecked = !GeminiTransportApiRadio.IsChecked.GetValueOrDefault();
+        _suppressGeminiTransportSync = false;
+        ApplyGeminiTransportVisibility();
+
+        GeminiApiModelTextBox.Text = string.IsNullOrWhiteSpace(settings.GeminiApiModel)
+            ? "gemini-2.5-pro"
+            : settings.GeminiApiModel;
+        UpdateGeminiApiStatusLine();
 
         // Load Ollama settings
         OllamaBaseUrlTextBox.Text = settings.OllamaBaseUrl;
@@ -123,6 +139,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             AiMergeProviderComboBox.Items.Add(BuildOption("Claude", _isClaudeConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Claude (API)", _isClaudeApiConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Gemini", _isGeminiConnected));
+            AiMergeProviderComboBox.Items.Add(BuildOption("Gemini (API)", _isGeminiApiConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Codex",  _isCodexConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Ollama", _isOllamaConnected));
             AiMergeProviderComboBox.Items.Add("External Server");
@@ -134,6 +151,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 "Claude" => BuildOption("Claude", _isClaudeConnected),
                 "Claude (API)" or "ClaudeApi" => BuildOption("Claude (API)", _isClaudeApiConnected),
                 "Gemini" => BuildOption("Gemini", _isGeminiConnected),
+                "Gemini (API)" or "GeminiApi" => BuildOption("Gemini (API)", _isGeminiApiConnected),
                 "Codex"  => BuildOption("Codex",  _isCodexConnected),
                 "Ollama" => BuildOption("Ollama", _isOllamaConnected),
                 "ExternalServer" or "External" => "External Server",
@@ -207,6 +225,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         settings.IsClaudeConnected = _isClaudeConnected;
         settings.IsClaudeApiConnected = _isClaudeApiConnected;
         settings.IsGeminiConnected = _isGeminiConnected;
+        settings.IsGeminiApiConnected = _isGeminiApiConnected;
         settings.IsCodexConnected = _isCodexConnected;
 
         // Save default provider
@@ -529,6 +548,148 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _settings.IsGeminiConnected = false;
         _settingsService.SaveSettings(_settings);
         UpdateAiDefaults();
+    }
+
+    // --- Gemini API transport ---
+
+    private void GeminiTransport_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressGeminiTransportSync || _settings == null || _settingsService == null) return;
+        _settings.GeminiTransport = GeminiTransportApiRadio.IsChecked == true ? "Api" : "Cli";
+        _settingsService.SaveSettings(_settings);
+        ApplyGeminiTransportVisibility();
+    }
+
+    private void ApplyGeminiTransportVisibility()
+    {
+        if (GeminiCliBody == null || GeminiApiBody == null) return;
+        var api = GeminiTransportApiRadio.IsChecked == true;
+        GeminiCliBody.Visibility = api ? Visibility.Collapsed : Visibility.Visible;
+        GeminiApiBody.Visibility = api ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void GeminiApiModel_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (_settings == null || _settingsService == null) return;
+        var model = GeminiApiModelTextBox.Text.Trim();
+        if (string.IsNullOrEmpty(model)) return;
+        _settings.GeminiApiModel = model;
+        _settingsService.SaveSettings(_settings);
+    }
+
+    private async void GeminiApiSaveTest_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+            var typed = GeminiApiKeyPasswordBox.Password ?? string.Empty;
+            var existing = _credentialService.GetAiApiKey("Gemini");
+            var keyToTest = string.IsNullOrEmpty(typed) ? existing : typed;
+            if (string.IsNullOrEmpty(keyToTest))
+            {
+                GeminiApiStatusText.Text = "Enter an API key first.";
+                GeminiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            var model = GeminiApiModelTextBox.Text.Trim();
+            if (string.IsNullOrEmpty(model))
+            {
+                GeminiApiStatusText.Text = "Enter a model name first.";
+                GeminiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            GeminiApiSaveTestButton.IsEnabled = false;
+            GeminiApiStatusText.Text = "Testing…";
+            GeminiApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+
+            if (!string.IsNullOrEmpty(typed))
+            {
+                _credentialService.SetAiApiKey("Gemini", typed);
+                GeminiApiKeyPasswordBox.Clear();
+            }
+            _settings.GeminiApiModel = model;
+            _settingsService.SaveSettings(_settings);
+
+            var timeout = GetAiTimeoutSeconds();
+            using var probeHttp = new HttpClient();
+            var probe = new GeminiApiClient(
+                probeHttp,
+                keyReader: () => keyToTest,
+                modelProvider: () => model,
+                timeoutSecondsProvider: () => timeout);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(2, timeout)));
+            var error = await probe.TestConnectionAsync(cts.Token);
+
+            if (error == null)
+            {
+                _isGeminiApiConnected = true;
+                _settings.IsGeminiApiConnected = true;
+                _settingsService.SaveSettings(_settings);
+                UpdateGeminiApiStatusLine();
+                GeminiApiDisconnectButton.IsEnabled = true;
+                UpdateAiDefaults();
+            }
+            else
+            {
+                _isGeminiApiConnected = false;
+                _settings.IsGeminiApiConnected = false;
+                _settingsService.SaveSettings(_settings);
+                GeminiApiStatusText.Text = TrimDetail(error);
+                GeminiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                GeminiApiDisconnectButton.IsEnabled = _credentialService.HasAiApiKey("Gemini");
+            }
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(GeminiApiSaveTest_Click), isUserAction: true);
+        }
+        finally
+        {
+            GeminiApiSaveTestButton.IsEnabled = true;
+        }
+    }
+
+    private void GeminiApiDisconnect_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+        _credentialService.DeleteAiApiKey("Gemini");
+        _isGeminiApiConnected = false;
+        _settings.IsGeminiApiConnected = false;
+        _settingsService.SaveSettings(_settings);
+        GeminiApiKeyPasswordBox.Clear();
+        UpdateGeminiApiStatusLine();
+        GeminiApiDisconnectButton.IsEnabled = false;
+        UpdateAiDefaults();
+    }
+
+    private void UpdateGeminiApiStatusLine()
+    {
+        if (_credentialService == null || GeminiApiStatusText == null) return;
+        var key = _credentialService.GetAiApiKey("Gemini");
+        var hasKey = !string.IsNullOrEmpty(key);
+        if (hasKey && _isGeminiApiConnected)
+        {
+            GeminiApiStatusText.Text = $"Connected — {MaskKey(key!)}";
+            GeminiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            GeminiApiDisconnectButton.IsEnabled = true;
+        }
+        else if (hasKey)
+        {
+            GeminiApiStatusText.Text = $"Key saved ({MaskKey(key!)}) — click Save & Test to validate.";
+            GeminiApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            GeminiApiDisconnectButton.IsEnabled = true;
+        }
+        else
+        {
+            GeminiApiStatusText.Text = "Not connected";
+            GeminiApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            GeminiApiDisconnectButton.IsEnabled = false;
+        }
     }
 
     #endregion

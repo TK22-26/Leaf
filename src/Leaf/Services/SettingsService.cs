@@ -294,6 +294,12 @@ public class AppSettings
     public string ClaudeTransport { get; set; } = "Cli";
     public bool IsClaudeApiConnected { get; set; }
     public string ClaudeApiModel { get; set; } = "claude-sonnet-4-5";
+
+    // Same shape as the Claude API fields above. Key lives in
+    // Credential Manager at Leaf:AI:Gemini.
+    public string GeminiTransport { get; set; } = "Cli";
+    public bool IsGeminiApiConnected { get; set; }
+    public string GeminiApiModel { get; set; } = "gemini-2.5-pro";
     public double WindowWidth { get; set; } = 1200;
     public double WindowHeight { get; set; } = 700;
     public double WindowLeft { get; set; } = -1;

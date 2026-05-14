@@ -132,6 +132,10 @@ public static class ServiceRegistry
             };
             return new System.Net.Http.HttpClient(handler);
         });
+        // One IAiApiClient registration per provider. The merge router
+        // picks the right one out of IEnumerable<IAiApiClient> by
+        // matching Provider, so adding the next provider is a single
+        // AddSingleton + no consumer-side change.
         services.AddSingleton<Leaf.Services.Ai.Http.IAiApiClient>(sp =>
         {
             var settings = sp.GetRequiredService<SettingsService>();
@@ -142,6 +146,18 @@ public static class ServiceRegistry
                 http,
                 keyReader: () => creds.GetAiApiKey("Claude"),
                 modelProvider: () => settings.LoadSettings().ClaudeApiModel,
+                timeoutSecondsProvider: Timeout);
+        });
+        services.AddSingleton<Leaf.Services.Ai.Http.IAiApiClient>(sp =>
+        {
+            var settings = sp.GetRequiredService<SettingsService>();
+            var creds = sp.GetRequiredService<CredentialService>();
+            var http = sp.GetRequiredService<System.Net.Http.HttpClient>();
+            int Timeout() => Math.Max(1, settings.LoadSettings().AiCliTimeoutSeconds);
+            return new Leaf.Services.Ai.Http.GeminiApiClient(
+                http,
+                keyReader: () => creds.GetAiApiKey("Gemini"),
+                modelProvider: () => settings.LoadSettings().GeminiApiModel,
                 timeoutSecondsProvider: Timeout);
         });
 
@@ -188,20 +204,25 @@ public static class ServiceRegistry
                 enabledProvider: Enabled,
                 consentGivenProvider: Consent);
 
-            // API-key variant. Pulls the Claude API client out of DI —
-            // it lives at IAiApiClient because v1 only ships one. When
-            // Gemini/OpenAI land, this becomes IEnumerable<IAiApiClient>
-            // and we match by Provider == ClaudeApi.
-            var claudeApiClient = sp.GetRequiredService<Leaf.Services.Ai.Http.IAiApiClient>();
+            // API-key variants. The router resolves them by matching
+            // IAiApiClient.Provider, so the DI registration order of
+            // those clients doesn't matter here.
+            var apiClients = sp.GetServices<Leaf.Services.Ai.Http.IAiApiClient>().ToList();
+            var claudeApiClient = apiClients.First(c => c.Provider == Leaf.Services.Merge.AiProviderKind.ClaudeApi);
+            var geminiApiClient = apiClients.First(c => c.Provider == Leaf.Services.Merge.AiProviderKind.GeminiApi);
+
             var claudeApi = new Leaf.Services.Merge.Providers.ClaudeApiMergeAssistant(
                 claudeApiClient, Enabled, Consent,
                 () => settings.LoadSettings().IsClaudeApiConnected);
+            var geminiApi = new Leaf.Services.Merge.Providers.GeminiApiMergeAssistant(
+                geminiApiClient, Enabled, Consent,
+                () => settings.LoadSettings().IsGeminiApiConnected);
 
             return new Leaf.Services.Merge.AiMergeAssistantRouter(
                 selectedProviderProvider: () => settings.LoadSettings().AiMergeProvider,
                 enabledProvider: Enabled,
                 consentProvider: Consent,
-                claude, gemini, codex, ollamaAssistant, externalServer, claudeApi);
+                claude, gemini, codex, ollamaAssistant, externalServer, claudeApi, geminiApi);
         });
     }
 
