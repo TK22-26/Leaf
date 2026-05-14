@@ -85,14 +85,14 @@ public class WorkspaceViewModelPhaseETests
     }
 
     [Fact]
-    public void CancelPausedMerge_ClearsState()
+    public async Task CancelPausedMerge_ClearsState()
     {
         var (ws, _, _) = BuildWorkspace();
         ws.PausedMerge = new WorkspaceViewModel.PausedMergeState("develop", MergeType.Normal, "C:/r/sub");
         ws.HasPausedMerge.Should().BeTrue();
         ws.CancelPausedMergeCommand.CanExecute(null).Should().BeTrue();
 
-        ws.CancelPausedMerge();
+        await ws.CancelPausedMergeAsync();
 
         ws.PausedMerge.Should().BeNull();
         ws.HasPausedMerge.Should().BeFalse();
@@ -109,5 +109,24 @@ public class WorkspaceViewModelPhaseETests
 
         await ws.ContinueMergeAsync();
         ws.PausedMerge.Should().BeNull();
+    }
+
+    [Fact]
+    public void CancelReview_ReturnsComposingTilesToNormal()
+    {
+        var (ws, parent, sub) = BuildWorkspace();
+        parent.Mode = TileMode.Composing;
+        parent.ComposingMessage = "draft";
+        sub.Mode = TileMode.Composing;
+        sub.ComposingMessage = "draft";
+
+        ws.CancelReview();
+
+        parent.Mode.Should().Be(TileMode.Normal);
+        sub.Mode.Should().Be(TileMode.Normal);
+        // ComposingMessage cleared so a re-entry to review doesn't
+        // resurrect stale text.
+        parent.ComposingMessage.Should().BeEmpty();
+        sub.ComposingMessage.Should().BeEmpty();
     }
 }

@@ -44,6 +44,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     private readonly IAiCommitMessageService _aiCommitService;
     private readonly INotificationService _notificationService;
     private readonly IDialogService _dialogService;
+    private readonly IDispatcherService _dispatcher;
 
     /// <summary>
     /// Ordered tile collection. WPF binds the workspace grid against
@@ -62,6 +63,15 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     /// then runs DisposeTiles itself for a clean rebuild.
     /// </summary>
     private readonly SemaphoreSlim _loadLock = new(1, 1);
+
+    /// <summary>
+    /// Cancels AI generation in flight when the user clicks Cancel
+    /// review (or starts a new review batch). Linked into each
+    /// per-tile token passed to the AI service so a long-running
+    /// generation can't write ComposingMessage / AiError onto a tile
+    /// that's already back in Normal mode.
+    /// </summary>
+    private CancellationTokenSource? _reviewCts;
 
     /// <summary>
     /// Current view mode. <see cref="WorkspaceMode.Single"/> hides the
@@ -90,7 +100,8 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         CredentialService credentialService,
         IAiCommitMessageService aiCommitService,
         INotificationService notificationService,
-        IDialogService dialogService)
+        IDialogService dialogService,
+        IDispatcherService dispatcher)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
@@ -102,6 +113,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         _aiCommitService = aiCommitService ?? throw new ArgumentNullException(nameof(aiCommitService));
         _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
     }
 
     /// <summary>
@@ -151,6 +163,15 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         var submodules = await _gitService.GetSubmodulesAsync(parent.Path, cancellationToken).ConfigureAwait(true);
         if (submodules.Count == 0)
         {
+            // `MainViewModel.HasSubmodules` already hides the Grid
+            // toggle in this case; surface a notification anyway so
+            // a caller that bypasses the toggle (deep-link, restore
+            // from saved mode) sees why no tiles appeared.
+            _notificationService.Show(
+                "Workspace empty",
+                $"{parent.Name} has no submodules — grid view is equivalent to single view here.",
+                NotificationType.Information,
+                Models.NotificationCategory.SyncOperations);
             return;
         }
 
@@ -170,15 +191,41 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             .Where(s => !pinnedSet.Contains(s.Path))
             .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase));
 
+        // Restore any persisted paused-merge state so Continue/Cancel
+        // merge buttons reappear in the action bar after an app restart.
+        // Done before tile creation so the gating commands see correct
+        // state if anything reacts during initial bind.
+        var savedPause = await _workspaceConfig.GetPausedMergeAsync(parent.Path, cancellationToken).ConfigureAwait(true);
+        if (savedPause is { } sp)
+        {
+            var absolute = Path.GetFullPath(Path.Combine(parent.Path, sp.PausedAtRelativePath));
+            if (Enum.TryParse<MergeType>(sp.MergeType, out var parsedType))
+            {
+                PausedMerge = new PausedMergeState(sp.Target, parsedType, absolute);
+            }
+        }
+
+        var parentRoot = Path.GetFullPath(parent.Path);
         foreach (var sm in ordered)
         {
+            // Bail out if the user toggled grid off (or switched repos)
+            // mid-load. Without this check, half-populated tiles end
+            // up in the collection of a workspace about to be disposed.
+            if (cancellationToken.IsCancellationRequested) return;
+
             // Absolute path = parent's path joined with submodule's
-            // relative path. We don't materialise tiles for
-            // uninitialised submodules differently from initialised
-            // ones here — the tile's body decides what to render based
-            // on its loaded RepositoryInfo (Phase F adds the
-            // "Initialize" CTA for empty checkouts).
+            // relative path. Reject paths that escape the parent root —
+            // a malformed .gitmodules entry like `path = ../../evil`
+            // could otherwise spawn a tile pointed at an arbitrary
+            // location. The tile's body decides Normal vs Initialize
+            // CTA based on the .git probe in LoadTileAsync.
             var fullPath = Path.GetFullPath(Path.Combine(parent.Path, sm.Path));
+            if (!fullPath.StartsWith(parentRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Warn("Workspace", $"Skipping submodule '{sm.Name}' — path '{sm.Path}' escapes parent root.");
+                continue;
+            }
+
             var tile = SubmoduleTileViewModel.CreateSubmodule(
                 _scopeFactory, _gitService, _settingsService,
                 _repositoryService, _paletteRegistry,
@@ -209,28 +256,37 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             // would just throw on an empty directory.
             if (!tile.IsParent && IsSubmoduleUninitialized(tile.RepositoryPath))
             {
-                tile.IsUninitialized = true;
+                await _dispatcher.InvokeAsync(() => tile.IsUninitialized = true);
                 return;
             }
-            tile.IsUninitialized = false;
 
-            var info = await _gitService.GetRepositoryInfoFastAsync(tile.RepositoryPath, tile.Token).ConfigureAwait(true);
-            tile.Repository = info;
+            var info = await _gitService.GetRepositoryInfoFastAsync(tile.RepositoryPath, tile.Token).ConfigureAwait(false);
 
-            // Auto-register submodule tiles as tracked repositories so
-            // path-keyed services (AutoCommitService, the repo lookup
-            // used by some toast clicks, etc.) can find them. Mirrors
-            // OpenSubmoduleAsRepositoryAsync's contract: IsUserAdded
-            // stays false so the submodule shows up under its parent
-            // in the sidebar rather than as a top-level entry. Parent
-            // tiles are already registered by definition — they're
-            // SelectedRepository — so skip.
-            if (!tile.IsParent && _repositoryService.FindRepository(tile.RepositoryPath) is null)
+            // All VM / collection mutations land on the UI thread.
+            // The await above resumes on the threadpool (ConfigureAwait(false));
+            // marshal back explicitly so we never write Repository,
+            // IsUninitialized, or AddRepository (which mutates the
+            // sidebar's ObservableCollection) off-thread.
+            await _dispatcher.InvokeAsync(() =>
             {
-                info.ParentRepositoryPath = Parent?.Path;
-                info.IsUserAdded = false;
-                _repositoryService.AddRepository(info);
-            }
+                tile.IsUninitialized = false;
+                tile.Repository = info;
+
+                // Auto-register submodule tiles as tracked repositories so
+                // path-keyed services (AutoCommitService, the repo lookup
+                // used by some toast clicks, etc.) can find them. Mirrors
+                // OpenSubmoduleAsRepositoryAsync's contract: IsUserAdded
+                // stays false so the submodule shows up under its parent
+                // in the sidebar rather than as a top-level entry. Parent
+                // tiles are already registered by definition — they're
+                // SelectedRepository — so skip.
+                if (!tile.IsParent && _repositoryService.FindRepository(tile.RepositoryPath) is null)
+                {
+                    info.ParentRepositoryPath = Parent?.Path;
+                    info.IsUserAdded = false;
+                    _repositoryService.AddRepository(info);
+                }
+            });
 
             if (tile.Graph != null)
             {
@@ -365,8 +421,15 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            // Stage everything.
-            await _gitService.StageAllAsync(tile.RepositoryPath, tile.Token);
+            // Stage outstanding unstaged work only. If the user already
+            // staged a subset by hand, respect that — widening to "stage
+            // all" would silently commit edits they deliberately held
+            // back. The bulk one-click flow accepts whatever state the
+            // index is in when it runs.
+            if (changes.HasUnstagedChanges)
+            {
+                await _gitService.StageAllAsync(tile.RepositoryPath, tile.Token);
+            }
 
             // Generate the message via the real AI pipeline (same path
             // the single-repo working-changes pane drives). The
@@ -497,6 +560,41 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     /// to an Initialize CTA instead of letting the normal load path
     /// throw.
     /// </summary>
+    /// <summary>
+    /// True when <paramref name="repoPath"/> has a MERGE_HEAD entry —
+    /// the user has not finished resolving the in-progress merge.
+    /// Handles both standalone repos (.git directory) and submodules
+    /// / linked worktrees (.git is a file pointing to the real gitdir).
+    /// </summary>
+    internal static bool HasMergeInProgress(string repoPath)
+    {
+        if (string.IsNullOrEmpty(repoPath)) return false;
+        var dotGit = Path.Combine(repoPath, ".git");
+        if (Directory.Exists(dotGit))
+        {
+            return File.Exists(Path.Combine(dotGit, "MERGE_HEAD"));
+        }
+        if (File.Exists(dotGit))
+        {
+            try
+            {
+                // .git file format: "gitdir: <relative-or-absolute path>"
+                var line = File.ReadAllText(dotGit).Trim();
+                const string prefix = "gitdir:";
+                if (!line.StartsWith(prefix, StringComparison.Ordinal)) return false;
+                var target = line.Substring(prefix.Length).Trim();
+                if (!Path.IsPathRooted(target))
+                    target = Path.GetFullPath(Path.Combine(repoPath, target));
+                return File.Exists(Path.Combine(target, "MERGE_HEAD"));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
     internal static bool IsSubmoduleUninitialized(string path)
     {
         if (string.IsNullOrEmpty(path)) return false;
@@ -702,6 +800,15 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Fresh review-scope cancellation source. Cancel review (or a
+        // restart of review while a previous one is still generating)
+        // trips this so any in-flight AI call unwinds before it can
+        // write ComposingMessage / AiError onto a tile that's already
+        // back in Normal mode.
+        _reviewCts?.Cancel();
+        _reviewCts?.Dispose();
+        _reviewCts = new CancellationTokenSource();
+
         // Transition every dirty tile into Composing BEFORE generation
         // starts, so the user sees the placeholder/spinner immediately
         // and the action-bar buttons flip to review mode.
@@ -732,14 +839,32 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         tile.IsGeneratingAi = true;
         tile.AiError = string.Empty;
+
+        // Link the tile's per-scope token to the per-review token so
+        // CancelReview (or a fresh review starting before this one
+        // finishes) aborts in-flight AI generation cleanly. If
+        // _reviewCts is null (a manual single-tile regenerate outside
+        // a review batch), we just use the tile token.
+        using var linkedCts = _reviewCts is null
+            ? CancellationTokenSource.CreateLinkedTokenSource(tile.Token)
+            : CancellationTokenSource.CreateLinkedTokenSource(tile.Token, _reviewCts.Token);
+        var token = linkedCts.Token;
+
         try
         {
             // Stage all so the AI sees the same diff that the eventual
             // commit will record. Staging is idempotent on already-
             // staged files.
-            await _gitService.StageAllAsync(tile.RepositoryPath, tile.Token);
-            var diff = await _gitService.GetStagedSummaryAsync(tile.RepositoryPath, cancellationToken: tile.Token);
-            var (msg, desc, err) = await _aiCommitService.GenerateCommitMessageAsync(diff, tile.RepositoryPath, tile.Token);
+            await _gitService.StageAllAsync(tile.RepositoryPath, token);
+            var diff = await _gitService.GetStagedSummaryAsync(tile.RepositoryPath, cancellationToken: token);
+            var (msg, desc, err) = await _aiCommitService.GenerateCommitMessageAsync(diff, tile.RepositoryPath, token);
+
+            // After the await chain unwinds: bail out without touching
+            // the tile if review was cancelled in the meantime — that
+            // tile is already back in Normal and writing to its
+            // ComposingMessage would leak state across modes.
+            if (token.IsCancellationRequested) return;
+
             if (!string.IsNullOrEmpty(err) || string.IsNullOrWhiteSpace(msg))
             {
                 tile.AiError = err ?? "AI returned an empty message.";
@@ -755,6 +880,10 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 tile.AiOriginalMessage = msg!;
                 tile.AiOriginalDescription = desc ?? string.Empty;
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is expected when review is cancelled mid-flight.
         }
         catch (Exception ex)
         {
@@ -886,6 +1015,11 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void CancelReview()
     {
+        // Abort any in-flight AI generation FIRST so its
+        // continuations bail out before they can write back onto a
+        // tile that's about to drop out of Composing.
+        _reviewCts?.Cancel();
+
         foreach (var tile in Tiles)
         {
             if (tile.Mode == Models.TileMode.Composing)
@@ -1059,18 +1193,18 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             {
                 BulkOperationStatus = $"Checking {tile.Name}…";
 
-                var hasBranch = await TryRevParseAsync(tile.RepositoryPath, branchName, tile.Token);
-
-                if (!hasBranch && !createIfMissing)
-                {
-                    // No branch and the user didn't opt into creating —
-                    // skip and report. This is the safer default.
-                    skipped.Add(tile.Name);
-                    continue;
-                }
-
                 try
                 {
+                    var hasBranch = await TryRevParseAsync(tile.RepositoryPath, branchName, tile.Token);
+
+                    if (!hasBranch && !createIfMissing)
+                    {
+                        // No branch and the user didn't opt into creating —
+                        // skip and report. This is the safer default.
+                        skipped.Add(tile.Name);
+                        continue;
+                    }
+
                     // Stash first if requested AND the repo is dirty.
                     // Clean repos don't get a no-op stash that produces
                     // a confusing "(no changes to stash)" warning.
@@ -1123,21 +1257,26 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         // Branch existence probe — enumerates the repo's branch list
         // and matches on name. Both local and remote-only branches
-        // count; "feature/x" should match when only "origin/feature/x"
-        // exists too, because git checkout will create the local
-        // tracking branch in that case.
+        // count; "feature/x" matches a "feature/x" local branch OR a
+        // remote-only "origin/feature/x" (git checkout creates the
+        // local tracking branch in the latter case). Exact match only:
+        // an earlier last-segment fallback let "release/v2" silently
+        // resolve to a local "v2", which is wrong.
         try
         {
             var branches = await _gitService.GetBranchesAsync(repoPath, cancellationToken);
             return branches.Any(b =>
                 string.Equals(b.Name, branchName, StringComparison.Ordinal) ||
                 (b.IsRemote && b.RemoteName != null &&
-                 string.Equals($"{b.RemoteName}/{b.Name}", branchName, StringComparison.Ordinal)) ||
-                string.Equals(b.Name, branchName.Split('/').LastOrDefault() ?? branchName, StringComparison.Ordinal));
+                 string.Equals($"{b.RemoteName}/{b.Name}", branchName, StringComparison.Ordinal)));
         }
-        catch
+        catch (Exception ex)
         {
-            return false;
+            // Logged + reported by the caller via the failed list —
+            // returning false would silently misclassify a permissions
+            // error as "branch doesn't exist" (CLAUDE.md: fail loudly).
+            Log.Warn("Workspace", $"TryRevParse {repoPath} for '{branchName}' failed: {ex.Message}");
+            throw;
         }
     }
 
@@ -1166,150 +1305,6 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             _notificationService.Show("Workspace switch finished with errors", description, NotificationType.Warning);
         else
             _notificationService.Show("Workspace switch complete", description, NotificationType.Success, Models.NotificationCategory.BranchCheckout);
-    }
-
-    /// <summary>
-    /// Snapshot of a workspace merge that paused on a conflict.
-    /// Carries the merge parameters + the tile we stopped on so
-    /// <see cref="ContinueMergeAsync"/> can pick up without
-    /// re-asking the user for branch + merge type.
-    /// </summary>
-    public sealed record PausedMergeState(string Target, MergeType MergeType, string PausedAtTilePath);
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPausedMerge))]
-    [NotifyCanExecuteChangedFor(nameof(ContinueMergeCommand))]
-    [NotifyCanExecuteChangedFor(nameof(CancelPausedMergeCommand))]
-    private PausedMergeState? _pausedMerge;
-
-    /// <summary>
-    /// True when the previous <see cref="MergeWorkspaceAsync"/> paused
-    /// on a conflict. Drives the visibility of the Continue / Cancel
-    /// merge buttons in the workspace action bar.
-    /// </summary>
-    public bool HasPausedMerge => PausedMerge is not null;
-
-    /// <summary>
-    /// Open the workspace merge dialog, then merge every repo's
-    /// currently-checked-out branch into the chosen target. Submodules
-    /// merge first (so their tips advance before the parent records
-    /// new submodule SHAs), then the parent. A conflict in any repo
-    /// pauses the workflow at that repo and stores the resume state
-    /// so the user can hit "Continue merge" once they've resolved.
-    /// </summary>
-    [RelayCommand]
-    public async Task MergeWorkspaceAsync()
-    {
-        var dialogVm = new WorkspaceMergeDialogViewModel();
-        var dialog = new Views.WorkspaceMergeDialog { DataContext = dialogVm };
-        if (!await _dialogService.ShowDialogAsync(dialog)) return;
-
-        var target = dialogVm.TargetBranch.Trim();
-        if (string.IsNullOrEmpty(target)) return;
-        var mergeType = dialogVm.MergeType;
-
-        // Fresh run — clear any prior pause state.
-        PausedMerge = null;
-        await RunMergeLoopAsync(target, mergeType, resumeFromTilePath: null);
-    }
-
-    /// <summary>
-    /// Resume a workspace merge that paused on a conflict. Re-enters
-    /// the loop at the paused tile (so if the user committed the
-    /// merge resolution, it's already done and the loop moves past
-    /// it; if they only resolved partially, the merge attempt
-    /// recurs and the pause survives).
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanContinueMerge))]
-    public async Task ContinueMergeAsync()
-    {
-        if (PausedMerge is null) return;
-        var snapshot = PausedMerge;
-        await RunMergeLoopAsync(snapshot.Target, snapshot.MergeType, resumeFromTilePath: snapshot.PausedAtTilePath);
-    }
-
-    private bool CanContinueMerge() => PausedMerge is not null;
-
-    /// <summary>
-    /// Discard the paused-merge state without resuming. Used when
-    /// the user decides not to finish the workspace-wide merge —
-    /// the individual repo-level merge state (MERGE_HEAD on the
-    /// conflicted repo) is unaffected; only the workspace's
-    /// "continue across all repos" intent is dropped.
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanContinueMerge))]
-    public void CancelPausedMerge()
-    {
-        PausedMerge = null;
-    }
-
-    private async Task RunMergeLoopAsync(string target, MergeType mergeType, string? resumeFromTilePath)
-    {
-        await RunBulkAsync($"Merging workspace into {target}…", async () =>
-        {
-            var tiles = WriteOrder().ToList();
-            var startIndex = 0;
-            if (resumeFromTilePath is not null)
-            {
-                var idx = tiles.FindIndex(t =>
-                    string.Equals(t.RepositoryPath, resumeFromTilePath, StringComparison.OrdinalIgnoreCase));
-                if (idx >= 0) startIndex = idx;
-            }
-
-            for (var i = startIndex; i < tiles.Count; i++)
-            {
-                var tile = tiles[i];
-                BulkOperationStatus = $"Merging {tile.Name} into {target}…";
-                MergeResult result;
-                try
-                {
-                    result = mergeType switch
-                    {
-                        MergeType.Squash => await _gitService.SquashMergeAsync(tile.RepositoryPath, target, cancellationToken: tile.Token),
-                        MergeType.FastForwardOnly => await _gitService.FastForwardAsync(tile.RepositoryPath, target, cancellationToken: tile.Token),
-                        _ => await _gitService.MergeBranchAsync(tile.RepositoryPath, target, cancellationToken: tile.Token),
-                    };
-                }
-                catch (Exception ex)
-                {
-                    _notificationService.Show(
-                        "Workspace merge failed",
-                        $"{tile.Name}: {ex.Message}",
-                        NotificationType.Error);
-                    return;
-                }
-
-                await LoadTileAsync(tile);
-
-                if (result.HasConflicts)
-                {
-                    PausedMerge = new PausedMergeState(target, mergeType, tile.RepositoryPath);
-                    _notificationService.Show(
-                        "Workspace merge paused",
-                        $"Conflicts in {tile.Name}. Resolve them, then hit Continue merge to finish the remaining repos.",
-                        NotificationType.Warning,
-                        Models.NotificationCategory.MergeAndRebase);
-                    return;
-                }
-
-                if (!result.Success)
-                {
-                    PausedMerge = new PausedMergeState(target, mergeType, tile.RepositoryPath);
-                    _notificationService.Show(
-                        "Workspace merge halted",
-                        $"{tile.Name}: {result.ErrorMessage ?? "unknown failure"}.",
-                        NotificationType.Error);
-                    return;
-                }
-            }
-
-            PausedMerge = null;
-            _notificationService.Show(
-                "Workspace merge complete",
-                $"All repos merged into {target}.",
-                NotificationType.Success,
-                Models.NotificationCategory.MergeAndRebase);
-        });
     }
 
     /// <summary>
@@ -1374,13 +1369,19 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         DisposeTiles();
+        _reviewCts?.Dispose();
+        _reviewCts = null;
+        _loadLock.Dispose();
     }
 
     private void DisposeTiles()
     {
-        // Snapshot to avoid mutating while disposing — the
-        // ObservableCollection's clear fires CollectionChanged which
-        // may walk the existing items.
+        // Clearing the ObservableCollection fires a Reset to WPF which
+        // can walk back through the still-bound tile views as they
+        // detach — if we disposed first (nulling the tile's Graph),
+        // any in-flight render would NRE on the now-null property.
+        // Detach the binding source FIRST by clearing, then dispose
+        // the previously-attached tiles from a private snapshot.
         var snapshot = Tiles.ToArray();
         Tiles.Clear();
         foreach (var tile in snapshot)

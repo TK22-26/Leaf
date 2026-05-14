@@ -461,5 +461,9 @@ public partial class SubmoduleTileViewModel : ObservableObject, IDisposable
             Graph = null;
             _scope?.Dispose();
         }
+        // Drop the back-reference so a cached tile pointer (e.g. a
+        // context menu still holding the closed tile) can't keep the
+        // workspace VM rooted.
+        Workspace = null;
     }
 }

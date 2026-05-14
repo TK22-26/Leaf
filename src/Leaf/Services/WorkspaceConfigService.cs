@@ -14,6 +14,9 @@ public class WorkspaceConfigService : IWorkspaceConfigService
     // Stable keys. Don't rename without a migration.
     private const string ModeKey = "leaf.workspace.mode";
     private const string PinnedOrderKey = "leaf.workspace.pinnedorder";
+    private const string PausedMergeTargetKey = "leaf.workspace.pausedmergetarget";
+    private const string PausedMergeTypeKey = "leaf.workspace.pausedmergetype";
+    private const string PausedMergePathKey = "leaf.workspace.pausedmergepath";
 
     private readonly IGitCommandRunner _runner;
 
@@ -65,6 +68,36 @@ public class WorkspaceConfigService : IWorkspaceConfigService
         }
         var csv = string.Join(",", submodulePaths);
         await WriteConfigAsync(repoPath, PinnedOrderKey, csv, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<(string Target, string MergeType, string PausedAtRelativePath)?> GetPausedMergeAsync(
+        string repoPath, CancellationToken cancellationToken = default)
+    {
+        var target = await ReadConfigAsync(repoPath, PausedMergeTargetKey, cancellationToken);
+        if (string.IsNullOrEmpty(target)) return null;
+        var mergeType = await ReadConfigAsync(repoPath, PausedMergeTypeKey, cancellationToken) ?? "Normal";
+        var path = await ReadConfigAsync(repoPath, PausedMergePathKey, cancellationToken);
+        if (string.IsNullOrEmpty(path)) return null;
+        return (target, mergeType, path);
+    }
+
+    /// <inheritdoc />
+    public async Task SetPausedMergeAsync(
+        string repoPath, string target, string mergeType, string pausedAtRelativePath,
+        CancellationToken cancellationToken = default)
+    {
+        await WriteConfigAsync(repoPath, PausedMergeTargetKey, target, cancellationToken);
+        await WriteConfigAsync(repoPath, PausedMergeTypeKey, mergeType, cancellationToken);
+        await WriteConfigAsync(repoPath, PausedMergePathKey, pausedAtRelativePath, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task ClearPausedMergeAsync(string repoPath, CancellationToken cancellationToken = default)
+    {
+        await UnsetConfigAsync(repoPath, PausedMergeTargetKey, cancellationToken);
+        await UnsetConfigAsync(repoPath, PausedMergeTypeKey, cancellationToken);
+        await UnsetConfigAsync(repoPath, PausedMergePathKey, cancellationToken);
     }
 
     /// <summary>

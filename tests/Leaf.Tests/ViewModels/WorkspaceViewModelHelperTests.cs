@@ -111,6 +111,52 @@ public class WorkspaceViewModelHelperTests
     }
 
     [Fact]
+    public void HasMergeInProgress_FalseForCleanRepo()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "leaf-tests-mergeclean-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(dir, ".git"));
+        try
+        {
+            WorkspaceViewModel.HasMergeInProgress(dir).Should().BeFalse();
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void HasMergeInProgress_TrueWhenMergeHeadExistsInDotGitDir()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "leaf-tests-mergedir-" + Guid.NewGuid().ToString("N"));
+        var gitDir = Path.Combine(dir, ".git");
+        Directory.CreateDirectory(gitDir);
+        File.WriteAllText(Path.Combine(gitDir, "MERGE_HEAD"), "abc123");
+        try
+        {
+            WorkspaceViewModel.HasMergeInProgress(dir).Should().BeTrue();
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void HasMergeInProgress_TrueWhenSubmoduleDotGitFilePointsAtGitDirWithMergeHead()
+    {
+        // Submodules / linked worktrees use a .git *file* pointing
+        // into the parent's modules store. The probe must follow
+        // that pointer to find MERGE_HEAD.
+        var root = Path.Combine(Path.GetTempPath(), "leaf-tests-mergeptr-" + Guid.NewGuid().ToString("N"));
+        var subPath = Path.Combine(root, "modules", "sub");
+        var realGitDir = Path.Combine(root, ".git", "modules", "sub");
+        Directory.CreateDirectory(subPath);
+        Directory.CreateDirectory(realGitDir);
+        File.WriteAllText(Path.Combine(subPath, ".git"), $"gitdir: {realGitDir}");
+        File.WriteAllText(Path.Combine(realGitDir, "MERGE_HEAD"), "abc123");
+        try
+        {
+            WorkspaceViewModel.HasMergeInProgress(subPath).Should().BeTrue();
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public async Task RunTilesThrottled_RunsAllTiles()
     {
         var sp = Composition.TestServices.BuildProvider(Composition.TestServices.CreateCollection());

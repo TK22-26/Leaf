@@ -164,14 +164,15 @@
                                      git-ops items wire up in Phase D;
                                      marked IsEnabled=False until then
                                      so users see what's coming. -->
+                                <!-- Only wire actions that actually do
+                                     something. Switch-branch / Stash /
+                                     Merge-into / Rebase-onto need their
+                                     own per-tile dialogs to be useful
+                                     (workspace-level variants live on
+                                     the main action bar); ship them
+                                     when the dialogs are ready, not as
+                                     greyed-out teasers. -->
                                 <ContextMenu>
-                                    <MenuItem Header="Switch branch…" IsEnabled="False" />
-                                    <MenuItem Header="Stash changes" IsEnabled="False" />
-                                    <MenuItem Header="Pop stash" IsEnabled="False" />
-                                    <Separator />
-                                    <MenuItem Header="Merge into current…" IsEnabled="False" />
-                                    <MenuItem Header="Rebase onto…" IsEnabled="False" />
-                                    <Separator />
                                     <MenuItem Header="Refresh"
                                               Command="{Binding RefreshTileCommand}" />
                                     <MenuItem Header="Reveal in File Explorer"

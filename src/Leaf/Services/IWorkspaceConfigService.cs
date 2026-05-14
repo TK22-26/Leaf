@@ -37,4 +37,23 @@ public interface IWorkspaceConfigService
 
     /// <summary>Persist the pinned tile order. Empty list clears the key.</summary>
     Task SetPinnedTileOrderAsync(string repoPath, IReadOnlyList<string> submodulePaths, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Read a saved workspace-merge pause state. Returns null when no
+    /// merge is paused. The triple is (target branch, merge type as
+    /// stored string, paused-at submodule path relative to parent).
+    /// </summary>
+    Task<(string Target, string MergeType, string PausedAtRelativePath)?> GetPausedMergeAsync(
+        string repoPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persist a workspace-merge pause snapshot so the Continue merge
+    /// affordance survives an app restart.
+    /// </summary>
+    Task SetPausedMergeAsync(
+        string repoPath, string target, string mergeType, string pausedAtRelativePath,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Clear any saved workspace-merge pause state. Idempotent.</summary>
+    Task ClearPausedMergeAsync(string repoPath, CancellationToken cancellationToken = default);
 }
