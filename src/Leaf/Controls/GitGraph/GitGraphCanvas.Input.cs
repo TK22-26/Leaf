@@ -393,7 +393,12 @@ public partial class GitGraphCanvas
             : GetBranchLabelAt(pos);
         if (hoveredBranch != null)
         {
-            ShowSingleBranchTooltip(hoveredBranch, pos);
+            // Route through RequestSingleBranchTooltip so the popup
+            // waits out SystemParameters.MouseHoverTime before
+            // appearing — a cursor passing across the label gutter
+            // on its way somewhere else no longer flashes a tooltip
+            // for every chip it crosses.
+            RequestSingleBranchTooltip(hoveredBranch, pos);
         }
         else
         {

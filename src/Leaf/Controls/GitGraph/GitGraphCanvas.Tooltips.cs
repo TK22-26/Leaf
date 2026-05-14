@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Leaf.Graph;
 using Leaf.Models;
 
@@ -38,6 +39,17 @@ public partial class GitGraphCanvas
     private System.Windows.Controls.Primitives.Popup? _singleBranchTooltipPopup;
     private StackPanel? _singleBranchTooltipPanel;
     private string? _singleBranchTooltipKey;
+
+    // Hover-delay machinery for the per-label branch chip tooltip.
+    // The popup itself opens instantly once we decide to show it, but the
+    // decision is gated on a short hover dwell — matching WPF's standard
+    // ToolTip behaviour so a mouse passing through a chip on its way
+    // somewhere else doesn't flash the tooltip. The timer interval tracks
+    // the OS hover threshold so it adapts to a user's accessibility
+    // settings rather than baking in a magic number.
+    private DispatcherTimer? _singleBranchTooltipHoverTimer;
+    private BranchLabel? _pendingSingleBranchTooltipLabel;
+    private Point _pendingSingleBranchTooltipCursor;
 
     /// <summary>
     /// Show the §5.8 signature tooltip near the badge. Idempotent for
@@ -701,9 +713,77 @@ public partial class GitGraphCanvas
 
     private void HideSingleBranchTooltip()
     {
+        // Cancel any pending dwell so a hover that was about to fire
+        // doesn't pop the tooltip the frame after the cursor leaves.
+        if (_singleBranchTooltipHoverTimer is { IsEnabled: true })
+            _singleBranchTooltipHoverTimer.Stop();
+        _pendingSingleBranchTooltipLabel = null;
+
         if (_singleBranchTooltipPopup is { IsOpen: true })
             _singleBranchTooltipPopup.IsOpen = false;
         _singleBranchTooltipKey = null;
+    }
+
+    /// <summary>
+    /// Hover entry point for a branch chip. Adds a short OS-defined
+    /// dwell before the tooltip actually opens (matches WPF's stock
+    /// <c>ToolTipService</c> initial-show delay) so a cursor passing
+    /// across the label gutter doesn't flash the popup. Already-open
+    /// tooltips for the same chip stay put without restarting the
+    /// timer; moving to a different chip resets the dwell.
+    /// </summary>
+    private void RequestSingleBranchTooltip(BranchLabel label, Point cursor)
+    {
+        var key = label.FullName + "|" + label.IsCurrent;
+
+        // Same chip, popup already visible — nothing to do.
+        if (string.Equals(_singleBranchTooltipKey, key, StringComparison.Ordinal)
+            && _singleBranchTooltipPopup is { IsOpen: true })
+        {
+            return;
+        }
+
+        // Same chip, dwell already pending — keep the timer running.
+        if (_pendingSingleBranchTooltipLabel is { } pending
+            && string.Equals(pending.FullName + "|" + pending.IsCurrent, key, StringComparison.Ordinal))
+        {
+            _pendingSingleBranchTooltipCursor = cursor;
+            return;
+        }
+
+        // New chip — close any visible tooltip and start a fresh dwell.
+        if (_singleBranchTooltipPopup is { IsOpen: true })
+        {
+            _singleBranchTooltipPopup.IsOpen = false;
+            _singleBranchTooltipKey = null;
+        }
+
+        _pendingSingleBranchTooltipLabel = label;
+        _pendingSingleBranchTooltipCursor = cursor;
+
+        if (_singleBranchTooltipHoverTimer == null)
+        {
+            _singleBranchTooltipHoverTimer = new DispatcherTimer
+            {
+                // SystemParameters.MouseHoverTime is the OS-wide
+                // "considered hovering" threshold and is what stock
+                // tooltips key off, so this matches the rest of the
+                // shell's tooltip cadence on the user's machine.
+                Interval = SystemParameters.MouseHoverTime,
+            };
+            _singleBranchTooltipHoverTimer.Tick += OnSingleBranchTooltipDwellElapsed;
+        }
+        _singleBranchTooltipHoverTimer.Stop();
+        _singleBranchTooltipHoverTimer.Start();
+    }
+
+    private void OnSingleBranchTooltipDwellElapsed(object? sender, EventArgs e)
+    {
+        _singleBranchTooltipHoverTimer?.Stop();
+        if (_pendingSingleBranchTooltipLabel is not { } label) return;
+        var cursor = _pendingSingleBranchTooltipCursor;
+        _pendingSingleBranchTooltipLabel = null;
+        ShowSingleBranchTooltip(label, cursor);
     }
 
     /// <summary>
