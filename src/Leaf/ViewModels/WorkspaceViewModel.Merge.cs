@@ -108,7 +108,7 @@ public partial class WorkspaceViewModel
         await ClearPausedMergeAsync();
     }
 
-    private async Task RunMergeLoopAsync(string target, MergeType mergeType, string? resumeFromTilePath)
+    internal async Task RunMergeLoopAsync(string target, MergeType mergeType, string? resumeFromTilePath)
     {
         await RunBulkAsync($"Merging workspace into {target}…", async () =>
         {

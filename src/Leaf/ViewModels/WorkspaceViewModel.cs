@@ -260,33 +260,36 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            var info = await _gitService.GetRepositoryInfoFastAsync(tile.RepositoryPath, tile.Token).ConfigureAwait(false);
+            // ConfigureAwait(true) preserves the UI SynchronizationContext
+            // through the await — LoadAsync is always invoked from a
+            // UI-thread context (toolbar click, repo-selection restore,
+            // etc.), so the captured context exists and the continuation
+            // resumes on UI. The VM writes that follow (Repository,
+            // IsUninitialized, AddRepository → bound ObservableCollection)
+            // therefore land on the correct thread without an explicit
+            // dispatcher.InvokeAsync wrap. The defensive dispatcher
+            // marshaling tried in an earlier revision actually broke
+            // the downstream Graph.LoadRepositoryAsync flow because the
+            // post-Invoke continuation lost the UI context that
+            // Graph's own internal awaits relied on.
+            var info = await _gitService.GetRepositoryInfoFastAsync(tile.RepositoryPath, tile.Token).ConfigureAwait(true);
+            tile.IsUninitialized = false;
+            tile.Repository = info;
 
-            // All VM / collection mutations land on the UI thread.
-            // The await above resumes on the threadpool (ConfigureAwait(false));
-            // marshal back explicitly so we never write Repository,
-            // IsUninitialized, or AddRepository (which mutates the
-            // sidebar's ObservableCollection) off-thread.
-            await _dispatcher.InvokeAsync(() =>
+            // Auto-register submodule tiles as tracked repositories so
+            // path-keyed services (AutoCommitService, the repo lookup
+            // used by some toast clicks, etc.) can find them. Mirrors
+            // OpenSubmoduleAsRepositoryAsync's contract: IsUserAdded
+            // stays false so the submodule shows up under its parent
+            // in the sidebar rather than as a top-level entry. Parent
+            // tiles are already registered by definition — they're
+            // SelectedRepository — so skip.
+            if (!tile.IsParent && _repositoryService.FindRepository(tile.RepositoryPath) is null)
             {
-                tile.IsUninitialized = false;
-                tile.Repository = info;
-
-                // Auto-register submodule tiles as tracked repositories so
-                // path-keyed services (AutoCommitService, the repo lookup
-                // used by some toast clicks, etc.) can find them. Mirrors
-                // OpenSubmoduleAsRepositoryAsync's contract: IsUserAdded
-                // stays false so the submodule shows up under its parent
-                // in the sidebar rather than as a top-level entry. Parent
-                // tiles are already registered by definition — they're
-                // SelectedRepository — so skip.
-                if (!tile.IsParent && _repositoryService.FindRepository(tile.RepositoryPath) is null)
-                {
-                    info.ParentRepositoryPath = Parent?.Path;
-                    info.IsUserAdded = false;
-                    _repositoryService.AddRepository(info);
-                }
-            });
+                info.ParentRepositoryPath = Parent?.Path;
+                info.IsUserAdded = false;
+                _repositoryService.AddRepository(info);
+            }
 
             if (tile.Graph != null)
             {
@@ -1368,10 +1371,16 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        // The workspace VM is a DI singleton and the host calls
+        // Dispose() on every grid-mode exit, then reuses the same
+        // instance on the next entry — so this method must NOT
+        // dispose persistent state (the _loadLock SemaphoreSlim or
+        // _reviewCts). It's effectively a "DisposeTiles + cancel
+        // in-flight AI" call shaped to fit the IDisposable contract.
+        // Persistent state is owned by the DI container; .NET GC
+        // reclaims everything at process exit.
         DisposeTiles();
-        _reviewCts?.Dispose();
-        _reviewCts = null;
-        _loadLock.Dispose();
+        _reviewCts?.Cancel();
     }
 
     private void DisposeTiles()
