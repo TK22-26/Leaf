@@ -18,6 +18,7 @@
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
+        <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
         <converters:StringIsNullOrEmptyConverter x:Key="StringIsNullOrEmptyConverter" />
     </UserControl.Resources>
 
@@ -236,10 +237,17 @@
                      two-way DPs, so user edits flow back into the
                      tile's ComposingMessage / ComposingDescription
                      properties immediately and the Commit button's
-                     CanExecute re-evaluates on every keystroke. -->
+                     CanExecute re-evaluates on every keystroke.
+                     The control's embedded Commit button is wired to
+                     CommitComposeCommand + CanCommitCompose so it
+                     serves as the only Commit affordance — the
+                     button row below carries Cancel alone. -->
                 <controls:CommitInputControl Grid.Row="1"
                                              CommitMessage="{Binding ComposingMessage, Mode=TwoWay}"
-                                             CommitDescription="{Binding ComposingDescription, Mode=TwoWay}" />
+                                             CommitDescription="{Binding ComposingDescription, Mode=TwoWay}"
+                                             CommitCommand="{Binding CommitComposeCommand}"
+                                             CanCommit="{Binding CanCommitCompose}"
+                                             CommitButtonLabel="Commit" />
 
                 <!-- AI-error strip with Retry. Only renders when the
                      last AI attempt failed; clears as soon as a retry
@@ -287,27 +295,34 @@
                     </Grid>
                 </Border>
 
-                <!-- Per-tile Commit / Cancel buttons. Commit is gated
-                     on CanCommitCompose (which checks generating /
-                     committing / empty message / parent-with-pending-
-                     submodules). Cancel is always enabled — it just
-                     pops the tile back to Normal. -->
+                <!-- Per-tile Regenerate + Cancel buttons. Commit lives
+                     inside the CommitInputControl above (its embedded
+                     button is bound to CommitComposeCommand /
+                     CanCommitCompose). Regenerate re-runs the AI
+                     pipeline against the current diff — uncommon but
+                     useful when the user wants a fresh take or after
+                     the working tree shifted underneath. Disabled
+                     while a generation is already in flight. -->
                 <StackPanel Grid.Row="3"
                             Orientation="Horizontal"
                             HorizontalAlignment="Right"
                             Margin="0,10,0,0">
+                    <Button Command="{Binding RetryAiCommand}"
+                            ToolTip="Regenerate AI commit message"
+                            Padding="10,6"
+                            Margin="0,0,8,0"
+                            IsEnabled="{Binding IsGeneratingAi, Converter={StaticResource InverseBoolConverter}}"
+                            AutomationProperties.AutomationId="Tile.RegenerateAi">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="ArrowSync" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Text="Regenerate" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                     <Button Command="{Binding CancelComposeCommand}"
                             Content="Cancel"
                             Padding="16,6"
                             MinWidth="90"
-                            Margin="0,0,8,0"
                             AutomationProperties.AutomationId="Tile.CancelCompose" />
-                    <Button Command="{Binding CommitComposeCommand}"
-                            Content="Commit"
-                            Padding="16,6"
-                            MinWidth="90"
-                            IsDefault="True"
-                            AutomationProperties.AutomationId="Tile.CommitCompose" />
                 </StackPanel>
             </Grid>
         </Grid>

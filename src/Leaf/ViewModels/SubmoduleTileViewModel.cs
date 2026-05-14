@@ -119,6 +119,17 @@ public partial class SubmoduleTileViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _aiError = string.Empty;
 
+    /// <summary>
+    /// Last AI-generated message/description, captured pristine. Used
+    /// by <see cref="WorkspaceViewModel.CommitAllReviewedAsync"/> to
+    /// detect whether the user has hand-edited the composer text: if
+    /// <see cref="ComposingMessage"/> still matches this, the message
+    /// is regenerated against the now-final diff (which includes the
+    /// new submodule pointer bumps) before the parent commits.
+    /// </summary>
+    internal string AiOriginalMessage { get; set; } = string.Empty;
+    internal string AiOriginalDescription { get; set; } = string.Empty;
+
     /// <summary>True while the per-tile Commit command is in flight.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CommitComposeCommand))]

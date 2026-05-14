@@ -54,6 +54,16 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     public ObservableCollection<SubmoduleTileViewModel> Tiles { get; } = [];
 
     /// <summary>
+    /// Serialises <see cref="LoadAsync"/> calls. Without it, the
+    /// repo-selection restore path (fire-and-forget) and a concurrent
+    /// user click on the Grid toggle each ran their own DisposeTiles +
+    /// add cycle interleaved, doubling every tile. The semaphore
+    /// guarantees the second caller waits until the first finishes,
+    /// then runs DisposeTiles itself for a clean rebuild.
+    /// </summary>
+    private readonly SemaphoreSlim _loadLock = new(1, 1);
+
+    /// <summary>
     /// Current view mode. <see cref="WorkspaceMode.Single"/> hides the
     /// grid and shows the existing single-repo body; <see cref="WorkspaceMode.Grid"/>
     /// shows the tiled grid and hides the Branches panel + right detail
@@ -110,6 +120,19 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         if (parent == null) throw new ArgumentNullException(nameof(parent));
 
+        await _loadLock.WaitAsync(cancellationToken).ConfigureAwait(true);
+        try
+        {
+            await LoadAsyncCore(parent, parentGraph, cancellationToken).ConfigureAwait(true);
+        }
+        finally
+        {
+            _loadLock.Release();
+        }
+    }
+
+    private async Task LoadAsyncCore(RepositoryInfo parent, GitGraphViewModel parentGraph, CancellationToken cancellationToken)
+    {
         Parent = parent;
         DisposeTiles();
 
@@ -639,11 +662,15 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 tile.AiError = err ?? "AI returned an empty message.";
                 tile.ComposingMessage = string.Empty;
                 tile.ComposingDescription = string.Empty;
+                tile.AiOriginalMessage = string.Empty;
+                tile.AiOriginalDescription = string.Empty;
             }
             else
             {
                 tile.ComposingMessage = msg!;
                 tile.ComposingDescription = desc ?? string.Empty;
+                tile.AiOriginalMessage = msg!;
+                tile.AiOriginalDescription = desc ?? string.Empty;
             }
         }
         catch (Exception ex)
@@ -672,6 +699,26 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
 
         try
         {
+            // Parent-only: stage every submodule path so the new SHAs
+            // produced by the submodule commits during this review batch
+            // land in the parent's index. Without this, the parent's
+            // index reflects only what was staged at review-start (its
+            // own working-tree edits, when submodule HEADs hadn't moved
+            // yet) and the pointer bumps would be left unstaged after
+            // the commit. Submodule paths only — we don't sweep in
+            // arbitrary working-tree edits the user may have made
+            // between AI gen and Approve All (the same rule the
+            // single-tile commit comment below cites).
+            if (tile.IsParent && Parent is not null)
+            {
+                foreach (var sub in Tiles.Where(t => !t.IsParent))
+                {
+                    var rel = ToRelativePath(Parent.Path, sub.RepositoryPath);
+                    if (string.IsNullOrEmpty(rel)) continue;
+                    await _gitService.StageFileAsync(tile.RepositoryPath, rel, tile.Token);
+                }
+            }
+
             await _gitService.CommitAsync(
                 tile.RepositoryPath,
                 tile.ComposingMessage,
@@ -710,11 +757,40 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     public async Task CommitAllReviewedAsync()
     {
         if (!IsReviewing) return;
-        foreach (var tile in WriteOrder())
+
+        // Submodules first. After they commit, the parent's working
+        // tree will have new submodule pointer paths that weren't
+        // visible when the parent's AI message was generated at
+        // review-start.
+        foreach (var tile in Tiles.Where(t => !t.IsParent).ToList())
         {
             if (tile.Mode != Models.TileMode.Composing) continue;
-            if (string.IsNullOrWhiteSpace(tile.ComposingMessage)) continue; // AI failure / user blanked it
+            if (string.IsNullOrWhiteSpace(tile.ComposingMessage)) continue;
             await CommitComposingTileAsync(tile);
+        }
+
+        // Parent last. If the user hasn't hand-edited the parent's
+        // composer text, regenerate it now so the message reflects
+        // the now-complete diff (own changes + submodule pointer
+        // bumps). If they did edit, respect the edit — the
+        // submodule pointer paths are still staged inside
+        // CommitComposingTileAsync, so the commit content is correct
+        // regardless.
+        var parent = Tiles.FirstOrDefault(t => t.IsParent && t.Mode == Models.TileMode.Composing);
+        if (parent is not null)
+        {
+            var unedited =
+                string.Equals(parent.ComposingMessage, parent.AiOriginalMessage, StringComparison.Ordinal) &&
+                string.Equals(parent.ComposingDescription, parent.AiOriginalDescription, StringComparison.Ordinal);
+            if (unedited)
+            {
+                await GenerateAiMessageForTileAsync(parent);
+            }
+
+            if (!string.IsNullOrWhiteSpace(parent.ComposingMessage))
+            {
+                await CommitComposingTileAsync(parent);
+            }
         }
     }
 
@@ -1134,6 +1210,17 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         foreach (var tile in snapshot)
         {
             tile.Dispose();
+        }
+
+        // Reset review state — without this, exiting grid mode while
+        // tiles were composing (e.g. via the per-tile zoom-in) left
+        // IsReviewing=true on the workspace, so the action-bar "Commit
+        // reviewed" / "Cancel review" buttons stayed visible even
+        // though no tiles existed to commit.
+        if (IsReviewing)
+        {
+            IsReviewing = false;
+            OnPropertyChanged(nameof(IsAnySubmoduleComposing));
         }
     }
 }
