@@ -348,6 +348,17 @@ public class AppSettings
     public bool NotifyRemoteConfig { get; set; } = false;
     public bool NotifyCancelledOperations { get; set; } = false;
 
+    /// <summary>
+    /// Power-user opt-out for the workspace inline-commit review.
+    /// When false (default), clicking Commit-all in grid mode puts
+    /// every dirty tile into compose state so the user reviews each
+    /// AI-generated message before it ships. When true, the AI fans
+    /// out in parallel and commits land immediately without surfacing
+    /// the composer — same path as the previous one-click behaviour,
+    /// for users who trust the AI output.
+    /// </summary>
+    public bool WorkspaceCommitSkipReview { get; set; } = false;
+
     // Multi-remote sync behavior
     public bool SyncAllRemotes { get; set; } = false;
 

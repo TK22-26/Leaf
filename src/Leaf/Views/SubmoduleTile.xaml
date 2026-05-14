@@ -5,6 +5,7 @@
     xmlns:vm="clr-namespace:Leaf.ViewModels"
     xmlns:views="clr-namespace:Leaf.Views"
     xmlns:converters="clr-namespace:Leaf.Converters"
+    xmlns:controls="clr-namespace:Leaf.Controls"
     xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
     d:DataContext="{d:DesignInstance Type=vm:SubmoduleTileViewModel}"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -17,6 +18,7 @@
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
+        <converters:StringIsNullOrEmptyConverter x:Key="StringIsNullOrEmptyConverter" />
     </UserControl.Resources>
 
     <Border BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
@@ -180,18 +182,119 @@
                 </Grid>
             </Border>
 
-            <!-- Body — the tile's git graph. Reuses GitGraphView as-is;
-                 the view binds to whatever GitGraphViewModel the tile
-                 holds (parent tile uses the host's shared VM, submodule
-                 tiles get their own scope-resolved instance). -->
+            <!-- Body. Switches between the graph (Normal mode) and an
+                 inline commit composer (Composing mode). Two children
+                 stacked at the same Grid.Row; visibility-bound off
+                 IsComposing so only one shows at a time. The composer
+                 reuses CommitInputControl from the single-repo
+                 right-pane so message-template + conventional-commits
+                 affordances transfer for free. -->
+
+            <!-- Graph — visible in Normal mode. -->
             <ContentControl Grid.Row="1"
-                            Content="{Binding Graph}">
+                            Content="{Binding Graph}"
+                            Visibility="{Binding IsComposing, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                 <ContentControl.ContentTemplate>
                     <DataTemplate>
                         <views:GitGraphView />
                     </DataTemplate>
                 </ContentControl.ContentTemplate>
             </ContentControl>
+
+            <!-- Composer — visible in Composing mode. -->
+            <Grid Grid.Row="1"
+                  Visibility="{Binding IsComposing, Converter={StaticResource BoolToVisibilityConverter}}"
+                  Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Generating overlay — visible only while the AI
+                     call is in flight for this tile. -->
+                <Border Grid.Row="0"
+                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="10,6"
+                        Margin="0,0,0,6"
+                        Visibility="{Binding IsGeneratingAi, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal">
+                        <ProgressBar IsIndeterminate="True" Width="120" Height="4"
+                                     VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock Text="Generating commit message…"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Editable message + description. CommitMessage /
+                     CommitDescription on CommitInputControl are
+                     two-way DPs, so user edits flow back into the
+                     tile's ComposingMessage / ComposingDescription
+                     properties immediately and the Commit button's
+                     CanExecute re-evaluates on every keystroke. -->
+                <controls:CommitInputControl Grid.Row="1"
+                                             CommitMessage="{Binding ComposingMessage, Mode=TwoWay}"
+                                             CommitDescription="{Binding ComposingDescription, Mode=TwoWay}" />
+
+                <!-- AI-error strip with Retry. Only renders when the
+                     last AI attempt failed; clears as soon as a retry
+                     succeeds or the user types a manual message. -->
+                <Border Grid.Row="2"
+                        Background="#26000000"
+                        BorderBrush="{DynamicResource SystemFillColorCriticalBrush}"
+                        BorderThickness="0,1,0,0"
+                        Padding="10,6"
+                        Margin="0,8,0,0"
+                        Visibility="{Binding AiError, Converter={StaticResource StringIsNullOrEmptyConverter}, ConverterParameter=Inverse}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                            <Run Text="AI generation failed: " FontWeight="SemiBold" />
+                            <Run Text="{Binding AiError, Mode=OneWay}" />
+                        </TextBlock>
+                        <Button Grid.Column="1"
+                                Command="{Binding RetryAiCommand}"
+                                Content="Retry"
+                                Padding="10,4"
+                                Margin="8,0,0,0"
+                                AutomationProperties.AutomationId="Tile.RetryAi" />
+                    </Grid>
+                </Border>
+
+                <!-- Per-tile Commit / Cancel buttons. Commit is gated
+                     on CanCommitCompose (which checks generating /
+                     committing / empty message / parent-with-pending-
+                     submodules). Cancel is always enabled — it just
+                     pops the tile back to Normal. -->
+                <StackPanel Grid.Row="3"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Margin="0,10,0,0">
+                    <Button Command="{Binding CancelComposeCommand}"
+                            Content="Cancel"
+                            Padding="16,6"
+                            MinWidth="90"
+                            Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="Tile.CancelCompose" />
+                    <Button Command="{Binding CommitComposeCommand}"
+                            Content="Commit"
+                            Padding="16,6"
+                            MinWidth="90"
+                            IsDefault="True"
+                            AutomationProperties.AutomationId="Tile.CommitCompose" />
+                </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </UserControl>

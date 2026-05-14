@@ -451,6 +451,46 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     private string _bulkOperationStatus = string.Empty;
 
     /// <summary>
+    /// True while any tile is in <see cref="Models.TileMode.Composing"/>.
+    /// The action-bar Commit-all / Cancel-review buttons watch this to
+    /// know whether they're in "enter review" or "commit reviewed"
+    /// mode, and the parent tile's <c>CommitComposeCommand</c> uses it
+    /// to disable itself while submodule tiles are still pending.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAnySubmoduleComposing))]
+    private bool _isReviewing;
+
+    /// <summary>
+    /// True when at least one SUBMODULE tile is composing. Drives the
+    /// parent tile's Commit-button gating: the parent commit records
+    /// the submodules' SHAs, so committing it while submodules are
+    /// still in compose would record stale pointers.
+    /// </summary>
+    public bool IsAnySubmoduleComposing =>
+        Tiles.Any(t => !t.IsParent && t.Mode == Models.TileMode.Composing);
+
+    /// <summary>
+    /// Refresh both <see cref="IsReviewing"/> and
+    /// <see cref="IsAnySubmoduleComposing"/> from the live tile state,
+    /// then notify the parent tile's Commit button so it re-evaluates.
+    /// Called whenever a tile transitions Compose↔Normal — kicks the
+    /// derived gates without WPF needing to wire per-tile mode change
+    /// notifications.
+    /// </summary>
+    internal void NotifyComposeStateChanged()
+    {
+        IsReviewing = Tiles.Any(t => t.Mode == Models.TileMode.Composing);
+        OnPropertyChanged(nameof(IsAnySubmoduleComposing));
+        // Re-evaluate every tile's Commit button — for the parent tile
+        // the gate flips when the last submodule leaves compose.
+        foreach (var tile in Tiles)
+        {
+            tile.RefreshCanCommit();
+        }
+    }
+
+    /// <summary>
     /// Tile-iteration order for write operations: submodules first,
     /// parent last. Critical for Commit-all (submodule SHAs must exist
     /// before the parent commits its new pointers) and Push-all (same
@@ -461,28 +501,43 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         Tiles.Where(t => !t.IsParent).Concat(Tiles.Where(t => t.IsParent));
 
     /// <summary>
-    /// Commit every dirty repo in the workspace. Iterates in write
-    /// order (submodules first, parent last) so the parent records the
-    /// submodules' new SHAs in its own commit. AI messages are
-    /// generated in parallel per repo via <see cref="IAiCommitMessageService"/>;
-    /// the popout review dialog (editable per-repo messages with a
-    /// "skip review" setting) is built separately.
+    /// Commit-all entry point. Default behaviour kicks off "review
+    /// mode": each dirty tile transitions to
+    /// <see cref="Models.TileMode.Composing"/> with an AI-generated
+    /// commit message draft (generated in parallel), and the user
+    /// reviews / edits / commits per-tile in their own time.
     /// </summary>
+    /// <remarks>
+    /// <para>When <see cref="AppSettings.WorkspaceCommitSkipReview"/> is
+    /// true, fall back to the prior one-click path: AI in parallel +
+    /// immediate commit, no compose state. Power-user opt-in for users
+    /// who trust the AI output and never want to review.</para>
+    ///
+    /// <para>Commits happen per-tile via the inline Commit button;
+    /// dependency order (submodules first, parent last) is enforced by
+    /// the parent tile's <c>CommitComposeCommand</c> gating itself off
+    /// while any submodule is still in compose.</para>
+    /// </remarks>
     [RelayCommand]
     public async Task CommitAllAsync()
     {
-        await RunBulkAsync("Committing all repos…", async () =>
+        var skipReview = _settingsService.LoadSettings().WorkspaceCommitSkipReview;
+        if (skipReview)
         {
-            // Parallelise the submodules' AI commit calls — the slow
-            // path is the network round-trip to the AI provider, and
-            // those are completely independent per repo. The parent
-            // still waits for every submodule to finish so its own
-            // commit can record the children's freshly-written SHAs;
-            // running it in parallel would race and produce a parent
-            // commit that points at half-stale submodule pointers.
-            // (Same ordering rule as WriteOrder(): submodules first,
-            // parent last — split here so we can fan the submodules
-            // into Task.WhenAll while the parent stays sequential.)
+            await CommitAllImmediateAsync();
+            return;
+        }
+        await EnterReviewModeAsync();
+    }
+
+    /// <summary>
+    /// Existing one-shot commit path (used by the skip-review setting).
+    /// Parallel AI + commit in dep order; no compose state.
+    /// </summary>
+    private Task CommitAllImmediateAsync()
+    {
+        return RunBulkAsync("Committing all repos…", async () =>
+        {
             var submodules = Tiles.Where(t => !t.IsParent).ToList();
             var parent = Tiles.FirstOrDefault(t => t.IsParent);
 
@@ -498,21 +553,188 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 await CommitTileAsync(parent);
             }
 
-            // Final sequential refresh. The per-tile LoadRepositoryAsync
-            // calls inside each CommitTileAsync ran concurrently and
-            // can leave a tile's canvas in a stale-render state — the
-            // new commit's IdenticonKey is set correctly on the
-            // GitTreeNode (verified by the commit-detail pane showing
-            // the right author/email) but the canvas's brush cache
-            // returns the pre-commit pattern until the next paint.
-            // Walk every tile once more on the dispatcher so each
-            // canvas redraws against fully-settled state.
             BulkOperationStatus = "Refreshing tiles…";
             foreach (var tile in Tiles)
             {
                 await LoadTileAsync(tile);
             }
         });
+    }
+
+    /// <summary>
+    /// Move every dirty tile into <see cref="Models.TileMode.Composing"/>,
+    /// stage its working tree (so the AI sees what's about to be
+    /// committed), then fan out AI message generation in parallel. Each
+    /// tile's composer surfaces as its generation completes — the user
+    /// can edit any tile while others are still generating.
+    /// </summary>
+    private async Task EnterReviewModeAsync()
+    {
+        // Identify the dirty tiles up front. Clean tiles stay in
+        // Normal mode and aren't part of review.
+        var dirtyTiles = new List<SubmoduleTileViewModel>();
+        foreach (var tile in Tiles)
+        {
+            try
+            {
+                var changes = await _gitService.GetWorkingChangesAsync(tile.RepositoryPath, tile.Token);
+                if (changes.HasChanges)
+                {
+                    dirtyTiles.Add(tile);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Workspace", $"EnterReview: GetWorkingChangesAsync failed for {tile.Name}: {ex.Message}");
+            }
+        }
+
+        if (dirtyTiles.Count == 0)
+        {
+            _notificationService.Show("Nothing to commit", "No dirty repos in the workspace.",
+                NotificationType.Information, Models.NotificationCategory.MergeAndRebase);
+            return;
+        }
+
+        // Transition every dirty tile into Composing BEFORE generation
+        // starts, so the user sees the placeholder/spinner immediately
+        // and the action-bar buttons flip to review mode.
+        foreach (var tile in dirtyTiles)
+        {
+            tile.Mode = Models.TileMode.Composing;
+            tile.ComposingMessage = string.Empty;
+            tile.ComposingDescription = string.Empty;
+            tile.AiError = string.Empty;
+            tile.IsGeneratingAi = true;
+        }
+        NotifyComposeStateChanged();
+
+        // Fan AI generation out in parallel. Each tile updates its own
+        // ComposingMessage / AiError independently when its generation
+        // completes; the user can start editing tile #1 while tile #5
+        // is still on the network.
+        await Task.WhenAll(dirtyTiles.Select(GenerateAiMessageForTileAsync));
+    }
+
+    /// <summary>
+    /// Generate an AI commit message for <paramref name="tile"/> and
+    /// populate its composer fields. Idempotent — fires the same
+    /// pipeline the single-repo working-changes pane uses, so PATH /
+    /// .cmd-wrapper / provider handling is identical.
+    /// </summary>
+    internal async Task GenerateAiMessageForTileAsync(SubmoduleTileViewModel tile)
+    {
+        tile.IsGeneratingAi = true;
+        tile.AiError = string.Empty;
+        try
+        {
+            // Stage all so the AI sees the same diff that the eventual
+            // commit will record. Staging is idempotent on already-
+            // staged files.
+            await _gitService.StageAllAsync(tile.RepositoryPath, tile.Token);
+            var diff = await _gitService.GetStagedSummaryAsync(tile.RepositoryPath, cancellationToken: tile.Token);
+            var (msg, desc, err) = await _aiCommitService.GenerateCommitMessageAsync(diff, tile.RepositoryPath, tile.Token);
+            if (!string.IsNullOrEmpty(err) || string.IsNullOrWhiteSpace(msg))
+            {
+                tile.AiError = err ?? "AI returned an empty message.";
+                tile.ComposingMessage = string.Empty;
+                tile.ComposingDescription = string.Empty;
+            }
+            else
+            {
+                tile.ComposingMessage = msg!;
+                tile.ComposingDescription = desc ?? string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Workspace", $"GenerateAiMessage for {tile.Name} threw", ex);
+            tile.AiError = ex.Message;
+        }
+        finally
+        {
+            tile.IsGeneratingAi = false;
+        }
+    }
+
+    /// <summary>
+    /// Commit a tile that's currently in compose mode using its
+    /// (possibly edited) ComposingMessage / ComposingDescription, then
+    /// return it to Normal. Staging already happened during
+    /// <see cref="GenerateAiMessageForTileAsync"/>; we don't re-stage
+    /// here so the user's intermediate edits in the working tree don't
+    /// silently get pulled in.
+    /// </summary>
+    internal async Task CommitComposingTileAsync(SubmoduleTileViewModel tile)
+    {
+        if (tile.Mode != Models.TileMode.Composing) return;
+        if (string.IsNullOrWhiteSpace(tile.ComposingMessage)) return;
+
+        try
+        {
+            await _gitService.CommitAsync(
+                tile.RepositoryPath,
+                tile.ComposingMessage,
+                string.IsNullOrWhiteSpace(tile.ComposingDescription) ? null : tile.ComposingDescription,
+                cancellationToken: tile.Token);
+
+            _notificationService.Show(
+                "Commit complete",
+                $"{tile.Name}: {tile.ComposingMessage}",
+                NotificationType.Success,
+                Models.NotificationCategory.MergeAndRebase);
+
+            tile.ComposingMessage = string.Empty;
+            tile.ComposingDescription = string.Empty;
+            tile.AiError = string.Empty;
+            tile.Mode = Models.TileMode.Normal;
+            NotifyComposeStateChanged();
+
+            await LoadTileAsync(tile);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Workspace", $"CommitComposingTile {tile.RepositoryPath} threw", ex);
+            tile.AiError = ex.Message;
+            _notificationService.Show("Commit failed", $"{tile.Name}: {ex.Message}", NotificationType.Error);
+        }
+    }
+
+    /// <summary>
+    /// Commit every tile that's still in compose mode, in dependency
+    /// order (submodules first, parent last). The per-tile commit
+    /// buttons let the user commit one-by-one; this command is the
+    /// one-click "I've reviewed, ship them all" path.
+    /// </summary>
+    [RelayCommand]
+    public async Task CommitAllReviewedAsync()
+    {
+        if (!IsReviewing) return;
+        foreach (var tile in WriteOrder())
+        {
+            if (tile.Mode != Models.TileMode.Composing) continue;
+            if (string.IsNullOrWhiteSpace(tile.ComposingMessage)) continue; // AI failure / user blanked it
+            await CommitComposingTileAsync(tile);
+        }
+    }
+
+    /// <summary>
+    /// Discard review mode entirely. Returns every composing tile to
+    /// Normal without committing anything. The user's working-tree
+    /// changes stay on disk (we only staged + generated messages, no
+    /// commit happened) so nothing is lost.
+    /// </summary>
+    [RelayCommand]
+    public void CancelReview()
+    {
+        foreach (var tile in Tiles)
+        {
+            if (tile.Mode == Models.TileMode.Composing)
+            {
+                tile.CancelCompose();
+            }
+        }
+        NotifyComposeStateChanged();
     }
 
     /// <summary>

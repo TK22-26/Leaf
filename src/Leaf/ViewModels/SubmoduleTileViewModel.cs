@@ -79,6 +79,52 @@ public partial class SubmoduleTileViewModel : ObservableObject, IDisposable
     private bool _isPinned;
 
     /// <summary>
+    /// Current tile mode. <see cref="Models.TileMode.Normal"/> shows the
+    /// graph + working changes; <see cref="Models.TileMode.Composing"/>
+    /// hides the graph and renders an inline commit composer pre-filled
+    /// with an AI-generated message.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsComposing))]
+    [NotifyCanExecuteChangedFor(nameof(CommitComposeCommand))]
+    private Models.TileMode _mode = Models.TileMode.Normal;
+
+    /// <summary>Convenience flag for view-side <c>Visibility</c> bindings.</summary>
+    public bool IsComposing => Mode == Models.TileMode.Composing;
+
+    /// <summary>
+    /// Editable commit message during compose. Pre-filled with the AI
+    /// subject when generation succeeds; the user can edit before
+    /// committing. Two-way bound to the inline
+    /// <see cref="Leaf.Controls.CommitInputControl"/>.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CommitComposeCommand))]
+    private string _composingMessage = string.Empty;
+
+    /// <summary>Editable commit description body during compose. Pre-filled with the AI body.</summary>
+    [ObservableProperty]
+    private string _composingDescription = string.Empty;
+
+    /// <summary>True while the workspace is generating the AI message for this tile.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CommitComposeCommand))]
+    private bool _isGeneratingAi;
+
+    /// <summary>
+    /// Last AI generation error message, surfaced inline in the
+    /// composer so the user can read it without opening the log. Empty
+    /// string when the generation succeeded (or hasn't run yet).
+    /// </summary>
+    [ObservableProperty]
+    private string _aiError = string.Empty;
+
+    /// <summary>True while the per-tile Commit command is in flight.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CommitComposeCommand))]
+    private bool _isCommitting;
+
+    /// <summary>
     /// Back-reference set by <see cref="WorkspaceViewModel"/> after
     /// constructing the tile. Tile-level commands (toggle pin, open in
     /// single view, refresh) delegate here so the workspace stays the
@@ -159,6 +205,88 @@ public partial class SubmoduleTileViewModel : ObservableObject, IDisposable
     {
         if (Workspace is null) return;
         await Workspace.FetchTileAsync(this);
+    }
+
+    /// <summary>
+    /// True when the per-tile Commit button can fire — non-empty
+    /// message, not currently generating or committing, and (for the
+    /// parent tile) no submodule is still in compose mode. The last
+    /// rule prevents the user from committing the parent while
+    /// submodules are still pending, which would record stale
+    /// submodule pointers in the parent commit.
+    /// </summary>
+    public bool CanCommitCompose
+    {
+        get
+        {
+            if (IsGeneratingAi || IsCommitting) return false;
+            if (string.IsNullOrWhiteSpace(ComposingMessage)) return false;
+            if (IsParent && Workspace?.IsAnySubmoduleComposing == true) return false;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Commit this tile's working changes using the (possibly edited)
+    /// composer message + description, then revert the tile to
+    /// <see cref="Models.TileMode.Normal"/> so the user sees the new
+    /// commit in the refreshed graph.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCommitCompose))]
+    public async Task CommitComposeAsync()
+    {
+        if (Workspace is null) return;
+        IsCommitting = true;
+        try
+        {
+            await Workspace.CommitComposingTileAsync(this);
+        }
+        finally
+        {
+            IsCommitting = false;
+        }
+    }
+
+    /// <summary>
+    /// Cancel the compose state for this tile only. Discards any
+    /// edits to the composer fields; the tile returns to the normal
+    /// graph view. Working-tree changes stay on disk — Cancel doesn't
+    /// undo anything the user wrote outside the composer.
+    /// </summary>
+    [RelayCommand]
+    public void CancelCompose()
+    {
+        if (Mode != Models.TileMode.Composing) return;
+        ComposingMessage = string.Empty;
+        ComposingDescription = string.Empty;
+        AiError = string.Empty;
+        IsGeneratingAi = false;
+        Mode = Models.TileMode.Normal;
+        // Tell the workspace so it can refresh "any submodule still
+        // composing" state and the parent's Commit button enable flag.
+        Workspace?.NotifyComposeStateChanged();
+    }
+
+    /// <summary>
+    /// Re-run AI message generation for this tile. Fired from the
+    /// inline Retry button when the initial generation failed.
+    /// </summary>
+    [RelayCommand]
+    public async Task RetryAiAsync()
+    {
+        if (Workspace is null) return;
+        await Workspace.GenerateAiMessageForTileAsync(this);
+    }
+
+    /// <summary>
+    /// Re-evaluate <see cref="CanCommitCompose"/>. Called by the
+    /// workspace when another tile's compose state changes (which can
+    /// flip the parent tile's "is any submodule still composing"
+    /// gating).
+    /// </summary>
+    internal void RefreshCanCommit()
+    {
+        CommitComposeCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>

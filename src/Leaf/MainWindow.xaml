@@ -446,21 +446,59 @@
                           single-repo strip above). Bound to Workspace.*
                           commands; the action bar's DataContext is
                           MainViewModel, which exposes Workspace as a
-                          property, so we walk through that here.  -->
+                          property, so we walk through that here.
+
+                          While Workspace.IsReviewing is true (Commit-all
+                          has opened tile composers), the bulk verbs
+                          beyond Commit / Cancel review are disabled —
+                          letting the user push or merge mid-review
+                          creates confusing partial state. The Commit
+                          button itself swaps role: not-reviewing = enter
+                          review, reviewing = "Commit reviewed" (ship
+                          everything still in compose, in dep order). -->
                     <StackPanel Orientation="Horizontal"
                                 Visibility="{Binding IsGridMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <!-- Commit-all: enters review mode. -->
                         <Button Command="{Binding Workspace.CommitAllCommand}"
                                 Style="{StaticResource ActionBarButtonStyle}"
-                                ToolTip="Stage and AI-commit every dirty repo. Submodules commit first; the parent commits last so its submodule pointers move with the children."
+                                ToolTip="Stage every dirty repo + open AI-drafted commit messages in each tile for review."
+                                Visibility="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                 AutomationProperties.AutomationId="Workspace.CommitAll">
                             <StackPanel HorizontalAlignment="Center">
                                 <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Checkmark" FontSize="16" />
                                 <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Commit all" />
                             </StackPanel>
                         </Button>
+                        <!-- Commit-reviewed: ships every still-composing
+                             tile in dep order. Replaces Commit-all
+                             while review is in progress. -->
+                        <Button Command="{Binding Workspace.CommitAllReviewedCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Commit every reviewed tile in dependency order (submodules first, parent last)."
+                                Visibility="{Binding Workspace.IsReviewing, Converter={StaticResource BoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Workspace.CommitAllReviewed">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="CheckmarkCircle" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Commit reviewed" />
+                            </StackPanel>
+                        </Button>
+                        <!-- Cancel review: returns every composing tile
+                             to Normal without committing. Only visible
+                             during review. -->
+                        <Button Command="{Binding Workspace.CancelReviewCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Discard review — every composer tile reverts to its graph without committing."
+                                Visibility="{Binding Workspace.IsReviewing, Converter={StaticResource BoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Workspace.CancelReview">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Dismiss" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Cancel review" />
+                            </StackPanel>
+                        </Button>
                         <Button Command="{Binding Workspace.PushAllCommand}"
                                 Style="{StaticResource ActionBarButtonStyle}"
                                 ToolTip="Push every repo. Submodules push first; if any fail the parent push is skipped to avoid dangling pointers."
+                                IsEnabled="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolConverter}}"
                                 AutomationProperties.AutomationId="Workspace.PushAll">
                             <StackPanel HorizontalAlignment="Center">
                                 <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowUpload" FontSize="16" />
@@ -470,6 +508,7 @@
                         <Button Command="{Binding Workspace.PullAllCommand}"
                                 Style="{StaticResource ActionBarButtonStyle}"
                                 ToolTip="Pull every repo in parallel. A conflict in any one drops you into the merge editor for that repo; the others continue."
+                                IsEnabled="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolConverter}}"
                                 AutomationProperties.AutomationId="Workspace.PullAll">
                             <StackPanel HorizontalAlignment="Center">
                                 <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowDownload" FontSize="16" />
@@ -479,6 +518,7 @@
                         <Button Command="{Binding Workspace.FetchAllCommand}"
                                 Style="{StaticResource ActionBarButtonStyle}"
                                 ToolTip="Fetch every repo from origin in parallel."
+                                IsEnabled="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolConverter}}"
                                 AutomationProperties.AutomationId="Workspace.FetchAll">
                             <StackPanel HorizontalAlignment="Center">
                                 <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowSync" FontSize="16" />
@@ -490,6 +530,7 @@
                         <Button Command="{Binding Workspace.SwitchWorkspaceBranchCommand}"
                                 Style="{StaticResource ActionBarButtonStyle}"
                                 ToolTip="Switch every repo to a branch (skips repos that don't have that branch)."
+                                IsEnabled="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolConverter}}"
                                 AutomationProperties.AutomationId="Workspace.SwitchBranch">
                             <StackPanel HorizontalAlignment="Center">
                                 <ic:SymbolIcon HorizontalAlignment="Center" Symbol="BranchFork" FontSize="16" />
@@ -499,6 +540,7 @@
                         <Button Command="{Binding Workspace.MergeWorkspaceCommand}"
                                 Style="{StaticResource ActionBarButtonStyle}"
                                 ToolTip="Merge every repo's current branch into a target. Submodules merge first; conflicts pause the workflow."
+                                IsEnabled="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolConverter}}"
                                 AutomationProperties.AutomationId="Workspace.Merge">
                             <StackPanel HorizontalAlignment="Center">
                                 <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Merge" FontSize="16" />
