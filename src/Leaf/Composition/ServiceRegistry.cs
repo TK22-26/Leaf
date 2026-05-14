@@ -160,6 +160,36 @@ public static class ServiceRegistry
                 modelProvider: () => settings.LoadSettings().GeminiApiModel,
                 timeoutSecondsProvider: Timeout);
         });
+        services.AddSingleton<Leaf.Services.Ai.Http.IAiApiClient>(sp =>
+        {
+            var settings = sp.GetRequiredService<SettingsService>();
+            var creds = sp.GetRequiredService<CredentialService>();
+            var http = sp.GetRequiredService<System.Net.Http.HttpClient>();
+            int Timeout() => Math.Max(1, settings.LoadSettings().AiCliTimeoutSeconds);
+            return new Leaf.Services.Ai.Http.OpenAiApiClient(
+                Leaf.Services.Merge.AiProviderKind.OpenAi,
+                "OpenAI (API)",
+                http,
+                keyReader: () => creds.GetAiApiKey("OpenAI"),
+                baseUrlProvider: () => "https://api.openai.com/v1",
+                modelProvider: () => settings.LoadSettings().OpenAiApiModel,
+                timeoutSecondsProvider: Timeout);
+        });
+        services.AddSingleton<Leaf.Services.Ai.Http.IAiApiClient>(sp =>
+        {
+            var settings = sp.GetRequiredService<SettingsService>();
+            var creds = sp.GetRequiredService<CredentialService>();
+            var http = sp.GetRequiredService<System.Net.Http.HttpClient>();
+            int Timeout() => Math.Max(1, settings.LoadSettings().AiCliTimeoutSeconds);
+            return new Leaf.Services.Ai.Http.OpenAiApiClient(
+                Leaf.Services.Merge.AiProviderKind.OpenAiCompatible,
+                "OpenAI-Compatible",
+                http,
+                keyReader: () => creds.GetAiApiKey("OpenAiCompatible"),
+                baseUrlProvider: () => settings.LoadSettings().OpenAiCompatibleBaseUrl,
+                modelProvider: () => settings.LoadSettings().OpenAiCompatibleModel,
+                timeoutSecondsProvider: Timeout);
+        });
 
         // AI-assisted merge resolution. The router holds one of every
         // provider implementation and dispatches to whichever is selected
@@ -210,6 +240,8 @@ public static class ServiceRegistry
             var apiClients = sp.GetServices<Leaf.Services.Ai.Http.IAiApiClient>().ToList();
             var claudeApiClient = apiClients.First(c => c.Provider == Leaf.Services.Merge.AiProviderKind.ClaudeApi);
             var geminiApiClient = apiClients.First(c => c.Provider == Leaf.Services.Merge.AiProviderKind.GeminiApi);
+            var openAiApiClient = apiClients.First(c => c.Provider == Leaf.Services.Merge.AiProviderKind.OpenAi);
+            var openAiCompatibleClient = apiClients.First(c => c.Provider == Leaf.Services.Merge.AiProviderKind.OpenAiCompatible);
 
             var claudeApi = new Leaf.Services.Merge.Providers.ClaudeApiMergeAssistant(
                 claudeApiClient, Enabled, Consent,
@@ -217,12 +249,20 @@ public static class ServiceRegistry
             var geminiApi = new Leaf.Services.Merge.Providers.GeminiApiMergeAssistant(
                 geminiApiClient, Enabled, Consent,
                 () => settings.LoadSettings().IsGeminiApiConnected);
+            var openAiApi = new Leaf.Services.Merge.Providers.OpenAiApiMergeAssistant(
+                openAiApiClient, Enabled, Consent,
+                () => settings.LoadSettings().IsOpenAiApiConnected);
+            var openAiCompatible = new Leaf.Services.Merge.Providers.OpenAiCompatibleApiMergeAssistant(
+                openAiCompatibleClient, Enabled, Consent,
+                () => settings.LoadSettings().IsOpenAiCompatibleConnected,
+                () => settings.LoadSettings().OpenAiCompatibleBaseUrl);
 
             return new Leaf.Services.Merge.AiMergeAssistantRouter(
                 selectedProviderProvider: () => settings.LoadSettings().AiMergeProvider,
                 enabledProvider: Enabled,
                 consentProvider: Consent,
-                claude, gemini, codex, ollamaAssistant, externalServer, claudeApi, geminiApi);
+                claude, gemini, codex, ollamaAssistant, externalServer,
+                claudeApi, geminiApi, openAiApi, openAiCompatible);
         });
     }
 

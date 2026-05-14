@@ -41,7 +41,9 @@ public class AiMergeAssistantRouterTests
         bool ollamaConnected = true,
         bool externalServerExists = true,
         bool claudeApiConnected = false,
-        bool geminiApiConnected = false)
+        bool geminiApiConnected = false,
+        bool openAiApiConnected = false,
+        bool openAiCompatibleConnected = false)
     {
         var runner = new RecordingRunner(stdout: CannedJson);
         var providerSetting = "Claude";
@@ -83,12 +85,22 @@ public class AiMergeAssistantRouterTests
             new StubAiApiClient(AiProviderKind.GeminiApi, hasKey: geminiApiConnected),
             () => enabled, () => consent,
             () => geminiApiConnected);
+        var openAiApi = new OpenAiApiMergeAssistant(
+            new StubAiApiClient(AiProviderKind.OpenAi, hasKey: openAiApiConnected),
+            () => enabled, () => consent,
+            () => openAiApiConnected);
+        var openAiCompatible = new OpenAiCompatibleApiMergeAssistant(
+            new StubAiApiClient(AiProviderKind.OpenAiCompatible, hasKey: openAiCompatibleConnected),
+            () => enabled, () => consent,
+            () => openAiCompatibleConnected,
+            () => openAiCompatibleConnected ? "http://localhost:1234/v1" : string.Empty);
 
         var router = new AiMergeAssistantRouter(
             selectedProviderProvider: () => providerSetting,
             enabledProvider: () => enabled,
             consentProvider: () => consent,
-            claude, gemini, codex, ollama, external, claudeApi, geminiApi);
+            claude, gemini, codex, ollama, external,
+            claudeApi, geminiApi, openAiApi, openAiCompatible);
 
         return (
             router,

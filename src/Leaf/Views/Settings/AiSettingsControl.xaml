@@ -381,6 +381,176 @@
             </Border>
         </StackPanel>
 
+        <!-- OpenAI (API key) Content -->
+        <StackPanel x:Name="ContentOpenAi" Visibility="Collapsed">
+            <TextBlock Text="OpenAI"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="Connect to OpenAI with your own API key (direct-billing). The Codex CLI auth path is configured under Codex."
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,16"
+                       TextWrapping="Wrap" />
+
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel>
+                    <TextBlock Text="OpenAI API key"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <PasswordBox x:Name="OpenAiApiKeyPasswordBox"
+                                 Margin="0,0,0,4"
+                                 Padding="8,6" />
+                    <TextBlock Text="Stored securely in Windows Credential Manager. Format: sk-…"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="Model"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <TextBox x:Name="OpenAiApiModelTextBox"
+                             Margin="0,0,0,4"
+                             Padding="8,6"
+                             TextChanged="OpenAiApiModel_Changed" />
+                    <TextBlock Text="Examples: gpt-5-codex, gpt-5, o1, gpt-4o"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Connection Status"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock x:Name="OpenAiApiStatusText"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Not connected" />
+                        </StackPanel>
+                        <Button x:Name="OpenAiApiSaveTestButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="OpenAiApiSaveTest_Click"
+                                Content="Save &amp; Test" />
+                        <Button x:Name="OpenAiApiDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="OpenAiApiDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- OpenAI-Compatible (custom endpoint) Content -->
+        <StackPanel x:Name="ContentOpenAiCompatible" Visibility="Collapsed">
+            <TextBlock Text="OpenAI-Compatible"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="Use any service that implements the OpenAI Responses API: LM Studio, OpenRouter, vLLM, Together, Azure OpenAI gateway, or a corporate proxy."
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,16"
+                       TextWrapping="Wrap" />
+
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel>
+                    <TextBlock Text="Base URL"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <TextBox x:Name="OpenAiCompatibleBaseUrlTextBox"
+                             Margin="0,0,0,4"
+                             Padding="8,6"
+                             TextChanged="OpenAiCompatibleBaseUrl_Changed" />
+                    <TextBlock Text="Examples: http://localhost:1234/v1, https://openrouter.ai/api/v1, https://api.together.xyz/v1"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="API key"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <PasswordBox x:Name="OpenAiCompatibleApiKeyPasswordBox"
+                                 Margin="0,0,0,4"
+                                 Padding="8,6" />
+                    <TextBlock Text="Some local servers (LM Studio default) accept any non-empty string. Cloud gateways require a real key. Stored in Windows Credential Manager."
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="Model"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <TextBox x:Name="OpenAiCompatibleModelTextBox"
+                             Margin="0,0,0,4"
+                             Padding="8,6"
+                             TextChanged="OpenAiCompatibleModel_Changed" />
+                    <TextBlock Text="Model identifier exactly as your endpoint exposes it (e.g. anthropic/claude-3.5-sonnet on OpenRouter, or local-model on LM Studio)."
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Connection Status"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock x:Name="OpenAiCompatibleStatusText"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Not connected" />
+                        </StackPanel>
+                        <Button x:Name="OpenAiCompatibleSaveTestButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="OpenAiCompatibleSaveTest_Click"
+                                Content="Save &amp; Test" />
+                        <Button x:Name="OpenAiCompatibleDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="OpenAiCompatibleDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
         <!-- Ollama Content -->
         <StackPanel x:Name="ContentOllama" Visibility="Collapsed">
             <TextBlock Text="Ollama"

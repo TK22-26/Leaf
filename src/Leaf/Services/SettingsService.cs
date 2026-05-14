@@ -300,6 +300,21 @@ public class AppSettings
     public string GeminiTransport { get; set; } = "Cli";
     public bool IsGeminiApiConnected { get; set; }
     public string GeminiApiModel { get; set; } = "gemini-2.5-pro";
+
+    // OpenAI (Responses API). New top-level section in the settings
+    // rail because the existing "Codex" entry refers specifically to
+    // the Codex CLI auth path. Key at Leaf:AI:OpenAI.
+    public bool IsOpenAiApiConnected { get; set; }
+    public string OpenAiApiModel { get; set; } = "gpt-5-codex";
+
+    // OpenAI-compatible custom endpoint (LM Studio, OpenRouter, vLLM,
+    // Together, a corporate Azure OpenAI gateway, etc.). Same wire
+    // format as OpenAI proper, different base URL + key. Stored
+    // separately so a user can simultaneously have an OpenAI account
+    // and a local LM Studio configured. Key at Leaf:AI:OpenAiCompatible.
+    public bool IsOpenAiCompatibleConnected { get; set; }
+    public string OpenAiCompatibleBaseUrl { get; set; } = string.Empty;
+    public string OpenAiCompatibleModel { get; set; } = string.Empty;
     public double WindowWidth { get; set; } = 1200;
     public double WindowHeight { get; set; } = 700;
     public double WindowLeft { get; set; } = -1;

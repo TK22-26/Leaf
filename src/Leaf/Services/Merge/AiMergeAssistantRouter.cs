@@ -43,7 +43,9 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
         OllamaMergeAssistant ollama,
         ExternalServerMergeAssistant externalServer,
         ClaudeApiMergeAssistant claudeApi,
-        GeminiApiMergeAssistant geminiApi)
+        GeminiApiMergeAssistant geminiApi,
+        OpenAiApiMergeAssistant openAiApi,
+        OpenAiCompatibleApiMergeAssistant openAiCompatible)
     {
         _selectedProviderProvider = selectedProviderProvider ?? throw new ArgumentNullException(nameof(selectedProviderProvider));
         _enabledProvider = enabledProvider ?? throw new ArgumentNullException(nameof(enabledProvider));
@@ -58,6 +60,8 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
             [AiProviderKind.ExternalServer] = externalServer,
             [AiProviderKind.ClaudeApi] = claudeApi,
             [AiProviderKind.GeminiApi] = geminiApi,
+            [AiProviderKind.OpenAi] = openAiApi,
+            [AiProviderKind.OpenAiCompatible] = openAiCompatible,
         };
     }
 
@@ -138,9 +142,16 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
             string s when s.Equals("Gemini (API)", StringComparison.OrdinalIgnoreCase)
                        || s.Equals("GeminiApi", StringComparison.OrdinalIgnoreCase)
                 => AiProviderKind.GeminiApi,
+            string s when s.Equals("OpenAI (API)", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("OpenAi", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("OpenAI", StringComparison.OrdinalIgnoreCase)
+                => AiProviderKind.OpenAi,
+            string s when s.Equals("OpenAI-Compatible", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("OpenAiCompatible", StringComparison.OrdinalIgnoreCase)
+                => AiProviderKind.OpenAiCompatible,
             _ => throw new AiMergeAssistantException(
                 $"Unknown AI merge provider '{raw}' in settings. Expected one of: " +
-                "Claude, Claude (API), Gemini, Gemini (API), Codex, Ollama, ExternalServer."),
+                "Claude, Claude (API), Gemini, Gemini (API), Codex, OpenAI (API), OpenAI-Compatible, Ollama, ExternalServer."),
         };
 
         return _providers[kind];
