@@ -243,14 +243,29 @@
 
                 <!-- AI-error strip with Retry. Only renders when the
                      last AI attempt failed; clears as soon as a retry
-                     succeeds or the user types a manual message. -->
+                     succeeds or the user types a manual message.
+                     Visibility is driven via a DataTrigger because
+                     StringIsNullOrEmptyConverter returns a bool, and
+                     WPF doesn't implicitly convert bool→Visibility on
+                     a direct binding (it'd fall through to Visible,
+                     causing the strip to show even when AiError is
+                     empty). DataTrigger matches the bool result. -->
                 <Border Grid.Row="2"
                         Background="#26000000"
                         BorderBrush="{DynamicResource SystemFillColorCriticalBrush}"
                         BorderThickness="0,1,0,0"
                         Padding="10,6"
-                        Margin="0,8,0,0"
-                        Visibility="{Binding AiError, Converter={StaticResource StringIsNullOrEmptyConverter}, ConverterParameter=Inverse}">
+                        Margin="0,8,0,0">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding AiError, Converter={StaticResource StringIsNullOrEmptyConverter}}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
