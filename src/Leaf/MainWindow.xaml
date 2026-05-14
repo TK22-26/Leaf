@@ -27,22 +27,11 @@
         <converters:IntGreaterThanZeroConverter x:Key="IntGreaterThanZeroConverter" />
         <converters:TerminalRowHeightConverter x:Key="TerminalRowHeightConverter" />
 
-        <!--  Action bar button style with green hover (stacked icon + text)  -->
-        <Style
-            x:Key="ActionBarButtonStyle"
-            BasedOn="{StaticResource {x:Type Button}}"
-            TargetType="Button">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Margin" Value="1,0" />
-            <Setter Property="Padding" Value="8,4" />
-            <Setter Property="MinWidth" Value="46" />
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
-                </Trigger>
-            </Style.Triggers>
-        </Style>
+        <!-- ActionBarButtonStyle moved to App.xaml so descendant
+             UserControls (workspace grid toolbar, etc.) can resolve it
+             via StaticResource at parse time. MainWindow's references
+             still work because the App-level resources are part of
+             every StaticResource lookup chain. -->
     </Window.Resources>
 
     <!-- Window.InputBindings are populated at runtime by
@@ -306,127 +295,330 @@
                         Margin="8,0"
                         VerticalAlignment="Center"
                         Fill="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <!--  Pull  -->
-                    <Button
-                        Command="{Binding PullCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Pull changes from remote">
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontFamily="Segoe Fluent Icons"
-                                FontSize="16"
-                                Text="&#xE74B;" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="10"
-                                Text="Pull" />
-                        </StackPanel>
-                    </Button>
-                    <!--  Push  -->
-                    <Button
-                        Command="{Binding PushCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Push changes to remote">
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontFamily="Segoe Fluent Icons"
-                                FontSize="16"
-                                Text="&#xE74A;" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="10"
-                                Text="Push" />
-                        </StackPanel>
-                    </Button>
+
+                    <!--  Single-repo verbs. Hidden in workspace grid mode
+                          because each verb is exposed per-tile (or as a
+                          workspace-level bulk action below); leaving the
+                          per-repo strip visible would be misleading
+                          (which repo does Pull act on?) and waste the
+                          horizontal real estate that grid mode needs for
+                          its own verbs.  -->
+                    <StackPanel Orientation="Horizontal"
+                                Visibility="{Binding IsGridMode, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        <!--  Pull  -->
+                        <Button
+                            Command="{Binding PullCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="Pull changes from remote (right-click for rebase variant)">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem
+                                        Command="{Binding PullCommand}"
+                                        Header="Pull"
+                                        ToolTip="Use the strategy from your pull.rebase git config" />
+                                    <MenuItem
+                                        Command="{Binding PullRebaseCommand}"
+                                        Header="Pull (rebase)"
+                                        ToolTip="git pull --rebase — replay local commits on top of incoming work" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="16"
+                                    Text="&#xE74B;" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="Pull" />
+                            </StackPanel>
+                        </Button>
+                        <!--  Push  -->
+                        <Button
+                            Command="{Binding PushCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="Push changes to remote">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="16"
+                                    Text="&#xE74A;" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="Push" />
+                            </StackPanel>
+                        </Button>
+                        <Rectangle
+                            Width="1"
+                            Height="28"
+                            Margin="8,0"
+                            VerticalAlignment="Center"
+                            Fill="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <!--  Branch  -->
+                        <Button
+                            Command="{Binding CreateBranchCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="Create new branch">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon
+                                    HorizontalAlignment="Center"
+                                    FontSize="16"
+                                    Symbol="BranchFork" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="Branch" />
+                            </StackPanel>
+                        </Button>
+                        <!--  GitFlow  -->
+                        <Button
+                            x:Name="GitFlowActionBarButton"
+                            Command="{Binding GitFlowButtonCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="GitFlow">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon
+                                    HorizontalAlignment="Center"
+                                    FontSize="16"
+                                    Symbol="Flow" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="GitFlow" />
+                            </StackPanel>
+                            <Button.ContextMenu>
+                                <ContextMenu />
+                            </Button.ContextMenu>
+                        </Button>
+                        <Rectangle
+                            Width="1"
+                            Height="28"
+                            Margin="8,0"
+                            VerticalAlignment="Center"
+                            Fill="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <!--  Stash  -->
+                        <Button
+                            Command="{Binding StashCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="Stash changes">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="16"
+                                    Text="&#xE7B8;" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="Stash" />
+                            </StackPanel>
+                        </Button>
+                        <!--  Pop  -->
+                        <Button Command="{Binding PopStashCommand}" ToolTip="Pop stashed changes (select a stash first)">
+                            <Button.Style>
+                                <Style BasedOn="{StaticResource ActionBarButtonStyle}" TargetType="Button">
+                                    <Setter Property="Opacity" Value="1" />
+                                    <Style.Triggers>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="Opacity" Value="0.4" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="16"
+                                    Text="&#xE7B7;" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Text="Pop" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <!--  Workspace bulk verbs (mirror swap of the
+                          single-repo strip above). Bound to Workspace.*
+                          commands; the action bar's DataContext is
+                          MainViewModel, which exposes Workspace as a
+                          property, so we walk through that here.
+
+                          While Workspace.IsReviewing is true (Commit-all
+                          has opened tile composers), the bulk verbs
+                          beyond Commit / Cancel review are disabled —
+                          letting the user push or merge mid-review
+                          creates confusing partial state. The Commit
+                          button itself swaps role: not-reviewing = enter
+                          review, reviewing = "Commit reviewed" (ship
+                          everything still in compose, in dep order). -->
+                    <StackPanel Orientation="Horizontal"
+                                Visibility="{Binding IsGridMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <!-- Commit-all: enters review mode. -->
+                        <Button Command="{Binding Workspace.CommitAllCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Stage every dirty repo + open AI-drafted commit messages in each tile for review."
+                                Visibility="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Workspace.CommitAll">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Checkmark" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Commit all" />
+                            </StackPanel>
+                        </Button>
+                        <!-- Commit-reviewed: ships every still-composing
+                             tile in dep order. Replaces Commit-all
+                             while review is in progress. -->
+                        <Button Command="{Binding Workspace.CommitAllReviewedCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Commit every reviewed tile in dependency order (submodules first, parent last)."
+                                Visibility="{Binding Workspace.IsReviewing, Converter={StaticResource BoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Workspace.CommitAllReviewed">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="CheckmarkCircle" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Commit reviewed" />
+                            </StackPanel>
+                        </Button>
+                        <!-- Cancel review: returns every composing tile
+                             to Normal without committing. Only visible
+                             during review. -->
+                        <Button Command="{Binding Workspace.CancelReviewCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Discard review — every composer tile reverts to its graph without committing."
+                                Visibility="{Binding Workspace.IsReviewing, Converter={StaticResource BoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Workspace.CancelReview">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Dismiss" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Cancel review" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding Workspace.PushAllCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Push every repo. Submodules push first; if any fail the parent push is skipped to avoid dangling pointers."
+                                IsEnabled="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolConverter}}"
+                                AutomationProperties.AutomationId="Workspace.PushAll">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowUpload" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Push all" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding Workspace.PullAllCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Pull every repo in parallel. A conflict in any one drops you into the merge editor for that repo; the others continue."
+                                IsEnabled="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolConverter}}"
+                                AutomationProperties.AutomationId="Workspace.PullAll">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowDownload" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Pull all" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding Workspace.FetchAllCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Fetch every repo from origin in parallel."
+                                IsEnabled="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolConverter}}"
+                                AutomationProperties.AutomationId="Workspace.FetchAll">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="ArrowSync" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Fetch all" />
+                            </StackPanel>
+                        </Button>
+                        <Rectangle Width="1" Height="28" Margin="8,0" VerticalAlignment="Center"
+                                   Fill="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <Button Command="{Binding Workspace.SwitchWorkspaceBranchCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Switch every repo to a branch (skips repos that don't have that branch)."
+                                IsEnabled="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolConverter}}"
+                                AutomationProperties.AutomationId="Workspace.SwitchBranch">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="BranchFork" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Switch branch" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding Workspace.MergeWorkspaceCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Merge every repo's current branch into a target. Submodules merge first; conflicts pause the workflow."
+                                IsEnabled="{Binding Workspace.IsReviewing, Converter={StaticResource InverseBoolConverter}}"
+                                Visibility="{Binding Workspace.HasPausedMerge, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Workspace.Merge">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Merge" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Merge" />
+                            </StackPanel>
+                        </Button>
+                        <!-- Paused-merge resume affordance. The Merge
+                             button collapses while HasPausedMerge is
+                             true and these two buttons take its place
+                             — Continue (resume the loop from the
+                             tile we stopped at) and Cancel (drop the
+                             workspace-level pause state without
+                             affecting any individual repo's MERGE_HEAD,
+                             which the user can still finish or abort
+                             via the merge editor). -->
+                        <Button Command="{Binding Workspace.ContinueMergeCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Resume the paused workspace merge from where it stopped."
+                                Visibility="{Binding Workspace.HasPausedMerge, Converter={StaticResource BoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Workspace.ContinueMerge">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Play" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Continue merge" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding Workspace.CancelPausedMergeCommand}"
+                                Style="{StaticResource ActionBarButtonStyle}"
+                                ToolTip="Discard the workspace-level merge resume state. Individual repo MERGE_HEADs are unaffected."
+                                Visibility="{Binding Workspace.HasPausedMerge, Converter={StaticResource BoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Workspace.CancelPausedMerge">
+                            <StackPanel HorizontalAlignment="Center">
+                                <ic:SymbolIcon HorizontalAlignment="Center" Symbol="Dismiss" FontSize="16" />
+                                <TextBlock HorizontalAlignment="Center" FontSize="10" Text="Cancel merge" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                    <!-- Divider between the stash group (Stash / Pop)
+                         and the workspace grid toggle so the visual
+                         grouping reads "stash stuff | workspace stuff"
+                         the same way the rest of the bar separates
+                         related buttons. Visibility tracks the toggle
+                         itself so the divider isn't a dangling line
+                         when the active repo has no submodules. -->
                     <Rectangle
                         Width="1"
                         Height="28"
                         Margin="8,0"
                         VerticalAlignment="Center"
-                        Fill="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <!--  Branch  -->
-                    <Button
-                        Command="{Binding CreateBranchCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Create new branch">
+                        Fill="{DynamicResource TextFillColorSecondaryBrush}"
+                        Visibility="{Binding HasSubmodules, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <!--  Workspace grid toggle — only visible when the
+                          active repo has submodules. Flips between the
+                          single-active-repo view and the tiled grid of
+                          the parent plus every submodule. -->
+                    <Button Command="{Binding ToggleWorkspaceModeCommand}"
+                            Style="{StaticResource ActionBarButtonStyle}"
+                            ToolTip="Toggle submodule workspace view"
+                            Visibility="{Binding HasSubmodules, Converter={StaticResource BoolToVisibilityConverter}}"
+                            AutomationProperties.AutomationId="ToggleWorkspaceMode">
                         <StackPanel HorizontalAlignment="Center">
+                            <!-- Use the FluentIcons named symbol set
+                                 (already a dep elsewhere — message
+                                 boxes, dialogs, rebase). Named symbols
+                                 are version-stable across the Segoe
+                                 Fluent Icons font, where raw codepoints
+                                 drift between Windows builds (e.g.
+                                 E8B0 renders as a cursor on some
+                                 versions). LayoutCellFour is the
+                                 unambiguous 2x2-grid glyph. -->
                             <ic:SymbolIcon
                                 HorizontalAlignment="Center"
-                                FontSize="16"
-                                Symbol="BranchFork" />
+                                Symbol="LayoutCellFour"
+                                FontSize="16" />
                             <TextBlock
                                 HorizontalAlignment="Center"
                                 FontSize="10"
-                                Text="Branch" />
-                        </StackPanel>
-                    </Button>
-                    <!--  GitFlow  -->
-                    <Button
-                        x:Name="GitFlowActionBarButton"
-                        Command="{Binding GitFlowButtonCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="GitFlow">
-                        <StackPanel HorizontalAlignment="Center">
-                            <ic:SymbolIcon
-                                HorizontalAlignment="Center"
-                                FontSize="16"
-                                Symbol="Flow" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="10"
-                                Text="GitFlow" />
-                        </StackPanel>
-                        <Button.ContextMenu>
-                            <ContextMenu />
-                        </Button.ContextMenu>
-                    </Button>
-                    <Rectangle
-                        Width="1"
-                        Height="28"
-                        Margin="8,0"
-                        VerticalAlignment="Center"
-                        Fill="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <!--  Stash  -->
-                    <Button
-                        Command="{Binding StashCommand}"
-                        Style="{StaticResource ActionBarButtonStyle}"
-                        ToolTip="Stash changes">
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontFamily="Segoe Fluent Icons"
-                                FontSize="16"
-                                Text="&#xE7B8;" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="10"
-                                Text="Stash" />
-                        </StackPanel>
-                    </Button>
-                    <!--  Pop  -->
-                    <Button Command="{Binding PopStashCommand}" ToolTip="Pop stashed changes (select a stash first)">
-                        <Button.Style>
-                            <Style BasedOn="{StaticResource ActionBarButtonStyle}" TargetType="Button">
-                                <Setter Property="Opacity" Value="1" />
-                                <Style.Triggers>
-                                    <Trigger Property="IsEnabled" Value="False">
-                                        <Setter Property="Opacity" Value="0.4" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontFamily="Segoe Fluent Icons"
-                                FontSize="16"
-                                Text="&#xE7B7;" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="10"
-                                Text="Pop" />
+                                Text="Workspace" />
                         </StackPanel>
                     </Button>
                 </StackPanel>
@@ -556,7 +748,11 @@
             <Grid x:Name="MainPanelGrid" Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="250" MinWidth="200" />
+                    <!-- Branches column. Width collapses to 0 in grid
+                         mode so the centre tile region takes the
+                         reclaimed space; MinWidth follows so the
+                         splitter can't tug it back open. -->
+                    <ColumnDefinition x:Name="BranchesColumn" Width="250" MinWidth="200" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition x:Name="RightPanelColumn" Width="350" MinWidth="0" />
                 </Grid.ColumnDefinitions>
@@ -670,11 +866,16 @@
                     Focusable="False"
                     Visibility="{Binding IsRepoPaneCollapsed, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
 
-                <!--  Second panel: Branches for selected repo  -->
+                <!--  Second panel: Branches for selected repo. Hidden
+                      in workspace-grid mode — the parent + every
+                      submodule each show their own graph as a tile in
+                      the centre, so the host-level branches panel
+                      would just be a redundant rail. -->
                 <Border
                     Grid.Column="1"
                     BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                    BorderThickness="0,0,1,0">
+                    BorderThickness="0,0,1,0"
+                    Visibility="{Binding IsGridMode, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                     <views:BranchListView DataContext="{Binding}" />
                 </Border>
 
@@ -685,6 +886,15 @@
                       current sha, steps, End Bisect), so the banner was
                       removed as redundant.  -->
                 <Grid Grid.Column="2">
+                    <!--  Workspace grid view — submodule dashboard. Takes
+                          over the centre column when IsGridMode is true;
+                          all the other content-takeover panes below
+                          stay hidden in grid mode because they're keyed
+                          off the single-repo modes (graph / PR / bisect)
+                          that grid mode supersedes. -->
+                    <views:WorkspaceGridView DataContext="{Binding Workspace}"
+                                             Visibility="{Binding DataContext.IsGridMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
+
                     <!--  Git graph: visible when in Graph mode and diff viewer not active  -->
                     <views:GitGraphView DataContext="{Binding GitGraphViewModel}">
                         <views:GitGraphView.Style>
@@ -701,6 +911,10 @@
                                           the bisect detail view (full content takeover,
                                           like PR mode).  -->
                                     <DataTrigger Binding="{Binding DataContext.IsBisectMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <!--  Grid mode supersedes the single-repo graph. -->
+                                    <DataTrigger Binding="{Binding DataContext.IsGridMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
                                         <Setter Property="Visibility" Value="Collapsed" />
                                     </DataTrigger>
                                 </Style.Triggers>

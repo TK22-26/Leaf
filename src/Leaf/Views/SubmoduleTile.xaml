@@ -1,0 +1,389 @@
+<UserControl
+    x:Class="Leaf.Views.SubmoduleTile"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="clr-namespace:Leaf.ViewModels"
+    xmlns:views="clr-namespace:Leaf.Views"
+    xmlns:converters="clr-namespace:Leaf.Converters"
+    xmlns:controls="clr-namespace:Leaf.Controls"
+    xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+    d:DataContext="{d:DesignInstance Type=vm:SubmoduleTileViewModel}"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <!-- Full-bleed tile. Right + bottom 1px borders so adjacent tiles
+         share exactly one hairline between them. The outer Grid in the
+         workspace view sets right-edge / bottom-edge tiles' borders to 0
+         to keep the outer chrome clean. -->
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
+        <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+        <converters:StringIsNullOrEmptyConverter x:Key="StringIsNullOrEmptyConverter" />
+    </UserControl.Resources>
+
+    <Border BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="0,0,1,1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Title bar — slim strip with parent-dot, name, action
+                 icons. Background slightly darker than the body so the
+                 strip reads as chrome even without a separator. -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                    BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="10,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left cluster: ROOT dot + tile name -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="8" Height="8"
+                                 Fill="{DynamicResource AccentFillColorDefaultBrush}"
+                                 Margin="0,0,8,0"
+                                 VerticalAlignment="Center"
+                                 ToolTip="Parent (root) repository"
+                                 Visibility="{Binding IsParent, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <TextBlock Text="{Binding Name}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <!-- Right cluster: quick-action icon buttons. The
+                         pin and overflow buttons sit alongside the
+                         four primary verbs; the zoom-in button is
+                         hidden on the parent tile (zooming the parent
+                         is the same gesture as exiting grid mode). -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Pin / unpin. Hidden on the parent tile —
+                             the parent is always at position 0, pinning
+                             it makes no sense. Filled glyph when
+                             pinned, outline when not, so the state is
+                             obvious at a glance. -->
+                        <Button Command="{Binding TogglePinCommand}"
+                                ToolTip="Pin to top"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Visibility="{Binding IsParent, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Tile.Pin">
+                            <ic:SymbolIcon FontSize="14">
+                                <ic:SymbolIcon.Style>
+                                    <Style TargetType="ic:SymbolIcon">
+                                        <Setter Property="Symbol" Value="Pin" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                                <Setter Property="Symbol" Value="PinOff" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ic:SymbolIcon.Style>
+                            </ic:SymbolIcon>
+                        </Button>
+                        <Button Command="{Binding CommitCommand}"
+                                ToolTip="Stage all + AI commit"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                AutomationProperties.AutomationId="Tile.Commit">
+                            <ic:SymbolIcon Symbol="Checkmark" FontSize="14" />
+                        </Button>
+                        <Button Command="{Binding PushCommand}"
+                                ToolTip="Push"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                AutomationProperties.AutomationId="Tile.Push">
+                            <ic:SymbolIcon Symbol="ArrowUpload" FontSize="14" />
+                        </Button>
+                        <Button Command="{Binding PullCommand}"
+                                ToolTip="Pull"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                AutomationProperties.AutomationId="Tile.Pull">
+                            <ic:SymbolIcon Symbol="ArrowDownload" FontSize="14" />
+                        </Button>
+                        <Button Command="{Binding FetchCommand}"
+                                ToolTip="Fetch"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                AutomationProperties.AutomationId="Tile.Fetch">
+                            <ic:SymbolIcon Symbol="ArrowSync" FontSize="14" />
+                        </Button>
+                        <!-- Zoom-in / open-in-single-view. Visible on
+                             every tile including the parent. For the
+                             parent it acts as "exit grid": the host
+                             handler resolves the parent's repo as the
+                             single-view selection (it's already
+                             SelectedRepository) and drops grid mode in
+                             the process. -->
+                        <Button Command="{Binding OpenInSingleViewCommand}"
+                                ToolTip="Open in single view"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                AutomationProperties.AutomationId="Tile.Zoom">
+                            <ic:SymbolIcon Symbol="ArrowExpand" FontSize="14" />
+                        </Button>
+                        <!-- Overflow (kebab). Three vertical dots open
+                             a context menu of less-frequent verbs.
+                             More items land in Phase C / D (branch
+                             picker, stash, merge, rebase, repo
+                             settings) — for now the menu surfaces the
+                             pin / open / refresh affordances that
+                             would otherwise be the second click out of
+                             a power-user shortcut. -->
+                        <Button x:Name="OverflowButton"
+                                ToolTip="More actions"
+                                Padding="6,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Click="OverflowButton_Click"
+                                AutomationProperties.AutomationId="Tile.Overflow">
+                            <ic:SymbolIcon Symbol="MoreVertical" FontSize="14" />
+                            <Button.ContextMenu>
+                                <!-- Less-frequent verbs that don't earn
+                                     a dedicated title-bar button. Pin
+                                     and "Open in single view" live as
+                                     their own icons, so they don't
+                                     appear here — keep the menu for
+                                     things you reach for once a
+                                     session, not once a minute. The
+                                     git-ops items wire up in Phase D;
+                                     marked IsEnabled=False until then
+                                     so users see what's coming. -->
+                                <!-- Only wire actions that actually do
+                                     something. Switch-branch / Stash /
+                                     Merge-into / Rebase-onto need their
+                                     own per-tile dialogs to be useful
+                                     (workspace-level variants live on
+                                     the main action bar); ship them
+                                     when the dialogs are ready, not as
+                                     greyed-out teasers. -->
+                                <ContextMenu>
+                                    <MenuItem Header="Refresh"
+                                              Command="{Binding RefreshTileCommand}" />
+                                    <MenuItem Header="Reveal in File Explorer"
+                                              Command="{Binding RevealInExplorerCommand}" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Body. Switches between the graph (Normal mode) and an
+                 inline commit composer (Composing mode). Two children
+                 stacked at the same Grid.Row; visibility-bound off
+                 IsComposing so only one shows at a time. The composer
+                 reuses CommitInputControl from the single-repo
+                 right-pane so message-template + conventional-commits
+                 affordances transfer for free. -->
+
+            <!-- Graph — visible in Normal mode, when not in Composing
+                 AND when the submodule is initialized. A Style with
+                 DataTriggers lets us hide on either condition without
+                 needing a multi-binding converter. -->
+            <ContentControl Grid.Row="1"
+                            Content="{Binding Graph}">
+                <ContentControl.Style>
+                    <Style TargetType="ContentControl">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsComposing}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsUninitialized}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ContentControl.Style>
+                <ContentControl.ContentTemplate>
+                    <DataTemplate>
+                        <views:GitGraphView />
+                    </DataTemplate>
+                </ContentControl.ContentTemplate>
+            </ContentControl>
+
+            <!-- Uninitialized-submodule CTA. Shown when the recorded
+                 path has no .git entry (the user cloned the parent
+                 non-recursively, or pruned this submodule). One
+                 button runs `git submodule update init` against the
+                 parent for this path. Progress bar shows while the
+                 initialize command runs. -->
+            <Border Grid.Row="1"
+                    Visibility="{Binding IsUninitialized, Converter={StaticResource BoolToVisibilityConverter}}"
+                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                    Padding="24">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="320">
+                    <ic:SymbolIcon Symbol="BoxToolbox" FontSize="32"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,12" />
+                    <TextBlock Text="Submodule not initialized"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               TextAlignment="Center"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <TextBlock FontSize="11"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Text="This submodule is registered but not checked out. Run init to clone it from the URL recorded in .gitmodules." />
+                    <Button Command="{Binding InitializeCommand}"
+                            HorizontalAlignment="Center"
+                            Padding="16,6"
+                            MinWidth="140"
+                            IsEnabled="{Binding IsInitializing, Converter={StaticResource InverseBoolConverter}}"
+                            AutomationProperties.AutomationId="Tile.Initialize">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="ArrowDownload" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Text="Initialize" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <ProgressBar IsIndeterminate="True" Width="140" Height="3"
+                                 Margin="0,10,0,0"
+                                 Visibility="{Binding IsInitializing, Converter={StaticResource BoolToVisibilityConverter}}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Composer — visible in Composing mode. -->
+            <Grid Grid.Row="1"
+                  Visibility="{Binding IsComposing, Converter={StaticResource BoolToVisibilityConverter}}"
+                  Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Generating overlay — visible only while the AI
+                     call is in flight for this tile. -->
+                <Border Grid.Row="0"
+                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="10,6"
+                        Margin="0,0,0,6"
+                        Visibility="{Binding IsGeneratingAi, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal">
+                        <ProgressBar IsIndeterminate="True" Width="120" Height="4"
+                                     VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock Text="Generating commit message…"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Editable message + description. CommitMessage /
+                     CommitDescription on CommitInputControl are
+                     two-way DPs, so user edits flow back into the
+                     tile's ComposingMessage / ComposingDescription
+                     properties immediately and the Commit button's
+                     CanExecute re-evaluates on every keystroke.
+                     The control's embedded Commit button is wired to
+                     CommitComposeCommand + CanCommitCompose so it
+                     serves as the only Commit affordance — the
+                     button row below carries Cancel alone. -->
+                <controls:CommitInputControl Grid.Row="1"
+                                             CommitMessage="{Binding ComposingMessage, Mode=TwoWay}"
+                                             CommitDescription="{Binding ComposingDescription, Mode=TwoWay}"
+                                             CommitCommand="{Binding CommitComposeCommand}"
+                                             CanCommit="{Binding CanCommitCompose}"
+                                             CommitButtonLabel="Commit" />
+
+                <!-- AI-error strip with Retry. Only renders when the
+                     last AI attempt failed; clears as soon as a retry
+                     succeeds or the user types a manual message.
+                     Visibility is driven via a DataTrigger because
+                     StringIsNullOrEmptyConverter returns a bool, and
+                     WPF doesn't implicitly convert bool→Visibility on
+                     a direct binding (it'd fall through to Visible,
+                     causing the strip to show even when AiError is
+                     empty). DataTrigger matches the bool result. -->
+                <Border Grid.Row="2"
+                        Background="#26000000"
+                        BorderBrush="{DynamicResource SystemFillColorCriticalBrush}"
+                        BorderThickness="0,1,0,0"
+                        Padding="10,6"
+                        Margin="0,8,0,0">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding AiError, Converter={StaticResource StringIsNullOrEmptyConverter}}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                            <Run Text="AI generation failed: " FontWeight="SemiBold" />
+                            <Run Text="{Binding AiError, Mode=OneWay}" />
+                        </TextBlock>
+                        <Button Grid.Column="1"
+                                Command="{Binding RetryAiCommand}"
+                                Content="Retry"
+                                Padding="10,4"
+                                Margin="8,0,0,0"
+                                AutomationProperties.AutomationId="Tile.RetryAi" />
+                    </Grid>
+                </Border>
+
+                <!-- Per-tile Regenerate + Cancel buttons. Commit lives
+                     inside the CommitInputControl above (its embedded
+                     button is bound to CommitComposeCommand /
+                     CanCommitCompose). Regenerate re-runs the AI
+                     pipeline against the current diff — uncommon but
+                     useful when the user wants a fresh take or after
+                     the working tree shifted underneath. Disabled
+                     while a generation is already in flight. -->
+                <StackPanel Grid.Row="3"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Margin="0,10,0,0">
+                    <Button Command="{Binding RetryAiCommand}"
+                            ToolTip="Regenerate AI commit message"
+                            Padding="10,6"
+                            Margin="0,0,8,0"
+                            IsEnabled="{Binding IsGeneratingAi, Converter={StaticResource InverseBoolConverter}}"
+                            AutomationProperties.AutomationId="Tile.RegenerateAi">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="ArrowSync" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Text="Regenerate" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding CancelComposeCommand}"
+                            Content="Cancel"
+                            Padding="16,6"
+                            MinWidth="90"
+                            AutomationProperties.AutomationId="Tile.CancelCompose" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

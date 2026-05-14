@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Leaf.Models;
 using Leaf.Services;
 using Leaf.Utils;
 using Microsoft.Win32;
@@ -562,8 +563,8 @@ public partial class CloneDialog : Window
 
             if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(destination) || string.IsNullOrEmpty(repoName))
             {
-                MessageBox.Show("Please select a repository and destination.", "Invalid Input",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                FluentMessageBox.Show("Please select a repository and destination.", "Invalid Input",
+                    MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
                 return;
             }
 
@@ -571,8 +572,8 @@ public partial class CloneDialog : Window
 
             if (Directory.Exists(localPath))
             {
-                MessageBox.Show($"The folder '{localPath}' already exists.", "Folder Exists",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                FluentMessageBox.Show($"The folder '{localPath}' already exists.", "Folder Exists",
+                    MessageBoxButton.OK, FluentMessageBoxIcon.Warning);
                 return;
             }
 
@@ -610,8 +611,8 @@ public partial class CloneDialog : Window
                     message = "Authentication failed. Check your credentials in Settings.\n\n" + message;
                 }
 
-                MessageBox.Show($"Clone failed:\n\n{message}", "Clone Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                FluentMessageBox.Show($"Clone failed:\n\n{message}", "Clone Error",
+                    MessageBoxButton.OK, FluentMessageBoxIcon.Error);
             }
             finally
             {

@@ -359,7 +359,7 @@ public partial class GitFlowService : IGitFlowService
                 progress?.Report("Rebasing...");
                 // First rebase feature onto develop, then fast-forward merge
                 await _gitService.CheckoutAsync(repoPath, branchName);
-                result = await _gitService.RebaseAsync(repoPath, config.DevelopBranch, progress);
+                result = await _gitService.RebaseAsync(repoPath, config.DevelopBranch, progress: progress);
                 if (result.Success)
                 {
                     await _gitService.CheckoutAsync(repoPath, config.DevelopBranch);
@@ -1083,7 +1083,7 @@ public partial class GitFlowService : IGitFlowService
         progress?.Report($"Rebasing {branchName} onto {targetBranch}...");
         await _gitService.CheckoutAsync(repoPath, branchName);
 
-        var rebaseResult = await _gitService.RebaseAsync(repoPath, targetBranch, progress);
+        var rebaseResult = await _gitService.RebaseAsync(repoPath, targetBranch, progress: progress);
         if (!rebaseResult.Success)
         {
             // Rebase failed - abort and return to target branch

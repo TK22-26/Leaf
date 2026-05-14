@@ -89,7 +89,7 @@ public partial class ApplyPatchDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Apply Patch", MessageBoxButton.OK, MessageBoxImage.Error);
+            FluentMessageBox.Show(this, ex.Message, "Apply Patch", MessageBoxButton.OK, FluentMessageBoxIcon.Error);
         }
     }
 

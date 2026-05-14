@@ -1,0 +1,70 @@
+<UserControl
+    x:Class="Leaf.Views.WorkspaceGridView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="clr-namespace:Leaf.ViewModels"
+    xmlns:views="clr-namespace:Leaf.Views"
+    xmlns:controls="clr-namespace:Leaf.Controls"
+    xmlns:converters="clr-namespace:Leaf.Converters"
+    xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
+    d:DataContext="{d:DesignInstance Type=vm:WorkspaceViewModel}"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    AutomationProperties.AutomationId="WorkspaceGridView">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- Progress strip — visible only while a bulk op runs. -->
+            <RowDefinition Height="Auto" />
+            <!-- Tiles. -->
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Bulk-operation progress strip. Indeterminate progress bar
+             + status text. Shown only while a bulk op runs so it
+             doesn't eat tile space at rest. The bulk-action buttons
+             themselves live in the host MainWindow action bar — when
+             grid mode is on, the single-repo verbs (Pull / Push /
+             Branch / GitFlow / Stash / Pop) swap out for the
+             workspace verbs (Commit-all / Push-all / etc.) so the
+             chrome stays one row tall. -->
+        <Border Grid.Row="0"
+                Padding="12,6"
+                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="0,0,0,1"
+                Visibility="{Binding IsBulkOperationActive, Converter={StaticResource BoolToVisibilityConverter}}">
+            <StackPanel Orientation="Horizontal">
+                <ProgressBar IsIndeterminate="True" Width="160" Height="4" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <TextBlock Text="{Binding BulkOperationStatus}"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Tile layout. WorkspaceTilePanel arranges children into
+             rectangles based on tile count, with bespoke shapes for
+             the awkward counts (3 = parent-fills-left-half + 2 right
+             tiles stacked). For 1, 2, 4, 6, 8 the layout is the
+             obvious equal-split grid; for 5 and 7 we accept one empty
+             slot rather than warp the geometry. -->
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding Tiles}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <controls:WorkspaceTilePanel />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <views:SubmoduleTile />
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </Grid>
+</UserControl>

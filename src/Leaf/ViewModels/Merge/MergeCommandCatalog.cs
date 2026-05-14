@@ -67,6 +67,10 @@ public static class MergeCommandCatalog
             Item("Mark resolved", ShortcutCommandId.Merge.MarkResolved, "Ctrl+Enter", vm.MarkResolvedCommand, shortcuts),
             Item("Complete merge", null, null, vm.CompleteMergeCommand, shortcuts),
             Item("Abort merge", null, null, vm.AbortMergeCommand, shortcuts),
+            // Rebase-only verb — surfaced in the palette regardless of state
+            // so it is discoverable; the underlying SkipRebaseAsync no-ops
+            // when no rebase is in progress.
+            Item("Skip commit (rebase)", null, null, vm.SkipRebaseCommand, shortcuts),
 
             // AI assistance
             Item("Ask AI to propose a resolution", ShortcutCommandId.Merge.RequestAiResolution, "Alt+A", vm.RequestAiResolutionCommand, shortcuts),

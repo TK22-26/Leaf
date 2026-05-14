@@ -43,7 +43,7 @@ public partial class MainViewModel
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            NotifySuccess("Remote added", $"Added '{dialog.RemoteName}' ({dialog.FetchUrl}).");
+            NotifySuccess(Models.NotificationCategory.RemoteConfig, "Remote added", $"Added '{dialog.RemoteName}' ({dialog.FetchUrl}).");
         }
         catch (Exception ex)
         {
@@ -71,7 +71,7 @@ public partial class MainViewModel
 
             if (remoteInfo == null)
             {
-                NotifyWarning("Remote not found", $"Remote '{remote.Name}' no longer exists in this repository.");
+                NotifyWarning(Models.NotificationCategory.RemoteConfig, "Remote not found", $"Remote '{remote.Name}' no longer exists in this repository.");
                 return;
             }
 
@@ -101,7 +101,7 @@ public partial class MainViewModel
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            NotifySuccess("Remote updated", $"Updated remote '{currentRemoteName}'.");
+            NotifySuccess(Models.NotificationCategory.RemoteConfig, "Remote updated", $"Updated remote '{currentRemoteName}'.");
         }
         catch (Exception ex)
         {
@@ -137,7 +137,7 @@ public partial class MainViewModel
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            NotifySuccess("Remote removed", $"Removed remote '{remoteName}'.");
+            NotifySuccess(Models.NotificationCategory.RemoteConfig, "Remote removed", $"Removed remote '{remoteName}'.");
         }
         catch (Exception ex)
         {
@@ -165,7 +165,7 @@ public partial class MainViewModel
             SelectedRepository.BranchesLoaded = false;
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
 
-            NotifySuccess("Default remote set", $"'{remoteName}' is now the default remote for push.");
+            NotifySuccess(Models.NotificationCategory.RemoteConfig, "Default remote set", $"'{remoteName}' is now the default remote for push.");
         }
         catch (Exception ex)
         {
@@ -184,7 +184,7 @@ public partial class MainViewModel
         try
         {
             Clipboard.SetText(url);
-            NotifyInfo("URL copied", "Remote URL copied to clipboard.");
+            NotifyInfo(Models.NotificationCategory.RemoteConfig, "URL copied", "Remote URL copied to clipboard.");
         }
         catch (System.Runtime.InteropServices.COMException ex)
         {
@@ -230,7 +230,7 @@ public partial class MainViewModel
                 }
             }
 
-            NotifySuccess("Fetch complete", $"Fetched from {successCount} of {remotes.Count} remotes.");
+            NotifySuccess(Models.NotificationCategory.SyncOperations, "Fetch complete", $"Fetched from {successCount} of {remotes.Count} remotes.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -319,7 +319,7 @@ public partial class MainViewModel
             }
             else
             {
-                NotifySuccess("Push complete", $"Pushed to {pushedRemotes.Count} remote{(pushedRemotes.Count == 1 ? "" : "s")}.");
+                NotifySuccess(Models.NotificationCategory.SyncOperations, "Push complete", $"Pushed to {pushedRemotes.Count} remote{(pushedRemotes.Count == 1 ? "" : "s")}.");
             }
 
             await RefreshAsync();

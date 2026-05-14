@@ -382,6 +382,28 @@ public partial class GitGraphCanvas
         {
             HideTagTooltip();
         }
+
+        // Per-label branch chip hover — shows the full untruncated name
+        // plus sync metadata. Skipped when the cursor is on an overflow
+        // indicator (that has its own multi-branch tooltip already
+        // handled above) so the two popups don't fight for the same
+        // screen real estate.
+        var hoveredBranch = _stateService.HoveredOverflowRow >= 0
+            ? null
+            : GetBranchLabelAt(pos);
+        if (hoveredBranch != null)
+        {
+            // Route through RequestSingleBranchTooltip so the popup
+            // waits out SystemParameters.MouseHoverTime before
+            // appearing — a cursor passing across the label gutter
+            // on its way somewhere else no longer flashes a tooltip
+            // for every chip it crosses.
+            RequestSingleBranchTooltip(hoveredBranch, pos);
+        }
+        else
+        {
+            HideSingleBranchTooltip();
+        }
     }
 
     /// <summary>
@@ -427,6 +449,8 @@ public partial class GitGraphCanvas
         HideSignatureTooltip();
         // §5.17 — same logic for the tag tooltip.
         HideTagTooltip();
+        // Same StaysOpen contract on the per-label branch tooltip.
+        HideSingleBranchTooltip();
     }
 
     public BranchLabel? GetBranchLabelAt(Point position)

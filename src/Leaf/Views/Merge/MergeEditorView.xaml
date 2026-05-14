@@ -650,6 +650,20 @@
                             <TextBlock Text="Complete Merge" Margin="6,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
+                    <!-- Skip — only meaningful mid-rebase. Drops the
+                         currently-paused commit and advances to the next
+                         todo entry. Visibility is bound to IsRebaseInProgress
+                         so plain merge / cherry-pick / revert flows don't
+                         see this button at all. -->
+                    <Button Command="{Binding SkipRebaseCommand}" Margin="8,0,0,0" Padding="12,6"
+                            Visibility="{Binding IsRebaseInProgress, Converter={StaticResource BoolToVisibilityConverter}}"
+                            AutomationProperties.AutomationId="Merge.SkipRebase"
+                            ToolTip="Skip this commit (git rebase --skip) — drops the paused commit and advances to the next todo entry">
+                        <StackPanel Orientation="Horizontal">
+                            <ic:SymbolIcon Symbol="ArrowForward" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Skip" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button Command="{Binding AbortMergeCommand}" Margin="8,0,0,0" Padding="12,6"
                             AutomationProperties.AutomationId="Merge.AbortMerge">
                         <StackPanel Orientation="Horizontal">

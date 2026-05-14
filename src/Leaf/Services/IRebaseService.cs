@@ -16,11 +16,15 @@ public interface IRebaseService
     /// </summary>
     /// <param name="session">Repository session.</param>
     /// <param name="ontoBranch">Name of the branch to rebase onto.</param>
+    /// <param name="autosquash">Pass <c>--autosquash</c> so fixup! / squash! commits collapse automatically.</param>
+    /// <param name="updateRefs">Pass <c>--update-refs</c> so dependent branches move with the rewritten commits.</param>
     /// <param name="progress">Optional progress reporter.</param>
     /// <returns>Merge result indicating success, conflicts, or failure.</returns>
     Task<MergeResult> RebaseAsync(
         IRepositorySession session,
         string ontoBranch,
+        bool autosquash = false,
+        bool updateRefs = false,
         IProgress<string>? progress = null);
 
     /// <summary>

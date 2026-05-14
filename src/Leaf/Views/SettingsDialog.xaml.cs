@@ -242,6 +242,9 @@ public partial class SettingsDialog : Window
             case "SshKeys":
                 SshKeysSettings.Visibility = Visibility.Visible;
                 break;
+            case "Notifications":
+                NotificationsSettings.Visibility = Visibility.Visible;
+                break;
         }
     }
 
@@ -317,6 +320,7 @@ public partial class SettingsDialog : Window
         CommitTemplatesSettings.Visibility = Visibility.Collapsed;
         CommitSigningSettings.Visibility = Visibility.Collapsed;
         SshKeysSettings.Visibility = Visibility.Collapsed;
+        NotificationsSettings.Visibility = Visibility.Collapsed;
 
         // Show search results
         ContentSearchResults.Visibility = Visibility.Visible;
@@ -368,6 +372,7 @@ public partial class SettingsDialog : Window
             "CommitTemplates" => NavCommitTemplates,
             "CommitSigning" => NavCommitSigning,
             "SshKeys" => NavSshKeys,
+            "Notifications" => NavNotifications,
             _ => null
         };
 
@@ -413,6 +418,7 @@ public partial class SettingsDialog : Window
         CommitSigningSettings.ActiveRepositoryPath = _currentRepoPath;
         CommitSigningSettings.LoadSettings(_settings, _credentialService);
         SshKeysSettings.LoadSettings(_settings, _credentialService);
+        NotificationsSettings.LoadSettings(_settings, _credentialService);
     }
 
     private void BrowseClonePath_Click(object sender, RoutedEventArgs e)
@@ -467,6 +473,7 @@ public partial class SettingsDialog : Window
         CommitTemplatesSettings.SaveSettings(_settings, _credentialService);
         CommitSigningSettings.SaveSettings(_settings, _credentialService);
         SshKeysSettings.SaveSettings(_settings, _credentialService);
+        NotificationsSettings.SaveSettings(_settings, _credentialService);
 
         // Save all settings
         _settingsService.SaveSettings(_settings);
@@ -477,11 +484,11 @@ public partial class SettingsDialog : Window
 
     private void ClearAllCredentials_Click(object sender, RoutedEventArgs e)
     {
-        var result = MessageBox.Show(
+        var result = FluentMessageBox.Show(
             "Remove all stored credentials (PATs and tokens)?\n\nYou will need to re-enter them in the Azure DevOps and GitHub settings.",
             "Clear All Credentials",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            FluentMessageBoxIcon.Warning);
 
         if (result != MessageBoxResult.Yes)
             return;
@@ -501,11 +508,11 @@ public partial class SettingsDialog : Window
         AzureDevOpsSettings.LoadSettings(_settings, _credentialService);
         GitHubSettings.LoadSettings(_settings, _credentialService);
 
-        MessageBox.Show(
+        FluentMessageBox.Show(
             "All credentials have been cleared.\n\nRe-enter your PATs under Azure DevOps and GitHub settings.",
             "Credentials Cleared",
             MessageBoxButton.OK,
-            MessageBoxImage.Information);
+            FluentMessageBoxIcon.Information);
     }
 
     private void OpenLogFolder_Click(object sender, RoutedEventArgs e)
@@ -548,8 +555,8 @@ public partial class SettingsDialog : Window
             // Check if already watched
             if (_settings.WatchedFolders.Contains(folderPath, StringComparer.OrdinalIgnoreCase))
             {
-                MessageBox.Show("This folder is already being watched.", "Already Watched",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
+                FluentMessageBox.Show("This folder is already being watched.", "Already Watched",
+                    MessageBoxButton.OK, FluentMessageBoxIcon.Information);
                 return;
             }
 

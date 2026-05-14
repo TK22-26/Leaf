@@ -263,8 +263,8 @@ public class GitService : IGitService
     public Task FetchAsync(string repoPath, string remoteName = "origin", string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
         => _remoteSyncOps.FetchAsync(repoPath, remoteName, credentialKey, progress, cancellationToken);
 
-    public Task PullAsync(string repoPath, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
-        => _remoteSyncOps.PullAsync(repoPath, credentialKey, progress, cancellationToken);
+    public Task PullAsync(string repoPath, string? credentialKey = null, IProgress<string>? progress = null, bool? rebase = null, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.PullAsync(repoPath, credentialKey, progress, rebase, cancellationToken);
 
     public Task PushAsync(string repoPath, string? remoteName = null, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
         => _remoteSyncOps.PushAsync(repoPath, remoteName, credentialKey, progress, cancellationToken);
@@ -385,8 +385,8 @@ public class GitService : IGitService
 
     #region Rebase Operations
 
-    public Task<MergeResult> RebaseAsync(string repoPath, string ontoBranch, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
-        => _rebaseOps.RebaseAsync(repoPath, ontoBranch, progress, cancellationToken);
+    public Task<MergeResult> RebaseAsync(string repoPath, string ontoBranch, bool autosquash = false, bool updateRefs = false, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        => _rebaseOps.RebaseAsync(repoPath, ontoBranch, autosquash, updateRefs, progress, cancellationToken);
 
     public Task AbortRebaseAsync(string repoPath, CancellationToken cancellationToken = default)
         => _rebaseOps.AbortRebaseAsync(repoPath, cancellationToken);

@@ -34,12 +34,14 @@ public partial class InteractiveRebaseViewModel : ObservableObject
         IInteractiveRebaseService rebaseService,
         IRepositorySession session,
         string fromCommitSha,
-        string fromCommitSubject)
+        string fromCommitSubject,
+        string? upstreamRef = null)
     {
         _rebaseService = rebaseService ?? throw new ArgumentNullException(nameof(rebaseService));
         _session = session ?? throw new ArgumentNullException(nameof(session));
         FromCommitSha = fromCommitSha ?? throw new ArgumentNullException(nameof(fromCommitSha));
         FromCommitSubject = fromCommitSubject ?? string.Empty;
+        UpstreamRef = upstreamRef;
 
         Plan = [];
         Plan.CollectionChanged += OnPlanChanged;
@@ -55,6 +57,14 @@ public partial class InteractiveRebaseViewModel : ObservableObject
 
     /// <summary>Subject of the user-picked commit, displayed in the header so the user can confirm the entry-point.</summary>
     public string FromCommitSubject { get; }
+
+    /// <summary>
+    /// Optional rebase upstream / target branch — set when the user came in
+    /// through the branch-onto-branch entry point. <c>null</c> for the
+    /// commit-graph entry point (the service falls back to
+    /// <c>{FromCommitSha}^</c>).
+    /// </summary>
+    public string? UpstreamRef { get; }
 
     /// <summary>Header summary, e.g. "Rebasing 5 commits from a3f2c91".</summary>
     public string HeaderSummary
@@ -121,7 +131,7 @@ public partial class InteractiveRebaseViewModel : ObservableObject
         Log.Info("InteractiveRebase", $"LoadAsync: from={FromCommitSha}");
         try
         {
-            var items = await _rebaseService.LoadPlanAsync(_session, FromCommitSha, cancellationToken);
+            var items = await _rebaseService.LoadPlanAsync(_session, FromCommitSha, UpstreamRef, cancellationToken);
             Plan.Clear();
             foreach (var item in items)
             {
@@ -201,7 +211,7 @@ public partial class InteractiveRebaseViewModel : ObservableObject
         try
         {
             var result = await _rebaseService.StartAsync(
-                _session, FromCommitSha, [.. Plan], _session.CancellationToken);
+                _session, FromCommitSha, [.. Plan], UpstreamRef, _session.CancellationToken);
 
             if (result.Success)
             {

@@ -162,14 +162,22 @@ internal class RemoteSyncOperations
     /// Pull from remote.
     /// </summary>
     /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
+    /// <param name="rebase">
+    /// Force the strategy: <c>true</c> emits <c>--rebase</c>, <c>false</c> emits
+    /// <c>--no-rebase</c>, <c>null</c> defers to the user's <c>pull.rebase</c> config.
+    /// </param>
     public async Task PullAsync(string repoPath, string? credentialKey = null,
-        IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        IProgress<string>? progress = null, bool? rebase = null, CancellationToken cancellationToken = default)
     {
-        progress?.Report("Pulling...");
+        progress?.Report(rebase == true ? "Pulling (rebase)..." : "Pulling...");
+
+        var args = new List<string> { "pull" };
+        if (rebase == true) args.Add("--rebase");
+        else if (rebase == false) args.Add("--no-rebase");
 
         var result = await _context.CommandRunner.RunAsync(
             repoPath,
-            ["pull"],
+            args.ToArray(),
             input: null,
             credentialKey: credentialKey, cancellationToken: cancellationToken);
 

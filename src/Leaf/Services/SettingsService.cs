@@ -148,6 +148,51 @@ public class SettingsService
     }
 
     /// <summary>
+    /// Returns the remembered answer for <paramref name="suppressionKey"/>
+    /// when the user previously checked "Don't show this again" — true means
+    /// "always answer Yes / OK", false means "always answer No / Cancel".
+    /// Returns <c>null</c> when no preference is recorded; the caller must
+    /// then show the dialog and let the user choose.
+    /// </summary>
+    public bool? GetSuppressedAnswer(string suppressionKey)
+    {
+        if (string.IsNullOrWhiteSpace(suppressionKey)) return null;
+        var settings = LoadSettings();
+        return settings.SuppressedMessageKeys.TryGetValue(suppressionKey, out var v) ? v : null;
+    }
+
+    /// <summary>
+    /// Persist the user's answer so the dialog identified by
+    /// <paramref name="suppressionKey"/> stops appearing. Pair with
+    /// <see cref="GetSuppressedAnswer"/>; pair with <see cref="ClearSuppression"/>
+    /// when you want a Settings UI affordance to "show me this again".
+    /// </summary>
+    public void SetSuppressedAnswer(string suppressionKey, bool answer)
+    {
+        if (string.IsNullOrWhiteSpace(suppressionKey)) return;
+        var settings = LoadSettings();
+        settings.SuppressedMessageKeys[suppressionKey] = answer;
+        SaveSettings(settings);
+        Log.Info("Settings", $"Suppressed dialog '{suppressionKey}' with answer={answer}");
+    }
+
+    /// <summary>
+    /// Drop the recorded answer for <paramref name="suppressionKey"/>, so the
+    /// dialog will be shown again on next invocation. No-op when the key is
+    /// absent — safe to call from a "reset all hidden dialogs" Settings UI.
+    /// </summary>
+    public void ClearSuppression(string suppressionKey)
+    {
+        if (string.IsNullOrWhiteSpace(suppressionKey)) return;
+        var settings = LoadSettings();
+        if (settings.SuppressedMessageKeys.Remove(suppressionKey))
+        {
+            SaveSettings(settings);
+            Log.Info("Settings", $"Cleared suppression for dialog '{suppressionKey}'");
+        }
+    }
+
+    /// <summary>
     /// Migrate credentials from the old single-provider format to the new multi-org format.
     /// Should be called on application startup.
     /// </summary>
@@ -272,6 +317,47 @@ public class AppSettings
 
     // Watched folders for auto-discovery of new repositories
     public List<string> WatchedFolders { get; set; } = [];
+
+    /// <summary>
+    /// Per-dialog "Don't show this again" preferences. Keyed by a stable
+    /// string identifier (e.g. <c>"branch.forceDelete"</c>); the value is
+    /// the remembered answer (true = always Yes/OK, false = always No/Cancel).
+    /// Read via <see cref="SettingsService.GetSuppressedAnswer"/> and written
+    /// via <see cref="SettingsService.SetSuppressedAnswer"/>.
+    /// </summary>
+    public Dictionary<string, bool> SuppressedMessageKeys { get; set; } = [];
+
+    // ─── Toast notification toggles ─────────────────────────────────────
+    // One flag per Leaf.Models.NotificationCategory. EVERY category is
+    // off by default — a user-initiated action already shows its own
+    // visible result (graph refresh, branch list update, etc.), so the
+    // toast is redundant noise. The user can switch any category back on
+    // from Settings → Notifications if they want acknowledgement toasts
+    // for that class of operation. Errors have no toggle and always show.
+    public bool NotifySyncOperations { get; set; } = false;
+    public bool NotifyBranchCheckout { get; set; } = false;
+    public bool NotifyBranchAdmin { get; set; } = false;
+    public bool NotifyMergeAndRebase { get; set; } = false;
+    public bool NotifyGitFlow { get; set; } = false;
+    public bool NotifyWorktree { get; set; } = false;
+    public bool NotifySubmodule { get; set; } = false;
+    public bool NotifyStash { get; set; } = false;
+    public bool NotifyPullRequest { get; set; } = false;
+    public bool NotifyPatch { get; set; } = false;
+    public bool NotifyRepository { get; set; } = false;
+    public bool NotifyRemoteConfig { get; set; } = false;
+    public bool NotifyCancelledOperations { get; set; } = false;
+
+    /// <summary>
+    /// Power-user opt-out for the workspace inline-commit review.
+    /// When false (default), clicking Commit-all in grid mode puts
+    /// every dirty tile into compose state so the user reviews each
+    /// AI-generated message before it ships. When true, the AI fans
+    /// out in parallel and commits land immediately without surfacing
+    /// the composer — same path as the previous one-click behaviour,
+    /// for users who trust the AI output.
+    /// </summary>
+    public bool WorkspaceCommitSkipReview { get; set; } = false;
 
     // Multi-remote sync behavior
     public bool SyncAllRemotes { get; set; } = false;

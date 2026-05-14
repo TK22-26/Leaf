@@ -1,0 +1,81 @@
+<Window x:Class="Leaf.Views.WorkspaceMergeDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:viewmodels="clr-namespace:Leaf.ViewModels"
+        xmlns:models="clr-namespace:Leaf.Models"
+        xmlns:converters="clr-namespace:Leaf.Converters"
+        d:DataContext="{d:DesignInstance Type=viewmodels:WorkspaceMergeDialogViewModel}"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Merge workspace into branch"
+        Width="500"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize">
+
+    <Window.Resources>
+        <converters:EnumBooleanConverter x:Key="EnumBooleanConverter" />
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Merge workspace into branch"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Margin="0,0,0,8"/>
+            <TextBlock TextWrapping="Wrap"
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,12">
+                Every repo's currently checked-out branch is merged into the target. Submodules merge first; the parent merges last. A conflict in any repo opens the merge editor for that repo and pauses the workflow.
+            </TextBlock>
+            <TextBlock Text="Target branch" FontWeight="SemiBold" Margin="0,0,0,4"/>
+            <TextBox x:Name="TargetInput"
+                     Text="{Binding TargetBranch, UpdateSourceTrigger=PropertyChanged}"
+                     Padding="8,6"
+                     FontFamily="Consolas"
+                     AutomationProperties.AutomationId="WorkspaceMergeDialog.Target" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Margin="0,0,0,16">
+            <TextBlock Text="Merge type"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,8" />
+            <RadioButton Content="Normal merge"
+                         IsChecked="{Binding MergeType, Converter={StaticResource EnumBooleanConverter}, ConverterParameter={x:Static models:MergeType.Normal}}"
+                         Margin="0,0,0,6" />
+            <RadioButton Content="Squash merge"
+                         IsChecked="{Binding MergeType, Converter={StaticResource EnumBooleanConverter}, ConverterParameter={x:Static models:MergeType.Squash}}"
+                         Margin="0,0,0,6" />
+            <RadioButton Content="Fast-forward only"
+                         IsChecked="{Binding MergeType, Converter={StaticResource EnumBooleanConverter}, ConverterParameter={x:Static models:MergeType.FastForwardOnly}}" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button Content="Cancel"
+                    Padding="20,8"
+                    MinWidth="100"
+                    IsCancel="True"
+                    Margin="0,0,12,0"
+                    Click="Cancel_Click" />
+            <Button Content="Merge"
+                    Padding="20,8"
+                    MinWidth="100"
+                    IsDefault="True"
+                    IsEnabled="{Binding CanMerge}"
+                    Click="Merge_Click"
+                    AutomationProperties.AutomationId="WorkspaceMergeDialog.Merge" />
+        </StackPanel>
+    </Grid>
+</Window>

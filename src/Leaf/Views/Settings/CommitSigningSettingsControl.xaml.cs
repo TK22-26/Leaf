@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using Leaf.Models;
 using Leaf.Services;
 using Leaf.Services.Signing;
+using Leaf.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
 
@@ -320,11 +321,11 @@ public partial class CommitSigningSettingsControl : UserControl, ISettingsSectio
         catch (Exception ex) when (ex is InvalidOperationException or IOException)
         {
             Log.Error("Signing", $"Could not write git config '{key}' ({_scope})", ex);
-            MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
+            FluentMessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow,
                 $"Could not save the setting: {ex.Message}",
                 "Commit signing",
                 MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                FluentMessageBoxIcon.Warning);
         }
     }
 

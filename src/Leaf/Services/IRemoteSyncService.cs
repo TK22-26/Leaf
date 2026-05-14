@@ -46,10 +46,15 @@ public interface IRemoteSyncService
     /// <param name="session">Repository session.</param>
     /// <param name="credentialKey">Optional credential storage key for GIT_ASKPASS auth.</param>
     /// <param name="progress">Optional progress reporter.</param>
+    /// <param name="rebase">
+    /// Force the strategy: <c>true</c> rebases incoming work, <c>false</c> merges it,
+    /// <c>null</c> defers to the user's <c>pull.rebase</c> git config.
+    /// </param>
     Task PullAsync(
         IRepositorySession session,
         string? credentialKey = null,
-        IProgress<string>? progress = null);
+        IProgress<string>? progress = null,
+        bool? rebase = null);
 
     /// <summary>
     /// Pushes to a remote.

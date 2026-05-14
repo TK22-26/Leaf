@@ -50,29 +50,43 @@ public class InteractiveRebaseService : IInteractiveRebaseService
     public async Task<IReadOnlyList<RebaseTodoItem>> LoadPlanAsync(
         IRepositorySession session,
         string fromCommitSha,
+        string? upstreamRef = null,
         CancellationToken cancellationToken = default)
     {
         if (session == null) throw new ArgumentNullException(nameof(session));
         if (string.IsNullOrWhiteSpace(fromCommitSha))
             throw new ArgumentException("fromCommitSha is required.", nameof(fromCommitSha));
 
-        Log.Info("Rebase", $"LoadPlan: from={fromCommitSha}");
+        // The "upstream" is the ref git rebases onto and uses to delimit
+        // the range. If the caller supplied one (branch-onto-branch entry
+        // point) we use it directly. Otherwise we synthesise it as
+        // <fromCommit>^ — the parent of the oldest commit to rewrite —
+        // which preserves the "edit these commits in place" semantics of
+        // the commit-graph right-click entry point.
+        var upstream = string.IsNullOrWhiteSpace(upstreamRef)
+            ? $"{fromCommitSha}^"
+            : upstreamRef!;
 
-        // Validate the commit exists and has a parent (root commits would
-        // require --root; v1 doesn't expose that path).
-        var parentProbe = await _commandRunner.RunAsync(
+        Log.Info("Rebase", $"LoadPlan: from={fromCommitSha} upstream={upstream}");
+
+        // Validate the upstream resolves (catches root-commit rebases when
+        // upstream is `<sha>^` and catches a typo'd branch name when an
+        // explicit upstreamRef is in play).
+        var probe = await _commandRunner.RunAsync(
             session.RepositoryPath,
-            ["rev-parse", "--verify", "--quiet", $"{fromCommitSha}^"],
+            ["rev-parse", "--verify", "--quiet", upstream],
             cancellationToken: cancellationToken);
-        if (!parentProbe.Success)
+        if (!probe.Success)
         {
-            Log.Warn("Rebase", $"LoadPlan refused: {fromCommitSha} is the root commit or doesn't exist.");
+            Log.Warn("Rebase", $"LoadPlan refused: upstream '{upstream}' could not be resolved.");
             throw new InvalidOperationException(
-                $"Cannot rebase from {fromCommitSha}: it has no parent (root commit) or doesn't exist. " +
-                "Interactive rebase from the root commit isn't supported in this version.");
+                upstreamRef == null
+                    ? $"Cannot rebase from {fromCommitSha}: it has no parent (root commit) or doesn't exist. " +
+                      "Interactive rebase from the root commit isn't supported in this version."
+                    : $"Cannot resolve rebase upstream '{upstreamRef}'.");
         }
 
-        var range = $"{fromCommitSha}^..HEAD";
+        var range = $"{upstream}..HEAD";
         var log = await _commandRunner.RunAsync(
             session.RepositoryPath,
             ["log", "--reverse", $"--pretty=format:{LogFormat}", range],
@@ -94,6 +108,7 @@ public class InteractiveRebaseService : IInteractiveRebaseService
         IRepositorySession session,
         string fromCommitSha,
         IReadOnlyList<RebaseTodoItem> plan,
+        string? upstreamRef = null,
         CancellationToken cancellationToken = default)
     {
         if (session == null) throw new ArgumentNullException(nameof(session));
@@ -101,6 +116,12 @@ public class InteractiveRebaseService : IInteractiveRebaseService
             throw new ArgumentException("fromCommitSha is required.", nameof(fromCommitSha));
         if (plan == null || plan.Count == 0)
             throw new ArgumentException("Plan must contain at least one item.", nameof(plan));
+
+        // Same upstream-resolution policy as LoadPlanAsync — explicit
+        // <see langword="ref"/> wins, otherwise fall back to <fromCommit>^.
+        var upstream = string.IsNullOrWhiteSpace(upstreamRef)
+            ? $"{fromCommitSha}^"
+            : upstreamRef!;
 
         var helper = RebaseHelperResolver.FindHelperPath();
         if (string.IsNullOrEmpty(helper))
@@ -157,7 +178,7 @@ public class InteractiveRebaseService : IInteractiveRebaseService
                 helper, todoFile, messagesDir, cursorFile,
                 overrideGitEditor: messageCount > 0);
 
-            var rebaseArgs = new[] { "rebase", "--interactive", $"{fromCommitSha}^" };
+            var rebaseArgs = new[] { "rebase", "--interactive", upstream };
             Log.Info("Rebase", $"Starting interactive rebase: {string.Join(" ", rebaseArgs)} (plan items={plan.Count}, messages={messageCount})");
             var result = await _commandRunner.RunAsync(
                 session.RepositoryPath,

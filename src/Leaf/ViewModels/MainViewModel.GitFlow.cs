@@ -44,7 +44,7 @@ public partial class MainViewModel
         var dialog = new Views.GitFlowInitDialog(_gitFlowService, _settingsService, SelectedRepository.Path);
         if (await _dialogService.ShowDialogAsync(dialog) && dialog.Result != null)
         {
-            NotifySuccess("GitFlow initialized", "Branch prefixes and base branches configured.");
+            NotifySuccess(Models.NotificationCategory.GitFlow, "GitFlow initialized", "Branch prefixes and base branches configured.");
             await RefreshAsync();
         }
     }
@@ -80,7 +80,7 @@ public partial class MainViewModel
         var dialog = new Views.StartBranchDialog(_gitFlowService, _gitService, SelectedRepository!.Path, branchType);
         if (await _dialogService.ShowDialogAsync(dialog))
         {
-            NotifySuccess($"{char.ToUpper(statusNoun[0]) + statusNoun[1..]} started", $"Created and checked out {dialog.BranchName}.");
+            NotifySuccess(Models.NotificationCategory.GitFlow, $"{char.ToUpper(statusNoun[0]) + statusNoun[1..]} started", $"Created and checked out {dialog.BranchName}.");
             await RefreshAsync();
         }
     }
@@ -148,7 +148,7 @@ public partial class MainViewModel
             // my-thing merged…") so the line reads naturally instead of
             // starting mid-sentence with a lowercase noun.
             var typeName = branchType.ToString();
-            NotifySuccess($"{typeName} finished", $"{typeName} {flowName} merged and cleaned up.");
+            NotifySuccess(Models.NotificationCategory.GitFlow, $"{typeName} finished", $"{typeName} {flowName} merged and cleaned up.");
         }
     }
 
@@ -204,7 +204,7 @@ public partial class MainViewModel
             // ("Feature my-thing pushed…" not "feature my-thing pushed…").
             // Mirrors the GitFlow-finish capitalization fix.
             var typeName = branchType.ToString();
-            NotifySuccess($"{typeName} published", $"{typeName} {flowName} pushed to remote.");
+            NotifySuccess(Models.NotificationCategory.GitFlow, $"{typeName} published", $"{typeName} {flowName} pushed to remote.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -283,15 +283,15 @@ public partial class MainViewModel
         {
             case GitFlowBranchType.Feature:
                 await _gitFlowService.StartFeatureAsync(SelectedRepository.Path, name, progress);
-                NotifySuccess("Feature started", $"Created and checked out feature '{name}'.");
+                NotifySuccess(Models.NotificationCategory.GitFlow, "Feature started", $"Created and checked out feature '{name}'.");
                 break;
             case GitFlowBranchType.Release:
                 await _gitFlowService.StartReleaseAsync(SelectedRepository.Path, name, progress);
-                NotifySuccess("Release started", $"Created and checked out release '{name}'.");
+                NotifySuccess(Models.NotificationCategory.GitFlow, "Release started", $"Created and checked out release '{name}'.");
                 break;
             case GitFlowBranchType.Hotfix:
                 await _gitFlowService.StartHotfixAsync(SelectedRepository.Path, name, progress);
-                NotifySuccess("Hotfix started", $"Created and checked out hotfix '{name}'.");
+                NotifySuccess(Models.NotificationCategory.GitFlow, "Hotfix started", $"Created and checked out hotfix '{name}'.");
                 break;
             default:
                 throw new ArgumentException($"Unsupported branch type: {branchType}");

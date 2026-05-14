@@ -137,7 +137,8 @@ public interface IGitService
     /// Pull from remote.
     /// </summary>
     /// <param name="credentialKey">Optional credential storage key (e.g. "GitHub:microsoft") for GIT_ASKPASS auth.</param>
-    Task PullAsync(string repoPath, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default);
+    /// <param name="rebase">If true, pass <c>--rebase</c> so incoming commits are rebased instead of merged. When null, git's <c>pull.rebase</c> config decides.</param>
+    Task PullAsync(string repoPath, string? credentialKey = null, IProgress<string>? progress = null, bool? rebase = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Push to remote.
@@ -510,7 +511,9 @@ public interface IGitService
     /// <param name="ontoBranch">Name of the branch to rebase onto</param>
     /// <param name="progress">Optional progress reporter</param>
     /// <returns>Result indicating success, conflicts, or failure</returns>
-    Task<Models.MergeResult> RebaseAsync(string repoPath, string ontoBranch, IProgress<string>? progress = null, CancellationToken cancellationToken = default);
+    /// <param name="autosquash">Pass <c>--autosquash</c> so fixup! / squash! commits collapse automatically.</param>
+    /// <param name="updateRefs">Pass <c>--update-refs</c> so dependent branches move with the rewritten commits.</param>
+    Task<Models.MergeResult> RebaseAsync(string repoPath, string ontoBranch, bool autosquash = false, bool updateRefs = false, IProgress<string>? progress = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Abort an in-progress rebase operation.

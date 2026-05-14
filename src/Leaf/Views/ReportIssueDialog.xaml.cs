@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Leaf.Models;
 using Leaf.Services;
 
 namespace Leaf.Views;
@@ -81,12 +82,12 @@ public partial class ReportIssueDialog : Window
                 var issueUrl = ExtractIssueUrl(output);
                 if (!string.IsNullOrEmpty(issueUrl))
                 {
-                    var result = MessageBox.Show(
+                    var result = FluentMessageBox.Show(
                         this,
                         $"Issue created successfully!\n\nWould you like to open it in your browser?\n\n{issueUrl}",
                         "Issue Created",
                         MessageBoxButton.YesNo,
-                        MessageBoxImage.Information);
+                        FluentMessageBoxIcon.Information);
 
                     if (result == MessageBoxResult.Yes)
                     {

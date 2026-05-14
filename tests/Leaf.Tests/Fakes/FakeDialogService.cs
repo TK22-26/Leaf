@@ -1,4 +1,5 @@
 using System.Windows;
+using Leaf.Models;
 using Leaf.Services;
 
 namespace Leaf.Tests.Fakes;
@@ -9,10 +10,12 @@ namespace Leaf.Tests.Fakes;
 /// </summary>
 public class FakeDialogService : IDialogService
 {
-    // Track method calls
-    public List<(string Message, string Title)> ConfirmationCalls { get; } = [];
-    public List<(string Message, string Title, MessageBoxButton Buttons)> MessageCalls { get; } = [];
-    public List<(string Message, string Title)> InformationCalls { get; } = [];
+    // Track method calls. Confirmation/Message/Information now also record
+    // the optional suppressionKey + icon so suppression-aware tests can
+    // assert which key the production code passed.
+    public List<(string Message, string Title, string? SuppressionKey, FluentMessageBoxIcon Icon)> ConfirmationCalls { get; } = [];
+    public List<(string Message, string Title, MessageBoxButton Buttons, FluentMessageBoxIcon Icon, string? SuppressionKey)> MessageCalls { get; } = [];
+    public List<(string Message, string Title, string? SuppressionKey)> InformationCalls { get; } = [];
     public List<(string Message, string Title)> ErrorCalls { get; } = [];
     public List<(string Prompt, string Title, string? DefaultValue)> InputCalls { get; } = [];
 
@@ -25,21 +28,30 @@ public class FakeDialogService : IDialogService
     public string? InputResult { get; set; } = null;
     public bool DialogResult { get; set; } = true;
 
-    public Task<bool> ShowConfirmationAsync(string message, string title)
+    public Task<bool> ShowConfirmationAsync(
+        string message,
+        string title,
+        string? suppressionKey = null,
+        FluentMessageBoxIcon icon = FluentMessageBoxIcon.Question)
     {
-        ConfirmationCalls.Add((message, title));
+        ConfirmationCalls.Add((message, title, suppressionKey, icon));
         return Task.FromResult(ConfirmationResult);
     }
 
-    public Task<MessageBoxResult> ShowMessageAsync(string message, string title, MessageBoxButton buttons)
+    public Task<MessageBoxResult> ShowMessageAsync(
+        string message,
+        string title,
+        MessageBoxButton buttons,
+        FluentMessageBoxIcon icon = FluentMessageBoxIcon.Information,
+        string? suppressionKey = null)
     {
-        MessageCalls.Add((message, title, buttons));
+        MessageCalls.Add((message, title, buttons, icon, suppressionKey));
         return Task.FromResult(MessageResult);
     }
 
-    public Task ShowInformationAsync(string message, string title)
+    public Task ShowInformationAsync(string message, string title, string? suppressionKey = null)
     {
-        InformationCalls.Add((message, title));
+        InformationCalls.Add((message, title, suppressionKey));
         return Task.CompletedTask;
     }
 

@@ -120,17 +120,17 @@ public partial class MainViewModel
                 }
 
                 await _gitService.RenameBranchAsync(SelectedRepository.Path, _pendingRenameBranchName, branchName, cancellationToken: CurrentRepositoryToken);
-                NotifySuccess("Branch renamed", $"Renamed to '{branchName}'.");
+                NotifySuccess(Models.NotificationCategory.BranchAdmin, "Branch renamed", $"Renamed to '{branchName}'.");
             }
             else if (!string.IsNullOrWhiteSpace(_pendingBranchBaseSha))
             {
                 await _gitService.CreateBranchAtCommitAsync(SelectedRepository.Path, branchName, _pendingBranchBaseSha, cancellationToken: CurrentRepositoryToken);
-                NotifySuccess("Branch created", $"Created and checked out '{branchName}'.");
+                NotifySuccess(Models.NotificationCategory.BranchAdmin, "Branch created", $"Created and checked out '{branchName}'.");
             }
             else
             {
                 await _gitService.CreateBranchAsync(SelectedRepository.Path, branchName, cancellationToken: CurrentRepositoryToken);
-                NotifySuccess("Branch created", $"Created and checked out '{branchName}'.");
+                NotifySuccess(Models.NotificationCategory.BranchAdmin, "Branch created", $"Created and checked out '{branchName}'.");
             }
             // Single refresh covers all three paths. The rename branch
             // previously triggered an inline refresh and then fell through
@@ -208,7 +208,7 @@ public partial class MainViewModel
                 await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: false, cancellationToken: CurrentRepositoryToken);
             }
 
-            NotifySuccess("Branch deleted", $"Deleted branch {branch.Name}.");
+            NotifySuccess(Models.NotificationCategory.BranchAdmin, "Branch deleted", $"Deleted branch {branch.Name}.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -218,7 +218,7 @@ public partial class MainViewModel
                 try
                 {
                     await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: true, cancellationToken: CurrentRepositoryToken);
-                    NotifySuccess("Branch force deleted", $"Force deleted branch {branch.Name}.");
+                    NotifySuccess(Models.NotificationCategory.BranchAdmin, "Branch force deleted", $"Force deleted branch {branch.Name}.");
                     await RefreshAsync();
                     return;
                 }
@@ -262,7 +262,7 @@ public partial class MainViewModel
                     branch.Name,
                     isCurrentBranch: false, cancellationToken: CurrentRepositoryToken);
 
-                NotifySuccess("Branch created", $"Created local {localName} from {branch.Name}.");
+                NotifySuccess(Models.NotificationCategory.BranchAdmin, "Branch created", $"Created local {localName} from {branch.Name}.");
                 await RefreshAsync();
                 return;
             }
@@ -275,7 +275,7 @@ public partial class MainViewModel
                 remoteBranchName,
                 branch.IsCurrent, cancellationToken: CurrentRepositoryToken);
 
-            NotifySuccess("Branch pulled", $"Fast-forwarded {branch.Name}.");
+            NotifySuccess(Models.NotificationCategory.BranchAdmin, "Branch pulled", $"Fast-forwarded {branch.Name}.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -306,7 +306,7 @@ public partial class MainViewModel
                 remoteBranchName,
                 branch.IsCurrent, cancellationToken: CurrentRepositoryToken);
 
-            NotifySuccess("Branch pushed", $"Pushed {branch.Name} to {remoteName}.");
+            NotifySuccess(Models.NotificationCategory.BranchAdmin, "Branch pushed", $"Pushed {branch.Name} to {remoteName}.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -335,7 +335,7 @@ public partial class MainViewModel
             var (remoteName, remoteBranchName) = await ResolveRemoteTargetAsync(branch);
             await _gitService.SetUpstreamAsync(SelectedRepository.Path, branch.Name, remoteName, remoteBranchName, cancellationToken: CurrentRepositoryToken);
 
-            NotifySuccess("Upstream set", $"Upstream set for {branch.Name}.");
+            NotifySuccess(Models.NotificationCategory.BranchAdmin, "Upstream set", $"Upstream set for {branch.Name}.");
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -483,12 +483,12 @@ public partial class MainViewModel
                     SelectedRepository.MergingBranch = branchName;
                 }
 
-                NotifyWarning("Checkout conflicts", "Checkout has conflicts — resolve to complete.");
+                NotifyWarning(Models.NotificationCategory.BranchCheckout, "Checkout conflicts", "Checkout has conflicts — resolve to complete.");
                 await RefreshMergeConflictResolutionAsync();
             }
             else
             {
-                NotifySuccess("Branch checked out", $"Now on {branchName}.");
+                NotifySuccess(Models.NotificationCategory.BranchCheckout, "Branch checked out", $"Now on {branchName}.");
             }
         }
         catch (Exception ex)
@@ -532,7 +532,7 @@ public partial class MainViewModel
             SelectedRepository.MergingBranch = info.MergingBranch;
             SelectedRepository.ConflictCount = info.ConflictCount;
 
-            NotifySuccess("Tag checked out", $"Now at tag {tag.Name} (detached HEAD).");
+            NotifySuccess(Models.NotificationCategory.BranchCheckout, "Tag checked out", $"Now at tag {tag.Name} (detached HEAD).");
         }
         catch (Exception ex)
         {
@@ -579,7 +579,7 @@ public partial class MainViewModel
                 Log.Info("Tag", $"Remote tag delete skipped for {tag.Name}: {ex.Message}");
             }
 
-            NotifySuccess("Tag deleted", $"Deleted tag {tag.Name} locally and on origin.");
+            NotifySuccess(Models.NotificationCategory.BranchAdmin, "Tag deleted", $"Deleted tag {tag.Name} locally and on origin.");
             await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
         }
         catch (Exception ex)
@@ -634,7 +634,7 @@ public partial class MainViewModel
                 origin?.Name ?? "origin",
                 credentialKey: credentialKey,
                 cancellationToken: CurrentRepositoryToken);
-            NotifySuccess("Tag pushed", $"Pushed tag {tag.Name} to origin.");
+            NotifySuccess(Models.NotificationCategory.BranchAdmin, "Tag pushed", $"Pushed tag {tag.Name} to origin.");
         }
         catch (Exception ex)
         {

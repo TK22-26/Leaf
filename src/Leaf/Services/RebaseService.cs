@@ -21,10 +21,12 @@ public class RebaseService : IRebaseService
     public async Task<MergeResult> RebaseAsync(
         IRepositorySession session,
         string ontoBranch,
+        bool autosquash = false,
+        bool updateRefs = false,
         IProgress<string>? progress = null)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        var result = await _gitService.RebaseAsync(session.RepositoryPath, ontoBranch, progress);
+        var result = await _gitService.RebaseAsync(session.RepositoryPath, ontoBranch, autosquash, updateRefs, progress, session.CancellationToken);
 
         _eventHub.NotifyCommitHistoryChanged();
         _eventHub.NotifyWorkingDirectoryChanged();

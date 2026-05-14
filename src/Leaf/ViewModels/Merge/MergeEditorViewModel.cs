@@ -200,6 +200,15 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isResolving;
 
+    /// <summary>
+    /// True when the conflict being resolved is part of a paused rebase
+    /// (<c>.git/rebase-merge</c> or <c>.git/rebase-apply</c> exists, and
+    /// it is not a paused <c>git am</c>). Drives the "Skip" toolbar entry's
+    /// visibility — skip is only meaningful mid-rebase.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isRebaseInProgress;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasDocument))]
     [NotifyPropertyChangedFor(nameof(IsTextMergeView))]
@@ -388,6 +397,14 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
         {
             if (showLoading) IsLoading = true;
             Log.Info("Merge", $"LoadConflicts: repo={System.IO.Path.GetFileName(_repoPath)}");
+
+            // Probe rebase state so the toolbar's Skip button can show/hide
+            // appropriately. am wins over rebase per the disambiguation in
+            // CompleteMergeAsync — skip-during-am is a different verb that
+            // we don't surface here.
+            var amInProgress = await _gitService.IsAmInProgressAsync(_repoPath, SessionToken).ConfigureAwait(true);
+            IsRebaseInProgress = !amInProgress &&
+                await _gitService.IsRebaseInProgressAsync(_repoPath, SessionToken).ConfigureAwait(true);
 
             var latest = await _gitService.GetConflictsAsync(_repoPath, cancellationToken: SessionToken)
                 .ConfigureAwait(true);
@@ -1113,6 +1130,38 @@ public sealed partial class MergeEditorViewModel : ObservableObject, IDisposable
                 await _gitService.AbortMergeAsync(_repoPath, SessionToken).ConfigureAwait(true);
             }
             MergeCompleted?.Invoke(this, false);
+        }
+        finally { IsResolving = false; }
+    }
+
+    /// <summary>
+    /// Skip the currently-paused commit during a rebase. Mirrors
+    /// <c>git rebase --skip</c>: the conflicting commit is dropped and
+    /// the rebase advances to the next todo entry. Only meaningful when
+    /// <see cref="IsRebaseInProgress"/> is true; the view binds the
+    /// button's visibility to that flag.
+    /// </summary>
+    [RelayCommand]
+    private async Task SkipRebaseAsync()
+    {
+        if (!IsRebaseInProgress) return;
+
+        IsResolving = true;
+        try
+        {
+            var result = await _gitService.SkipRebaseCommitAsync(_repoPath, SessionToken).ConfigureAwait(true);
+
+            if (!result.Success && !result.HasConflicts && !string.IsNullOrEmpty(result.ErrorMessage))
+            {
+                throw new InvalidOperationException(result.ErrorMessage);
+            }
+
+            // Same MergeCompleted contract as Continue/Abort: the host
+            // closes the editor and runs RefreshAsync. If the skip landed
+            // on another conflict, the host's refresh will re-detect the
+            // paused state and the user can re-open the editor for the
+            // next file.
+            MergeCompleted?.Invoke(this, true);
         }
         finally { IsResolving = false; }
     }

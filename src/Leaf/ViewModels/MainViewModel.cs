@@ -45,10 +45,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly Services.Merge.IImageMergeService? _imageMergeService;
     private readonly Services.Merge.IMergeBlameService _mergeBlameService;
     private readonly IInteractiveRebaseService _interactiveRebaseService;
+    private readonly IRebaseService _rebaseService;
     private readonly IPatchService _patchService;
     private readonly IBisectService _bisectService;
     private readonly IBranchColorPaletteRegistry _branchColorPaletteRegistry;
     private readonly ICommitTemplateService _commitTemplateService;
+    private readonly WorkspaceViewModel _workspaceViewModel;
+    private readonly IWorkspaceConfigService _workspaceConfigService;
+
+    /// <summary>
+    /// Workspace orchestrator — owns the per-tile state for the grid
+    /// view of the active parent's submodules. Exposed so the
+    /// MainWindow XAML can bind the grid host control directly. Always
+    /// non-null after MainViewModel construction; the workspace stays
+    /// in <see cref="Models.WorkspaceMode.Single"/> mode until the user
+    /// flips the toggle for a parent that has submodules.
+    /// </summary>
+    public WorkspaceViewModel Workspace => _workspaceViewModel;
 
     // The per-repo DI scope. Owns the current IRepositorySession (scoped)
     // and — in future phases — the per-repo ViewModels. Disposed on repo
@@ -214,20 +227,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Fire a success toast. Helper around <see cref="INotificationService.Show"/>
-    /// so call sites stay readable. Safe when <see cref="_notificationService"/>
-    /// is null (test context, headless runs).
+    /// Fire a success toast in a user-toggleable category. Helper around
+    /// <see cref="INotificationService.Show"/> so call sites stay
+    /// readable. Safe when <see cref="_notificationService"/> is null
+    /// (test context, headless runs). The user can switch each category
+    /// off from Settings → Notifications; errors never go through this
+    /// helper, they take the no-category path on
+    /// <see cref="IDialogService.ShowErrorToastAsync"/>.
     /// </summary>
-    private void NotifySuccess(string title, string description) =>
-        _notificationService?.Show(title, description, NotificationType.Success);
+    private void NotifySuccess(Models.NotificationCategory category, string title, string description) =>
+        _notificationService?.Show(title, description, NotificationType.Success, category);
 
-    /// <summary>Fire an informational toast.</summary>
-    private void NotifyInfo(string title, string description) =>
-        _notificationService?.Show(title, description, NotificationType.Information);
+    /// <summary>Fire an informational toast in a user-toggleable category.</summary>
+    private void NotifyInfo(Models.NotificationCategory category, string title, string description) =>
+        _notificationService?.Show(title, description, NotificationType.Information, category);
 
-    /// <summary>Fire a warning toast.</summary>
-    private void NotifyWarning(string title, string description) =>
-        _notificationService?.Show(title, description, NotificationType.Warning);
+    /// <summary>Fire a warning toast in a user-toggleable category.</summary>
+    private void NotifyWarning(Models.NotificationCategory category, string title, string description) =>
+        _notificationService?.Show(title, description, NotificationType.Warning, category);
 
     /// <summary>
     /// Convenience overload that pulls the detail string from an exception.
@@ -406,10 +423,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Services.Merge.IWordDiffService wordDiffService,
         Services.Merge.IMergeBlameService mergeBlameService,
         IInteractiveRebaseService interactiveRebaseService,
+        IRebaseService rebaseService,
         IPatchService patchService,
         IBisectService bisectService,
         IBranchColorPaletteRegistry branchColorPaletteRegistry,
         ICommitTemplateService commitTemplateService,
+        WorkspaceViewModel workspaceViewModel,
+        IWorkspaceConfigService workspaceConfigService,
         INotificationService? notificationService = null,
         Services.Merge.IAiMergeAssistant? aiMergeAssistant = null,
         Services.Merge.IImageMergeService? imageMergeService = null)
@@ -421,10 +441,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _imageMergeService = imageMergeService;
         _mergeBlameService = mergeBlameService;
         _interactiveRebaseService = interactiveRebaseService ?? throw new ArgumentNullException(nameof(interactiveRebaseService));
+        _rebaseService = rebaseService ?? throw new ArgumentNullException(nameof(rebaseService));
         _patchService = patchService ?? throw new ArgumentNullException(nameof(patchService));
         _bisectService = bisectService ?? throw new ArgumentNullException(nameof(bisectService));
         _branchColorPaletteRegistry = branchColorPaletteRegistry ?? throw new ArgumentNullException(nameof(branchColorPaletteRegistry));
         _commitTemplateService = commitTemplateService ?? throw new ArgumentNullException(nameof(commitTemplateService));
+        _workspaceViewModel = workspaceViewModel ?? throw new ArgumentNullException(nameof(workspaceViewModel));
+        _workspaceConfigService = workspaceConfigService ?? throw new ArgumentNullException(nameof(workspaceConfigService));
+        WireWorkspaceEvents();
         _gitFlowService = gitFlowService;
         _credentialService = credentialService;
         _settingsService = settingsService;
@@ -665,6 +689,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     partial void OnSelectedRepositoryChanged(RepositoryInfo? value)
     {
         TerminalViewModel?.SetWorkingDirectory(value?.Path);
+
+        // Refresh workspace-mode bindings (HasSubmodules visibility,
+        // drop back to Single view) for the new active repo. Lives in
+        // MainViewModel.Workspace.cs so the partial that owns those
+        // properties stays self-contained.
+        OnSelectedRepositoryChangedForWorkspace();
 
         // §5.17 — drop the tag detail pane on every repo switch (and
         // when the user clears the selection). Without this, switching

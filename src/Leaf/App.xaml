@@ -132,6 +132,29 @@
             <SolidColorBrush x:Key="LeafAccentSelectedBrush" Color="#5528A745" />
             <SolidColorBrush x:Key="LeafAccentFocusBrush" Color="#4D28A745" />
 
+            <!--  Action bar button style with green hover (stacked icon
+                  + text). Lives in App.Resources rather than
+                  MainWindow.Resources so descendant UserControls (the
+                  workspace grid toolbar, the kebab popups) can resolve
+                  it via StaticResource at parse time — a UserControl's
+                  XAML is parsed before it joins the visual tree, so a
+                  Window-scoped style would be unreachable for them.  -->
+            <Style
+                x:Key="ActionBarButtonStyle"
+                BasedOn="{StaticResource {x:Type Button}}"
+                TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Margin" Value="1,0" />
+                <Setter Property="Padding" Value="8,4" />
+                <Setter Property="MinWidth" Value="46" />
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
             <!--  TextBox focus accent (bottom border gradient)  -->
             <LinearGradientBrush x:Key="TextControlElevationBorderFocusedBrush" MappingMode="Absolute" StartPoint="0,0" EndPoint="0,2">
                 <LinearGradientBrush.RelativeTransform>

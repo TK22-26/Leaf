@@ -1,10 +1,14 @@
 using System.Windows;
+using Leaf.Models;
+using Leaf.Views;
 
 namespace Leaf.Services;
 
 /// <summary>
-/// WPF implementation of <see cref="IDialogService"/>.
-/// Uses IDispatcherService and IWindowService for testability.
+/// WPF implementation of <see cref="IDialogService"/>. Routes every modal
+/// prompt through <see cref="FluentMessageBox"/> so the entire app gets
+/// the Fluent-styled box (and the optional "Don't show this again"
+/// checkbox) without any callsite churn beyond passing a suppression key.
 /// </summary>
 public class DialogService : IDialogService
 {
@@ -20,48 +24,57 @@ public class DialogService : IDialogService
     }
 
     /// <inheritdoc />
-    public async Task<bool> ShowConfirmationAsync(string message, string title)
+    public async Task<bool> ShowConfirmationAsync(
+        string message,
+        string title,
+        string? suppressionKey = null,
+        FluentMessageBoxIcon icon = FluentMessageBoxIcon.Question)
     {
         return await _dispatcher.InvokeAsync(() =>
         {
             var owner = _windowService.GetMainWindow();
-            var result = MessageBox.Show(
-                owner,
-                message,
-                title,
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
+            var result = string.IsNullOrWhiteSpace(suppressionKey)
+                ? FluentMessageBox.Show(owner, message, title, MessageBoxButton.YesNo, icon)
+                : FluentMessageBox.ShowSuppressible(message, title, suppressionKey!, MessageBoxButton.YesNo, icon, owner);
             return result == MessageBoxResult.Yes;
         });
     }
 
     /// <inheritdoc />
-    public async Task<MessageBoxResult> ShowMessageAsync(string message, string title, MessageBoxButton buttons)
+    public async Task<MessageBoxResult> ShowMessageAsync(
+        string message,
+        string title,
+        MessageBoxButton buttons,
+        FluentMessageBoxIcon icon = FluentMessageBoxIcon.Information,
+        string? suppressionKey = null)
     {
         return await _dispatcher.InvokeAsync(() =>
         {
             var owner = _windowService.GetMainWindow();
-            return MessageBox.Show(
-                owner,
-                message,
-                title,
-                buttons,
-                MessageBoxImage.Information);
+            // Suppression-aware path uses the dedicated helper so the
+            // checkbox surfaces and the answer is persisted; non-suppressing
+            // calls go through the plain Show() so we don't render the
+            // checkbox column for the bulk of callsites that don't need it.
+            return string.IsNullOrWhiteSpace(suppressionKey)
+                ? FluentMessageBox.Show(owner, message, title, buttons, icon)
+                : FluentMessageBox.ShowSuppressible(message, title, suppressionKey!, buttons, icon, owner);
         });
     }
 
     /// <inheritdoc />
-    public async Task ShowInformationAsync(string message, string title)
+    public async Task ShowInformationAsync(string message, string title, string? suppressionKey = null)
     {
         await _dispatcher.InvokeAsync(() =>
         {
             var owner = _windowService.GetMainWindow();
-            MessageBox.Show(
-                owner,
-                message,
-                title,
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            if (string.IsNullOrWhiteSpace(suppressionKey))
+            {
+                FluentMessageBox.Show(owner, message, title, MessageBoxButton.OK, FluentMessageBoxIcon.Information);
+            }
+            else
+            {
+                FluentMessageBox.ShowSuppressible(message, title, suppressionKey!, MessageBoxButton.OK, FluentMessageBoxIcon.Information, owner);
+            }
         });
     }
 
@@ -124,21 +137,30 @@ public class TestDialogService : IDialogService
     public List<(string Message, string Title)> ShownMessages { get; } = new();
 
     /// <inheritdoc />
-    public Task<bool> ShowConfirmationAsync(string message, string title)
+    public Task<bool> ShowConfirmationAsync(
+        string message,
+        string title,
+        string? suppressionKey = null,
+        FluentMessageBoxIcon icon = FluentMessageBoxIcon.Question)
     {
         ShownMessages.Add((message, title));
         return Task.FromResult(ConfirmationResult);
     }
 
     /// <inheritdoc />
-    public Task<MessageBoxResult> ShowMessageAsync(string message, string title, MessageBoxButton buttons)
+    public Task<MessageBoxResult> ShowMessageAsync(
+        string message,
+        string title,
+        MessageBoxButton buttons,
+        FluentMessageBoxIcon icon = FluentMessageBoxIcon.Information,
+        string? suppressionKey = null)
     {
         ShownMessages.Add((message, title));
         return Task.FromResult(MessageResult);
     }
 
     /// <inheritdoc />
-    public Task ShowInformationAsync(string message, string title)
+    public Task ShowInformationAsync(string message, string title, string? suppressionKey = null)
     {
         ShownMessages.Add((message, title));
         return Task.CompletedTask;

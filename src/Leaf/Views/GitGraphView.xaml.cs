@@ -543,7 +543,7 @@ public partial class GitGraphView : UserControl
         };
         menu.Items.Add(findPrItem);
 
-        // Merge branch labels
+        // Merge / rebase branch labels
         if (commit.BranchLabels.Count > 0)
         {
             menu.Items.Add(new Separator());
@@ -555,6 +555,15 @@ public partial class GitGraphView : UserControl
                     Command = mainViewModel.MergeBranchLabelCommand,
                     CommandParameter = label
                 });
+                if (!label.IsCurrent)
+                {
+                    menu.Items.Add(new MenuItem
+                    {
+                        Header = $"Rebase current onto {label.FullName}...",
+                        Command = mainViewModel.RebaseBranchLabelCommand,
+                        CommandParameter = label
+                    });
+                }
             }
         }
 
@@ -864,6 +873,19 @@ public partial class GitGraphView : UserControl
         };
         menu.Items.Add(mergeItem);
 
+        // Rebase current onto this label. Disabled when the label IS the
+        // current branch — rebasing onto self is a no-op.
+        if (!label.IsCurrent)
+        {
+            var rebaseItem = new MenuItem
+            {
+                Header = $"Rebase current onto {label.FullName}...",
+                Command = mainViewModel.RebaseBranchLabelCommand,
+                CommandParameter = label
+            };
+            menu.Items.Add(rebaseItem);
+        }
+
         if (label.IsLocal && !label.IsCurrent)
         {
             var createPullRequestItem = new MenuItem
@@ -1000,13 +1022,13 @@ public partial class GitGraphView : UserControl
     {
         if (service is null) return;
         var owner = Window.GetWindow(this);
-        var result = MessageBox.Show(
+        var result = FluentMessageBox.Show(
             owner,
             "Remove every per-branch colour override on this repository?\n\n" +
             "Branches will go back to using the active palette.",
             "Reset all branch colours",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            FluentMessageBoxIcon.Warning);
         if (result == MessageBoxResult.Yes)
             service.ClearAllOverrides();
     }

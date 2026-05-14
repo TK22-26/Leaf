@@ -44,10 +44,11 @@ public class RemoteSyncService : IRemoteSyncService
     public async Task PullAsync(
         IRepositorySession session,
         string? credentialKey = null,
-        IProgress<string>? progress = null)
+        IProgress<string>? progress = null,
+        bool? rebase = null)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        await _gitService.PullAsync(session.RepositoryPath, credentialKey, progress);
+        await _gitService.PullAsync(session.RepositoryPath, credentialKey, progress, rebase, session.CancellationToken);
         _eventHub.NotifyBranchesChanged();
         _eventHub.NotifyCommitHistoryChanged();
         _eventHub.NotifyWorkingDirectoryChanged();
