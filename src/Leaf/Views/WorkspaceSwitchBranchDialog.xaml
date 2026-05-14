@@ -7,7 +7,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Switch workspace to branch"
-        Width="460"
+        Width="500"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
@@ -15,6 +15,7 @@
 
     <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -29,7 +30,7 @@
                        FontSize="12"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                        Margin="0,0,0,12">
-                Every repo in the workspace will check out this branch. Repos that don't have the branch are skipped; the summary toast lists which.
+                Every repo in the workspace will check out this branch.
             </TextBlock>
             <TextBlock Text="Branch name" FontWeight="SemiBold" Margin="0,0,0,4"/>
             <TextBox x:Name="BranchInput"
@@ -37,9 +38,42 @@
                      Padding="8,6"
                      FontFamily="Consolas"
                      AutomationProperties.AutomationId="WorkspaceSwitchBranchDialog.Input" />
+            <!-- Inline validation. Empty string when the name is valid
+                 (or hasn't been typed yet) so the row collapses. Same
+                 rules as git check-ref-format. -->
+            <TextBlock Text="{Binding ValidationError}"
+                       Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Margin="0,4,0,0"
+                       AutomationProperties.AutomationId="WorkspaceSwitchBranchDialog.ValidationError" />
         </StackPanel>
 
-        <StackPanel Grid.Row="1"
+        <StackPanel Grid.Row="1" Margin="0,0,0,16">
+            <TextBlock Text="Options" FontWeight="SemiBold" Margin="0,0,0,8"/>
+
+            <CheckBox Content="Create branch if it doesn't exist"
+                      IsChecked="{Binding CreateIfMissing}"
+                      Margin="0,0,0,4"
+                      AutomationProperties.AutomationId="WorkspaceSwitchBranchDialog.CreateIfMissing" />
+            <TextBlock Text="Repos that don't have this branch will get it created at their current HEAD and checked out."
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Margin="22,0,0,10"/>
+
+            <CheckBox Content="Stash uncommitted changes"
+                      IsChecked="{Binding StashChanges}"
+                      Margin="0,0,0,4"
+                      AutomationProperties.AutomationId="WorkspaceSwitchBranchDialog.StashChanges" />
+            <TextBlock Text="Repos with dirty working trees are stashed first so the switch can proceed. The stash is left on the stack — pop it manually after if you want the changes back."
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Margin="22,0,0,0"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right">
             <Button Content="Cancel"

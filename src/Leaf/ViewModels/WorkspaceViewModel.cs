@@ -631,11 +631,18 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         if (!await _dialogService.ShowDialogAsync(dialog)) return;
 
         var branchName = dialogVm.BranchName.Trim();
+        // The dialog's "Switch" button is gated on CanSwitch (non-empty
+        // + git's branch-name rules); this guard is paranoia in case
+        // the binding hadn't flushed yet.
         if (string.IsNullOrEmpty(branchName)) return;
+        var createIfMissing = dialogVm.CreateIfMissing;
+        var stashChanges = dialogVm.StashChanges;
 
         await RunBulkAsync($"Switching workspace to {branchName}…", async () =>
         {
             var switched = new List<string>();
+            var created = new List<string>();
+            var stashed = new List<string>();
             var skipped = new List<string>();
             var failed = new List<(string Name, string Error)>();
 
@@ -643,23 +650,52 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             {
                 BulkOperationStatus = $"Checking {tile.Name}…";
 
-                // git rev-parse --verify branchName checks if the
-                // branch exists. We don't intersect across all repos
-                // up-front because branches can be local-only OR
-                // remote-only — the simplest correct test is "try the
-                // checkout in this repo and see what happens", but a
-                // pre-check via rev-parse keeps the per-repo log clean
-                // for the skip case.
-                var hasBranchProbe = await TryRevParseAsync(tile.RepositoryPath, branchName, tile.Token);
-                if (!hasBranchProbe)
+                var hasBranch = await TryRevParseAsync(tile.RepositoryPath, branchName, tile.Token);
+
+                if (!hasBranch && !createIfMissing)
                 {
+                    // No branch and the user didn't opt into creating —
+                    // skip and report. This is the safer default.
                     skipped.Add(tile.Name);
                     continue;
                 }
 
                 try
                 {
-                    await _gitService.CheckoutAsync(tile.RepositoryPath, branchName, cancellationToken: tile.Token);
+                    // Stash first if requested AND the repo is dirty.
+                    // Clean repos don't get a no-op stash that produces
+                    // a confusing "(no changes to stash)" warning.
+                    if (stashChanges)
+                    {
+                        var changes = await _gitService.GetWorkingChangesAsync(tile.RepositoryPath, tile.Token);
+                        if (changes.HasChanges)
+                        {
+                            await _gitService.StashAsync(
+                                tile.RepositoryPath,
+                                $"leaf: workspace-switch-to-{branchName}",
+                                tile.Token);
+                            stashed.Add(tile.Name);
+                        }
+                    }
+
+                    if (hasBranch)
+                    {
+                        await _gitService.CheckoutAsync(tile.RepositoryPath, branchName, cancellationToken: tile.Token);
+                    }
+                    else
+                    {
+                        // CreateIfMissing path — create the branch at
+                        // the repo's current HEAD and check it out in
+                        // one shot. CreateBranchAsync's checkout=true
+                        // matches what `git switch -c <branch>` does.
+                        await _gitService.CreateBranchAsync(
+                            tile.RepositoryPath,
+                            branchName,
+                            checkout: true,
+                            cancellationToken: tile.Token);
+                        created.Add(tile.Name);
+                    }
+
                     await LoadTileAsync(tile);
                     switched.Add(tile.Name);
                 }
@@ -670,7 +706,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 }
             }
 
-            BuildSwitchSummary(branchName, switched, skipped, failed);
+            BuildSwitchSummary(branchName, switched, created, stashed, skipped, failed);
         });
     }
 
@@ -696,11 +732,21 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void BuildSwitchSummary(string branch, List<string> switched, List<string> skipped, List<(string, string)> failed)
+    private void BuildSwitchSummary(
+        string branch,
+        List<string> switched,
+        List<string> created,
+        List<string> stashed,
+        List<string> skipped,
+        List<(string, string)> failed)
     {
         var lines = new List<string>();
         if (switched.Count > 0)
-            lines.Add($"Switched {switched.Count} repo(s).");
+            lines.Add($"Switched {switched.Count} repo(s) to '{branch}'.");
+        if (created.Count > 0)
+            lines.Add($"Created the branch on {created.Count}: {string.Join(", ", created)}.");
+        if (stashed.Count > 0)
+            lines.Add($"Stashed dirty changes on {stashed.Count}: {string.Join(", ", stashed)}. Pop manually to recover.");
         if (skipped.Count > 0)
             lines.Add($"{skipped.Count} don't have '{branch}': {string.Join(", ", skipped)}.");
         if (failed.Count > 0)
