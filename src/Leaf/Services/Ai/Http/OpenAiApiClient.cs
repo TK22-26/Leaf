@@ -9,19 +9,19 @@ using Leaf.Services.Merge;
 namespace Leaf.Services.Ai.Http;
 
 /// <summary>
-/// HTTP client for OpenAI's Responses API and any
-/// OpenAI-API-compatible endpoint (LM Studio, OpenRouter, vLLM,
-/// Together, an Azure OpenAI gateway). Base URL is parameterised so a
-/// single implementation serves both OpenAI proper (<see cref="AiProviderKind.OpenAi"/>)
-/// and the user-supplied custom endpoint (<see cref="AiProviderKind.OpenAiCompatible"/>).
+/// HTTP client for OpenAI's Responses API (<c>POST /v1/responses</c>).
+/// Uses <c>text.format = json_schema</c> with <c>strict: true</c> for
+/// structured output.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Uses the modern Responses API endpoint (<c>POST /v1/responses</c>)
-/// with <c>text.format = json_schema</c> for structured output. Chat
-/// Completions is legacy on OpenAI; most compatible servers also
-/// implement Responses now. If a server doesn't, the user can keep
-/// using its own CLI through the Codex / External Server paths.
+/// This client is OpenAI-first-party only. The 2026-05-15 audit found
+/// that virtually no third-party "OpenAI-compatible" server
+/// (LM Studio, OpenRouter, vLLM, Together, Ollama-in-compat-mode)
+/// implements <c>/v1/responses</c> — they all run Chat Completions
+/// only. The compatible-endpoint provider therefore lives in
+/// <see cref="OpenAiChatCompletionsClient"/>; this class is restricted
+/// to the canonical <c>api.openai.com</c> surface.
 /// </para>
 /// <para>
 /// Auth header: <c>Authorization: Bearer {key}</c>.
@@ -29,32 +29,21 @@ namespace Leaf.Services.Ai.Http;
 /// </remarks>
 public sealed class OpenAiApiClient : AiApiClientBase
 {
-    private readonly AiProviderKind _kind;
-    private readonly string _label;
-    private readonly Func<string> _baseUrlProvider;
     private readonly Func<string> _modelProvider;
 
     public OpenAiApiClient(
-        AiProviderKind kind,
-        string label,
         HttpClient httpClient,
         Func<string?> keyReader,
-        Func<string> baseUrlProvider,
         Func<string> modelProvider,
         Func<int> timeoutSecondsProvider)
         : base(httpClient, keyReader, timeoutSecondsProvider)
     {
-        if (kind != AiProviderKind.OpenAi && kind != AiProviderKind.OpenAiCompatible)
-            throw new ArgumentException($"Unsupported kind for OpenAI client: {kind}", nameof(kind));
-        _kind = kind;
-        _label = label ?? throw new ArgumentNullException(nameof(label));
-        _baseUrlProvider = baseUrlProvider ?? throw new ArgumentNullException(nameof(baseUrlProvider));
         _modelProvider = modelProvider ?? throw new ArgumentNullException(nameof(modelProvider));
     }
 
-    public override AiProviderKind Provider => _kind;
+    public override AiProviderKind Provider => AiProviderKind.OpenAi;
 
-    protected override string ProviderLabel => _label;
+    protected override string ProviderLabel => "OpenAI (API)";
 
     protected override HttpRequestMessage BuildRequest(string prompt, string jsonSchema, string apiKey)
     {
@@ -96,8 +85,7 @@ public sealed class OpenAiApiClient : AiApiClientBase
             },
         };
 
-        var url = BuildEndpointUrl("responses");
-        var req = new HttpRequestMessage(HttpMethod.Post, url)
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/responses")
         {
             Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
         };
@@ -121,8 +109,7 @@ public sealed class OpenAiApiClient : AiApiClientBase
             ["input"] = "ping",
             ["max_output_tokens"] = 16,
         };
-        var url = BuildEndpointUrl("responses");
-        var req = new HttpRequestMessage(HttpMethod.Post, url)
+        var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/responses")
         {
             Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
         };
@@ -181,32 +168,5 @@ public sealed class OpenAiApiClient : AiApiClientBase
 
         throw new AiMergeAssistantException(
             $"{ProviderLabel}: response had no output_text content.");
-    }
-
-    /// <summary>
-    /// Resolve the endpoint URL by combining the configured base URL
-    /// with the API path. OpenAI proper uses <c>https://api.openai.com/v1</c>;
-    /// compatible servers vary. We accept either a base URL with or
-    /// without the <c>/v1</c> suffix and either with or without a
-    /// trailing slash.
-    /// </summary>
-    private string BuildEndpointUrl(string path)
-    {
-        var baseUrl = _baseUrlProvider()?.Trim() ?? string.Empty;
-        if (string.IsNullOrEmpty(baseUrl))
-        {
-            throw new AiMergeAssistantException(
-                $"{ProviderLabel}: no base URL configured. Set one in Settings → AI.");
-        }
-        baseUrl = baseUrl.TrimEnd('/');
-        // If the user pasted just the host (https://api.openai.com or
-        // http://localhost:1234), append /v1. If they included /v1
-        // already (or any other path), respect it verbatim — some
-        // gateways mount the API at /openai/v1 or similar.
-        if (!baseUrl.Contains("/v", StringComparison.OrdinalIgnoreCase))
-        {
-            baseUrl += "/v1";
-        }
-        return $"{baseUrl}/{path}";
     }
 }

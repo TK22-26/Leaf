@@ -124,13 +124,22 @@ public static class ServiceRegistry
         // up — auth is set per-request inside each IAiApiClient so the
         // shared instance never holds a provider-specific header on
         // DefaultRequestHeaders.
+        //
+        // HttpClient.Timeout is set to InfiniteTimeSpan: AiApiClientBase
+        // owns the timeout via a linked CancellationTokenSource derived
+        // from the user-configured AiCliTimeoutSeconds. Letting the
+        // HttpClient default (100s) fire alongside our CTS would race
+        // and surface a different exception type.
         services.AddSingleton(_ =>
         {
             var handler = new System.Net.Http.SocketsHttpHandler
             {
                 PooledConnectionLifetime = TimeSpan.FromMinutes(5),
             };
-            return new System.Net.Http.HttpClient(handler);
+            return new System.Net.Http.HttpClient(handler)
+            {
+                Timeout = System.Threading.Timeout.InfiniteTimeSpan,
+            };
         });
         // One IAiApiClient registration per provider. The merge router
         // picks the right one out of IEnumerable<IAiApiClient> by
@@ -167,23 +176,22 @@ public static class ServiceRegistry
             var http = sp.GetRequiredService<System.Net.Http.HttpClient>();
             int Timeout() => Math.Max(1, settings.LoadSettings().AiCliTimeoutSeconds);
             return new Leaf.Services.Ai.Http.OpenAiApiClient(
-                Leaf.Services.Merge.AiProviderKind.OpenAi,
-                "OpenAI (API)",
                 http,
                 keyReader: () => creds.GetAiApiKey("OpenAI"),
-                baseUrlProvider: () => "https://api.openai.com/v1",
                 modelProvider: () => settings.LoadSettings().OpenAiApiModel,
                 timeoutSecondsProvider: Timeout);
         });
+        // Compatible endpoints (LM Studio, OpenRouter, vLLM, Azure
+        // gateway) hit Chat Completions — none of them implement the
+        // Responses API. Different client class enforces that
+        // distinction at compile time.
         services.AddSingleton<Leaf.Services.Ai.Http.IAiApiClient>(sp =>
         {
             var settings = sp.GetRequiredService<SettingsService>();
             var creds = sp.GetRequiredService<CredentialService>();
             var http = sp.GetRequiredService<System.Net.Http.HttpClient>();
             int Timeout() => Math.Max(1, settings.LoadSettings().AiCliTimeoutSeconds);
-            return new Leaf.Services.Ai.Http.OpenAiApiClient(
-                Leaf.Services.Merge.AiProviderKind.OpenAiCompatible,
-                "OpenAI-Compatible",
+            return new Leaf.Services.Ai.Http.OpenAiChatCompletionsClient(
                 http,
                 keyReader: () => creds.GetAiApiKey("OpenAiCompatible"),
                 baseUrlProvider: () => settings.LoadSettings().OpenAiCompatibleBaseUrl,

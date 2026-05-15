@@ -40,7 +40,8 @@ public partial class SettingsDialog : Window
         IExternalToolConfigService externalToolConfig,
         IExternalToolDetectorService externalToolDetector,
         string? currentRepoPath,
-        string? initialSection = null)
+        string? initialSection = null,
+        Action<string>? aiKeyInvalidator = null)
     {
         InitializeComponent();
         _initialSection = initialSection;
@@ -120,6 +121,10 @@ public partial class SettingsDialog : Window
         GitHubSettings.SetSettingsService(settingsService);
 
         AiSettings.SetSettingsService(settingsService);
+        if (aiKeyInvalidator != null)
+        {
+            AiSettings.SetApiKeyInvalidator(aiKeyInvalidator);
+        }
 
         LoadCurrentSettings();
 

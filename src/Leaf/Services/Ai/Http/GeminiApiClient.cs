@@ -63,10 +63,13 @@ public sealed class GeminiApiClient : AiApiClientBase
                 $"{ProviderLabel}: invalid JSON schema ({ex.Message}).", ex);
         }
 
-        // Gemini's schema dialect is a subset of OpenAPI 3.0 / JSON
-        // Schema and rejects `additionalProperties`. Strip it defensively
-        // so a shared schema string (which includes additionalProperties
-        // for Claude/OpenAI) doesn't 400 here.
+        // Gemini's responseSchema is an OpenAPI 3.0 subset. The
+        // 2026-05-15 audit confirmed `additionalProperties` IS now
+        // supported, so we leave it intact. We still strip `$schema`
+        // and other JSON-Schema-only keywords that the validator
+        // silently ignores — keeps the wire payload smaller and the
+        // intent obvious. If a caller eventually needs richer
+        // schemas ($ref, oneOf), use `responseJsonSchema` instead.
         StripUnsupportedSchemaKeywords(schemaNode);
 
         var body = new JsonObject
@@ -150,12 +153,15 @@ public sealed class GeminiApiClient : AiApiClientBase
                 $"{ProviderLabel}: response root is not an object.");
         }
 
-        // Safety filter blocks come back without candidates — surface
-        // the block reason so the user sees why the merge call failed.
+        // Blocks come back without candidates — surface the reason
+        // verbatim so all six current BlockReason values (SAFETY,
+        // OTHER, BLOCKLIST, PROHIBITED_CONTENT, IMAGE_SAFETY,
+        // BLOCK_REASON_UNSPECIFIED) read sensibly. Field presence is
+        // the signal; the specific value is for the user/log.
         if (rootObj["promptFeedback"]?["blockReason"] is JsonNode block)
         {
             throw new AiMergeAssistantException(
-                $"{ProviderLabel}: request blocked by safety filter ({block.GetValue<string>()}).");
+                $"{ProviderLabel}: request blocked ({block.GetValue<string>()}).");
         }
 
         var candidates = rootObj["candidates"] as JsonArray;
@@ -185,17 +191,24 @@ public sealed class GeminiApiClient : AiApiClientBase
     }
 
     /// <summary>
-    /// Gemini's schema validator rejects <c>additionalProperties</c>
-    /// (it understands OpenAPI 3.0 Schema, not full JSON Schema). Strip
-    /// it everywhere in the tree before sending so the schema we share
-    /// with the other providers stays portable.
+    /// Strip JSON-Schema-only keywords that <c>responseSchema</c>
+    /// silently ignores (it's an OpenAPI 3.0 subset). Not strictly
+    /// required — Gemini accepts and discards them — but keeps the
+    /// wire payload small and signals intent. <c>additionalProperties</c>
+    /// is NOT stripped: the audit confirmed it's now supported.
     /// </summary>
     private static void StripUnsupportedSchemaKeywords(JsonNode node)
     {
         if (node is JsonObject obj)
         {
-            obj.Remove("additionalProperties");
             obj.Remove("$schema");
+            obj.Remove("$ref");
+            obj.Remove("$defs");
+            obj.Remove("definitions");
+            obj.Remove("oneOf");
+            obj.Remove("anyOf");
+            obj.Remove("allOf");
+            obj.Remove("not");
             foreach (var child in obj)
             {
                 if (child.Value is not null) StripUnsupportedSchemaKeywords(child.Value);

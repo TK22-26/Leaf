@@ -17,14 +17,14 @@ namespace Leaf.Tests.Services.Ai.Http;
 /// </summary>
 public class GeminiApiClientTests
 {
-    // Includes additionalProperties on purpose — the client must strip it
-    // since Gemini's schema dialect rejects it.
+    // Schema includes additionalProperties (Gemini supports it as of 2026)
+    // AND a $schema header (Gemini ignores it; we strip to keep payload tidy).
     private const string TestSchema = """
-        {"type":"object","properties":{"proposedText":{"type":"string"}},"required":["proposedText"],"additionalProperties":false}
+        {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"proposedText":{"type":"string"}},"required":["proposedText"],"additionalProperties":false}
         """;
 
     [Fact]
-    public async Task SendAsync_BuildsCorrectRequest_AndStripsAdditionalProperties()
+    public async Task SendAsync_BuildsCorrectRequest_PreservesAdditionalProperties_StripsJsonSchemaKeywords()
     {
         var handler = new RecordingHandler(_ =>
             new HttpResponseMessage(HttpStatusCode.OK)
@@ -44,10 +44,13 @@ public class GeminiApiClientTests
 
         var bodyJson = JsonNode.Parse(handler.LastBody!)!.AsObject();
         bodyJson["generationConfig"]!["responseMimeType"]!.GetValue<string>().Should().Be("application/json");
-        // additionalProperties must be stripped from the schema before
-        // it's sent to Gemini.
+
         var schemaSent = bodyJson["generationConfig"]!["responseSchema"]!.AsObject();
-        schemaSent.ContainsKey("additionalProperties").Should().BeFalse();
+        // additionalProperties IS preserved — Gemini supports it as of 2026.
+        schemaSent.ContainsKey("additionalProperties").Should().BeTrue();
+        schemaSent["additionalProperties"]!.GetValue<bool>().Should().BeFalse();
+        // $schema is stripped (silently ignored by Gemini; tidier on the wire).
+        schemaSent.ContainsKey("$schema").Should().BeFalse();
         schemaSent["type"]!.GetValue<string>().Should().Be("object");
     }
 
@@ -78,12 +81,16 @@ public class GeminiApiClientTests
         ex.Which.Message.Should().Contain("rate limited");
     }
 
-    [Fact]
-    public async Task SendAsync_Throws_OnSafetyBlock()
+    [Theory]
+    [InlineData("SAFETY")]
+    [InlineData("OTHER")]
+    [InlineData("BLOCKLIST")]
+    [InlineData("PROHIBITED_CONTENT")]
+    [InlineData("IMAGE_SAFETY")]
+    [InlineData("BLOCK_REASON_UNSPECIFIED")]
+    public async Task SendAsync_Throws_OnAnyBlockReason(string reason)
     {
-        const string blocked = """
-            {"promptFeedback":{"blockReason":"SAFETY"}}
-            """;
+        var blocked = "{\"promptFeedback\":{\"blockReason\":\"" + reason + "\"}}";
         var handler = new RecordingHandler(_ =>
             new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -93,8 +100,8 @@ public class GeminiApiClientTests
 
         var act = async () => await client.SendAsync("p", TestSchema, CancellationToken.None);
         var ex = await act.Should().ThrowAsync<AiMergeAssistantException>();
-        ex.Which.Message.Should().Contain("safety filter");
-        ex.Which.Message.Should().Contain("SAFETY");
+        ex.Which.Message.Should().Contain("blocked");
+        ex.Which.Message.Should().Contain(reason);
     }
 
     [Fact]

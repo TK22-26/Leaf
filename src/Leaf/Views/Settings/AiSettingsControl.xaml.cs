@@ -36,6 +36,43 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     private readonly OllamaService _ollamaService = new();
     private CredentialService? _credentialService;
 
+    /// <summary>
+    /// Curated model lists per provider. Seed the editable ComboBoxes so
+    /// users get a one-click pick for cost optimization (haiku/flash/mini
+    /// variants) while still being free to type a model identifier Leaf
+    /// doesn't know about yet — useful when a provider ships a new model
+    /// before Leaf updates this list.
+    /// </summary>
+    /// <remarks>
+    /// Ordered roughly by "default recommendation" first. The user's
+    /// saved choice always wins; this list only seeds the dropdown.
+    /// </remarks>
+    private static readonly string[] ClaudeApiModels =
+    {
+        "claude-sonnet-4-5",
+        "claude-opus-4-7",
+        "claude-haiku-4-5",
+    };
+
+    private static readonly string[] GeminiApiModels =
+    {
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+    };
+
+    private static readonly string[] OpenAiApiModels =
+    {
+        "gpt-5-codex",
+        "gpt-5",
+        "gpt-5-mini",
+        "gpt-5-nano",
+        "o3",
+        "o4-mini",
+        "gpt-4o",
+    };
+
     public AiSettingsControl()
     {
         InitializeComponent();
@@ -48,6 +85,21 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         _settingsService = settingsService;
     }
+
+    /// <summary>
+    /// Optional callback invoked after the user saves a new API key or
+    /// disconnects. Receives the credential-provider name
+    /// ("Claude", "Gemini", "OpenAI", "OpenAiCompatible") so the host
+    /// can invalidate the matching singleton's cached key — without
+    /// this hook the next merge request would serve a stale key until
+    /// app restart.
+    /// </summary>
+    public void SetApiKeyInvalidator(Action<string> invalidator)
+    {
+        _apiKeyInvalidator = invalidator;
+    }
+
+    private Action<string>? _apiKeyInvalidator;
 
     public void LoadSettings(AppSettings settings, CredentialService credentialService)
     {
@@ -90,9 +142,8 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _suppressClaudeTransportSync = false;
         ApplyClaudeTransportVisibility();
 
-        ClaudeApiModelTextBox.Text = string.IsNullOrWhiteSpace(settings.ClaudeApiModel)
-            ? "claude-sonnet-4-5"
-            : settings.ClaudeApiModel;
+        PopulateModelComboBox(ClaudeApiModelComboBox, ClaudeApiModels,
+            string.IsNullOrWhiteSpace(settings.ClaudeApiModel) ? "claude-sonnet-4-5" : settings.ClaudeApiModel);
         UpdateClaudeApiStatusLine();
 
         // Gemini transport mirror.
@@ -103,20 +154,20 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _suppressGeminiTransportSync = false;
         ApplyGeminiTransportVisibility();
 
-        GeminiApiModelTextBox.Text = string.IsNullOrWhiteSpace(settings.GeminiApiModel)
-            ? "gemini-2.5-pro"
-            : settings.GeminiApiModel;
+        PopulateModelComboBox(GeminiApiModelComboBox, GeminiApiModels,
+            string.IsNullOrWhiteSpace(settings.GeminiApiModel) ? "gemini-2.5-pro" : settings.GeminiApiModel);
         UpdateGeminiApiStatusLine();
 
         // OpenAI proper.
-        OpenAiApiModelTextBox.Text = string.IsNullOrWhiteSpace(settings.OpenAiApiModel)
-            ? "gpt-5-codex"
-            : settings.OpenAiApiModel;
+        PopulateModelComboBox(OpenAiApiModelComboBox, OpenAiApiModels,
+            string.IsNullOrWhiteSpace(settings.OpenAiApiModel) ? "gpt-5-codex" : settings.OpenAiApiModel);
         UpdateOpenAiApiStatusLine();
 
-        // OpenAI-compatible custom endpoint.
+        // OpenAI-compatible custom endpoint. No curated list — the model
+        // identifier is endpoint-specific so we leave the dropdown items
+        // empty and rely on the editable ComboBox for free-text entry.
         OpenAiCompatibleBaseUrlTextBox.Text = settings.OpenAiCompatibleBaseUrl ?? string.Empty;
-        OpenAiCompatibleModelTextBox.Text = settings.OpenAiCompatibleModel ?? string.Empty;
+        PopulateModelComboBox(OpenAiCompatibleModelComboBox, Array.Empty<string>(), settings.OpenAiCompatibleModel ?? string.Empty);
         UpdateOpenAiCompatibleStatusLine();
 
         // Load Ollama settings
@@ -396,11 +447,18 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         ClaudeApiBody.Visibility = api ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void ClaudeApiModel_Changed(object sender, TextChangedEventArgs e)
+    private void ClaudeApiModel_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) PersistClaudeApiModel();
+    }
+
+    private void ClaudeApiModel_LostFocus(object sender, RoutedEventArgs e) => PersistClaudeApiModel();
+
+    private void PersistClaudeApiModel()
     {
         if (_settings == null || _settingsService == null) return;
-        var model = ClaudeApiModelTextBox.Text.Trim();
-        if (string.IsNullOrEmpty(model)) return; // ignore transient empty during editing
+        var model = (ClaudeApiModelComboBox.Text ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(model)) return;
         _settings.ClaudeApiModel = model;
         _settingsService.SaveSettings(_settings);
     }
@@ -423,7 +481,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 return;
             }
 
-            var model = ClaudeApiModelTextBox.Text.Trim();
+            var model = ClaudeApiModelComboBox.Text.Trim();
             if (string.IsNullOrEmpty(model))
             {
                 ClaudeApiStatusText.Text = "Enter a model name first.";
@@ -440,7 +498,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             // will use.
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("Claude", typed);
+                _credentialService.SetAiApiKey("Claude", typed); _apiKeyInvalidator?.Invoke("Claude");
                 // Clear the field so a shoulder-surfer can't read it from
                 // the saved state. The status line shows a masked tail.
                 ClaudeApiKeyPasswordBox.Clear();
@@ -496,7 +554,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("Claude");
+        _credentialService.DeleteAiApiKey("Claude"); _apiKeyInvalidator?.Invoke("Claude");
         _isClaudeApiConnected = false;
         _settings.IsClaudeApiConnected = false;
         _settingsService.SaveSettings(_settings);
@@ -543,6 +601,27 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         var prefix = key[..Math.Min(7, key.Length)];
         var suffix = key[^Math.Min(4, key.Length)..];
         return $"{prefix}…••••{suffix}";
+    }
+
+    /// <summary>
+    /// Seed an editable model ComboBox with the curated list and select
+    /// whatever the user previously saved — even if that value isn't in
+    /// the curated list. The IsEditable=True ComboBox treats the text as
+    /// authoritative when typed; we read .Text rather than .SelectedItem
+    /// when persisting so a custom-typed model survives save/load round-
+    /// tripping.
+    /// </summary>
+    private static void PopulateModelComboBox(ComboBox combo, IReadOnlyList<string> curatedModels, string currentValue)
+    {
+        combo.Items.Clear();
+        foreach (var m in curatedModels) combo.Items.Add(m);
+        // If the saved value isn't in the curated list, add it so the
+        // dropdown shows the user's exact pick first.
+        if (!string.IsNullOrEmpty(currentValue) && !curatedModels.Contains(currentValue))
+        {
+            combo.Items.Insert(0, currentValue);
+        }
+        combo.Text = currentValue;
     }
 
     #endregion
@@ -597,10 +676,17 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         GeminiApiBody.Visibility = api ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void GeminiApiModel_Changed(object sender, TextChangedEventArgs e)
+    private void GeminiApiModel_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) PersistGeminiApiModel();
+    }
+
+    private void GeminiApiModel_LostFocus(object sender, RoutedEventArgs e) => PersistGeminiApiModel();
+
+    private void PersistGeminiApiModel()
     {
         if (_settings == null || _settingsService == null) return;
-        var model = GeminiApiModelTextBox.Text.Trim();
+        var model = (GeminiApiModelComboBox.Text ?? string.Empty).Trim();
         if (string.IsNullOrEmpty(model)) return;
         _settings.GeminiApiModel = model;
         _settingsService.SaveSettings(_settings);
@@ -622,7 +708,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 return;
             }
 
-            var model = GeminiApiModelTextBox.Text.Trim();
+            var model = GeminiApiModelComboBox.Text.Trim();
             if (string.IsNullOrEmpty(model))
             {
                 GeminiApiStatusText.Text = "Enter a model name first.";
@@ -636,7 +722,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("Gemini", typed);
+                _credentialService.SetAiApiKey("Gemini", typed); _apiKeyInvalidator?.Invoke("Gemini");
                 GeminiApiKeyPasswordBox.Clear();
             }
             _settings.GeminiApiModel = model;
@@ -686,7 +772,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("Gemini");
+        _credentialService.DeleteAiApiKey("Gemini"); _apiKeyInvalidator?.Invoke("Gemini");
         _isGeminiApiConnected = false;
         _settings.IsGeminiApiConnected = false;
         _settingsService.SaveSettings(_settings);
@@ -759,10 +845,17 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
     #region OpenAI (API key)
 
-    private void OpenAiApiModel_Changed(object sender, TextChangedEventArgs e)
+    private void OpenAiApiModel_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) PersistOpenAiApiModel();
+    }
+
+    private void OpenAiApiModel_LostFocus(object sender, RoutedEventArgs e) => PersistOpenAiApiModel();
+
+    private void PersistOpenAiApiModel()
     {
         if (_settings == null || _settingsService == null) return;
-        var model = OpenAiApiModelTextBox.Text.Trim();
+        var model = (OpenAiApiModelComboBox.Text ?? string.Empty).Trim();
         if (string.IsNullOrEmpty(model)) return;
         _settings.OpenAiApiModel = model;
         _settingsService.SaveSettings(_settings);
@@ -784,7 +877,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 return;
             }
 
-            var model = OpenAiApiModelTextBox.Text.Trim();
+            var model = OpenAiApiModelComboBox.Text.Trim();
             if (string.IsNullOrEmpty(model))
             {
                 OpenAiApiStatusText.Text = "Enter a model name first.";
@@ -798,7 +891,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("OpenAI", typed);
+                _credentialService.SetAiApiKey("OpenAI", typed); _apiKeyInvalidator?.Invoke("OpenAI");
                 OpenAiApiKeyPasswordBox.Clear();
             }
             _settings.OpenAiApiModel = model;
@@ -807,11 +900,8 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             var timeout = GetAiTimeoutSeconds();
             using var probeHttp = new HttpClient();
             var probe = new OpenAiApiClient(
-                AiProviderKind.OpenAi,
-                "OpenAI (API)",
                 probeHttp,
                 keyReader: () => keyToTest,
-                baseUrlProvider: () => "https://api.openai.com/v1",
                 modelProvider: () => model,
                 timeoutSecondsProvider: () => timeout);
 
@@ -851,7 +941,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("OpenAI");
+        _credentialService.DeleteAiApiKey("OpenAI"); _apiKeyInvalidator?.Invoke("OpenAI");
         _isOpenAiApiConnected = false;
         _settings.IsOpenAiApiConnected = false;
         _settingsService.SaveSettings(_settings);
@@ -897,10 +987,17 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _settingsService.SaveSettings(_settings);
     }
 
-    private void OpenAiCompatibleModel_Changed(object sender, TextChangedEventArgs e)
+    private void OpenAiCompatibleModel_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) PersistOpenAiCompatibleModel();
+    }
+
+    private void OpenAiCompatibleModel_LostFocus(object sender, RoutedEventArgs e) => PersistOpenAiCompatibleModel();
+
+    private void PersistOpenAiCompatibleModel()
     {
         if (_settings == null || _settingsService == null) return;
-        _settings.OpenAiCompatibleModel = OpenAiCompatibleModelTextBox.Text.Trim();
+        _settings.OpenAiCompatibleModel = (OpenAiCompatibleModelComboBox.Text ?? string.Empty).Trim();
         _settingsService.SaveSettings(_settings);
     }
 
@@ -928,7 +1025,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 return;
             }
 
-            var model = OpenAiCompatibleModelTextBox.Text.Trim();
+            var model = OpenAiCompatibleModelComboBox.Text.Trim();
             if (string.IsNullOrEmpty(model))
             {
                 OpenAiCompatibleStatusText.Text = "Enter a model name first.";
@@ -942,7 +1039,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("OpenAiCompatible", typed);
+                _credentialService.SetAiApiKey("OpenAiCompatible", typed); _apiKeyInvalidator?.Invoke("OpenAiCompatible");
                 OpenAiCompatibleApiKeyPasswordBox.Clear();
             }
             _settings.OpenAiCompatibleBaseUrl = baseUrl;
@@ -951,9 +1048,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
             var timeout = GetAiTimeoutSeconds();
             using var probeHttp = new HttpClient();
-            var probe = new OpenAiApiClient(
-                AiProviderKind.OpenAiCompatible,
-                "OpenAI-Compatible",
+            var probe = new OpenAiChatCompletionsClient(
                 probeHttp,
                 keyReader: () => keyToTest,
                 baseUrlProvider: () => baseUrl,
@@ -996,7 +1091,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("OpenAiCompatible");
+        _credentialService.DeleteAiApiKey("OpenAiCompatible"); _apiKeyInvalidator?.Invoke("OpenAiCompatible");
         _isOpenAiCompatibleConnected = false;
         _settings.IsOpenAiCompatibleConnected = false;
         _settingsService.SaveSettings(_settings);

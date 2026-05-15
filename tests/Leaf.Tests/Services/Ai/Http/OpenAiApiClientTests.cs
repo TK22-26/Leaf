@@ -11,9 +11,8 @@ using Xunit;
 namespace Leaf.Tests.Services.Ai.Http;
 
 /// <summary>
-/// Wire-level behaviour tests for <see cref="OpenAiApiClient"/>.
-/// Exercises both the OpenAI-proper instance (fixed base URL) and the
-/// compatible-endpoint instance (user-supplied base URL).
+/// Wire-level behaviour tests for <see cref="OpenAiApiClient"/> —
+/// OpenAI-first-party Responses API.
 /// </summary>
 public class OpenAiApiClientTests
 {
@@ -22,7 +21,7 @@ public class OpenAiApiClientTests
         """;
 
     [Fact]
-    public async Task SendAsync_OpenAi_BuildsCorrectRequest()
+    public async Task SendAsync_BuildsCorrectRequest()
     {
         var handler = new RecordingHandler(_ =>
             new HttpResponseMessage(HttpStatusCode.OK)
@@ -43,26 +42,6 @@ public class OpenAiApiClientTests
         bodyJson["model"]!.GetValue<string>().Should().Be("gpt-5-codex");
         bodyJson["text"]!["format"]!["type"]!.GetValue<string>().Should().Be("json_schema");
         bodyJson["text"]!["format"]!["strict"]!.GetValue<bool>().Should().BeTrue();
-    }
-
-    [Theory]
-    [InlineData("http://localhost:1234", "http://localhost:1234/v1/responses")]
-    [InlineData("http://localhost:1234/", "http://localhost:1234/v1/responses")]
-    [InlineData("http://localhost:1234/v1", "http://localhost:1234/v1/responses")]
-    [InlineData("http://localhost:1234/v1/", "http://localhost:1234/v1/responses")]
-    [InlineData("https://gateway.example.com/openai/v1", "https://gateway.example.com/openai/v1/responses")]
-    public async Task SendAsync_OpenAiCompatible_ResolvesBaseUrlCorrectly(string baseUrl, string expectedFullUrl)
-    {
-        var handler = new RecordingHandler(_ =>
-            new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(BuildSuccessResponse("x"), Encoding.UTF8, "application/json"),
-            });
-        var client = NewCompatible(handler, baseUrl: baseUrl);
-
-        await client.SendAsync("p", TestSchema, CancellationToken.None);
-
-        handler.LastRequest!.RequestUri!.ToString().Should().Be(expectedFullUrl);
     }
 
     [Fact]
@@ -135,57 +114,14 @@ public class OpenAiApiClientTests
         ex.Which.Message.Should().Contain("no API key configured");
     }
 
-    [Fact]
-    public async Task SendAsync_Throws_WhenCompatibleEndpointHasEmptyBaseUrl()
-    {
-        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
-        var client = NewCompatible(handler, baseUrl: "");
-
-        var act = async () => await client.SendAsync("p", TestSchema, CancellationToken.None);
-        var ex = await act.Should().ThrowAsync<AiMergeAssistantException>();
-        ex.Which.Message.Should().Contain("base URL");
-    }
-
-    [Fact]
-    public void Constructor_RejectsNonOpenAiKind()
-    {
-        var act = () => new OpenAiApiClient(
-            AiProviderKind.Claude, "x",
-            new HttpClient(new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK))),
-            keyReader: () => "k",
-            baseUrlProvider: () => "https://api.openai.com/v1",
-            modelProvider: () => "m",
-            timeoutSecondsProvider: () => 30);
-
-        act.Should().Throw<ArgumentException>();
-    }
-
     private static OpenAiApiClient NewOpenAi(
         HttpMessageHandler handler,
         string? key = "sk-test",
         string model = "gpt-5-codex",
         int timeoutSeconds = 30)
         => new(
-            AiProviderKind.OpenAi,
-            "OpenAI (API)",
             new HttpClient(handler),
             keyReader: () => key,
-            baseUrlProvider: () => "https://api.openai.com/v1",
-            modelProvider: () => model,
-            timeoutSecondsProvider: () => timeoutSeconds);
-
-    private static OpenAiApiClient NewCompatible(
-        HttpMessageHandler handler,
-        string baseUrl = "http://localhost:1234/v1",
-        string? key = "sk-local",
-        string model = "local-model",
-        int timeoutSeconds = 30)
-        => new(
-            AiProviderKind.OpenAiCompatible,
-            "OpenAI-Compatible",
-            new HttpClient(handler),
-            keyReader: () => key,
-            baseUrlProvider: () => baseUrl,
             modelProvider: () => model,
             timeoutSecondsProvider: () => timeoutSeconds);
 

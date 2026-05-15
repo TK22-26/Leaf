@@ -18,6 +18,16 @@ namespace Leaf.Services.Ai.Http;
 /// </remarks>
 public abstract class AiApiClientBase : IAiApiClient
 {
+    /// <summary>
+    /// Upper bound on the response body we'll buffer. 4 MB is orders
+    /// of magnitude above any sane structured-output response and
+    /// keeps a malicious or misbehaving endpoint from OOM'ing the
+    /// process by streaming gigabytes of bytes. Mirrors the
+    /// <see cref="AiResolutionParser"/>'s 256 KB downstream cap with
+    /// extra headroom for envelope/tool-use overhead.
+    /// </summary>
+    private const int MaxResponseBytes = 4 * 1024 * 1024;
+
     private readonly HttpClient _http;
     private readonly Func<string?> _keyReader;
     private readonly Func<int> _timeoutSecondsProvider;
@@ -124,7 +134,11 @@ public abstract class AiApiClientBase : IAiApiClient
         HttpResponseMessage response;
         try
         {
-            response = await _http.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeoutCts.Token).ConfigureAwait(false);
+            // ResponseHeadersRead lets us inspect Content-Length and
+            // stream-read the body with a hard cap, rather than letting
+            // HttpClient buffer the entire payload into memory before
+            // we get a say.
+            response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token).ConfigureAwait(false);
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -137,7 +151,17 @@ public abstract class AiApiClientBase : IAiApiClient
 
         using (response)
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            // Reject obviously oversized responses up front using
+            // Content-Length when present — saves reading any body
+            // bytes at all on a hostile or misconfigured server.
+            var declaredLength = response.Content.Headers.ContentLength;
+            if (declaredLength.HasValue && declaredLength.Value > MaxResponseBytes)
+            {
+                throw new AiMergeAssistantException(
+                    $"{ProviderLabel}: response too large ({declaredLength.Value} bytes; cap {MaxResponseBytes}).");
+            }
+
+            var body = await ReadBodyCappedAsync(response, timeoutCts.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 throw new AiMergeAssistantException(BuildHttpErrorMessage(response.StatusCode, body));
@@ -146,9 +170,38 @@ public abstract class AiApiClientBase : IAiApiClient
         }
     }
 
+    private async Task<string> ReadBodyCappedAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        // Read up to MaxResponseBytes + 1 — if the extra byte arrives,
+        // we know the body exceeded the cap without having to buffer
+        // gigabytes to find out.
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        var buffer = new byte[8192];
+        var output = new System.IO.MemoryStream(capacity: 8192);
+        long total = 0;
+        while (true)
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken).ConfigureAwait(false);
+            if (read == 0) break;
+            total += read;
+            if (total > MaxResponseBytes)
+            {
+                throw new AiMergeAssistantException(
+                    $"{ProviderLabel}: response exceeded {MaxResponseBytes} byte cap.");
+            }
+            output.Write(buffer, 0, read);
+        }
+        return System.Text.Encoding.UTF8.GetString(output.GetBuffer(), 0, (int)output.Length);
+    }
+
     private string BuildHttpErrorMessage(HttpStatusCode status, string body)
     {
-        var compact = body.Replace("\r", " ").Replace("\n", " ");
+        // Scrub any API-key shapes in the body before embedding. Real
+        // providers don't echo keys back, but a misconfigured corporate
+        // proxy or a custom OpenAI-compatible server might — and once
+        // that string is inside an exception message it can land in
+        // logs, telemetry, or a UI toast.
+        var compact = Leaf.Services.Log.Redact(body).Replace("\r", " ").Replace("\n", " ");
         if (compact.Length > 240) compact = compact[..240] + "…";
         return status switch
         {
