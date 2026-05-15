@@ -472,7 +472,7 @@
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                        Margin="0,0,0,4" />
-            <TextBlock Text="Use any service that implements the OpenAI Chat Completions API: LM Studio, OpenRouter, vLLM, Together, Ollama (OpenAI-compat mode), Azure OpenAI gateway, or a corporate proxy."
+            <TextBlock Text="Use any service that implements the OpenAI Chat Completions API: LM Studio, OpenRouter, vLLM, Together, Ollama (OpenAI-compat mode), or a corporate proxy. Note: Azure OpenAI customers must use a deployment configured to accept Authorization: Bearer (e.g. AAD-fronted) — native Azure api-key header is not supported here."
                        FontSize="12"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                        Margin="0,0,0,16"

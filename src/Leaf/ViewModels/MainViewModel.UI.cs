@@ -61,38 +61,6 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Invalidate the cached API key on the matching <c>IAiApiClient</c>
-    /// singleton. Called by the Settings dialog after the user saves a
-    /// new key or disconnects so the next merge/commit request re-reads
-    /// from Credential Manager instead of serving a stale cache.
-    /// </summary>
-    /// <param name="credentialProvider">
-    /// The provider name as used in <c>CredentialService.SetAiApiKey</c>:
-    /// "Claude", "Gemini", "OpenAI", or "OpenAiCompatible".
-    /// </param>
-    private void InvalidateAiKeyCache(string credentialProvider)
-    {
-        var kind = credentialProvider switch
-        {
-            "Claude" => Services.Merge.AiProviderKind.ClaudeApi,
-            "Gemini" => Services.Merge.AiProviderKind.GeminiApi,
-            "OpenAI" => Services.Merge.AiProviderKind.OpenAi,
-            "OpenAiCompatible" => Services.Merge.AiProviderKind.OpenAiCompatible,
-            _ => (Services.Merge.AiProviderKind?)null,
-        };
-        if (kind is null) return;
-        foreach (var client in _aiApiClients)
-        {
-            if (client.Provider == kind)
-            {
-                client.RefreshKey();
-                Log.Info("AiSettings", $"Invalidated key cache for {kind}");
-                break;
-            }
-        }
-    }
-
-    /// <summary>
     /// Open settings. Pass <paramref name="initialSection"/> (e.g.
     /// <c>"ExternalTools"</c>) to deep-link the user to a specific section
     /// instead of the Clone Path default — used by call sites that
@@ -108,8 +76,7 @@ public partial class MainViewModel
             _externalToolConfig,
             _externalToolDetector,
             SelectedRepository?.Path,
-            initialSection,
-            aiKeyInvalidator: InvalidateAiKeyCache)
+            initialSection)
         {
             Width = 1000,
             Height = 750

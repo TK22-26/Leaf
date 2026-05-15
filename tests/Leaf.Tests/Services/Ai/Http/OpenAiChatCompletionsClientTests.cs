@@ -114,6 +114,58 @@ public class OpenAiChatCompletionsClientTests
     }
 
     [Fact]
+    public async Task SendAsync_ThrowsRateLimited_On429()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage((HttpStatusCode)429));
+        var client = New(handler);
+
+        var act = async () => await client.SendAsync("p", TestSchema, CancellationToken.None);
+        var ex = await act.Should().ThrowAsync<AiMergeAssistantException>();
+        ex.Which.Message.Should().Contain("rate limited");
+    }
+
+    [Fact]
+    public async Task SendAsync_Throws_OnMalformedResponse()
+    {
+        var handler = new RecordingHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("not even json", Encoding.UTF8, "application/json"),
+            });
+        var client = New(handler);
+
+        var act = async () => await client.SendAsync("p", TestSchema, CancellationToken.None);
+        await act.Should().ThrowAsync<AiMergeAssistantException>();
+    }
+
+    [Fact]
+    public async Task SendAsync_Throws_WhenNoModelConfigured()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var client = New(handler, model: "");
+
+        var act = async () => await client.SendAsync("p", TestSchema, CancellationToken.None);
+        var ex = await act.Should().ThrowAsync<AiMergeAssistantException>();
+        ex.Which.Message.Should().Contain("no model configured");
+    }
+
+    [Theory]
+    [InlineData("   ")]      // whitespace-only treated as empty after trim
+    [InlineData("not-a-url")] // unparseable
+    public async Task SendAsync_Throws_OnUnusableBaseUrl(string baseUrl)
+    {
+        // Unparseable URL falls through to HttpClient.SendAsync which
+        // throws an HttpRequestException — we wrap it as
+        // AiMergeAssistantException with a "network error" prefix.
+        // Whitespace-only is caught by the explicit base-URL guard.
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var client = New(handler, baseUrl: baseUrl);
+
+        var act = async () => await client.SendAsync("p", TestSchema, CancellationToken.None);
+        await act.Should().ThrowAsync<AiMergeAssistantException>();
+    }
+
+    [Fact]
     public async Task SendAsync_Throws_WhenNoKeyConfigured()
     {
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));

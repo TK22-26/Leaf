@@ -22,14 +22,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IGitService _gitService;
     private readonly IGitFlowService _gitFlowService;
     private readonly CredentialService _credentialService;
-    /// <summary>
-    /// AI HTTP clients for direct-billing API-key transports. Used by
-    /// <see cref="OpenSettingsAsync"/> to invalidate the per-provider
-    /// key cache when the user saves a new key or disconnects — without
-    /// this hook the singleton client serves a stale cache until app
-    /// restart.
-    /// </summary>
-    private readonly List<Services.Ai.Http.IAiApiClient> _aiApiClients = new();
     private readonly SettingsService _settingsService;
     private readonly IRepositoryManagementService _repositoryService;
     private readonly IAutoFetchService _autoFetchService;
@@ -440,14 +432,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IWorkspaceConfigService workspaceConfigService,
         INotificationService? notificationService = null,
         Services.Merge.IAiMergeAssistant? aiMergeAssistant = null,
-        Services.Merge.IImageMergeService? imageMergeService = null,
-        IEnumerable<Services.Ai.Http.IAiApiClient>? aiApiClients = null)
+        Services.Merge.IImageMergeService? imageMergeService = null)
     {
         _gitService = gitService;
         _mergeEngine = mergeEngine;
         _wordDiffService = wordDiffService;
         _aiMergeAssistant = aiMergeAssistant;
-        _aiApiClients = aiApiClients?.ToList() ?? new List<Services.Ai.Http.IAiApiClient>();
         _imageMergeService = imageMergeService;
         _mergeBlameService = mergeBlameService;
         _interactiveRebaseService = interactiveRebaseService ?? throw new ArgumentNullException(nameof(interactiveRebaseService));

@@ -104,6 +104,17 @@ public class OpenAiApiClientTests
     }
 
     [Fact]
+    public async Task SendAsync_Throws_WhenNoModelConfigured()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var client = NewOpenAi(handler, model: "");
+
+        var act = async () => await client.SendAsync("p", TestSchema, CancellationToken.None);
+        var ex = await act.Should().ThrowAsync<AiMergeAssistantException>();
+        ex.Which.Message.Should().Contain("no model configured");
+    }
+
+    [Fact]
     public async Task SendAsync_Throws_WhenNoKeyConfigured()
     {
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));

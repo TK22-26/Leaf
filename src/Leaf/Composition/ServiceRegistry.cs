@@ -198,6 +198,7 @@ public static class ServiceRegistry
                 modelProvider: () => settings.LoadSettings().OpenAiCompatibleModel,
                 timeoutSecondsProvider: Timeout);
         });
+        services.AddSingleton<Leaf.Services.Ai.Http.IAiApiKeyCacheInvalidator, Leaf.Services.Ai.Http.AiApiKeyCacheInvalidator>();
 
         // AI-assisted merge resolution. The router holds one of every
         // provider implementation and dispatches to whichever is selected

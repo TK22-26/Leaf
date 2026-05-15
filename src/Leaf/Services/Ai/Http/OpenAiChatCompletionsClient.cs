@@ -188,6 +188,15 @@ public sealed class OpenAiChatCompletionsClient : AiApiClientBase
             throw new AiMergeAssistantException(
                 $"{ProviderLabel}: no base URL configured. Set one in Settings → AI.");
         }
+        // Reject garbage up front with a clear error rather than
+        // letting HttpRequestMessage accept it as a relative URI and
+        // surface InvalidOperationException from HttpClient.SendAsync.
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var parsed)
+            || (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new AiMergeAssistantException(
+                $"{ProviderLabel}: base URL must be an absolute http:// or https:// URL (got '{baseUrl}').");
+        }
         baseUrl = baseUrl.TrimEnd('/');
         if (!baseUrl.Contains("/v", StringComparison.OrdinalIgnoreCase))
         {

@@ -87,19 +87,42 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     }
 
     /// <summary>
-    /// Optional callback invoked after the user saves a new API key or
-    /// disconnects. Receives the credential-provider name
-    /// ("Claude", "Gemini", "OpenAI", "OpenAiCompatible") so the host
-    /// can invalidate the matching singleton's cached key — without
-    /// this hook the next merge request would serve a stale key until
-    /// app restart.
+    /// Resolve <see cref="IAiApiKeyCacheInvalidator"/> from the app-wide
+    /// DI provider and invalidate the matching singleton client's
+    /// cached key. The previous design accepted an <c>Action&lt;string&gt;</c>
+    /// through <see cref="SetApiKeyInvalidator"/> — that worked from
+    /// <c>MainViewModel.OpenSettingsAsync</c> but the secondary
+    /// <c>CloneDialog → Settings</c> path never wired it, leaving stale
+    /// keys cached for the rest of the session. Resolving directly from
+    /// <see cref="App.Services"/> here makes the invalidation universal
+    /// regardless of how Settings was opened.
     /// </summary>
-    public void SetApiKeyInvalidator(Action<string> invalidator)
+    private static void InvokeApiKeyInvalidator(string credentialProvider)
     {
-        _apiKeyInvalidator = invalidator;
+        try
+        {
+            var invalidator = Microsoft.Extensions.DependencyInjection
+                .ServiceProviderServiceExtensions.GetService<IAiApiKeyCacheInvalidator>(App.Services);
+            invalidator?.Invalidate(credentialProvider);
+        }
+        catch (InvalidOperationException)
+        {
+            // App.Services unavailable (e.g. design-time or test host).
+            // Swallowing this is intentional — the only consequence is
+            // a stale cache in a context that doesn't have a runtime
+            // service to invalidate against.
+        }
     }
 
-    private Action<string>? _apiKeyInvalidator;
+    /// <summary>
+    /// Legacy entry point for callers that used to push an invalidator
+    /// callback through SettingsDialog. Now a no-op — the canonical
+    /// path is the static <see cref="InvokeApiKeyInvalidator"/> which
+    /// resolves from DI on demand. Kept so external callers that still
+    /// pass a callback compile cleanly.
+    /// </summary>
+    [Obsolete("Cache invalidation is now handled internally via IAiApiKeyCacheInvalidator resolved from App.Services. This setter is a no-op.")]
+    public void SetApiKeyInvalidator(Action<string> invalidator) { }
 
     public void LoadSettings(AppSettings settings, CredentialService credentialService)
     {
@@ -498,7 +521,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             // will use.
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("Claude", typed); _apiKeyInvalidator?.Invoke("Claude");
+                _credentialService.SetAiApiKey("Claude", typed); InvokeApiKeyInvalidator("Claude");
                 // Clear the field so a shoulder-surfer can't read it from
                 // the saved state. The status line shows a masked tail.
                 ClaudeApiKeyPasswordBox.Clear();
@@ -554,7 +577,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("Claude"); _apiKeyInvalidator?.Invoke("Claude");
+        _credentialService.DeleteAiApiKey("Claude"); InvokeApiKeyInvalidator("Claude");
         _isClaudeApiConnected = false;
         _settings.IsClaudeApiConnected = false;
         _settingsService.SaveSettings(_settings);
@@ -722,7 +745,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("Gemini", typed); _apiKeyInvalidator?.Invoke("Gemini");
+                _credentialService.SetAiApiKey("Gemini", typed); InvokeApiKeyInvalidator("Gemini");
                 GeminiApiKeyPasswordBox.Clear();
             }
             _settings.GeminiApiModel = model;
@@ -772,7 +795,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("Gemini"); _apiKeyInvalidator?.Invoke("Gemini");
+        _credentialService.DeleteAiApiKey("Gemini"); InvokeApiKeyInvalidator("Gemini");
         _isGeminiApiConnected = false;
         _settings.IsGeminiApiConnected = false;
         _settingsService.SaveSettings(_settings);
@@ -891,7 +914,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("OpenAI", typed); _apiKeyInvalidator?.Invoke("OpenAI");
+                _credentialService.SetAiApiKey("OpenAI", typed); InvokeApiKeyInvalidator("OpenAI");
                 OpenAiApiKeyPasswordBox.Clear();
             }
             _settings.OpenAiApiModel = model;
@@ -941,7 +964,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("OpenAI"); _apiKeyInvalidator?.Invoke("OpenAI");
+        _credentialService.DeleteAiApiKey("OpenAI"); InvokeApiKeyInvalidator("OpenAI");
         _isOpenAiApiConnected = false;
         _settings.IsOpenAiApiConnected = false;
         _settingsService.SaveSettings(_settings);
@@ -983,8 +1006,27 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     private void OpenAiCompatibleBaseUrl_Changed(object sender, TextChangedEventArgs e)
     {
         if (_settings == null || _settingsService == null) return;
-        _settings.OpenAiCompatibleBaseUrl = OpenAiCompatibleBaseUrlTextBox.Text.Trim();
+        var newUrl = OpenAiCompatibleBaseUrlTextBox.Text.Trim();
+        // ICR finding #21: changing the base URL invalidates any prior
+        // Test Connection result — the new endpoint may have totally
+        // different auth / available models. Drop the connected flag
+        // so the UI doesn't lie. Same applies to model edits below.
+        if (!string.Equals(_settings.OpenAiCompatibleBaseUrl, newUrl, StringComparison.Ordinal)
+            && _isOpenAiCompatibleConnected)
+        {
+            ResetOpenAiCompatibleConnectedState();
+        }
+        _settings.OpenAiCompatibleBaseUrl = newUrl;
         _settingsService.SaveSettings(_settings);
+    }
+
+    private void ResetOpenAiCompatibleConnectedState()
+    {
+        _isOpenAiCompatibleConnected = false;
+        if (_settings != null) _settings.IsOpenAiCompatibleConnected = false;
+        UpdateOpenAiCompatibleStatusLine();
+        UpdateAiDefaults();
+        UpdateMergeProviderOptions();
     }
 
     private void OpenAiCompatibleModel_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
@@ -997,7 +1039,16 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     private void PersistOpenAiCompatibleModel()
     {
         if (_settings == null || _settingsService == null) return;
-        _settings.OpenAiCompatibleModel = (OpenAiCompatibleModelComboBox.Text ?? string.Empty).Trim();
+        var newModel = (OpenAiCompatibleModelComboBox.Text ?? string.Empty).Trim();
+        // Same rationale as the base-URL change handler — different
+        // model namespace per endpoint, prior Test Connection no longer
+        // means the new (model, endpoint) combo is valid.
+        if (!string.Equals(_settings.OpenAiCompatibleModel, newModel, StringComparison.Ordinal)
+            && _isOpenAiCompatibleConnected)
+        {
+            ResetOpenAiCompatibleConnectedState();
+        }
+        _settings.OpenAiCompatibleModel = newModel;
         _settingsService.SaveSettings(_settings);
     }
 
@@ -1025,6 +1076,32 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 return;
             }
 
+            // ICR finding #7: cleartext HTTP to a non-loopback host
+            // would send the API key over the wire unencrypted. LM
+            // Studio's http://localhost default is fine; http://public.example.com
+            // is almost certainly a mistake. Block until the user
+            // explicitly confirms.
+            if (EndpointSafety.IsCleartextHttpToPublicHost(baseUrl))
+            {
+                var confirm = MessageBox.Show(
+                    Window.GetWindow(this),
+                    $"This endpoint uses plain HTTP and is not on your local machine or private network:\n\n" +
+                    $"  {baseUrl}\n\n" +
+                    $"If you continue, your API key will be sent in cleartext where any network observer " +
+                    $"can read it. Are you sure this is the right URL?\n\n" +
+                    $"Click No to fix the URL (typical: change http:// to https://).",
+                    "Cleartext HTTP — credential exposure risk",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning,
+                    MessageBoxResult.No);
+                if (confirm != MessageBoxResult.Yes)
+                {
+                    OpenAiCompatibleStatusText.Text = "Cancelled — use HTTPS or a loopback URL.";
+                    OpenAiCompatibleStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                    return;
+                }
+            }
+
             var model = OpenAiCompatibleModelComboBox.Text.Trim();
             if (string.IsNullOrEmpty(model))
             {
@@ -1039,7 +1116,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("OpenAiCompatible", typed); _apiKeyInvalidator?.Invoke("OpenAiCompatible");
+                _credentialService.SetAiApiKey("OpenAiCompatible", typed); InvokeApiKeyInvalidator("OpenAiCompatible");
                 OpenAiCompatibleApiKeyPasswordBox.Clear();
             }
             _settings.OpenAiCompatibleBaseUrl = baseUrl;
@@ -1091,7 +1168,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("OpenAiCompatible"); _apiKeyInvalidator?.Invoke("OpenAiCompatible");
+        _credentialService.DeleteAiApiKey("OpenAiCompatible"); InvokeApiKeyInvalidator("OpenAiCompatible");
         _isOpenAiCompatibleConnected = false;
         _settings.IsOpenAiCompatibleConnected = false;
         _settingsService.SaveSettings(_settings);
