@@ -105,9 +105,35 @@ public static class Log
         @"(?<scheme>https?://)(?<user>[^:/@\s]+):(?<secret>[^@\s]+)@",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    private static string Redact(string message)
+    /// <summary>
+    /// Matches API-key shapes for the three major AI providers we talk
+    /// to. Defense-in-depth: Leaf does not intentionally log keys (we
+    /// only log timing/outcome via AiMergeAssistantBase), but an
+    /// HTTP-error body or stack trace could theoretically carry one if
+    /// a provider echoes it back. Pattern order matters — match the
+    /// longer "sk-ant-" prefix before the generic "sk-" so Anthropic
+    /// keys are recognised as such.
+    /// </summary>
+    private static readonly Regex AnthropicKeyPattern = new(
+        @"sk-ant-[A-Za-z0-9_\-]{6,}", RegexOptions.Compiled);
+    private static readonly Regex OpenAiKeyPattern = new(
+        @"sk-(?!ant-)[A-Za-z0-9_\-]{20,}", RegexOptions.Compiled);
+    private static readonly Regex GoogleKeyPattern = new(
+        @"AIza[A-Za-z0-9_\-]{20,}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Scrub any plausibly-sensitive token shapes out of <paramref name="message"/>
+    /// before it lands on disk. Public so non-logger call sites (e.g.
+    /// error messages that embed an HTTP response body) can reuse the
+    /// same scrubbing rules.
+    /// </summary>
+    public static string Redact(string message)
     {
-        return CredentialUrlPattern.Replace(message, "${scheme}${user}:***@");
+        message = CredentialUrlPattern.Replace(message, "${scheme}${user}:***@");
+        message = AnthropicKeyPattern.Replace(message, "sk-ant-***REDACTED***");
+        message = OpenAiKeyPattern.Replace(message, "sk-***REDACTED***");
+        message = GoogleKeyPattern.Replace(message, "AIza***REDACTED***");
+        return message;
     }
 
     private static void Enqueue(string level, string message)

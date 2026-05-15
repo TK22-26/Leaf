@@ -284,6 +284,37 @@ public class AppSettings
     public bool IsGeminiConnected { get; set; }
     public bool IsCodexConnected { get; set; }
     public int AiCliTimeoutSeconds { get; set; } = 60;
+
+    // API-key (direct-billing HTTP) transport for Claude. The actual key
+    // lives in Windows Credential Manager at Leaf:AI:Claude — this file
+    // only stores the connection flag, the user's chosen model, and the
+    // transport selector that decides whether the merge/commit pipeline
+    // dispatches to the CLI or the API client. The CLI path is unchanged
+    // and remains the default for installs that don't opt in.
+    public string ClaudeTransport { get; set; } = "Cli";
+    public bool IsClaudeApiConnected { get; set; }
+    public string ClaudeApiModel { get; set; } = "claude-sonnet-4-5";
+
+    // Same shape as the Claude API fields above. Key lives in
+    // Credential Manager at Leaf:AI:Gemini.
+    public string GeminiTransport { get; set; } = "Cli";
+    public bool IsGeminiApiConnected { get; set; }
+    public string GeminiApiModel { get; set; } = "gemini-2.5-pro";
+
+    // OpenAI (Responses API). New top-level section in the settings
+    // rail because the existing "Codex" entry refers specifically to
+    // the Codex CLI auth path. Key at Leaf:AI:OpenAI.
+    public bool IsOpenAiApiConnected { get; set; }
+    public string OpenAiApiModel { get; set; } = "gpt-5-codex";
+
+    // OpenAI-compatible custom endpoint (LM Studio, OpenRouter, vLLM,
+    // Together, a corporate Azure OpenAI gateway, etc.). Same wire
+    // format as OpenAI proper, different base URL + key. Stored
+    // separately so a user can simultaneously have an OpenAI account
+    // and a local LM Studio configured. Key at Leaf:AI:OpenAiCompatible.
+    public bool IsOpenAiCompatibleConnected { get; set; }
+    public string OpenAiCompatibleBaseUrl { get; set; } = string.Empty;
+    public string OpenAiCompatibleModel { get; set; } = string.Empty;
     public double WindowWidth { get; set; } = 1200;
     public double WindowHeight { get; set; } = 700;
     public double WindowLeft { get; set; } = -1;

@@ -1,11 +1,15 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Services.Ai.Http;
+using Leaf.Services.Merge;
 
 namespace Leaf.Views.Settings;
 
@@ -18,12 +22,56 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     private SettingsService? _settingsService;
 
     private bool _isClaudeConnected;
+    private bool _isClaudeApiConnected;
     private bool _isGeminiConnected;
+    private bool _isGeminiApiConnected;
     private bool _isCodexConnected;
+    private bool _isOpenAiApiConnected;
+    private bool _isOpenAiCompatibleConnected;
     private bool _isOllamaConnected;
     private bool _suppressAiSelectionSync;
+    private bool _suppressClaudeTransportSync;
+    private bool _suppressGeminiTransportSync;
 
     private readonly OllamaService _ollamaService = new();
+    private CredentialService? _credentialService;
+
+    /// <summary>
+    /// Curated model lists per provider. Seed the editable ComboBoxes so
+    /// users get a one-click pick for cost optimization (haiku/flash/mini
+    /// variants) while still being free to type a model identifier Leaf
+    /// doesn't know about yet — useful when a provider ships a new model
+    /// before Leaf updates this list.
+    /// </summary>
+    /// <remarks>
+    /// Ordered roughly by "default recommendation" first. The user's
+    /// saved choice always wins; this list only seeds the dropdown.
+    /// </remarks>
+    private static readonly string[] ClaudeApiModels =
+    {
+        "claude-sonnet-4-5",
+        "claude-opus-4-7",
+        "claude-haiku-4-5",
+    };
+
+    private static readonly string[] GeminiApiModels =
+    {
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+    };
+
+    private static readonly string[] OpenAiApiModels =
+    {
+        "gpt-5-codex",
+        "gpt-5",
+        "gpt-5-mini",
+        "gpt-5-nano",
+        "o3",
+        "o4-mini",
+        "gpt-4o",
+    };
 
     public AiSettingsControl()
     {
@@ -38,9 +86,48 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _settingsService = settingsService;
     }
 
+    /// <summary>
+    /// Resolve <see cref="IAiApiKeyCacheInvalidator"/> from the app-wide
+    /// DI provider and invalidate the matching singleton client's
+    /// cached key. The previous design accepted an <c>Action&lt;string&gt;</c>
+    /// through <see cref="SetApiKeyInvalidator"/> — that worked from
+    /// <c>MainViewModel.OpenSettingsAsync</c> but the secondary
+    /// <c>CloneDialog → Settings</c> path never wired it, leaving stale
+    /// keys cached for the rest of the session. Resolving directly from
+    /// <see cref="App.Services"/> here makes the invalidation universal
+    /// regardless of how Settings was opened.
+    /// </summary>
+    private static void InvokeApiKeyInvalidator(string credentialProvider)
+    {
+        try
+        {
+            var invalidator = Microsoft.Extensions.DependencyInjection
+                .ServiceProviderServiceExtensions.GetService<IAiApiKeyCacheInvalidator>(App.Services);
+            invalidator?.Invalidate(credentialProvider);
+        }
+        catch (InvalidOperationException)
+        {
+            // App.Services unavailable (e.g. design-time or test host).
+            // Swallowing this is intentional — the only consequence is
+            // a stale cache in a context that doesn't have a runtime
+            // service to invalidate against.
+        }
+    }
+
+    /// <summary>
+    /// Legacy entry point for callers that used to push an invalidator
+    /// callback through SettingsDialog. Now a no-op — the canonical
+    /// path is the static <see cref="InvokeApiKeyInvalidator"/> which
+    /// resolves from DI on demand. Kept so external callers that still
+    /// pass a callback compile cleanly.
+    /// </summary>
+    [Obsolete("Cache invalidation is now handled internally via IAiApiKeyCacheInvalidator resolved from App.Services. This setter is a no-op.")]
+    public void SetApiKeyInvalidator(Action<string> invalidator) { }
+
     public void LoadSettings(AppSettings settings, CredentialService credentialService)
     {
         _settings = settings;
+        _credentialService = credentialService;
 
         // Load timeout
         AiTimeoutTextBox.Text = settings.AiCliTimeoutSeconds.ToString();
@@ -55,13 +142,56 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
         // Load connection states
         _isClaudeConnected = settings.IsClaudeConnected;
+        _isClaudeApiConnected = settings.IsClaudeApiConnected;
         _isGeminiConnected = settings.IsGeminiConnected;
+        _isGeminiApiConnected = settings.IsGeminiApiConnected;
         _isCodexConnected = settings.IsCodexConnected;
+        _isOpenAiApiConnected = settings.IsOpenAiApiConnected;
+        _isOpenAiCompatibleConnected = settings.IsOpenAiCompatibleConnected;
         _isOllamaConnected = !string.IsNullOrEmpty(settings.OllamaSelectedModel);
 
         ApplyConnectionState(ClaudeStatusText, ClaudeConnectButton, ClaudeDisconnectButton, _isClaudeConnected);
         ApplyConnectionState(GeminiStatusText, GeminiConnectButton, GeminiDisconnectButton, _isGeminiConnected);
         ApplyConnectionState(CodexStatusText, CodexConnectButton, CodexDisconnectButton, _isCodexConnected);
+
+        // Claude transport (CLI vs API) and the API body state. The
+        // password field is intentionally left blank on load — we never
+        // round-trip the plaintext key back to the UI. The status line
+        // shows a masked tail if a key is currently stored.
+        _suppressClaudeTransportSync = true;
+        var transport = (settings.ClaudeTransport ?? "Cli").Trim();
+        ClaudeTransportApiRadio.IsChecked = transport.Equals("Api", StringComparison.OrdinalIgnoreCase);
+        ClaudeTransportCliRadio.IsChecked = !ClaudeTransportApiRadio.IsChecked.GetValueOrDefault();
+        _suppressClaudeTransportSync = false;
+        ApplyClaudeTransportVisibility();
+
+        PopulateModelComboBox(ClaudeApiModelComboBox, ClaudeApiModels,
+            string.IsNullOrWhiteSpace(settings.ClaudeApiModel) ? "claude-sonnet-4-5" : settings.ClaudeApiModel);
+        UpdateClaudeApiStatusLine();
+
+        // Gemini transport mirror.
+        _suppressGeminiTransportSync = true;
+        var geminiTransport = (settings.GeminiTransport ?? "Cli").Trim();
+        GeminiTransportApiRadio.IsChecked = geminiTransport.Equals("Api", StringComparison.OrdinalIgnoreCase);
+        GeminiTransportCliRadio.IsChecked = !GeminiTransportApiRadio.IsChecked.GetValueOrDefault();
+        _suppressGeminiTransportSync = false;
+        ApplyGeminiTransportVisibility();
+
+        PopulateModelComboBox(GeminiApiModelComboBox, GeminiApiModels,
+            string.IsNullOrWhiteSpace(settings.GeminiApiModel) ? "gemini-2.5-pro" : settings.GeminiApiModel);
+        UpdateGeminiApiStatusLine();
+
+        // OpenAI proper.
+        PopulateModelComboBox(OpenAiApiModelComboBox, OpenAiApiModels,
+            string.IsNullOrWhiteSpace(settings.OpenAiApiModel) ? "gpt-5-codex" : settings.OpenAiApiModel);
+        UpdateOpenAiApiStatusLine();
+
+        // OpenAI-compatible custom endpoint. No curated list — the model
+        // identifier is endpoint-specific so we leave the dropdown items
+        // empty and rely on the editable ComboBox for free-text entry.
+        OpenAiCompatibleBaseUrlTextBox.Text = settings.OpenAiCompatibleBaseUrl ?? string.Empty;
+        PopulateModelComboBox(OpenAiCompatibleModelComboBox, Array.Empty<string>(), settings.OpenAiCompatibleModel ?? string.Empty);
+        UpdateOpenAiCompatibleStatusLine();
 
         // Load Ollama settings
         OllamaBaseUrlTextBox.Text = settings.OllamaBaseUrl;
@@ -96,8 +226,12 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         {
             AiMergeProviderComboBox.Items.Clear();
             AiMergeProviderComboBox.Items.Add(BuildOption("Claude", _isClaudeConnected));
+            AiMergeProviderComboBox.Items.Add(BuildOption("Claude (API)", _isClaudeApiConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Gemini", _isGeminiConnected));
+            AiMergeProviderComboBox.Items.Add(BuildOption("Gemini (API)", _isGeminiApiConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Codex",  _isCodexConnected));
+            AiMergeProviderComboBox.Items.Add(BuildOption("OpenAI (API)", _isOpenAiApiConnected));
+            AiMergeProviderComboBox.Items.Add(BuildOption("OpenAI-Compatible", _isOpenAiCompatibleConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Ollama", _isOllamaConnected));
             AiMergeProviderComboBox.Items.Add("External Server");
 
@@ -106,8 +240,12 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             var target = current switch
             {
                 "Claude" => BuildOption("Claude", _isClaudeConnected),
+                "Claude (API)" or "ClaudeApi" => BuildOption("Claude (API)", _isClaudeApiConnected),
                 "Gemini" => BuildOption("Gemini", _isGeminiConnected),
+                "Gemini (API)" or "GeminiApi" => BuildOption("Gemini (API)", _isGeminiApiConnected),
                 "Codex"  => BuildOption("Codex",  _isCodexConnected),
+                "OpenAI (API)" or "OpenAi" or "OpenAI" => BuildOption("OpenAI (API)", _isOpenAiApiConnected),
+                "OpenAI-Compatible" or "OpenAiCompatible" => BuildOption("OpenAI-Compatible", _isOpenAiCompatibleConnected),
                 "Ollama" => BuildOption("Ollama", _isOllamaConnected),
                 "ExternalServer" or "External" => "External Server",
                 _ => DefaultProviderLabel(),
@@ -178,8 +316,12 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
         // Save connection states
         settings.IsClaudeConnected = _isClaudeConnected;
+        settings.IsClaudeApiConnected = _isClaudeApiConnected;
         settings.IsGeminiConnected = _isGeminiConnected;
+        settings.IsGeminiApiConnected = _isGeminiApiConnected;
         settings.IsCodexConnected = _isCodexConnected;
+        settings.IsOpenAiApiConnected = _isOpenAiApiConnected;
+        settings.IsOpenAiCompatibleConnected = _isOpenAiCompatibleConnected;
 
         // Save default provider
         settings.DefaultAiProvider = AiDefaultComboBox.SelectedItem as string ?? string.Empty;
@@ -202,6 +344,8 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         ContentClaude.Visibility = Visibility.Collapsed;
         ContentGemini.Visibility = Visibility.Collapsed;
         ContentCodex.Visibility = Visibility.Collapsed;
+        ContentOpenAi.Visibility = Visibility.Collapsed;
+        ContentOpenAiCompatible.Visibility = Visibility.Collapsed;
         ContentOllama.Visibility = Visibility.Collapsed;
         ContentAiMerge.Visibility = Visibility.Collapsed;
 
@@ -220,6 +364,12 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 break;
             case "Codex":
                 ContentCodex.Visibility = Visibility.Visible;
+                break;
+            case "OpenAi":
+                ContentOpenAi.Visibility = Visibility.Visible;
+                break;
+            case "OpenAiCompatible":
+                ContentOpenAiCompatible.Visibility = Visibility.Visible;
                 break;
             case "Ollama":
                 ContentOllama.Visibility = Visibility.Visible;
@@ -302,6 +452,201 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         UpdateAiDefaults();
     }
 
+    // --- Claude API transport ---
+
+    private void ClaudeTransport_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressClaudeTransportSync || _settings == null || _settingsService == null) return;
+        _settings.ClaudeTransport = ClaudeTransportApiRadio.IsChecked == true ? "Api" : "Cli";
+        _settingsService.SaveSettings(_settings);
+        ApplyClaudeTransportVisibility();
+    }
+
+    private void ApplyClaudeTransportVisibility()
+    {
+        if (ClaudeCliBody == null || ClaudeApiBody == null) return;
+        var api = ClaudeTransportApiRadio.IsChecked == true;
+        ClaudeCliBody.Visibility = api ? Visibility.Collapsed : Visibility.Visible;
+        ClaudeApiBody.Visibility = api ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ClaudeApiModel_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) PersistClaudeApiModel();
+    }
+
+    private void ClaudeApiModel_LostFocus(object sender, RoutedEventArgs e) => PersistClaudeApiModel();
+
+    private void PersistClaudeApiModel()
+    {
+        if (_settings == null || _settingsService == null) return;
+        var model = (ClaudeApiModelComboBox.Text ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(model)) return;
+        _settings.ClaudeApiModel = model;
+        _settingsService.SaveSettings(_settings);
+    }
+
+    private async void ClaudeApiSaveTest_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+            var typed = ClaudeApiKeyPasswordBox.Password ?? string.Empty;
+            // Allow re-test without re-entering the key: if the field is
+            // blank and we already have one stored, just re-validate.
+            var existing = _credentialService.GetAiApiKey("Claude");
+            var keyToTest = string.IsNullOrEmpty(typed) ? existing : typed;
+            if (string.IsNullOrEmpty(keyToTest))
+            {
+                ClaudeApiStatusText.Text = "Enter an API key first.";
+                ClaudeApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            var model = ClaudeApiModelComboBox.Text.Trim();
+            if (string.IsNullOrEmpty(model))
+            {
+                ClaudeApiStatusText.Text = "Enter a model name first.";
+                ClaudeApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            ClaudeApiSaveTestButton.IsEnabled = false;
+            ClaudeApiStatusText.Text = "Testing…";
+            ClaudeApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+
+            // If the user typed a new key, persist it before testing so
+            // the test exercises exactly what subsequent merge calls
+            // will use.
+            if (!string.IsNullOrEmpty(typed))
+            {
+                _credentialService.SetAiApiKey("Claude", typed); InvokeApiKeyInvalidator("Claude");
+                // Clear the field so a shoulder-surfer can't read it from
+                // the saved state. The status line shows a masked tail.
+                ClaudeApiKeyPasswordBox.Clear();
+            }
+            _settings.ClaudeApiModel = model;
+            _settingsService.SaveSettings(_settings);
+
+            // Probe with a one-shot client — avoids needing the singleton
+            // IAiApiClient to be wired into this control. This client is
+            // discarded after the probe; the singleton is what actually
+            // serves merge requests at runtime.
+            var timeout = GetAiTimeoutSeconds();
+            using var probeHttp = new HttpClient();
+            var probe = new ClaudeApiClient(
+                probeHttp,
+                keyReader: () => keyToTest,
+                modelProvider: () => model,
+                timeoutSecondsProvider: () => timeout);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(2, timeout)));
+            var error = await probe.TestConnectionAsync(cts.Token);
+
+            if (error == null)
+            {
+                _isClaudeApiConnected = true;
+                _settings.IsClaudeApiConnected = true;
+                _settingsService.SaveSettings(_settings);
+                UpdateClaudeApiStatusLine();
+                ClaudeApiDisconnectButton.IsEnabled = true;
+                UpdateAiDefaults();
+            }
+            else
+            {
+                _isClaudeApiConnected = false;
+                _settings.IsClaudeApiConnected = false;
+                _settingsService.SaveSettings(_settings);
+                ClaudeApiStatusText.Text = TrimDetail(error);
+                ClaudeApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                ClaudeApiDisconnectButton.IsEnabled = _credentialService.HasAiApiKey("Claude");
+            }
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(ClaudeApiSaveTest_Click), isUserAction: true);
+        }
+        finally
+        {
+            ClaudeApiSaveTestButton.IsEnabled = true;
+        }
+    }
+
+    private void ClaudeApiDisconnect_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+        _credentialService.DeleteAiApiKey("Claude"); InvokeApiKeyInvalidator("Claude");
+        _isClaudeApiConnected = false;
+        _settings.IsClaudeApiConnected = false;
+        _settingsService.SaveSettings(_settings);
+        ClaudeApiKeyPasswordBox.Clear();
+        UpdateClaudeApiStatusLine();
+        ClaudeApiDisconnectButton.IsEnabled = false;
+        UpdateAiDefaults();
+    }
+
+    /// <summary>
+    /// Refresh the API-section status line based on stored key + connected
+    /// flag. Shows a masked tail like <c>sk-ant-…••••1234</c> when a key
+    /// is present so the user has a visual cue that one is saved without
+    /// ever revealing the plaintext.
+    /// </summary>
+    private void UpdateClaudeApiStatusLine()
+    {
+        if (_credentialService == null || ClaudeApiStatusText == null) return;
+        var key = _credentialService.GetAiApiKey("Claude");
+        var hasKey = !string.IsNullOrEmpty(key);
+        if (hasKey && _isClaudeApiConnected)
+        {
+            ClaudeApiStatusText.Text = $"Connected — {MaskKey(key!)}";
+            ClaudeApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            ClaudeApiDisconnectButton.IsEnabled = true;
+        }
+        else if (hasKey)
+        {
+            ClaudeApiStatusText.Text = $"Key saved ({MaskKey(key!)}) — click Save & Test to validate.";
+            ClaudeApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            ClaudeApiDisconnectButton.IsEnabled = true;
+        }
+        else
+        {
+            ClaudeApiStatusText.Text = "Not connected";
+            ClaudeApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            ClaudeApiDisconnectButton.IsEnabled = false;
+        }
+    }
+
+    private static string MaskKey(string key)
+    {
+        if (key.Length <= 12) return "••••";
+        var prefix = key[..Math.Min(7, key.Length)];
+        var suffix = key[^Math.Min(4, key.Length)..];
+        return $"{prefix}…••••{suffix}";
+    }
+
+    /// <summary>
+    /// Seed an editable model ComboBox with the curated list and select
+    /// whatever the user previously saved — even if that value isn't in
+    /// the curated list. The IsEditable=True ComboBox treats the text as
+    /// authoritative when typed; we read .Text rather than .SelectedItem
+    /// when persisting so a custom-typed model survives save/load round-
+    /// tripping.
+    /// </summary>
+    private static void PopulateModelComboBox(ComboBox combo, IReadOnlyList<string> curatedModels, string currentValue)
+    {
+        combo.Items.Clear();
+        foreach (var m in curatedModels) combo.Items.Add(m);
+        // If the saved value isn't in the curated list, add it so the
+        // dropdown shows the user's exact pick first.
+        if (!string.IsNullOrEmpty(currentValue) && !curatedModels.Contains(currentValue))
+        {
+            combo.Items.Insert(0, currentValue);
+        }
+        combo.Text = currentValue;
+    }
+
     #endregion
 
     #region Gemini
@@ -336,6 +681,155 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         UpdateAiDefaults();
     }
 
+    // --- Gemini API transport ---
+
+    private void GeminiTransport_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressGeminiTransportSync || _settings == null || _settingsService == null) return;
+        _settings.GeminiTransport = GeminiTransportApiRadio.IsChecked == true ? "Api" : "Cli";
+        _settingsService.SaveSettings(_settings);
+        ApplyGeminiTransportVisibility();
+    }
+
+    private void ApplyGeminiTransportVisibility()
+    {
+        if (GeminiCliBody == null || GeminiApiBody == null) return;
+        var api = GeminiTransportApiRadio.IsChecked == true;
+        GeminiCliBody.Visibility = api ? Visibility.Collapsed : Visibility.Visible;
+        GeminiApiBody.Visibility = api ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void GeminiApiModel_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) PersistGeminiApiModel();
+    }
+
+    private void GeminiApiModel_LostFocus(object sender, RoutedEventArgs e) => PersistGeminiApiModel();
+
+    private void PersistGeminiApiModel()
+    {
+        if (_settings == null || _settingsService == null) return;
+        var model = (GeminiApiModelComboBox.Text ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(model)) return;
+        _settings.GeminiApiModel = model;
+        _settingsService.SaveSettings(_settings);
+    }
+
+    private async void GeminiApiSaveTest_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+            var typed = GeminiApiKeyPasswordBox.Password ?? string.Empty;
+            var existing = _credentialService.GetAiApiKey("Gemini");
+            var keyToTest = string.IsNullOrEmpty(typed) ? existing : typed;
+            if (string.IsNullOrEmpty(keyToTest))
+            {
+                GeminiApiStatusText.Text = "Enter an API key first.";
+                GeminiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            var model = GeminiApiModelComboBox.Text.Trim();
+            if (string.IsNullOrEmpty(model))
+            {
+                GeminiApiStatusText.Text = "Enter a model name first.";
+                GeminiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            GeminiApiSaveTestButton.IsEnabled = false;
+            GeminiApiStatusText.Text = "Testing…";
+            GeminiApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+
+            if (!string.IsNullOrEmpty(typed))
+            {
+                _credentialService.SetAiApiKey("Gemini", typed); InvokeApiKeyInvalidator("Gemini");
+                GeminiApiKeyPasswordBox.Clear();
+            }
+            _settings.GeminiApiModel = model;
+            _settingsService.SaveSettings(_settings);
+
+            var timeout = GetAiTimeoutSeconds();
+            using var probeHttp = new HttpClient();
+            var probe = new GeminiApiClient(
+                probeHttp,
+                keyReader: () => keyToTest,
+                modelProvider: () => model,
+                timeoutSecondsProvider: () => timeout);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(2, timeout)));
+            var error = await probe.TestConnectionAsync(cts.Token);
+
+            if (error == null)
+            {
+                _isGeminiApiConnected = true;
+                _settings.IsGeminiApiConnected = true;
+                _settingsService.SaveSettings(_settings);
+                UpdateGeminiApiStatusLine();
+                GeminiApiDisconnectButton.IsEnabled = true;
+                UpdateAiDefaults();
+            }
+            else
+            {
+                _isGeminiApiConnected = false;
+                _settings.IsGeminiApiConnected = false;
+                _settingsService.SaveSettings(_settings);
+                GeminiApiStatusText.Text = TrimDetail(error);
+                GeminiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                GeminiApiDisconnectButton.IsEnabled = _credentialService.HasAiApiKey("Gemini");
+            }
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(GeminiApiSaveTest_Click), isUserAction: true);
+        }
+        finally
+        {
+            GeminiApiSaveTestButton.IsEnabled = true;
+        }
+    }
+
+    private void GeminiApiDisconnect_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+        _credentialService.DeleteAiApiKey("Gemini"); InvokeApiKeyInvalidator("Gemini");
+        _isGeminiApiConnected = false;
+        _settings.IsGeminiApiConnected = false;
+        _settingsService.SaveSettings(_settings);
+        GeminiApiKeyPasswordBox.Clear();
+        UpdateGeminiApiStatusLine();
+        GeminiApiDisconnectButton.IsEnabled = false;
+        UpdateAiDefaults();
+    }
+
+    private void UpdateGeminiApiStatusLine()
+    {
+        if (_credentialService == null || GeminiApiStatusText == null) return;
+        var key = _credentialService.GetAiApiKey("Gemini");
+        var hasKey = !string.IsNullOrEmpty(key);
+        if (hasKey && _isGeminiApiConnected)
+        {
+            GeminiApiStatusText.Text = $"Connected — {MaskKey(key!)}";
+            GeminiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            GeminiApiDisconnectButton.IsEnabled = true;
+        }
+        else if (hasKey)
+        {
+            GeminiApiStatusText.Text = $"Key saved ({MaskKey(key!)}) — click Save & Test to validate.";
+            GeminiApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            GeminiApiDisconnectButton.IsEnabled = true;
+        }
+        else
+        {
+            GeminiApiStatusText.Text = "Not connected";
+            GeminiApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            GeminiApiDisconnectButton.IsEnabled = false;
+        }
+    }
+
     #endregion
 
     #region Codex
@@ -368,6 +862,345 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _settings.IsCodexConnected = false;
         _settingsService.SaveSettings(_settings);
         UpdateAiDefaults();
+    }
+
+    #endregion
+
+    #region OpenAI (API key)
+
+    private void OpenAiApiModel_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) PersistOpenAiApiModel();
+    }
+
+    private void OpenAiApiModel_LostFocus(object sender, RoutedEventArgs e) => PersistOpenAiApiModel();
+
+    private void PersistOpenAiApiModel()
+    {
+        if (_settings == null || _settingsService == null) return;
+        var model = (OpenAiApiModelComboBox.Text ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(model)) return;
+        _settings.OpenAiApiModel = model;
+        _settingsService.SaveSettings(_settings);
+    }
+
+    private async void OpenAiApiSaveTest_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+            var typed = OpenAiApiKeyPasswordBox.Password ?? string.Empty;
+            var existing = _credentialService.GetAiApiKey("OpenAI");
+            var keyToTest = string.IsNullOrEmpty(typed) ? existing : typed;
+            if (string.IsNullOrEmpty(keyToTest))
+            {
+                OpenAiApiStatusText.Text = "Enter an API key first.";
+                OpenAiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            var model = OpenAiApiModelComboBox.Text.Trim();
+            if (string.IsNullOrEmpty(model))
+            {
+                OpenAiApiStatusText.Text = "Enter a model name first.";
+                OpenAiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            OpenAiApiSaveTestButton.IsEnabled = false;
+            OpenAiApiStatusText.Text = "Testing…";
+            OpenAiApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+
+            if (!string.IsNullOrEmpty(typed))
+            {
+                _credentialService.SetAiApiKey("OpenAI", typed); InvokeApiKeyInvalidator("OpenAI");
+                OpenAiApiKeyPasswordBox.Clear();
+            }
+            _settings.OpenAiApiModel = model;
+            _settingsService.SaveSettings(_settings);
+
+            var timeout = GetAiTimeoutSeconds();
+            using var probeHttp = new HttpClient();
+            var probe = new OpenAiApiClient(
+                probeHttp,
+                keyReader: () => keyToTest,
+                modelProvider: () => model,
+                timeoutSecondsProvider: () => timeout);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(2, timeout)));
+            var error = await probe.TestConnectionAsync(cts.Token);
+
+            if (error == null)
+            {
+                _isOpenAiApiConnected = true;
+                _settings.IsOpenAiApiConnected = true;
+                _settingsService.SaveSettings(_settings);
+                UpdateOpenAiApiStatusLine();
+                OpenAiApiDisconnectButton.IsEnabled = true;
+                UpdateAiDefaults();
+            }
+            else
+            {
+                _isOpenAiApiConnected = false;
+                _settings.IsOpenAiApiConnected = false;
+                _settingsService.SaveSettings(_settings);
+                OpenAiApiStatusText.Text = TrimDetail(error);
+                OpenAiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                OpenAiApiDisconnectButton.IsEnabled = _credentialService.HasAiApiKey("OpenAI");
+            }
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(OpenAiApiSaveTest_Click), isUserAction: true);
+        }
+        finally
+        {
+            OpenAiApiSaveTestButton.IsEnabled = true;
+        }
+    }
+
+    private void OpenAiApiDisconnect_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+        _credentialService.DeleteAiApiKey("OpenAI"); InvokeApiKeyInvalidator("OpenAI");
+        _isOpenAiApiConnected = false;
+        _settings.IsOpenAiApiConnected = false;
+        _settingsService.SaveSettings(_settings);
+        OpenAiApiKeyPasswordBox.Clear();
+        UpdateOpenAiApiStatusLine();
+        OpenAiApiDisconnectButton.IsEnabled = false;
+        UpdateAiDefaults();
+    }
+
+    private void UpdateOpenAiApiStatusLine()
+    {
+        if (_credentialService == null || OpenAiApiStatusText == null) return;
+        var key = _credentialService.GetAiApiKey("OpenAI");
+        var hasKey = !string.IsNullOrEmpty(key);
+        if (hasKey && _isOpenAiApiConnected)
+        {
+            OpenAiApiStatusText.Text = $"Connected — {MaskKey(key!)}";
+            OpenAiApiStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            OpenAiApiDisconnectButton.IsEnabled = true;
+        }
+        else if (hasKey)
+        {
+            OpenAiApiStatusText.Text = $"Key saved ({MaskKey(key!)}) — click Save & Test to validate.";
+            OpenAiApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            OpenAiApiDisconnectButton.IsEnabled = true;
+        }
+        else
+        {
+            OpenAiApiStatusText.Text = "Not connected";
+            OpenAiApiStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            OpenAiApiDisconnectButton.IsEnabled = false;
+        }
+    }
+
+    #endregion
+
+    #region OpenAI-Compatible
+
+    private void OpenAiCompatibleBaseUrl_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (_settings == null || _settingsService == null) return;
+        var newUrl = OpenAiCompatibleBaseUrlTextBox.Text.Trim();
+        // ICR finding #21: changing the base URL invalidates any prior
+        // Test Connection result — the new endpoint may have totally
+        // different auth / available models. Drop the connected flag
+        // so the UI doesn't lie. Same applies to model edits below.
+        if (!string.Equals(_settings.OpenAiCompatibleBaseUrl, newUrl, StringComparison.Ordinal)
+            && _isOpenAiCompatibleConnected)
+        {
+            ResetOpenAiCompatibleConnectedState();
+        }
+        _settings.OpenAiCompatibleBaseUrl = newUrl;
+        _settingsService.SaveSettings(_settings);
+    }
+
+    private void ResetOpenAiCompatibleConnectedState()
+    {
+        _isOpenAiCompatibleConnected = false;
+        if (_settings != null) _settings.IsOpenAiCompatibleConnected = false;
+        UpdateOpenAiCompatibleStatusLine();
+        UpdateAiDefaults();
+        UpdateMergeProviderOptions();
+    }
+
+    private void OpenAiCompatibleModel_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) PersistOpenAiCompatibleModel();
+    }
+
+    private void OpenAiCompatibleModel_LostFocus(object sender, RoutedEventArgs e) => PersistOpenAiCompatibleModel();
+
+    private void PersistOpenAiCompatibleModel()
+    {
+        if (_settings == null || _settingsService == null) return;
+        var newModel = (OpenAiCompatibleModelComboBox.Text ?? string.Empty).Trim();
+        // Same rationale as the base-URL change handler — different
+        // model namespace per endpoint, prior Test Connection no longer
+        // means the new (model, endpoint) combo is valid.
+        if (!string.Equals(_settings.OpenAiCompatibleModel, newModel, StringComparison.Ordinal)
+            && _isOpenAiCompatibleConnected)
+        {
+            ResetOpenAiCompatibleConnectedState();
+        }
+        _settings.OpenAiCompatibleModel = newModel;
+        _settingsService.SaveSettings(_settings);
+    }
+
+    private async void OpenAiCompatibleSaveTest_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+            var typed = OpenAiCompatibleApiKeyPasswordBox.Password ?? string.Empty;
+            var existing = _credentialService.GetAiApiKey("OpenAiCompatible");
+            var keyToTest = string.IsNullOrEmpty(typed) ? existing : typed;
+            if (string.IsNullOrEmpty(keyToTest))
+            {
+                OpenAiCompatibleStatusText.Text = "Enter an API key first (use any non-empty string for local servers).";
+                OpenAiCompatibleStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            var baseUrl = OpenAiCompatibleBaseUrlTextBox.Text.Trim();
+            if (string.IsNullOrEmpty(baseUrl))
+            {
+                OpenAiCompatibleStatusText.Text = "Enter a base URL first.";
+                OpenAiCompatibleStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            // ICR finding #7: cleartext HTTP to a non-loopback host
+            // would send the API key over the wire unencrypted. LM
+            // Studio's http://localhost default is fine; http://public.example.com
+            // is almost certainly a mistake. Block until the user
+            // explicitly confirms.
+            if (EndpointSafety.IsCleartextHttpToPublicHost(baseUrl))
+            {
+                var confirm = MessageBox.Show(
+                    Window.GetWindow(this),
+                    $"This endpoint uses plain HTTP and is not on your local machine or private network:\n\n" +
+                    $"  {baseUrl}\n\n" +
+                    $"If you continue, your API key will be sent in cleartext where any network observer " +
+                    $"can read it. Are you sure this is the right URL?\n\n" +
+                    $"Click No to fix the URL (typical: change http:// to https://).",
+                    "Cleartext HTTP — credential exposure risk",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning,
+                    MessageBoxResult.No);
+                if (confirm != MessageBoxResult.Yes)
+                {
+                    OpenAiCompatibleStatusText.Text = "Cancelled — use HTTPS or a loopback URL.";
+                    OpenAiCompatibleStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                    return;
+                }
+            }
+
+            var model = OpenAiCompatibleModelComboBox.Text.Trim();
+            if (string.IsNullOrEmpty(model))
+            {
+                OpenAiCompatibleStatusText.Text = "Enter a model name first.";
+                OpenAiCompatibleStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                return;
+            }
+
+            OpenAiCompatibleSaveTestButton.IsEnabled = false;
+            OpenAiCompatibleStatusText.Text = "Testing…";
+            OpenAiCompatibleStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+
+            if (!string.IsNullOrEmpty(typed))
+            {
+                _credentialService.SetAiApiKey("OpenAiCompatible", typed); InvokeApiKeyInvalidator("OpenAiCompatible");
+                OpenAiCompatibleApiKeyPasswordBox.Clear();
+            }
+            _settings.OpenAiCompatibleBaseUrl = baseUrl;
+            _settings.OpenAiCompatibleModel = model;
+            _settingsService.SaveSettings(_settings);
+
+            var timeout = GetAiTimeoutSeconds();
+            using var probeHttp = new HttpClient();
+            var probe = new OpenAiChatCompletionsClient(
+                probeHttp,
+                keyReader: () => keyToTest,
+                baseUrlProvider: () => baseUrl,
+                modelProvider: () => model,
+                timeoutSecondsProvider: () => timeout);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(2, timeout)));
+            var error = await probe.TestConnectionAsync(cts.Token);
+
+            if (error == null)
+            {
+                _isOpenAiCompatibleConnected = true;
+                _settings.IsOpenAiCompatibleConnected = true;
+                _settingsService.SaveSettings(_settings);
+                UpdateOpenAiCompatibleStatusLine();
+                OpenAiCompatibleDisconnectButton.IsEnabled = true;
+                UpdateAiDefaults();
+            }
+            else
+            {
+                _isOpenAiCompatibleConnected = false;
+                _settings.IsOpenAiCompatibleConnected = false;
+                _settingsService.SaveSettings(_settings);
+                OpenAiCompatibleStatusText.Text = TrimDetail(error);
+                OpenAiCompatibleStatusText.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                OpenAiCompatibleDisconnectButton.IsEnabled = _credentialService.HasAiApiKey("OpenAiCompatible");
+            }
+        }
+        catch (Exception ex)
+        {
+            AsyncErrorHandler.Handle(ex, nameof(OpenAiCompatibleSaveTest_Click), isUserAction: true);
+        }
+        finally
+        {
+            OpenAiCompatibleSaveTestButton.IsEnabled = true;
+        }
+    }
+
+    private void OpenAiCompatibleDisconnect_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings == null || _settingsService == null || _credentialService == null) return;
+
+        _credentialService.DeleteAiApiKey("OpenAiCompatible"); InvokeApiKeyInvalidator("OpenAiCompatible");
+        _isOpenAiCompatibleConnected = false;
+        _settings.IsOpenAiCompatibleConnected = false;
+        _settingsService.SaveSettings(_settings);
+        OpenAiCompatibleApiKeyPasswordBox.Clear();
+        UpdateOpenAiCompatibleStatusLine();
+        OpenAiCompatibleDisconnectButton.IsEnabled = false;
+        UpdateAiDefaults();
+    }
+
+    private void UpdateOpenAiCompatibleStatusLine()
+    {
+        if (_credentialService == null || OpenAiCompatibleStatusText == null) return;
+        var key = _credentialService.GetAiApiKey("OpenAiCompatible");
+        var hasKey = !string.IsNullOrEmpty(key);
+        if (hasKey && _isOpenAiCompatibleConnected)
+        {
+            OpenAiCompatibleStatusText.Text = $"Connected — {MaskKey(key!)}";
+            OpenAiCompatibleStatusText.Foreground = new SolidColorBrush(Color.FromRgb(40, 167, 69));
+            OpenAiCompatibleDisconnectButton.IsEnabled = true;
+        }
+        else if (hasKey)
+        {
+            OpenAiCompatibleStatusText.Text = $"Key saved ({MaskKey(key!)}) — click Save & Test to validate.";
+            OpenAiCompatibleStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            OpenAiCompatibleDisconnectButton.IsEnabled = true;
+        }
+        else
+        {
+            OpenAiCompatibleStatusText.Text = "Not connected";
+            OpenAiCompatibleStatusText.Foreground = new SolidColorBrush(Colors.Gray);
+            OpenAiCompatibleDisconnectButton.IsEnabled = false;
+        }
     }
 
     #endregion

@@ -41,7 +41,11 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
         GeminiMergeAssistant gemini,
         CodexMergeAssistant codex,
         OllamaMergeAssistant ollama,
-        ExternalServerMergeAssistant externalServer)
+        ExternalServerMergeAssistant externalServer,
+        ClaudeApiMergeAssistant claudeApi,
+        GeminiApiMergeAssistant geminiApi,
+        OpenAiApiMergeAssistant openAiApi,
+        OpenAiCompatibleApiMergeAssistant openAiCompatible)
     {
         _selectedProviderProvider = selectedProviderProvider ?? throw new ArgumentNullException(nameof(selectedProviderProvider));
         _enabledProvider = enabledProvider ?? throw new ArgumentNullException(nameof(enabledProvider));
@@ -54,6 +58,10 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
             [AiProviderKind.Codex] = codex,
             [AiProviderKind.Ollama] = ollama,
             [AiProviderKind.ExternalServer] = externalServer,
+            [AiProviderKind.ClaudeApi] = claudeApi,
+            [AiProviderKind.GeminiApi] = geminiApi,
+            [AiProviderKind.OpenAi] = openAiApi,
+            [AiProviderKind.OpenAiCompatible] = openAiCompatible,
         };
     }
 
@@ -125,9 +133,25 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
             string s when s.Equals("ExternalServer", StringComparison.OrdinalIgnoreCase)
                        || s.Equals("External", StringComparison.OrdinalIgnoreCase)
                 => AiProviderKind.ExternalServer,
+            // API-key variants. The display label carries the "(API)"
+            // suffix; the persisted setting matches verbatim so a
+            // hand-edited settings.json stays readable.
+            string s when s.Equals("Claude (API)", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("ClaudeApi", StringComparison.OrdinalIgnoreCase)
+                => AiProviderKind.ClaudeApi,
+            string s when s.Equals("Gemini (API)", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("GeminiApi", StringComparison.OrdinalIgnoreCase)
+                => AiProviderKind.GeminiApi,
+            string s when s.Equals("OpenAI (API)", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("OpenAi", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("OpenAI", StringComparison.OrdinalIgnoreCase)
+                => AiProviderKind.OpenAi,
+            string s when s.Equals("OpenAI-Compatible", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("OpenAiCompatible", StringComparison.OrdinalIgnoreCase)
+                => AiProviderKind.OpenAiCompatible,
             _ => throw new AiMergeAssistantException(
                 $"Unknown AI merge provider '{raw}' in settings. Expected one of: " +
-                "Claude, Gemini, Codex, Ollama, ExternalServer."),
+                "Claude, Claude (API), Gemini, Gemini (API), Codex, OpenAI (API), OpenAI-Compatible, Ollama, ExternalServer."),
         };
 
         return _providers[kind];

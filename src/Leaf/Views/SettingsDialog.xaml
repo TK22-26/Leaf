@@ -219,6 +219,22 @@
                                 </StackPanel>
                             </TreeViewItem.Header>
                         </TreeViewItem>
+                        <TreeViewItem x:Name="NavOpenAi" Tag="OpenAi">
+                            <TreeViewItem.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="Bot" FontSize="14" Margin="0,0,8,0" />
+                                    <TextBlock Text="OpenAI" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </TreeViewItem.Header>
+                        </TreeViewItem>
+                        <TreeViewItem x:Name="NavOpenAiCompatible" Tag="OpenAiCompatible">
+                            <TreeViewItem.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <ic:SymbolIcon Symbol="Bot" FontSize="14" Margin="0,0,8,0" />
+                                    <TextBlock Text="OpenAI-Compatible" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </TreeViewItem.Header>
+                        </TreeViewItem>
                         <TreeViewItem x:Name="NavOllama" Tag="Ollama">
                             <TreeViewItem.Header>
                                 <StackPanel Orientation="Horizontal">

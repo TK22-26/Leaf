@@ -75,6 +75,11 @@ public partial class SettingsDialog : Window
             new("Claude", "Connect to Claude CLI for AI features", "Claude", Symbol.Bot),
             new("Gemini", "Connect to Gemini CLI for AI features", "Gemini", Symbol.Bot),
             new("Codex", "Connect to Codex CLI for AI features", "Codex", Symbol.Bot),
+            new("OpenAI", "Connect to OpenAI with your own API key", "OpenAi", Symbol.Bot),
+            new("OpenAI API", "Direct-billing OpenAI Responses API access", "OpenAi", Symbol.Bot),
+            new("OpenAI-Compatible", "Custom endpoint: LM Studio, OpenRouter, vLLM, Azure OpenAI gateway", "OpenAiCompatible", Symbol.Bot),
+            new("LM Studio", "Use a local LM Studio server as an OpenAI-compatible endpoint", "OpenAiCompatible", Symbol.Bot),
+            new("OpenRouter", "Route requests through OpenRouter (OpenAI-compatible)", "OpenAiCompatible", Symbol.Bot),
             new("Ollama", "Connect to Ollama for local AI features", "Ollama", Symbol.Bot),
             new("Local LLM", "Run AI locally with Ollama", "Ollama", Symbol.Bot),
             new("Merge Assistant", "AI-assisted three-way merge resolution via MCP", "AiMerge", Symbol.BranchCompare),
@@ -200,6 +205,8 @@ public partial class SettingsDialog : Window
             case "Claude":
             case "Gemini":
             case "Codex":
+            case "OpenAi":
+            case "OpenAiCompatible":
             case "Ollama":
             case "AiMerge":
                 AiSettings.Visibility = Visibility.Visible;
@@ -362,6 +369,8 @@ public partial class SettingsDialog : Window
             "Claude" => NavClaude,
             "Gemini" => NavGemini,
             "Codex" => NavCodex,
+            "OpenAi" => NavOpenAi,
+            "OpenAiCompatible" => NavOpenAiCompatible,
             "Ollama" => NavOllama,
             "AiMerge" => NavAiMerge,
             "Logging" => NavLogging,

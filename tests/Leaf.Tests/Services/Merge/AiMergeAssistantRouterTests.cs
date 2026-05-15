@@ -3,6 +3,7 @@ using FluentAssertions;
 using Leaf.Services;
 using Leaf.Services.Ai;
 using Leaf.Services.Ai.Adapters;
+using Leaf.Services.Ai.Http;
 using Leaf.Services.Merge;
 using Leaf.Services.Merge.Providers;
 using Xunit;
@@ -38,7 +39,11 @@ public class AiMergeAssistantRouterTests
         bool geminiConnected = true,
         bool codexConnected = true,
         bool ollamaConnected = true,
-        bool externalServerExists = true)
+        bool externalServerExists = true,
+        bool claudeApiConnected = false,
+        bool geminiApiConnected = false,
+        bool openAiApiConnected = false,
+        bool openAiCompatibleConnected = false)
     {
         var runner = new RecordingRunner(stdout: CannedJson);
         var providerSetting = "Claude";
@@ -72,11 +77,30 @@ public class AiMergeAssistantRouterTests
             enabledProvider: () => enabled,
             consentGivenProvider: () => consent);
 
+        var claudeApi = new ClaudeApiMergeAssistant(
+            new StubAiApiClient(AiProviderKind.ClaudeApi, hasKey: claudeApiConnected),
+            () => enabled, () => consent,
+            () => claudeApiConnected);
+        var geminiApi = new GeminiApiMergeAssistant(
+            new StubAiApiClient(AiProviderKind.GeminiApi, hasKey: geminiApiConnected),
+            () => enabled, () => consent,
+            () => geminiApiConnected);
+        var openAiApi = new OpenAiApiMergeAssistant(
+            new StubAiApiClient(AiProviderKind.OpenAi, hasKey: openAiApiConnected),
+            () => enabled, () => consent,
+            () => openAiApiConnected);
+        var openAiCompatible = new OpenAiCompatibleApiMergeAssistant(
+            new StubAiApiClient(AiProviderKind.OpenAiCompatible, hasKey: openAiCompatibleConnected),
+            () => enabled, () => consent,
+            () => openAiCompatibleConnected,
+            () => openAiCompatibleConnected ? "http://localhost:1234/v1" : string.Empty);
+
         var router = new AiMergeAssistantRouter(
             selectedProviderProvider: () => providerSetting,
             enabledProvider: () => enabled,
             consentProvider: () => consent,
-            claude, gemini, codex, ollama, external);
+            claude, gemini, codex, ollama, external,
+            claudeApi, geminiApi, openAiApi, openAiCompatible);
 
         return (
             router,
@@ -217,5 +241,25 @@ public class AiMergeAssistantRouterTests
             LastInvocation = invocation;
             return Task.FromResult(new AiCliProcessResult(true, 0, _stdout, string.Empty, string.Empty));
         }
+    }
+
+    /// <summary>
+    /// Stub HTTP client used to construct an API-transport assistant
+    /// without touching the network. <see cref="SendAsync"/> returns a
+    /// canned resolution JSON shaped like Anthropic's tool_use input.
+    /// </summary>
+    private sealed class StubAiApiClient : IAiApiClient
+    {
+        public AiProviderKind Provider { get; }
+        public bool HasKey { get; }
+        public StubAiApiClient(AiProviderKind kind, bool hasKey)
+        {
+            Provider = kind;
+            HasKey = hasKey;
+        }
+        public Task<string> SendAsync(string prompt, string jsonSchema, CancellationToken cancellationToken)
+            => Task.FromResult(CannedJson);
+        public void RefreshKey() { }
+        public Task<string?> TestConnectionAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     }
 }

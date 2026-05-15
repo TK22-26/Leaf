@@ -119,6 +119,87 @@ public static class ServiceRegistry
         services.AddSingleton<Leaf.Services.Ai.Adapters.IAiCliAdapter, Leaf.Services.Ai.Adapters.CodexCliAdapter>();
         services.AddSingleton<IAiCommitMessageService, AiCommitMessageService>();
 
+        // Direct-billing HTTP transport. Single shared HttpClient with a
+        // bounded connection lifetime so DNS rotation eventually picks
+        // up — auth is set per-request inside each IAiApiClient so the
+        // shared instance never holds a provider-specific header on
+        // DefaultRequestHeaders.
+        //
+        // HttpClient.Timeout is set to InfiniteTimeSpan: AiApiClientBase
+        // owns the timeout via a linked CancellationTokenSource derived
+        // from the user-configured AiCliTimeoutSeconds. Letting the
+        // HttpClient default (100s) fire alongside our CTS would race
+        // and surface a different exception type.
+        services.AddSingleton(_ =>
+        {
+            var handler = new System.Net.Http.SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            };
+            return new System.Net.Http.HttpClient(handler)
+            {
+                Timeout = System.Threading.Timeout.InfiniteTimeSpan,
+            };
+        });
+        // One IAiApiClient registration per provider. The merge router
+        // picks the right one out of IEnumerable<IAiApiClient> by
+        // matching Provider, so adding the next provider is a single
+        // AddSingleton + no consumer-side change.
+        services.AddSingleton<Leaf.Services.Ai.Http.IAiApiClient>(sp =>
+        {
+            var settings = sp.GetRequiredService<SettingsService>();
+            var creds = sp.GetRequiredService<CredentialService>();
+            var http = sp.GetRequiredService<System.Net.Http.HttpClient>();
+            int Timeout() => Math.Max(1, settings.LoadSettings().AiCliTimeoutSeconds);
+            return new Leaf.Services.Ai.Http.ClaudeApiClient(
+                http,
+                keyReader: () => creds.GetAiApiKey("Claude"),
+                modelProvider: () => settings.LoadSettings().ClaudeApiModel,
+                timeoutSecondsProvider: Timeout);
+        });
+        services.AddSingleton<Leaf.Services.Ai.Http.IAiApiClient>(sp =>
+        {
+            var settings = sp.GetRequiredService<SettingsService>();
+            var creds = sp.GetRequiredService<CredentialService>();
+            var http = sp.GetRequiredService<System.Net.Http.HttpClient>();
+            int Timeout() => Math.Max(1, settings.LoadSettings().AiCliTimeoutSeconds);
+            return new Leaf.Services.Ai.Http.GeminiApiClient(
+                http,
+                keyReader: () => creds.GetAiApiKey("Gemini"),
+                modelProvider: () => settings.LoadSettings().GeminiApiModel,
+                timeoutSecondsProvider: Timeout);
+        });
+        services.AddSingleton<Leaf.Services.Ai.Http.IAiApiClient>(sp =>
+        {
+            var settings = sp.GetRequiredService<SettingsService>();
+            var creds = sp.GetRequiredService<CredentialService>();
+            var http = sp.GetRequiredService<System.Net.Http.HttpClient>();
+            int Timeout() => Math.Max(1, settings.LoadSettings().AiCliTimeoutSeconds);
+            return new Leaf.Services.Ai.Http.OpenAiApiClient(
+                http,
+                keyReader: () => creds.GetAiApiKey("OpenAI"),
+                modelProvider: () => settings.LoadSettings().OpenAiApiModel,
+                timeoutSecondsProvider: Timeout);
+        });
+        // Compatible endpoints (LM Studio, OpenRouter, vLLM, Azure
+        // gateway) hit Chat Completions — none of them implement the
+        // Responses API. Different client class enforces that
+        // distinction at compile time.
+        services.AddSingleton<Leaf.Services.Ai.Http.IAiApiClient>(sp =>
+        {
+            var settings = sp.GetRequiredService<SettingsService>();
+            var creds = sp.GetRequiredService<CredentialService>();
+            var http = sp.GetRequiredService<System.Net.Http.HttpClient>();
+            int Timeout() => Math.Max(1, settings.LoadSettings().AiCliTimeoutSeconds);
+            return new Leaf.Services.Ai.Http.OpenAiChatCompletionsClient(
+                http,
+                keyReader: () => creds.GetAiApiKey("OpenAiCompatible"),
+                baseUrlProvider: () => settings.LoadSettings().OpenAiCompatibleBaseUrl,
+                modelProvider: () => settings.LoadSettings().OpenAiCompatibleModel,
+                timeoutSecondsProvider: Timeout);
+        });
+        services.AddSingleton<Leaf.Services.Ai.Http.IAiApiKeyCacheInvalidator, Leaf.Services.Ai.Http.AiApiKeyCacheInvalidator>();
+
         // AI-assisted merge resolution. The router holds one of every
         // provider implementation and dispatches to whichever is selected
         // in AppSettings.AiMergeProvider — re-read on every call so a
@@ -162,11 +243,35 @@ public static class ServiceRegistry
                 enabledProvider: Enabled,
                 consentGivenProvider: Consent);
 
+            // API-key variants. The router resolves them by matching
+            // IAiApiClient.Provider, so the DI registration order of
+            // those clients doesn't matter here.
+            var apiClients = sp.GetServices<Leaf.Services.Ai.Http.IAiApiClient>().ToList();
+            var claudeApiClient = apiClients.First(c => c.Provider == Leaf.Services.Merge.AiProviderKind.ClaudeApi);
+            var geminiApiClient = apiClients.First(c => c.Provider == Leaf.Services.Merge.AiProviderKind.GeminiApi);
+            var openAiApiClient = apiClients.First(c => c.Provider == Leaf.Services.Merge.AiProviderKind.OpenAi);
+            var openAiCompatibleClient = apiClients.First(c => c.Provider == Leaf.Services.Merge.AiProviderKind.OpenAiCompatible);
+
+            var claudeApi = new Leaf.Services.Merge.Providers.ClaudeApiMergeAssistant(
+                claudeApiClient, Enabled, Consent,
+                () => settings.LoadSettings().IsClaudeApiConnected);
+            var geminiApi = new Leaf.Services.Merge.Providers.GeminiApiMergeAssistant(
+                geminiApiClient, Enabled, Consent,
+                () => settings.LoadSettings().IsGeminiApiConnected);
+            var openAiApi = new Leaf.Services.Merge.Providers.OpenAiApiMergeAssistant(
+                openAiApiClient, Enabled, Consent,
+                () => settings.LoadSettings().IsOpenAiApiConnected);
+            var openAiCompatible = new Leaf.Services.Merge.Providers.OpenAiCompatibleApiMergeAssistant(
+                openAiCompatibleClient, Enabled, Consent,
+                () => settings.LoadSettings().IsOpenAiCompatibleConnected,
+                () => settings.LoadSettings().OpenAiCompatibleBaseUrl);
+
             return new Leaf.Services.Merge.AiMergeAssistantRouter(
                 selectedProviderProvider: () => settings.LoadSettings().AiMergeProvider,
                 enabledProvider: Enabled,
                 consentProvider: Consent,
-                claude, gemini, codex, ollamaAssistant, externalServer);
+                claude, gemini, codex, ollamaAssistant, externalServer,
+                claudeApi, geminiApi, openAiApi, openAiCompatible);
         });
     }
 

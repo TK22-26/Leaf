@@ -78,12 +78,28 @@
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                        Margin="0,0,0,4" />
-            <TextBlock Text="Connect to Claude CLI for AI-powered features"
+            <TextBlock Text="Use the local Claude CLI (subscription login) or your own Anthropic API key for direct-billing HTTP access."
                        FontSize="12"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Margin="0,0,0,16" />
+                       Margin="0,0,0,16"
+                       TextWrapping="Wrap" />
 
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            <!-- Transport selector -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <RadioButton x:Name="ClaudeTransportCliRadio"
+                             Content="CLI"
+                             GroupName="ClaudeTransport"
+                             Margin="0,0,16,0"
+                             Checked="ClaudeTransport_Changed" />
+                <RadioButton x:Name="ClaudeTransportApiRadio"
+                             Content="API key"
+                             GroupName="ClaudeTransport"
+                             Checked="ClaudeTransport_Changed" />
+            </StackPanel>
+
+            <!-- CLI body -->
+            <Border x:Name="ClaudeCliBody"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="8"
@@ -117,6 +133,75 @@
                             IsEnabled="False" />
                 </Grid>
             </Border>
+
+            <!-- API body -->
+            <Border x:Name="ClaudeApiBody"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16"
+                    Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock Text="Anthropic API key"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <PasswordBox x:Name="ClaudeApiKeyPasswordBox"
+                                 Margin="0,0,0,4"
+                                 Padding="8,6" />
+                    <TextBlock Text="Stored securely in Windows Credential Manager. Format: sk-ant-…"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="Model"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <ComboBox x:Name="ClaudeApiModelComboBox"
+                              IsEditable="True"
+                              Margin="0,0,0,4"
+                              Padding="8,6"
+                              KeyUp="ClaudeApiModel_KeyUp"
+                              LostFocus="ClaudeApiModel_LostFocus" />
+                    <TextBlock Text="Pick from the list or type a custom model name. List: claude-opus-4-7, claude-sonnet-4-5, claude-haiku-4-5."
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Connection Status"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock x:Name="ClaudeApiStatusText"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Not connected" />
+                        </StackPanel>
+                        <Button x:Name="ClaudeApiSaveTestButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="ClaudeApiSaveTest_Click"
+                                Content="Save &amp; Test" />
+                        <Button x:Name="ClaudeApiDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="ClaudeApiDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
+                    </Grid>
+                </StackPanel>
+            </Border>
         </StackPanel>
 
         <!-- Gemini Content -->
@@ -126,12 +211,28 @@
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                        Margin="0,0,0,4" />
-            <TextBlock Text="Connect to Gemini CLI for AI-powered features"
+            <TextBlock Text="Use the local Gemini CLI (Google login) or your own Google API key for direct-billing HTTP access."
                        FontSize="12"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Margin="0,0,0,16" />
+                       Margin="0,0,0,16"
+                       TextWrapping="Wrap" />
 
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            <!-- Transport selector -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <RadioButton x:Name="GeminiTransportCliRadio"
+                             Content="CLI"
+                             GroupName="GeminiTransport"
+                             Margin="0,0,16,0"
+                             Checked="GeminiTransport_Changed" />
+                <RadioButton x:Name="GeminiTransportApiRadio"
+                             Content="API key"
+                             GroupName="GeminiTransport"
+                             Checked="GeminiTransport_Changed" />
+            </StackPanel>
+
+            <!-- CLI body -->
+            <Border x:Name="GeminiCliBody"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="8"
@@ -164,6 +265,75 @@
                             Content="Disconnect"
                             IsEnabled="False" />
                 </Grid>
+            </Border>
+
+            <!-- API body -->
+            <Border x:Name="GeminiApiBody"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16"
+                    Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock Text="Google API key"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <PasswordBox x:Name="GeminiApiKeyPasswordBox"
+                                 Margin="0,0,0,4"
+                                 Padding="8,6" />
+                    <TextBlock Text="Stored securely in Windows Credential Manager. Get one from Google AI Studio."
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="Model"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <ComboBox x:Name="GeminiApiModelComboBox"
+                              IsEditable="True"
+                              Margin="0,0,0,4"
+                              Padding="8,6"
+                              KeyUp="GeminiApiModel_KeyUp"
+                              LostFocus="GeminiApiModel_LostFocus" />
+                    <TextBlock Text="Pick from the list or type a custom model name. List: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.0-flash."
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Connection Status"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock x:Name="GeminiApiStatusText"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Not connected" />
+                        </StackPanel>
+                        <Button x:Name="GeminiApiSaveTestButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="GeminiApiSaveTest_Click"
+                                Content="Save &amp; Test" />
+                        <Button x:Name="GeminiApiDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="GeminiApiDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
+                    </Grid>
+                </StackPanel>
             </Border>
         </StackPanel>
 
@@ -212,6 +382,180 @@
                             Content="Disconnect"
                             IsEnabled="False" />
                 </Grid>
+            </Border>
+        </StackPanel>
+
+        <!-- OpenAI (API key) Content -->
+        <StackPanel x:Name="ContentOpenAi" Visibility="Collapsed">
+            <TextBlock Text="OpenAI"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="Connect to OpenAI with your own API key (direct-billing). The Codex CLI auth path is configured under Codex."
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,16"
+                       TextWrapping="Wrap" />
+
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel>
+                    <TextBlock Text="OpenAI API key"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <PasswordBox x:Name="OpenAiApiKeyPasswordBox"
+                                 Margin="0,0,0,4"
+                                 Padding="8,6" />
+                    <TextBlock Text="Stored securely in Windows Credential Manager. Format: sk-…"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="Model"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <ComboBox x:Name="OpenAiApiModelComboBox"
+                              IsEditable="True"
+                              Margin="0,0,0,4"
+                              Padding="8,6"
+                              KeyUp="OpenAiApiModel_KeyUp"
+                              LostFocus="OpenAiApiModel_LostFocus" />
+                    <TextBlock Text="Pick from the list or type a custom model name. List: gpt-5-codex, gpt-5, gpt-5-mini, gpt-5-nano, o3, o4-mini, gpt-4o."
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Connection Status"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock x:Name="OpenAiApiStatusText"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Not connected" />
+                        </StackPanel>
+                        <Button x:Name="OpenAiApiSaveTestButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="OpenAiApiSaveTest_Click"
+                                Content="Save &amp; Test" />
+                        <Button x:Name="OpenAiApiDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="OpenAiApiDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- OpenAI-Compatible (custom endpoint) Content -->
+        <StackPanel x:Name="ContentOpenAiCompatible" Visibility="Collapsed">
+            <TextBlock Text="OpenAI-Compatible"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="Use any service that implements the OpenAI Chat Completions API: LM Studio, OpenRouter, vLLM, Together, Ollama (OpenAI-compat mode), or a corporate proxy. Note: Azure OpenAI customers must use a deployment configured to accept Authorization: Bearer (e.g. AAD-fronted) — native Azure api-key header is not supported here."
+                       FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,16"
+                       TextWrapping="Wrap" />
+
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel>
+                    <TextBlock Text="Base URL"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <TextBox x:Name="OpenAiCompatibleBaseUrlTextBox"
+                             Margin="0,0,0,4"
+                             Padding="8,6"
+                             TextChanged="OpenAiCompatibleBaseUrl_Changed" />
+                    <TextBlock Text="Examples: http://localhost:1234/v1, https://openrouter.ai/api/v1, https://api.together.xyz/v1"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="API key"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <PasswordBox x:Name="OpenAiCompatibleApiKeyPasswordBox"
+                                 Margin="0,0,0,4"
+                                 Padding="8,6" />
+                    <TextBlock Text="Some local servers (LM Studio default) accept any non-empty string. Cloud gateways require a real key. Stored in Windows Credential Manager."
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="Model"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <ComboBox x:Name="OpenAiCompatibleModelComboBox"
+                              IsEditable="True"
+                              Margin="0,0,0,4"
+                              Padding="8,6"
+                              KeyUp="OpenAiCompatibleModel_KeyUp"
+                              LostFocus="OpenAiCompatibleModel_LostFocus" />
+                    <TextBlock Text="Free-text — the identifier varies per endpoint. Examples: anthropic/claude-sonnet-4-5 (OpenRouter), local-model (LM Studio default), llama3.1:8b (Ollama)."
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Connection Status"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock x:Name="OpenAiCompatibleStatusText"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Not connected" />
+                        </StackPanel>
+                        <Button x:Name="OpenAiCompatibleSaveTestButton"
+                                Grid.Column="1"
+                                Padding="12,6"
+                                Click="OpenAiCompatibleSaveTest_Click"
+                                Content="Save &amp; Test" />
+                        <Button x:Name="OpenAiCompatibleDisconnectButton"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Click="OpenAiCompatibleDisconnect_Click"
+                                Content="Disconnect"
+                                IsEnabled="False" />
+                    </Grid>
+                </StackPanel>
             </Border>
         </StackPanel>
 

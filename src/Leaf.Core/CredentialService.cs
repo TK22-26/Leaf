@@ -127,6 +127,37 @@ public class CredentialService : ICredentialService
         CredDeleteW(targetName, CRED_TYPE_GENERIC, 0);
     }
 
+    /// <summary>
+    /// Store an API key for a direct-billing AI provider. Keys are stored
+    /// at <c>Leaf:AI:{provider}</c>, segregating them from the
+    /// GitHub/AzureDevOps PAT keyspace so credential enumeration in
+    /// either UI surface stays clean.
+    /// </summary>
+    public void SetAiApiKey(string provider, string key)
+    {
+        if (string.IsNullOrWhiteSpace(provider))
+            throw new ArgumentException("Provider must be non-empty.", nameof(provider));
+        if (string.IsNullOrEmpty(key))
+            throw new ArgumentException("Key must be non-empty.", nameof(key));
+        WriteCredential(GetAiTargetName(provider), "apikey", key);
+    }
+
+    public string? GetAiApiKey(string provider)
+    {
+        if (string.IsNullOrWhiteSpace(provider)) return null;
+        return ReadCredential(GetAiTargetName(provider));
+    }
+
+    public void DeleteAiApiKey(string provider)
+    {
+        if (string.IsNullOrWhiteSpace(provider)) return;
+        CredDeleteW(GetAiTargetName(provider), CRED_TYPE_GENERIC, 0);
+    }
+
+    public bool HasAiApiKey(string provider) => !string.IsNullOrEmpty(GetAiApiKey(provider));
+
+    private static string GetAiTargetName(string provider) => $"{CredentialPrefix}AI:{provider}";
+
     private static string GetTargetName(string organization)
     {
         return $"{CredentialPrefix}{organization}";
