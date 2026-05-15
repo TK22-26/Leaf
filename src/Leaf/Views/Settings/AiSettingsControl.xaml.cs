@@ -552,6 +552,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 UpdateClaudeApiStatusLine();
                 ClaudeApiDisconnectButton.IsEnabled = true;
                 UpdateAiDefaults();
+                await RefreshModelsAsync(ClaudeApiModelComboBox, probe, ClaudeApiModels, model, cts.Token);
             }
             else
             {
@@ -627,24 +628,68 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     }
 
     /// <summary>
-    /// Seed an editable model ComboBox with the curated list and select
+    /// Seed an editable model ComboBox with a model list and select
     /// whatever the user previously saved — even if that value isn't in
-    /// the curated list. The IsEditable=True ComboBox treats the text as
+    /// the list. The IsEditable=True ComboBox treats the text as
     /// authoritative when typed; we read .Text rather than .SelectedItem
     /// when persisting so a custom-typed model survives save/load round-
     /// tripping.
     /// </summary>
-    private static void PopulateModelComboBox(ComboBox combo, IReadOnlyList<string> curatedModels, string currentValue)
+    private static void PopulateModelComboBox(ComboBox combo, IReadOnlyList<string> models, string currentValue)
     {
         combo.Items.Clear();
-        foreach (var m in curatedModels) combo.Items.Add(m);
-        // If the saved value isn't in the curated list, add it so the
-        // dropdown shows the user's exact pick first.
-        if (!string.IsNullOrEmpty(currentValue) && !curatedModels.Contains(currentValue))
+        foreach (var m in models) combo.Items.Add(m);
+        // If the saved value isn't in the list, add it on top so the
+        // dropdown shows the user's exact pick first — covers two cases:
+        // (a) curated-list bootstrap where the user typed a custom model;
+        // (b) dynamic discovery where a previously-saved fine-tune /
+        // experimental model isn't in the provider's account-scoped
+        // /models response.
+        if (!string.IsNullOrEmpty(currentValue) && !models.Contains(currentValue))
         {
             combo.Items.Insert(0, currentValue);
         }
         combo.Text = currentValue;
+    }
+
+    /// <summary>
+    /// After a successful Save &amp; Test, try to fetch the provider's
+    /// live model list and repopulate the dropdown. Falls back to the
+    /// supplied curated list when discovery throws (network error,
+    /// endpoint not implemented on the compatible server, etc) so the
+    /// dropdown stays usable.
+    /// </summary>
+    private static async Task RefreshModelsAsync(
+        ComboBox combo,
+        IAiApiClient probeClient,
+        IReadOnlyList<string> curatedFallback,
+        string currentModel,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var models = await probeClient.ListModelsAsync(cancellationToken).ConfigureAwait(true);
+            if (models is { Count: > 0 })
+            {
+                PopulateModelComboBox(combo, models, currentModel);
+                return;
+            }
+        }
+        catch (AiMergeAssistantException ex)
+        {
+            // Best-effort — failures here aren't user-facing. The
+            // dropdown stays usable via the curated fallback, and the
+            // log line gives a breadcrumb for diagnosing if the user
+            // reports "no models populated".
+            Log.Info("AiSettings", $"ListModelsAsync fallback ({ex.GetType().Name}: {ex.Message})");
+        }
+        catch (OperationCanceledException)
+        {
+            // The probe completed but the model fetch timed out — leave
+            // whatever was already populated.
+            return;
+        }
+        PopulateModelComboBox(combo, curatedFallback, currentModel);
     }
 
     #endregion
@@ -770,6 +815,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 UpdateGeminiApiStatusLine();
                 GeminiApiDisconnectButton.IsEnabled = true;
                 UpdateAiDefaults();
+                await RefreshModelsAsync(GeminiApiModelComboBox, probe, GeminiApiModels, model, cts.Token);
             }
             else
             {
@@ -939,6 +985,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 UpdateOpenAiApiStatusLine();
                 OpenAiApiDisconnectButton.IsEnabled = true;
                 UpdateAiDefaults();
+                await RefreshModelsAsync(OpenAiApiModelComboBox, probe, OpenAiApiModels, model, cts.Token);
             }
             else
             {
@@ -1143,6 +1190,10 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 UpdateOpenAiCompatibleStatusLine();
                 OpenAiCompatibleDisconnectButton.IsEnabled = true;
                 UpdateAiDefaults();
+                // No curated fallback for the compatible endpoint —
+                // model identifiers are endpoint-specific. If discovery
+                // fails the dropdown keeps whatever the user typed.
+                await RefreshModelsAsync(OpenAiCompatibleModelComboBox, probe, Array.Empty<string>(), model, cts.Token);
             }
             else
             {

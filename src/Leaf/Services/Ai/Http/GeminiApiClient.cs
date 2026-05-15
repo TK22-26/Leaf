@@ -190,6 +190,54 @@ public sealed class GeminiApiClient : AiApiClientBase
             $"{ProviderLabel}: no text part found in response.");
     }
 
+    protected override HttpRequestMessage BuildListModelsRequest(string apiKey)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get,
+            "https://generativelanguage.googleapis.com/v1beta/models");
+        req.Headers.Add("x-goog-api-key", apiKey);
+        return req;
+    }
+
+    /// <summary>
+    /// Google's <c>/v1beta/models</c> returns <c>{models:[{name:"models/...", supportedGenerationMethods:[...]} ...]}</c>.
+    /// We filter to entries that support <c>generateContent</c> (skipping
+    /// embedding-only / fine-tune-only models) and strip the
+    /// <c>models/</c> prefix so the user sees the bare identifier the
+    /// generateContent URL expects.
+    /// </summary>
+    protected override IReadOnlyList<string> ParseModels(string rawBody)
+    {
+        JsonNode? root;
+        try { root = JsonNode.Parse(rawBody); }
+        catch (JsonException ex)
+        {
+            throw new AiMergeAssistantException(
+                $"{ProviderLabel}: malformed models response ({ex.Message}).", ex);
+        }
+        if (root is not JsonObject obj || obj["models"] is not JsonArray models)
+        {
+            throw new AiMergeAssistantException(
+                $"{ProviderLabel}: models response missing 'models' array.");
+        }
+
+        var ids = new List<string>();
+        foreach (var item in models)
+        {
+            if (item is not JsonObject m) continue;
+            if (m["supportedGenerationMethods"] is not JsonArray methods) continue;
+            var supportsGenerate = methods.Any(n =>
+                n is not null && string.Equals(n.GetValue<string>(), "generateContent", StringComparison.Ordinal));
+            if (!supportsGenerate) continue;
+
+            var name = m["name"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(name)) continue;
+            const string prefix = "models/";
+            var id = name.StartsWith(prefix, StringComparison.Ordinal) ? name[prefix.Length..] : name;
+            ids.Add(id);
+        }
+        return ids;
+    }
+
     /// <summary>
     /// Strip JSON-Schema-only keywords that <c>responseSchema</c>
     /// silently ignores (it's an OpenAPI 3.0 subset). Not strictly

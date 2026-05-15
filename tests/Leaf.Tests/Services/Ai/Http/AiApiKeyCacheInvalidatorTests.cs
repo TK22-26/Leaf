@@ -61,5 +61,7 @@ public class AiApiKeyCacheInvalidatorTests
             => Task.FromResult("{}");
         public Task<string?> TestConnectionAsync(CancellationToken cancellationToken)
             => Task.FromResult<string?>(null);
+        public Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
     }
 }

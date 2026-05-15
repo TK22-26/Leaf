@@ -84,7 +84,8 @@ public abstract class AiApiClientBase : IAiApiClient
                 $"{ProviderLabel}: no API key configured. Open Settings → AI to set one.");
 
         using var request = BuildRequest(prompt, jsonSchema, key);
-        return await ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
+        var rawBody = await SendAndReadBodyAsync(request, cancellationToken).ConfigureAwait(false);
+        return ExtractStructuredOutput(rawBody);
     }
 
     public async Task<string?> TestConnectionAsync(CancellationToken cancellationToken)
@@ -94,13 +95,24 @@ public abstract class AiApiClientBase : IAiApiClient
         try
         {
             using var request = BuildTestRequest(key);
-            _ = await ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
+            _ = await SendAndReadBodyAsync(request, cancellationToken).ConfigureAwait(false);
             return null;
         }
         catch (AiMergeAssistantException ex)
         {
             return ex.Message;
         }
+    }
+
+    public async Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken cancellationToken)
+    {
+        var key = GetKey()
+            ?? throw new AiMergeAssistantException(
+                $"{ProviderLabel}: no API key configured. Open Settings → AI to set one.");
+
+        using var request = BuildListModelsRequest(key);
+        var rawBody = await SendAndReadBodyAsync(request, cancellationToken).ConfigureAwait(false);
+        return ParseModels(rawBody);
     }
 
     /// <summary>
@@ -125,7 +137,32 @@ public abstract class AiApiClientBase : IAiApiClient
     /// </summary>
     protected abstract string ExtractStructuredOutput(string rawBody);
 
-    private async Task<string> ExecuteAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    /// <summary>
+    /// Build the GET request for the provider's models-list endpoint.
+    /// Derived classes set the URL and the auth header in exactly the
+    /// same way as <see cref="BuildRequest"/>. No request body.
+    /// </summary>
+    protected abstract HttpRequestMessage BuildListModelsRequest(string apiKey);
+
+    /// <summary>
+    /// Parse the models-list response into a list of model identifiers
+    /// suitable for the Settings dropdown. Each provider has a different
+    /// envelope shape — Anthropic <c>data[].id</c>, Google <c>models[].name</c>
+    /// (prefixed <c>models/</c>), OpenAI <c>data[].id</c> — and a
+    /// different filter rule (chat-capable only). Implementations should
+    /// return identifiers in a sensible recommendation order.
+    /// </summary>
+    protected abstract IReadOnlyList<string> ParseModels(string rawBody);
+
+    /// <summary>
+    /// Shared HTTP pipeline: timeout, response-size cap, error mapping.
+    /// Returns the success body as a string for callers (SendAsync,
+    /// TestConnectionAsync, ListModelsAsync) to interpret as they see
+    /// fit. Renamed from the old <c>ExecuteAsync</c> when ListModelsAsync
+    /// landed and the per-call response-shape logic split from the
+    /// transport-shape logic.
+    /// </summary>
+    private async Task<string> SendAndReadBodyAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var timeoutSeconds = Math.Max(1, _timeoutSecondsProvider());
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -166,7 +203,7 @@ public abstract class AiApiClientBase : IAiApiClient
             {
                 throw new AiMergeAssistantException(BuildHttpErrorMessage(response.StatusCode, body));
             }
-            return ExtractStructuredOutput(body);
+            return body;
         }
     }
 

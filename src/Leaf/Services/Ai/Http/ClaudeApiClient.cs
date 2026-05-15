@@ -190,4 +190,44 @@ public sealed class ClaudeApiClient : AiApiClientBase
     }
 
     private static string Truncate(string s) => s.Length <= 240 ? s : s[..240] + "…";
+
+    protected override HttpRequestMessage BuildListModelsRequest(string apiKey)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, "https://api.anthropic.com/v1/models");
+        req.Headers.Add("x-api-key", apiKey);
+        req.Headers.Add("anthropic-version", AnthropicVersion);
+        return req;
+    }
+
+    /// <summary>
+    /// Anthropic's <c>/v1/models</c> returns <c>{data:[{id, type, display_name, created_at}, ...]}</c>.
+    /// All entries are chat-capable Claude models so no filter is
+    /// needed — just project to <c>id</c>. Sorting: keep the
+    /// provider's order (newest first per Anthropic's docs).
+    /// </summary>
+    protected override IReadOnlyList<string> ParseModels(string rawBody)
+    {
+        JsonNode? root;
+        try { root = JsonNode.Parse(rawBody); }
+        catch (JsonException ex)
+        {
+            throw new AiMergeAssistantException(
+                $"{ProviderLabel}: malformed models response ({ex.Message}).", ex);
+        }
+        if (root is not JsonObject obj || obj["data"] is not JsonArray data)
+        {
+            throw new AiMergeAssistantException(
+                $"{ProviderLabel}: models response missing 'data' array.");
+        }
+
+        var ids = new List<string>(data.Count);
+        foreach (var item in data)
+        {
+            if (item is JsonObject m && m["id"]?.GetValue<string>() is string id && !string.IsNullOrEmpty(id))
+            {
+                ids.Add(id);
+            }
+        }
+        return ids;
+    }
 }

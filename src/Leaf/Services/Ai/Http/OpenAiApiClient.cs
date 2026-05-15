@@ -169,4 +169,75 @@ public sealed class OpenAiApiClient : AiApiClientBase
         throw new AiMergeAssistantException(
             $"{ProviderLabel}: response had no output_text content.");
     }
+
+    protected override HttpRequestMessage BuildListModelsRequest(string apiKey)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, "https://api.openai.com/v1/models");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        return req;
+    }
+
+    /// <summary>
+    /// OpenAI's <c>/v1/models</c> returns every model the key can see —
+    /// chat, embeddings, image, audio, fine-tunes, deprecated dated
+    /// snapshots, internal previews. Filter to user-facing chat models
+    /// only (prefix-match on <c>gpt-</c>, <c>o</c>, <c>chatgpt-</c>) and
+    /// exclude obvious non-chat suffixes.
+    /// </summary>
+    protected override IReadOnlyList<string> ParseModels(string rawBody)
+    {
+        JsonNode? root;
+        try { root = JsonNode.Parse(rawBody); }
+        catch (JsonException ex)
+        {
+            throw new AiMergeAssistantException(
+                $"{ProviderLabel}: malformed models response ({ex.Message}).", ex);
+        }
+        if (root is not JsonObject obj || obj["data"] is not JsonArray data)
+        {
+            throw new AiMergeAssistantException(
+                $"{ProviderLabel}: models response missing 'data' array.");
+        }
+
+        var ids = new List<string>();
+        foreach (var item in data)
+        {
+            if (item is JsonObject m && m["id"]?.GetValue<string>() is string id && IsChatModelId(id))
+            {
+                ids.Add(id);
+            }
+        }
+        return ids;
+    }
+
+    /// <summary>
+    /// Heuristic filter for OpenAI's mixed <c>/v1/models</c> list. Keep
+    /// chat-capable identifiers, drop everything else (embeddings,
+    /// audio, image, moderation, dated deprecation snapshots, realtime
+    /// preview SKUs that don't accept Responses-API calls).
+    /// </summary>
+    internal static bool IsChatModelId(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return false;
+
+        // Exclude well-known non-chat families up front.
+        if (id.Contains("embed", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Contains("whisper", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Contains("tts", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Contains("dall-e", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Contains("image", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Contains("moderation", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Contains("realtime", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Contains("transcribe", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Contains("audio", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.StartsWith("ft:", StringComparison.OrdinalIgnoreCase)) return false; // fine-tune
+
+        // Include the chat families we recognise. New families OpenAI
+        // ships in the future fall through to the default-true clause
+        // for "gpt"/"o" prefixes.
+        if (id.StartsWith("gpt-", StringComparison.OrdinalIgnoreCase)) return true;
+        if (id.StartsWith("chatgpt-", StringComparison.OrdinalIgnoreCase)) return true;
+        if (System.Text.RegularExpressions.Regex.IsMatch(id, @"^o\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return true;
+        return false;
+    }
 }
