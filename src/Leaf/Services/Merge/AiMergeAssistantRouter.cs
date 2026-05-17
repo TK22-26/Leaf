@@ -126,9 +126,17 @@ public sealed class AiMergeAssistantRouter : IAiMergeAssistant
         var kind = raw switch
         {
             null or "" => AiProviderKind.ExternalServer,
-            string s when s.Equals("Claude", StringComparison.OrdinalIgnoreCase) => AiProviderKind.Claude,
-            string s when s.Equals("Gemini", StringComparison.OrdinalIgnoreCase) => AiProviderKind.Gemini,
-            string s when s.Equals("Codex", StringComparison.OrdinalIgnoreCase) => AiProviderKind.Codex,
+            // CLI variants. The user-facing labels carry a "(CLI)"
+            // suffix as of 2026-05-17 for symmetry with the "(API)"
+            // labels and to make the Codex→OpenAI rebrand visible
+            // (the persisted "Codex" string still resolves here for
+            // backward compatibility with existing settings.json).
+            string s when s.Equals("Claude", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("Claude (CLI)", StringComparison.OrdinalIgnoreCase) => AiProviderKind.Claude,
+            string s when s.Equals("Gemini", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("Gemini (CLI)", StringComparison.OrdinalIgnoreCase) => AiProviderKind.Gemini,
+            string s when s.Equals("Codex", StringComparison.OrdinalIgnoreCase)
+                       || s.Equals("OpenAI (CLI)", StringComparison.OrdinalIgnoreCase) => AiProviderKind.Codex,
             string s when s.Equals("Ollama", StringComparison.OrdinalIgnoreCase) => AiProviderKind.Ollama,
             string s when s.Equals("ExternalServer", StringComparison.OrdinalIgnoreCase)
                        || s.Equals("External", StringComparison.OrdinalIgnoreCase)

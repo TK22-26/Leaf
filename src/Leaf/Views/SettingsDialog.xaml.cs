@@ -74,8 +74,8 @@ public partial class SettingsDialog : Window
             new("CLI Timeout", "Maximum time to wait for AI CLI responses", "AIGeneral", Symbol.Options),
             new("Claude", "Connect to Claude CLI for AI features", "Claude", Symbol.Bot),
             new("Gemini", "Connect to Gemini CLI for AI features", "Gemini", Symbol.Bot),
-            new("Codex", "Connect to Codex CLI for AI features", "Codex", Symbol.Bot),
-            new("OpenAI", "Connect to OpenAI with your own API key", "OpenAi", Symbol.Bot),
+            new("Codex", "OpenAI's Codex CLI (now under the OpenAI section)", "OpenAi", Symbol.Bot),
+            new("OpenAI", "Connect to OpenAI via Codex CLI or your own API key", "OpenAi", Symbol.Bot),
             new("OpenAI API", "Direct-billing OpenAI Responses API access", "OpenAi", Symbol.Bot),
             new("OpenAI-Compatible", "Custom endpoint: LM Studio, OpenRouter, vLLM, Azure OpenAI gateway", "OpenAiCompatible", Symbol.Bot),
             new("LM Studio", "Use a local LM Studio server as an OpenAI-compatible endpoint", "OpenAiCompatible", Symbol.Bot),
@@ -204,13 +204,13 @@ public partial class SettingsDialog : Window
             case "AIGeneral":
             case "Claude":
             case "Gemini":
-            case "Codex":
+            case "Codex": // legacy deep-link — Codex is now a transport inside OpenAi
             case "OpenAi":
             case "OpenAiCompatible":
             case "Ollama":
             case "AiMerge":
                 AiSettings.Visibility = Visibility.Visible;
-                AiSettings.ShowSection(tag);
+                AiSettings.ShowSection(tag == "Codex" ? "OpenAi" : tag);
                 break;
             case "General":
                 // Show clone path for General category
@@ -368,7 +368,7 @@ public partial class SettingsDialog : Window
             "AIGeneral" => NavAIGeneral,
             "Claude" => NavClaude,
             "Gemini" => NavGemini,
-            "Codex" => NavCodex,
+            "Codex" => NavOpenAi, // Codex tab merged into OpenAi
             "OpenAi" => NavOpenAi,
             "OpenAiCompatible" => NavOpenAiCompatible,
             "Ollama" => NavOllama,

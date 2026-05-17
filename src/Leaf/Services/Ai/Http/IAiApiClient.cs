@@ -70,4 +70,22 @@ public interface IAiApiClient
     /// for a connection test.
     /// </summary>
     Task<string?> TestConnectionAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Fetch the list of model identifiers the current key has access
+    /// to. Each provider has its own <c>/models</c>-style endpoint:
+    /// <list type="bullet">
+    ///   <item>Anthropic: <c>GET /v1/models</c></item>
+    ///   <item>Google: <c>GET /v1beta/models</c></item>
+    ///   <item>OpenAI: <c>GET /v1/models</c></item>
+    ///   <item>OpenAI-Compatible: <c>GET {baseUrl}/models</c></item>
+    /// </list>
+    /// Implementations filter the response down to chat-capable models
+    /// (Gemini's <c>supportedGenerationMethods</c>, OpenAI's chat-style
+    /// id patterns) and strip any provider-specific prefix
+    /// (<c>models/</c> on Gemini). Throws
+    /// <see cref="AiMergeAssistantException"/> on transport failures so
+    /// the Settings UI can fall back to its curated list.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken cancellationToken);
 }

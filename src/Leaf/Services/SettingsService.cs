@@ -293,19 +293,28 @@ public class AppSettings
     // and remains the default for installs that don't opt in.
     public string ClaudeTransport { get; set; } = "Cli";
     public bool IsClaudeApiConnected { get; set; }
-    public string ClaudeApiModel { get; set; } = "claude-sonnet-4-5";
+    // Model identifiers stay empty by default. After the user clicks
+    // Save & Test, Leaf populates the dropdown from the provider's
+    // /models endpoint and persists whatever the user picks. We avoid
+    // shipping a hardcoded default because model names rotate fast and
+    // a stale default would silently break new installs on the day a
+    // provider deprecates the old name.
+    public string ClaudeApiModel { get; set; } = string.Empty;
 
     // Same shape as the Claude API fields above. Key lives in
     // Credential Manager at Leaf:AI:Gemini.
     public string GeminiTransport { get; set; } = "Cli";
     public bool IsGeminiApiConnected { get; set; }
-    public string GeminiApiModel { get; set; } = "gemini-2.5-pro";
+    public string GeminiApiModel { get; set; } = string.Empty;
 
-    // OpenAI (Responses API). New top-level section in the settings
-    // rail because the existing "Codex" entry refers specifically to
-    // the Codex CLI auth path. Key at Leaf:AI:OpenAI.
+    // OpenAI section — combines the Codex CLI path (IsCodexConnected
+    // above) with the direct-billing API key path. OpenAiTransport is
+    // the user's chosen sub-mode within the OpenAI section ("Cli" or
+    // "Api"). Key at Leaf:AI:OpenAI for the API path; Codex CLI auth
+    // is owned by the CLI itself.
+    public string OpenAiTransport { get; set; } = "Cli";
     public bool IsOpenAiApiConnected { get; set; }
-    public string OpenAiApiModel { get; set; } = "gpt-5-codex";
+    public string OpenAiApiModel { get; set; } = string.Empty;
 
     // OpenAI-compatible custom endpoint (LM Studio, OpenRouter, vLLM,
     // Together, a corporate Azure OpenAI gateway, etc.). Same wire

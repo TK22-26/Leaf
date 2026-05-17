@@ -206,4 +206,47 @@ public sealed class OpenAiChatCompletionsClient : AiApiClientBase
     }
 
     private static string Truncate(string s) => s.Length <= 240 ? s : s[..240] + "…";
+
+    protected override HttpRequestMessage BuildListModelsRequest(string apiKey)
+    {
+        var url = BuildEndpointUrl("models");
+        var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        return req;
+    }
+
+    /// <summary>
+    /// Compatible servers' <c>/v1/models</c> implementations vary but
+    /// all converge on OpenAI's <c>{data:[{id, ...}, ...]}</c> shape.
+    /// Unlike the first-party OpenAI surface, we trust the server's
+    /// list verbatim — local servers (LM Studio, Ollama) only expose
+    /// loaded models, and gateways (OpenRouter) curate their lists
+    /// upstream. Filtering here would risk dropping legitimate models
+    /// the user explicitly wired up.
+    /// </summary>
+    protected override IReadOnlyList<string> ParseModels(string rawBody)
+    {
+        JsonNode? root;
+        try { root = JsonNode.Parse(rawBody); }
+        catch (JsonException ex)
+        {
+            throw new AiMergeAssistantException(
+                $"{ProviderLabel}: malformed models response ({ex.Message}).", ex);
+        }
+        if (root is not JsonObject obj || obj["data"] is not JsonArray data)
+        {
+            throw new AiMergeAssistantException(
+                $"{ProviderLabel}: models response missing 'data' array.");
+        }
+
+        var ids = new List<string>(data.Count);
+        foreach (var item in data)
+        {
+            if (item is JsonObject m && m["id"]?.GetValue<string>() is string id && !string.IsNullOrEmpty(id))
+            {
+                ids.Add(id);
+            }
+        }
+        return ids;
+    }
 }
