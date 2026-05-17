@@ -32,46 +32,35 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     private bool _suppressAiSelectionSync;
     private bool _suppressClaudeTransportSync;
     private bool _suppressGeminiTransportSync;
+    private bool _suppressOpenAiTransportSync;
+
+    // Per-provider "have we already discovered models in this dialog
+    // session" flag. Reset in LoadSettings. DropDownOpened consults
+    // this so we don't hit /models on every dropdown re-open. Save &
+    // Test also marks it true after a successful fetch.
+    private bool _claudeModelsDiscovered;
+    private bool _geminiModelsDiscovered;
+    private bool _openAiModelsDiscovered;
+    private bool _openAiCompatibleModelsDiscovered;
+    // Re-entrancy guard — DropDownOpened can fire multiple times in
+    // quick succession during scroll/keyboard nav. Without this we'd
+    // queue overlapping HTTP calls.
+    private bool _claudeDiscoveryInFlight;
+    private bool _geminiDiscoveryInFlight;
+    private bool _openAiDiscoveryInFlight;
+    private bool _openAiCompatibleDiscoveryInFlight;
 
     private readonly OllamaService _ollamaService = new();
     private CredentialService? _credentialService;
 
-    /// <summary>
-    /// Curated model lists per provider. Seed the editable ComboBoxes so
-    /// users get a one-click pick for cost optimization (haiku/flash/mini
-    /// variants) while still being free to type a model identifier Leaf
-    /// doesn't know about yet — useful when a provider ships a new model
-    /// before Leaf updates this list.
-    /// </summary>
-    /// <remarks>
-    /// Ordered roughly by "default recommendation" first. The user's
-    /// saved choice always wins; this list only seeds the dropdown.
-    /// </remarks>
-    private static readonly string[] ClaudeApiModels =
-    {
-        "claude-sonnet-4-5",
-        "claude-opus-4-7",
-        "claude-haiku-4-5",
-    };
-
-    private static readonly string[] GeminiApiModels =
-    {
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.0-flash",
-    };
-
-    private static readonly string[] OpenAiApiModels =
-    {
-        "gpt-5-codex",
-        "gpt-5",
-        "gpt-5-mini",
-        "gpt-5-nano",
-        "o3",
-        "o4-mini",
-        "gpt-4o",
-    };
+    // Model lists are sourced ONLY from each provider's /models
+    // endpoint via IAiApiClient.ListModelsAsync — there is no curated
+    // fallback. Curated lists go stale the moment a provider ships a
+    // new model; a misleading list is worse than no list. When
+    // discovery fails (no key yet, network error, endpoint not
+    // implemented on a compatible server), the dropdown shows only
+    // the user's currently-saved model and they're free to type a
+    // custom identifier.
 
     public AiSettingsControl()
     {
@@ -129,6 +118,21 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _settings = settings;
         _credentialService = credentialService;
 
+        // Fresh dialog session — re-arm discovery for every provider so
+        // the user gets a fresh /models result the first time they open
+        // each dropdown. Discovery still costs an HTTP round-trip
+        // though, so it only fires on explicit intent (DropDownOpened
+        // or Save & Test), never just because the dialog opened. See
+        // feedback_lazy_network_fetches.md in project memory.
+        _claudeModelsDiscovered = false;
+        _geminiModelsDiscovered = false;
+        _openAiModelsDiscovered = false;
+        _openAiCompatibleModelsDiscovered = false;
+        _claudeDiscoveryInFlight = false;
+        _geminiDiscoveryInFlight = false;
+        _openAiDiscoveryInFlight = false;
+        _openAiCompatibleDiscoveryInFlight = false;
+
         // Load timeout
         AiTimeoutTextBox.Text = settings.AiCliTimeoutSeconds.ToString();
 
@@ -165,8 +169,12 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _suppressClaudeTransportSync = false;
         ApplyClaudeTransportVisibility();
 
-        PopulateModelComboBox(ClaudeApiModelComboBox, ClaudeApiModels,
-            string.IsNullOrWhiteSpace(settings.ClaudeApiModel) ? "claude-sonnet-4-5" : settings.ClaudeApiModel);
+        // Start each model dropdown empty (no curated fallback, no
+        // saved-value-as-only-item placeholder). The Text field shows
+        // the user's prior selection so they can see what they had
+        // configured; opening the dropdown fires on-demand discovery
+        // which populates Items and validates the saved value.
+        SeedModelComboBoxBeforeDiscovery(ClaudeApiModelComboBox, settings.ClaudeApiModel);
         UpdateClaudeApiStatusLine();
 
         // Gemini transport mirror.
@@ -177,21 +185,31 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         _suppressGeminiTransportSync = false;
         ApplyGeminiTransportVisibility();
 
-        PopulateModelComboBox(GeminiApiModelComboBox, GeminiApiModels,
-            string.IsNullOrWhiteSpace(settings.GeminiApiModel) ? "gemini-2.5-pro" : settings.GeminiApiModel);
+        SeedModelComboBoxBeforeDiscovery(GeminiApiModelComboBox, settings.GeminiApiModel);
         UpdateGeminiApiStatusLine();
 
-        // OpenAI proper.
-        PopulateModelComboBox(OpenAiApiModelComboBox, OpenAiApiModels,
-            string.IsNullOrWhiteSpace(settings.OpenAiApiModel) ? "gpt-5-codex" : settings.OpenAiApiModel);
+        // OpenAI section — same transport-toggle pattern as Claude /
+        // Gemini. "Cli" sub-mode wraps the Codex CLI Connect/Disconnect
+        // flow; "Api" sub-mode is the direct-billing HTTPS path.
+        _suppressOpenAiTransportSync = true;
+        var openAiTransport = (settings.OpenAiTransport ?? "Cli").Trim();
+        OpenAiTransportApiRadio.IsChecked = openAiTransport.Equals("Api", StringComparison.OrdinalIgnoreCase);
+        OpenAiTransportCliRadio.IsChecked = !OpenAiTransportApiRadio.IsChecked.GetValueOrDefault();
+        _suppressOpenAiTransportSync = false;
+        ApplyOpenAiTransportVisibility();
+
+        SeedModelComboBoxBeforeDiscovery(OpenAiApiModelComboBox, settings.OpenAiApiModel);
         UpdateOpenAiApiStatusLine();
 
-        // OpenAI-compatible custom endpoint. No curated list — the model
-        // identifier is endpoint-specific so we leave the dropdown items
-        // empty and rely on the editable ComboBox for free-text entry.
+        // OpenAI-compatible custom endpoint.
         OpenAiCompatibleBaseUrlTextBox.Text = settings.OpenAiCompatibleBaseUrl ?? string.Empty;
-        PopulateModelComboBox(OpenAiCompatibleModelComboBox, Array.Empty<string>(), settings.OpenAiCompatibleModel ?? string.Empty);
+        SeedModelComboBoxBeforeDiscovery(OpenAiCompatibleModelComboBox, settings.OpenAiCompatibleModel);
         UpdateOpenAiCompatibleStatusLine();
+
+        // Disable any dropdown whose provider has no API key (or, for
+        // the compatible endpoint, no base URL). /models needs the key
+        // as auth — a dropdown without one is inert.
+        RefreshModelComboBoxEnabledStates();
 
         // Load Ollama settings
         OllamaBaseUrlTextBox.Text = settings.OllamaBaseUrl;
@@ -225,11 +243,15 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         try
         {
             AiMergeProviderComboBox.Items.Clear();
-            AiMergeProviderComboBox.Items.Add(BuildOption("Claude", _isClaudeConnected));
+            AiMergeProviderComboBox.Items.Add(BuildOption("Claude (CLI)", _isClaudeConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Claude (API)", _isClaudeApiConnected));
-            AiMergeProviderComboBox.Items.Add(BuildOption("Gemini", _isGeminiConnected));
+            AiMergeProviderComboBox.Items.Add(BuildOption("Gemini (CLI)", _isGeminiConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Gemini (API)", _isGeminiApiConnected));
-            AiMergeProviderComboBox.Items.Add(BuildOption("Codex",  _isCodexConnected));
+            // Codex is OpenAI's CLI — label it as "OpenAI (CLI)" for
+            // consistency with Claude / Gemini. The persisted-settings
+            // string "Codex" still routes correctly via the router's
+            // backward-compat branch.
+            AiMergeProviderComboBox.Items.Add(BuildOption("OpenAI (CLI)",  _isCodexConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("OpenAI (API)", _isOpenAiApiConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("OpenAI-Compatible", _isOpenAiCompatibleConnected));
             AiMergeProviderComboBox.Items.Add(BuildOption("Ollama", _isOllamaConnected));
@@ -239,11 +261,11 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             var current = (_settings.AiMergeProvider ?? string.Empty).Trim();
             var target = current switch
             {
-                "Claude" => BuildOption("Claude", _isClaudeConnected),
+                "Claude" or "Claude (CLI)" => BuildOption("Claude (CLI)", _isClaudeConnected),
                 "Claude (API)" or "ClaudeApi" => BuildOption("Claude (API)", _isClaudeApiConnected),
-                "Gemini" => BuildOption("Gemini", _isGeminiConnected),
+                "Gemini" or "Gemini (CLI)" => BuildOption("Gemini (CLI)", _isGeminiConnected),
                 "Gemini (API)" or "GeminiApi" => BuildOption("Gemini (API)", _isGeminiApiConnected),
-                "Codex"  => BuildOption("Codex",  _isCodexConnected),
+                "Codex" or "OpenAI (CLI)" => BuildOption("OpenAI (CLI)", _isCodexConnected),
                 "OpenAI (API)" or "OpenAi" or "OpenAI" => BuildOption("OpenAI (API)", _isOpenAiApiConnected),
                 "OpenAI-Compatible" or "OpenAiCompatible" => BuildOption("OpenAI-Compatible", _isOpenAiCompatibleConnected),
                 "Ollama" => BuildOption("Ollama", _isOllamaConnected),
@@ -278,15 +300,15 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         var preferred = (_settings.DefaultAiProvider ?? string.Empty).Trim();
         bool ConnectedFor(string name) => name switch
         {
-            "Claude" => _isClaudeConnected,
-            "Gemini" => _isGeminiConnected,
-            "Codex"  => _isCodexConnected,
+            "Claude (CLI)" => _isClaudeConnected,
+            "Gemini (CLI)" => _isGeminiConnected,
+            "OpenAI (CLI)" => _isCodexConnected,
             "Ollama" => _isOllamaConnected,
             _ => false,
         };
         if (!string.IsNullOrEmpty(preferred) && ConnectedFor(preferred))
             return BuildOption(preferred, true);
-        foreach (var name in new[] { "Claude", "Gemini", "Codex", "Ollama" })
+        foreach (var name in new[] { "Claude (CLI)", "Gemini (CLI)", "OpenAI (CLI)", "Ollama" })
             if (ConnectedFor(name)) return BuildOption(name, true);
         return "External Server";
     }
@@ -343,7 +365,6 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         ContentAIGeneral.Visibility = Visibility.Collapsed;
         ContentClaude.Visibility = Visibility.Collapsed;
         ContentGemini.Visibility = Visibility.Collapsed;
-        ContentCodex.Visibility = Visibility.Collapsed;
         ContentOpenAi.Visibility = Visibility.Collapsed;
         ContentOpenAiCompatible.Visibility = Visibility.Collapsed;
         ContentOllama.Visibility = Visibility.Collapsed;
@@ -362,9 +383,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             case "Gemini":
                 ContentGemini.Visibility = Visibility.Visible;
                 break;
-            case "Codex":
-                ContentCodex.Visibility = Visibility.Visible;
-                break;
+            case "Codex": // legacy deep-link — Codex now lives inside OpenAi
             case "OpenAi":
                 ContentOpenAi.Visibility = Visibility.Visible;
                 break;
@@ -488,6 +507,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
     private async void ClaudeApiSaveTest_Click(object sender, RoutedEventArgs e)
     {
+        Log.Perf("AiSettings", "Claude (API): Save & Test clicked");
         try
         {
             if (_settings == null || _settingsService == null || _credentialService == null) return;
@@ -521,7 +541,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
             // will use.
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("Claude", typed); InvokeApiKeyInvalidator("Claude");
+                _credentialService.SetAiApiKey("Claude", typed); InvokeApiKeyInvalidator("Claude"); RefreshModelComboBoxEnabledStates();
                 // Clear the field so a shoulder-surfer can't read it from
                 // the saved state. The status line shows a masked tail.
                 ClaudeApiKeyPasswordBox.Clear();
@@ -552,7 +572,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 UpdateClaudeApiStatusLine();
                 ClaudeApiDisconnectButton.IsEnabled = true;
                 UpdateAiDefaults();
-                await RefreshModelsAsync(ClaudeApiModelComboBox, probe, ClaudeApiModels, model, cts.Token);
+                await RefreshModelsAsync(ClaudeApiModelComboBox, probe, model, ClaudeApiStatusText, ClaudeApiStatusText.Text, cts.Token); _claudeModelsDiscovered = true;
             }
             else
             {
@@ -578,7 +598,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("Claude"); InvokeApiKeyInvalidator("Claude");
+        _credentialService.DeleteAiApiKey("Claude"); InvokeApiKeyInvalidator("Claude"); RefreshModelComboBoxEnabledStates();
         _isClaudeApiConnected = false;
         _settings.IsClaudeApiConnected = false;
         _settingsService.SaveSettings(_settings);
@@ -628,68 +648,347 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     }
 
     /// <summary>
-    /// Seed an editable model ComboBox with a model list and select
-    /// whatever the user previously saved — even if that value isn't in
-    /// the list. The IsEditable=True ComboBox treats the text as
-    /// authoritative when typed; we read .Text rather than .SelectedItem
-    /// when persisting so a custom-typed model survives save/load round-
-    /// tripping.
+    /// Pre-discovery state of a model ComboBox: empty Items list, Text
+    /// shows the user's previously-saved selection (so they see what
+    /// they had configured). On-demand discovery (DropDownOpened) is
+    /// the only path that populates Items.
     /// </summary>
-    private static void PopulateModelComboBox(ComboBox combo, IReadOnlyList<string> models, string currentValue)
+    private static void SeedModelComboBoxBeforeDiscovery(ComboBox combo, string? savedValue)
     {
         combo.Items.Clear();
-        foreach (var m in models) combo.Items.Add(m);
-        // If the saved value isn't in the list, add it on top so the
-        // dropdown shows the user's exact pick first — covers two cases:
-        // (a) curated-list bootstrap where the user typed a custom model;
-        // (b) dynamic discovery where a previously-saved fine-tune /
-        // experimental model isn't in the provider's account-scoped
-        // /models response.
-        if (!string.IsNullOrEmpty(currentValue) && !models.Contains(currentValue))
-        {
-            combo.Items.Insert(0, currentValue);
-        }
-        combo.Text = currentValue;
+        combo.Text = savedValue ?? string.Empty;
     }
 
     /// <summary>
-    /// After a successful Save &amp; Test, try to fetch the provider's
-    /// live model list and repopulate the dropdown. Falls back to the
-    /// supplied curated list when discovery throws (network error,
-    /// endpoint not implemented on the compatible server, etc) so the
-    /// dropdown stays usable.
+    /// Refresh the IsEnabled state on every model ComboBox based on
+    /// whether the matching provider has an API key in Credential
+    /// Manager. /models requires the auth header, so without a key the
+    /// dropdown can't populate — disabling it is more honest than
+    /// letting the user click an inert control. Also resets the
+    /// discovery flag so a re-enabled dropdown will re-fetch on first
+    /// open.
     /// </summary>
-    private static async Task RefreshModelsAsync(
+    private void RefreshModelComboBoxEnabledStates()
+    {
+        if (_credentialService == null) return;
+
+        bool claudeHasKey = _credentialService.HasAiApiKey("Claude");
+        ClaudeApiModelComboBox.IsEnabled = claudeHasKey;
+        if (!claudeHasKey) _claudeModelsDiscovered = false;
+
+        bool geminiHasKey = _credentialService.HasAiApiKey("Gemini");
+        GeminiApiModelComboBox.IsEnabled = geminiHasKey;
+        if (!geminiHasKey) _geminiModelsDiscovered = false;
+
+        bool openAiHasKey = _credentialService.HasAiApiKey("OpenAI");
+        OpenAiApiModelComboBox.IsEnabled = openAiHasKey;
+        if (!openAiHasKey) _openAiModelsDiscovered = false;
+
+        // Compatible-endpoint discovery also needs the base URL — no
+        // URL = no endpoint to hit /models on.
+        bool compatHasKey = _credentialService.HasAiApiKey("OpenAiCompatible");
+        bool compatHasUrl = !string.IsNullOrWhiteSpace(_settings?.OpenAiCompatibleBaseUrl);
+        OpenAiCompatibleModelComboBox.IsEnabled = compatHasKey && compatHasUrl;
+        if (!(compatHasKey && compatHasUrl)) _openAiCompatibleModelsDiscovered = false;
+    }
+
+    /// <summary>
+    /// Populate the dropdown with the discovered model list. Selection
+    /// strategy:
+    /// <list type="bullet">
+    ///   <item>If the user has a saved <paramref name="currentValue"/>
+    ///   AND it's in the discovered list, keep it selected.</item>
+    ///   <item>If the user has a saved value but it's NOT in the list
+    ///   (the model was retired by the provider), select the first
+    ///   discovered model, persist the swap, and return
+    ///   <c>retiredFrom</c> so the caller can surface the change in
+    ///   the UI / log.</item>
+    ///   <item>If the user has no saved value, the first discovered
+    ///   model is the default and gets persisted.</item>
+    /// </list>
+    /// Returns a tuple describing what happened so callers can update
+    /// status text without having to inspect the ComboBox afterwards.
+    /// </summary>
+    private (string Selected, string? RetiredFrom) PopulateAndSelectModel(
+        ComboBox combo, IReadOnlyList<string> models, string currentValue,
+        Action<string>? persist)
+    {
+        combo.Items.Clear();
+        foreach (var m in models) combo.Items.Add(m);
+
+        if (models.Count == 0)
+        {
+            // Empty list — nothing to select. Preserve whatever the
+            // user typed (Text is already what they typed).
+            return (combo.Text ?? string.Empty, null);
+        }
+
+        if (!string.IsNullOrEmpty(currentValue) && models.Contains(currentValue))
+        {
+            combo.Text = currentValue;
+            return (currentValue, null);
+        }
+
+        // Either the saved value is missing, or it's a model the
+        // provider no longer offers. Auto-select the first discovered
+        // model (provider's recommended ordering) and persist.
+        var first = models[0];
+        combo.Text = first;
+        persist?.Invoke(first);
+        var retired = !string.IsNullOrEmpty(currentValue) ? currentValue : null;
+        if (retired != null)
+        {
+            Log.Warn("AiSettings",
+                $"Saved model '{retired}' not in provider's /models response — auto-switched to '{first}'");
+        }
+        return (first, retired);
+    }
+
+    /// <summary>
+    /// On-demand model discovery wrapper. Skips if the provider hasn't
+    /// got a key configured or if discovery already ran for this
+    /// session. Shows a progress bar during the fetch and updates the
+    /// status text on completion. Per <c>feedback_lazy_network_fetches.md</c>,
+    /// we never auto-fire this on dialog open — only on explicit user
+    /// intent (DropDownOpened or Save &amp; Test).
+    /// </summary>
+    private async Task DiscoverModelsOnDemandAsync(
+        string credentialProviderName,
+        AiProviderKind providerKind,
+        ComboBox combo,
+        ProgressBar loadingBar,
+        TextBlock statusText,
+        Action<string> persistModel,
+        Func<bool> alreadyDiscovered,
+        Action<bool> setAlreadyDiscovered,
+        Func<bool> inFlight,
+        Action<bool> setInFlight)
+    {
+        if (_credentialService == null) return;
+        if (alreadyDiscovered() || inFlight()) return;
+        if (!_credentialService.HasAiApiKey(credentialProviderName))
+        {
+            // Defense in depth — the model ComboBox should be disabled
+            // when no key is configured, so we shouldn't be able to
+            // reach this branch. Log just in case something flips
+            // IsEnabled out from under us.
+            Log.Warn("AiSettings", $"{providerKind}: DropDownOpened fired without an API key — the dropdown should have been disabled");
+            return;
+        }
+
+        setInFlight(true);
+        loadingBar.Visibility = Visibility.Visible;
+        var baseStatus = statusText.Text;
+        statusText.Text = $"{baseStatus} · fetching models…";
+
+        try
+        {
+            var client = ResolveSingletonApiClient(providerKind);
+            if (client == null)
+            {
+                Log.Warn("AiSettings", $"{providerKind}: IAiApiClient not resolvable from App.Services — skip discovery");
+                statusText.Text = baseStatus; // restore
+                return;
+            }
+
+            var timeout = GetAiTimeoutSeconds();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(2, timeout)));
+            Log.Perf("AiSettings", $"{providerKind}: on-demand discovery start");
+            var models = await client.ListModelsAsync(cts.Token).ConfigureAwait(true);
+
+            if (models is { Count: > 0 })
+            {
+                var current = (combo.Text ?? string.Empty).Trim();
+                var (selected, retiredFrom) = PopulateAndSelectModel(combo, models, current, persistModel);
+                setAlreadyDiscovered(true);
+                if (retiredFrom != null)
+                {
+                    statusText.Text = $"{baseStatus} · {models.Count} models · '{retiredFrom}' retired → switched to '{selected}'";
+                }
+                else
+                {
+                    statusText.Text = $"{baseStatus} · {models.Count} model{(models.Count == 1 ? string.Empty : "s")} available";
+                }
+                Log.Perf("AiSettings", $"{providerKind}: on-demand discovery populated {models.Count} models (selected='{selected}')");
+            }
+            else
+            {
+                statusText.Text = $"{baseStatus} · provider returned 0 models";
+                Log.Warn("AiSettings", $"{providerKind}: on-demand discovery returned 0 models");
+            }
+        }
+        catch (AiMergeAssistantException ex)
+        {
+            statusText.Text = $"{baseStatus} · could not list models (see log)";
+            Log.Warn("AiSettings", $"{providerKind}: on-demand discovery failed — {ex.Message}");
+        }
+        catch (OperationCanceledException)
+        {
+            statusText.Text = $"{baseStatus} · discovery timed out";
+            Log.Info("AiSettings", $"{providerKind}: on-demand discovery cancelled/timed out");
+        }
+        catch (Exception ex)
+        {
+            statusText.Text = $"{baseStatus} · discovery error (see log)";
+            Log.Error("AiSettings", $"{providerKind}: unexpected on-demand discovery exception", ex);
+        }
+        finally
+        {
+            loadingBar.Visibility = Visibility.Collapsed;
+            setInFlight(false);
+        }
+    }
+
+    /// <summary>
+    /// Resolve the singleton <see cref="IAiApiClient"/> registered in
+    /// DI for the given provider. Used by on-demand discovery so the
+    /// settings-time fetch shares the same key cache as runtime merge
+    /// calls — invalidating one invalidates the other.
+    /// </summary>
+    private static IAiApiClient? ResolveSingletonApiClient(AiProviderKind providerKind)
+    {
+        try
+        {
+            var services = Microsoft.Extensions.DependencyInjection
+                .ServiceProviderServiceExtensions.GetServices<IAiApiClient>(App.Services);
+            return services.FirstOrDefault(c => c.Provider == providerKind);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    // ───── DropDownOpened handlers (the four model ComboBoxes) ─────
+
+    private async void ClaudeApiModelComboBox_DropDownOpened(object sender, EventArgs e)
+    {
+        await DiscoverModelsOnDemandAsync(
+            credentialProviderName: "Claude",
+            providerKind: AiProviderKind.ClaudeApi,
+            combo: ClaudeApiModelComboBox,
+            loadingBar: ClaudeApiModelLoadingBar,
+            statusText: ClaudeApiStatusText,
+            persistModel: m => { if (_settings != null) { _settings.ClaudeApiModel = m; _settingsService?.SaveSettings(_settings); } },
+            alreadyDiscovered: () => _claudeModelsDiscovered,
+            setAlreadyDiscovered: v => _claudeModelsDiscovered = v,
+            inFlight: () => _claudeDiscoveryInFlight,
+            setInFlight: v => _claudeDiscoveryInFlight = v);
+    }
+
+    private async void GeminiApiModelComboBox_DropDownOpened(object sender, EventArgs e)
+    {
+        await DiscoverModelsOnDemandAsync(
+            credentialProviderName: "Gemini",
+            providerKind: AiProviderKind.GeminiApi,
+            combo: GeminiApiModelComboBox,
+            loadingBar: GeminiApiModelLoadingBar,
+            statusText: GeminiApiStatusText,
+            persistModel: m => { if (_settings != null) { _settings.GeminiApiModel = m; _settingsService?.SaveSettings(_settings); } },
+            alreadyDiscovered: () => _geminiModelsDiscovered,
+            setAlreadyDiscovered: v => _geminiModelsDiscovered = v,
+            inFlight: () => _geminiDiscoveryInFlight,
+            setInFlight: v => _geminiDiscoveryInFlight = v);
+    }
+
+    private async void OpenAiApiModelComboBox_DropDownOpened(object sender, EventArgs e)
+    {
+        await DiscoverModelsOnDemandAsync(
+            credentialProviderName: "OpenAI",
+            providerKind: AiProviderKind.OpenAi,
+            combo: OpenAiApiModelComboBox,
+            loadingBar: OpenAiApiModelLoadingBar,
+            statusText: OpenAiApiStatusText,
+            persistModel: m => { if (_settings != null) { _settings.OpenAiApiModel = m; _settingsService?.SaveSettings(_settings); } },
+            alreadyDiscovered: () => _openAiModelsDiscovered,
+            setAlreadyDiscovered: v => _openAiModelsDiscovered = v,
+            inFlight: () => _openAiDiscoveryInFlight,
+            setInFlight: v => _openAiDiscoveryInFlight = v);
+    }
+
+    private async void OpenAiCompatibleModelComboBox_DropDownOpened(object sender, EventArgs e)
+    {
+        await DiscoverModelsOnDemandAsync(
+            credentialProviderName: "OpenAiCompatible",
+            providerKind: AiProviderKind.OpenAiCompatible,
+            combo: OpenAiCompatibleModelComboBox,
+            loadingBar: OpenAiCompatibleModelLoadingBar,
+            statusText: OpenAiCompatibleStatusText,
+            persistModel: m => { if (_settings != null) { _settings.OpenAiCompatibleModel = m; _settingsService?.SaveSettings(_settings); } },
+            alreadyDiscovered: () => _openAiCompatibleModelsDiscovered,
+            setAlreadyDiscovered: v => _openAiCompatibleModelsDiscovered = v,
+            inFlight: () => _openAiCompatibleDiscoveryInFlight,
+            setInFlight: v => _openAiCompatibleDiscoveryInFlight = v);
+    }
+
+    /// <summary>
+    /// After a successful Save &amp; Test, fetch the provider's live
+    /// model list and repopulate the dropdown. On any failure we leave
+    /// the existing dropdown contents alone — the user's typed value
+    /// stays, and we deliberately do NOT fall back to a hardcoded list
+    /// because a stale list is worse than no list (the user might pick
+    /// a model that no longer exists). A breadcrumb goes to the log
+    /// for diagnosis if the user reports "no models populated".
+    /// </summary>
+    private async Task RefreshModelsAsync(
         ComboBox combo,
         IAiApiClient probeClient,
-        IReadOnlyList<string> curatedFallback,
         string currentModel,
+        TextBlock statusText,
+        string baseStatus,
         CancellationToken cancellationToken)
     {
+        Log.Perf("AiSettings", $"{probeClient.Provider}: RefreshModelsAsync start (saved model='{currentModel}')");
         try
         {
             var models = await probeClient.ListModelsAsync(cancellationToken).ConfigureAwait(true);
             if (models is { Count: > 0 })
             {
-                PopulateModelComboBox(combo, models, currentModel);
-                return;
+                // No persist callback here — Save & Test already saved
+                // the model name moments ago. PopulateAndSelectModel
+                // only invokes persist when a retired-model swap
+                // happens (saved value not in list), which is rare on
+                // the Save & Test path but possible on first-time
+                // configure with a stale typed value.
+                Action<string>? persist = newModel =>
+                {
+                    if (_settings == null || _settingsService == null) return;
+                    switch (probeClient.Provider)
+                    {
+                        case AiProviderKind.ClaudeApi: _settings.ClaudeApiModel = newModel; break;
+                        case AiProviderKind.GeminiApi: _settings.GeminiApiModel = newModel; break;
+                        case AiProviderKind.OpenAi: _settings.OpenAiApiModel = newModel; break;
+                        case AiProviderKind.OpenAiCompatible: _settings.OpenAiCompatibleModel = newModel; break;
+                    }
+                    _settingsService.SaveSettings(_settings);
+                };
+                var (selected, retiredFrom) = PopulateAndSelectModel(combo, models, currentModel, persist);
+                Log.Perf("AiSettings", $"{probeClient.Provider}: populated dropdown with {models.Count} discovered models (selected='{selected}')");
+                statusText.Text = retiredFrom != null
+                    ? $"{baseStatus} · {models.Count} models · '{retiredFrom}' retired → switched to '{selected}'"
+                    : $"{baseStatus} · {models.Count} model{(models.Count == 1 ? string.Empty : "s")} available";
+            }
+            else
+            {
+                Log.Warn("AiSettings", $"{probeClient.Provider}: ListModelsAsync returned 0 models — dropdown unchanged");
+                statusText.Text = $"{baseStatus} · provider returned 0 models";
             }
         }
         catch (AiMergeAssistantException ex)
         {
-            // Best-effort — failures here aren't user-facing. The
-            // dropdown stays usable via the curated fallback, and the
-            // log line gives a breadcrumb for diagnosing if the user
-            // reports "no models populated".
-            Log.Info("AiSettings", $"ListModelsAsync fallback ({ex.GetType().Name}: {ex.Message})");
+            Log.Warn("AiSettings", $"{probeClient.Provider}: model discovery failed — {ex.GetType().Name}: {ex.Message}");
+            statusText.Text = $"{baseStatus} · could not list models (see log)";
         }
         catch (OperationCanceledException)
         {
-            // The probe completed but the model fetch timed out — leave
-            // whatever was already populated.
-            return;
+            Log.Info("AiSettings", $"{probeClient.Provider}: model discovery cancelled");
+            statusText.Text = $"{baseStatus} · model discovery cancelled";
         }
-        PopulateModelComboBox(combo, curatedFallback, currentModel);
+        catch (Exception ex)
+        {
+            Log.Error("AiSettings", $"{probeClient.Provider}: unexpected RefreshModelsAsync exception", ex);
+            statusText.Text = $"{baseStatus} · model discovery error (see log)";
+        }
     }
 
     #endregion
@@ -744,6 +1043,22 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         GeminiApiBody.Visibility = api ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    private void OpenAiTransport_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressOpenAiTransportSync || _settings == null || _settingsService == null) return;
+        _settings.OpenAiTransport = OpenAiTransportApiRadio.IsChecked == true ? "Api" : "Cli";
+        _settingsService.SaveSettings(_settings);
+        ApplyOpenAiTransportVisibility();
+    }
+
+    private void ApplyOpenAiTransportVisibility()
+    {
+        if (OpenAiCliBody == null || OpenAiApiBody == null) return;
+        var api = OpenAiTransportApiRadio.IsChecked == true;
+        OpenAiCliBody.Visibility = api ? Visibility.Collapsed : Visibility.Visible;
+        OpenAiApiBody.Visibility = api ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void GeminiApiModel_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == System.Windows.Input.Key.Enter) PersistGeminiApiModel();
@@ -762,6 +1077,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
     private async void GeminiApiSaveTest_Click(object sender, RoutedEventArgs e)
     {
+        Log.Perf("AiSettings", "Gemini (API): Save & Test clicked");
         try
         {
             if (_settings == null || _settingsService == null || _credentialService == null) return;
@@ -790,7 +1106,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("Gemini", typed); InvokeApiKeyInvalidator("Gemini");
+                _credentialService.SetAiApiKey("Gemini", typed); InvokeApiKeyInvalidator("Gemini"); RefreshModelComboBoxEnabledStates();
                 GeminiApiKeyPasswordBox.Clear();
             }
             _settings.GeminiApiModel = model;
@@ -815,7 +1131,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 UpdateGeminiApiStatusLine();
                 GeminiApiDisconnectButton.IsEnabled = true;
                 UpdateAiDefaults();
-                await RefreshModelsAsync(GeminiApiModelComboBox, probe, GeminiApiModels, model, cts.Token);
+                await RefreshModelsAsync(GeminiApiModelComboBox, probe, model, GeminiApiStatusText, GeminiApiStatusText.Text, cts.Token); _geminiModelsDiscovered = true;
             }
             else
             {
@@ -841,7 +1157,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("Gemini"); InvokeApiKeyInvalidator("Gemini");
+        _credentialService.DeleteAiApiKey("Gemini"); InvokeApiKeyInvalidator("Gemini"); RefreshModelComboBoxEnabledStates();
         _isGeminiApiConnected = false;
         _settings.IsGeminiApiConnected = false;
         _settingsService.SaveSettings(_settings);
@@ -932,6 +1248,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
     private async void OpenAiApiSaveTest_Click(object sender, RoutedEventArgs e)
     {
+        Log.Perf("AiSettings", "OpenAI (API): Save & Test clicked");
         try
         {
             if (_settings == null || _settingsService == null || _credentialService == null) return;
@@ -960,7 +1277,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("OpenAI", typed); InvokeApiKeyInvalidator("OpenAI");
+                _credentialService.SetAiApiKey("OpenAI", typed); InvokeApiKeyInvalidator("OpenAI"); RefreshModelComboBoxEnabledStates();
                 OpenAiApiKeyPasswordBox.Clear();
             }
             _settings.OpenAiApiModel = model;
@@ -985,7 +1302,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 UpdateOpenAiApiStatusLine();
                 OpenAiApiDisconnectButton.IsEnabled = true;
                 UpdateAiDefaults();
-                await RefreshModelsAsync(OpenAiApiModelComboBox, probe, OpenAiApiModels, model, cts.Token);
+                await RefreshModelsAsync(OpenAiApiModelComboBox, probe, model, OpenAiApiStatusText, OpenAiApiStatusText.Text, cts.Token); _openAiModelsDiscovered = true;
             }
             else
             {
@@ -1011,7 +1328,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("OpenAI"); InvokeApiKeyInvalidator("OpenAI");
+        _credentialService.DeleteAiApiKey("OpenAI"); InvokeApiKeyInvalidator("OpenAI"); RefreshModelComboBoxEnabledStates();
         _isOpenAiApiConnected = false;
         _settings.IsOpenAiApiConnected = false;
         _settingsService.SaveSettings(_settings);
@@ -1065,6 +1382,9 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
         }
         _settings.OpenAiCompatibleBaseUrl = newUrl;
         _settingsService.SaveSettings(_settings);
+        // Model dropdown gate depends on (key && baseUrl); URL flips
+        // change that state.
+        RefreshModelComboBoxEnabledStates();
     }
 
     private void ResetOpenAiCompatibleConnectedState()
@@ -1101,6 +1421,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
     private async void OpenAiCompatibleSaveTest_Click(object sender, RoutedEventArgs e)
     {
+        Log.Perf("AiSettings", "OpenAI-Compatible: Save & Test clicked");
         try
         {
             if (_settings == null || _settingsService == null || _credentialService == null) return;
@@ -1163,7 +1484,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
 
             if (!string.IsNullOrEmpty(typed))
             {
-                _credentialService.SetAiApiKey("OpenAiCompatible", typed); InvokeApiKeyInvalidator("OpenAiCompatible");
+                _credentialService.SetAiApiKey("OpenAiCompatible", typed); InvokeApiKeyInvalidator("OpenAiCompatible"); RefreshModelComboBoxEnabledStates();
                 OpenAiCompatibleApiKeyPasswordBox.Clear();
             }
             _settings.OpenAiCompatibleBaseUrl = baseUrl;
@@ -1193,7 +1514,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
                 // No curated fallback for the compatible endpoint —
                 // model identifiers are endpoint-specific. If discovery
                 // fails the dropdown keeps whatever the user typed.
-                await RefreshModelsAsync(OpenAiCompatibleModelComboBox, probe, Array.Empty<string>(), model, cts.Token);
+                await RefreshModelsAsync(OpenAiCompatibleModelComboBox, probe, model, OpenAiCompatibleStatusText, OpenAiCompatibleStatusText.Text, cts.Token); _openAiCompatibleModelsDiscovered = true;
             }
             else
             {
@@ -1219,7 +1540,7 @@ public partial class AiSettingsControl : UserControl, ISettingsSectionControl
     {
         if (_settings == null || _settingsService == null || _credentialService == null) return;
 
-        _credentialService.DeleteAiApiKey("OpenAiCompatible"); InvokeApiKeyInvalidator("OpenAiCompatible");
+        _credentialService.DeleteAiApiKey("OpenAiCompatible"); InvokeApiKeyInvalidator("OpenAiCompatible"); RefreshModelComboBoxEnabledStates();
         _isOpenAiCompatibleConnected = false;
         _settings.IsOpenAiCompatibleConnected = false;
         _settingsService.SaveSettings(_settings);

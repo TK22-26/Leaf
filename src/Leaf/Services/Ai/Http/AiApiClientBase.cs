@@ -79,40 +79,96 @@ public abstract class AiApiClientBase : IAiApiClient
         ArgumentNullException.ThrowIfNull(prompt);
         ArgumentNullException.ThrowIfNull(jsonSchema);
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Leaf.Services.Log.Perf("AiHttp", $"{ProviderLabel}: SendAsync start (prompt={prompt.Length} chars, schema={jsonSchema.Length} chars)");
+
         var key = GetKey()
             ?? throw new AiMergeAssistantException(
                 $"{ProviderLabel}: no API key configured. Open Settings → AI to set one.");
 
         using var request = BuildRequest(prompt, jsonSchema, key);
         var rawBody = await SendAndReadBodyAsync(request, cancellationToken).ConfigureAwait(false);
-        return ExtractStructuredOutput(rawBody);
+
+        try
+        {
+            var inner = ExtractStructuredOutput(rawBody);
+            Leaf.Services.Log.Perf("AiHttp", $"{ProviderLabel}: SendAsync extracted structured output ({inner.Length} chars in {sw.ElapsedMilliseconds}ms total)");
+            return inner;
+        }
+        catch (AiMergeAssistantException ex)
+        {
+            Leaf.Services.Log.Warn("AiHttp", $"{ProviderLabel}: SendAsync envelope-parse failed — {ex.Message}");
+            throw;
+        }
     }
 
     public async Task<string?> TestConnectionAsync(CancellationToken cancellationToken)
     {
+        Leaf.Services.Log.Perf("AiHttp", $"{ProviderLabel}: TestConnection start");
         var key = GetKey();
-        if (string.IsNullOrEmpty(key)) return "No API key configured.";
+        if (string.IsNullOrEmpty(key))
+        {
+            Leaf.Services.Log.Warn("AiHttp", $"{ProviderLabel}: TestConnection aborted — no API key in cache or credential store");
+            return "No API key configured.";
+        }
         try
         {
             using var request = BuildTestRequest(key);
             _ = await SendAndReadBodyAsync(request, cancellationToken).ConfigureAwait(false);
+            Leaf.Services.Log.Perf("AiHttp", $"{ProviderLabel}: TestConnection succeeded");
             return null;
         }
         catch (AiMergeAssistantException ex)
         {
+            Leaf.Services.Log.Warn("AiHttp", $"{ProviderLabel}: TestConnection failed — {ex.Message}");
             return ex.Message;
         }
     }
 
     public async Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken cancellationToken)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Leaf.Services.Log.Perf("AiHttp", $"{ProviderLabel}: ListModels start");
         var key = GetKey()
             ?? throw new AiMergeAssistantException(
                 $"{ProviderLabel}: no API key configured. Open Settings → AI to set one.");
 
         using var request = BuildListModelsRequest(key);
-        var rawBody = await SendAndReadBodyAsync(request, cancellationToken).ConfigureAwait(false);
-        return ParseModels(rawBody);
+        string rawBody;
+        try
+        {
+            rawBody = await SendAndReadBodyAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (AiMergeAssistantException ex)
+        {
+            Leaf.Services.Log.Warn("AiHttp", $"{ProviderLabel}: ListModels HTTP failed after {sw.ElapsedMilliseconds}ms — {ex.Message}");
+            throw;
+        }
+        Leaf.Services.Log.Info("AiHttp", $"{ProviderLabel}: ListModels HTTP success ({rawBody.Length} bytes in {sw.ElapsedMilliseconds}ms)");
+
+        IReadOnlyList<string> models;
+        try
+        {
+            models = ParseModels(rawBody);
+        }
+        catch (AiMergeAssistantException ex)
+        {
+            Leaf.Services.Log.Warn("AiHttp", $"{ProviderLabel}: ListModels parse failed — {ex.Message}. First 200 chars of body: {Truncate(rawBody, 200)}");
+            throw;
+        }
+
+        Leaf.Services.Log.Perf("AiHttp", $"{ProviderLabel}: ListModels parsed {models.Count} models in {sw.ElapsedMilliseconds}ms");
+        if (Leaf.Services.Log.Level == Leaf.Services.LogLevel.Verbose && models.Count > 0)
+        {
+            Leaf.Services.Log.Info("AiHttp", $"{ProviderLabel}: ListModels result — {string.Join(", ", models)}");
+        }
+        return models;
+    }
+
+    private static string Truncate(string s, int max)
+    {
+        var compact = s.Replace("\r", " ").Replace("\n", " ");
+        return compact.Length <= max ? compact : compact[..max] + "…";
     }
 
     /// <summary>
@@ -168,6 +224,11 @@ public abstract class AiApiClientBase : IAiApiClient
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var method = request.Method.Method;
+        var url = request.RequestUri?.ToString() ?? "<null>";
+        Leaf.Services.Log.Info("AiHttp", $"{ProviderLabel}: → {method} {url} (timeout={timeoutSeconds}s)");
+
         HttpResponseMessage response;
         try
         {
@@ -179,11 +240,18 @@ public abstract class AiApiClientBase : IAiApiClient
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            Leaf.Services.Log.Warn("AiHttp", $"{ProviderLabel}: ⏱ {method} {url} timed out after {timeoutSeconds}s");
             throw new AiMergeAssistantException($"{ProviderLabel}: request timed out after {timeoutSeconds}s.");
         }
         catch (HttpRequestException ex)
         {
+            Leaf.Services.Log.Warn("AiHttp", $"{ProviderLabel}: ✗ {method} {url} network error ({ex.GetType().Name}: {ex.Message})");
             throw new AiMergeAssistantException($"{ProviderLabel}: network error ({ex.Message}).", ex);
+        }
+        catch (TaskCanceledException) // external cancellation
+        {
+            Leaf.Services.Log.Info("AiHttp", $"{ProviderLabel}: ⊘ {method} {url} cancelled");
+            throw;
         }
 
         using (response)
@@ -194,13 +262,19 @@ public abstract class AiApiClientBase : IAiApiClient
             var declaredLength = response.Content.Headers.ContentLength;
             if (declaredLength.HasValue && declaredLength.Value > MaxResponseBytes)
             {
+                Leaf.Services.Log.Warn("AiHttp", $"{ProviderLabel}: ✗ {method} {url} Content-Length={declaredLength.Value} exceeds cap {MaxResponseBytes}");
                 throw new AiMergeAssistantException(
                     $"{ProviderLabel}: response too large ({declaredLength.Value} bytes; cap {MaxResponseBytes}).");
             }
 
             var body = await ReadBodyCappedAsync(response, timeoutCts.Token).ConfigureAwait(false);
+            Leaf.Services.Log.Perf("AiHttp",
+                $"{ProviderLabel}: ← {(int)response.StatusCode} {response.StatusCode} {method} {url} ({body.Length} bytes in {sw.ElapsedMilliseconds}ms)");
+
             if (!response.IsSuccessStatusCode)
             {
+                Leaf.Services.Log.Warn("AiHttp",
+                    $"{ProviderLabel}: ✗ HTTP {(int)response.StatusCode}. First 240 chars of body: {Truncate(body, 240)}");
                 throw new AiMergeAssistantException(BuildHttpErrorMessage(response.StatusCode, body));
             }
             return body;

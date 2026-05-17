@@ -164,9 +164,15 @@
                               IsEditable="True"
                               Margin="0,0,0,4"
                               Padding="8,6"
+                              DropDownOpened="ClaudeApiModelComboBox_DropDownOpened"
                               KeyUp="ClaudeApiModel_KeyUp"
                               LostFocus="ClaudeApiModel_LostFocus" />
-                    <TextBlock Text="Pick from the list or type a custom model name. List: claude-opus-4-7, claude-sonnet-4-5, claude-haiku-4-5."
+                    <ProgressBar x:Name="ClaudeApiModelLoadingBar"
+                                 IsIndeterminate="True"
+                                 Height="2"
+                                 Margin="0,0,0,4"
+                                 Visibility="Collapsed" />
+                    <TextBlock Text="Click the dropdown to fetch your account's models from Anthropic, or click Save &amp; Test. You can also type a custom identifier."
                                FontSize="11"
                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                Margin="0,0,0,16"
@@ -297,9 +303,15 @@
                               IsEditable="True"
                               Margin="0,0,0,4"
                               Padding="8,6"
+                              DropDownOpened="GeminiApiModelComboBox_DropDownOpened"
                               KeyUp="GeminiApiModel_KeyUp"
                               LostFocus="GeminiApiModel_LostFocus" />
-                    <TextBlock Text="Pick from the list or type a custom model name. List: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.0-flash."
+                    <ProgressBar x:Name="GeminiApiModelLoadingBar"
+                                 IsIndeterminate="True"
+                                 Height="2"
+                                 Margin="0,0,0,4"
+                                 Visibility="Collapsed" />
+                    <TextBlock Text="Click the dropdown to fetch your account's models from Google, or click Save &amp; Test. You can also type a custom identifier."
                                FontSize="11"
                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                Margin="0,0,0,16"
@@ -337,19 +349,35 @@
             </Border>
         </StackPanel>
 
-        <!-- Codex Content -->
-        <StackPanel x:Name="ContentCodex" Visibility="Collapsed">
-            <TextBlock Text="Codex"
+        <!-- OpenAI (combined: Codex CLI + direct API key) -->
+        <StackPanel x:Name="ContentOpenAi" Visibility="Collapsed">
+            <TextBlock Text="OpenAI"
                        FontSize="18"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                        Margin="0,0,0,4" />
-            <TextBlock Text="Connect to Codex CLI for AI-powered features"
+            <TextBlock Text="Use the local Codex CLI (OpenAI's CLI tool — ChatGPT subscription or API key auth) or your own OpenAI API key for direct-billing HTTP access."
                        FontSize="12"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Margin="0,0,0,16" />
+                       Margin="0,0,0,16"
+                       TextWrapping="Wrap" />
 
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            <!-- Transport selector -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <RadioButton x:Name="OpenAiTransportCliRadio"
+                             Content="CLI (Codex)"
+                             GroupName="OpenAiTransport"
+                             Margin="0,0,16,0"
+                             Checked="OpenAiTransport_Changed" />
+                <RadioButton x:Name="OpenAiTransportApiRadio"
+                             Content="API key"
+                             GroupName="OpenAiTransport"
+                             Checked="OpenAiTransport_Changed" />
+            </StackPanel>
+
+            <!-- CLI body (Codex) -->
+            <Border x:Name="OpenAiCliBody"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="8"
@@ -383,26 +411,15 @@
                             IsEnabled="False" />
                 </Grid>
             </Border>
-        </StackPanel>
 
-        <!-- OpenAI (API key) Content -->
-        <StackPanel x:Name="ContentOpenAi" Visibility="Collapsed">
-            <TextBlock Text="OpenAI"
-                       FontSize="18"
-                       FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                       Margin="0,0,0,4" />
-            <TextBlock Text="Connect to OpenAI with your own API key (direct-billing). The Codex CLI auth path is configured under Codex."
-                       FontSize="12"
-                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Margin="0,0,0,16"
-                       TextWrapping="Wrap" />
-
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            <!-- API body (direct OpenAI HTTPS) -->
+            <Border x:Name="OpenAiApiBody"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="8"
-                    Padding="16">
+                    Padding="16"
+                    Visibility="Collapsed">
                 <StackPanel>
                     <TextBlock Text="OpenAI API key"
                                FontSize="12"
@@ -425,9 +442,15 @@
                               IsEditable="True"
                               Margin="0,0,0,4"
                               Padding="8,6"
+                              DropDownOpened="OpenAiApiModelComboBox_DropDownOpened"
                               KeyUp="OpenAiApiModel_KeyUp"
                               LostFocus="OpenAiApiModel_LostFocus" />
-                    <TextBlock Text="Pick from the list or type a custom model name. List: gpt-5-codex, gpt-5, gpt-5-mini, gpt-5-nano, o3, o4-mini, gpt-4o."
+                    <ProgressBar x:Name="OpenAiApiModelLoadingBar"
+                                 IsIndeterminate="True"
+                                 Height="2"
+                                 Margin="0,0,0,4"
+                                 Visibility="Collapsed" />
+                    <TextBlock Text="Click the dropdown to fetch your account's models from OpenAI, or click Save &amp; Test. You can also type a custom identifier."
                                FontSize="11"
                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                Margin="0,0,0,16"
@@ -519,9 +542,15 @@
                               IsEditable="True"
                               Margin="0,0,0,4"
                               Padding="8,6"
+                              DropDownOpened="OpenAiCompatibleModelComboBox_DropDownOpened"
                               KeyUp="OpenAiCompatibleModel_KeyUp"
                               LostFocus="OpenAiCompatibleModel_LostFocus" />
-                    <TextBlock Text="Free-text — the identifier varies per endpoint. Examples: anthropic/claude-sonnet-4-5 (OpenRouter), local-model (LM Studio default), llama3.1:8b (Ollama)."
+                    <ProgressBar x:Name="OpenAiCompatibleModelLoadingBar"
+                                 IsIndeterminate="True"
+                                 Height="2"
+                                 Margin="0,0,0,4"
+                                 Visibility="Collapsed" />
+                    <TextBlock Text="Click the dropdown to fetch the endpoint's model list, or type a custom identifier. Examples: anthropic/claude-sonnet-4-5 (OpenRouter), local-model (LM Studio default), llama3.1:8b (Ollama)."
                                FontSize="11"
                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                Margin="0,0,0,16"
