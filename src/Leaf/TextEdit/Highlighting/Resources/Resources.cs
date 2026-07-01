@@ -59,8 +59,10 @@ namespace Leaf.TextEdit.Highlighting
 											 ".booproj;.build;.xfrm;.targets;.xaml;.xpt;" +
 											 ".xft;.map;.wsdl;.disco;.ps1xml;.nuspec").Split(';'),
 									 "XML-Mode.xshd");
-			hlm.RegisterHighlighting("MarkDown", new[] { ".md" }, "MarkDown-Mode.xshd");
 			hlm.RegisterHighlighting("MarkDownWithFontSize", new[] { ".md" }, "MarkDownWithFontSize-Mode.xshd");
+			// Keep the preview-style markdown highlighter available by name,
+			// but make extension lookup use the plain editor-safe definition.
+			hlm.RegisterHighlighting("MarkDown", new[] { ".md" }, "MarkDown-Mode.xshd");
 			hlm.RegisterHighlighting("Json", new[] { ".json" }, "Json.xshd");
 		}
 	}

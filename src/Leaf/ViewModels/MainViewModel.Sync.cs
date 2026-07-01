@@ -136,7 +136,7 @@ public partial class MainViewModel
         if (SelectedRepository != null)
         {
             SelectedRepository.BranchesLoaded = false;
-            await SelectRepositoryAsync(SelectedRepository);
+            await SelectRepositoryAsync(SelectedRepository, fetchInBackground: false);
         }
     }
 
@@ -385,6 +385,9 @@ public partial class MainViewModel
             if (SelectedRepository == null)
                 return;
 
+            if (!string.Equals(SelectedRepository.Path, e.RepositoryPath, StringComparison.OrdinalIgnoreCase))
+                return;
+
             // Update ahead/behind counts
             SelectedRepository.AheadBy = e.AheadBy;
             SelectedRepository.BehindBy = e.BehindBy;
@@ -396,6 +399,37 @@ public partial class MainViewModel
 
             // Notify that LastFetchTime changed (property delegates to service)
             OnPropertyChanged(nameof(LastFetchTime));
+
+            RefreshAfterBackgroundFetchAsync(SelectedRepository)
+                .FireAndForget(nameof(RefreshAfterBackgroundFetchAsync), isUserAction: false);
         }).FireAndForget(nameof(OnAutoFetchCompleted), isUserAction: false);
+    }
+
+    private async Task RefreshAfterBackgroundFetchAsync(RepositoryInfo repository)
+    {
+        if (SelectedRepository == null ||
+            !string.Equals(SelectedRepository.Path, repository.Path, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        repository.BranchesLoaded = false;
+        await LoadBranchesForRepoAsync(repository, forceReload: true, skipFilterApplication: true);
+
+        if (SelectedRepository == null ||
+            !string.Equals(SelectedRepository.Path, repository.Path, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (repository.HiddenBranchNames.Count > 0 || repository.SoloBranchNames.Count > 0)
+        {
+            ApplyBranchFiltersForRepo(repository);
+        }
+
+        if (GitGraphViewModel != null)
+        {
+            await GitGraphViewModel.LoadRepositoryAsync(repository.Path);
+        }
     }
 }

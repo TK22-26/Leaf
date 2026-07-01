@@ -69,7 +69,7 @@ public partial class MainViewModel
             if (lastRepo != null)
             {
                 Log.Info("Repository", $"Restoring last repo: {lastRepo.Name} ({lastRepo.Path})");
-                await SelectRepositoryAsync(lastRepo, fetchInBackground: false);
+                await SelectRepositoryAsync(lastRepo, fetchInBackground: true);
                 // Request the View to visually select the repository in the TreeView
                 // Guard: keep _isSwitchingRepository true so TreeView's SelectedItemChanged
                 // doesn't re-trigger SelectRepositoryAsync for the same repo
@@ -338,7 +338,7 @@ public partial class MainViewModel
     /// Select a repository to view.
     /// </summary>
     [RelayCommand]
-    public Task SelectRepositoryAsync(RepositoryInfo? repository) => SelectRepositoryAsync(repository, fetchInBackground: false);
+    public Task SelectRepositoryAsync(RepositoryInfo? repository) => SelectRepositoryAsync(repository, fetchInBackground: true);
 
     public async Task SelectRepositoryAsync(RepositoryInfo? repository, bool fetchInBackground)
     {

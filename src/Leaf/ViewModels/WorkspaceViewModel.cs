@@ -230,6 +230,10 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 _scopeFactory, _gitService, _settingsService,
                 _repositoryService, _paletteRegistry,
                 fullPath, sm.Name);
+            if (tile.Graph != null)
+            {
+                tile.Graph.CheckoutBranchAsync = branch => CheckoutTileBranchAsync(tile, branch);
+            }
             tile.Workspace = this;
             tile.IsPinned = pinnedSet.Contains(sm.Path);
             Tiles.Add(tile);
@@ -553,6 +557,84 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             Log.Error("Workspace", $"FetchTile {tile.RepositoryPath} threw", ex);
             _notificationService.Show("Fetch failed", $"{tile.Name}: {ex.Message}", NotificationType.Error);
         }
+    }
+
+    internal async Task CheckoutTileBranchAsync(SubmoduleTileViewModel tile, BranchInfo branch)
+    {
+        if (tile == null || branch == null || tile.IsUninitialized)
+            return;
+
+        var branchName = branch.Name;
+        var needsPull = false;
+        string? pullRemoteName = null;
+
+        try
+        {
+            if (branch.IsRemote)
+            {
+                pullRemoteName = branch.RemoteName ?? "origin";
+                branchName = GetRemoteBranchLocalName(branch);
+
+                var branches = await _gitService.GetBranchesAsync(tile.RepositoryPath, tile.Token);
+                var localBranch = branches.FirstOrDefault(b =>
+                    !b.IsRemote && string.Equals(b.Name, branchName, StringComparison.OrdinalIgnoreCase));
+                var remoteBranchName = $"{pullRemoteName}/{branchName}";
+                var remoteBranch = branches.FirstOrDefault(b =>
+                    b.IsRemote && string.Equals(b.Name, remoteBranchName, StringComparison.OrdinalIgnoreCase));
+
+                if (localBranch != null &&
+                    !string.IsNullOrWhiteSpace(remoteBranch?.TipSha) &&
+                    !string.Equals(localBranch.TipSha, remoteBranch.TipSha, StringComparison.OrdinalIgnoreCase))
+                {
+                    needsPull = true;
+                }
+            }
+
+            await _gitService.CheckoutAsync(
+                tile.RepositoryPath,
+                branchName,
+                allowConflicts: true,
+                cancellationToken: tile.Token);
+
+            if (needsPull && pullRemoteName != null)
+            {
+                try
+                {
+                    await _gitService.PullBranchFastForwardAsync(
+                        tile.RepositoryPath,
+                        branchName,
+                        pullRemoteName,
+                        branchName,
+                        isCurrentBranch: true,
+                        cancellationToken: tile.Token);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    Log.Info("Workspace", $"Fast-forward skipped for {tile.Name}/{branchName}: {ex.Message}");
+                }
+            }
+
+            await LoadTileAsync(tile);
+            _notificationService.Show(
+                "Branch checked out",
+                $"{tile.Name}: now on {branchName}.",
+                NotificationType.Success,
+                Models.NotificationCategory.BranchCheckout);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Workspace", $"CheckoutTileBranch {tile.RepositoryPath} -> {branchName} threw", ex);
+            _notificationService.Show("Checkout failed", $"{tile.Name}: {ex.Message}", NotificationType.Error);
+        }
+    }
+
+    private static string GetRemoteBranchLocalName(BranchInfo branch)
+    {
+        var remoteName = branch.RemoteName ?? "origin";
+        var prefix = $"{remoteName}/";
+        return branch.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? branch.Name[prefix.Length..]
+            : branch.Name;
     }
 
     /// <summary>

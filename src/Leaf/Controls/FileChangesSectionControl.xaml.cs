@@ -105,9 +105,9 @@ public partial class FileChangesSectionControl : UserControl
 
     private void ApplyTreeVisibility()
     {
-        if (ListScrollViewer != null)
+        if (FileListView != null)
         {
-            ListScrollViewer.Visibility = ShowTreeView ? Visibility.Collapsed : Visibility.Visible;
+            FileListView.Visibility = ShowTreeView ? Visibility.Collapsed : Visibility.Visible;
         }
         if (FileTreeView != null)
         {

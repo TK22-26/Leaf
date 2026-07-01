@@ -289,183 +289,203 @@
             behaviors:ScrollEdgeFader.IsEnabled="True"
             Visibility="{Binding IsExpanded, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}">
             <!--  List View  -->
-            <ScrollViewer
-                x:Name="ListScrollViewer"
+            <ListBox
+                x:Name="FileListView"
                 Padding="4,4,4,0"
-                HorizontalScrollBarVisibility="Disabled"
-                VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding Context.FilesSource, ElementName=Root}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border
-                                x:Name="ItemBorder"
-                                Background="Transparent"
-                                BorderBrush="Transparent"
-                                BorderThickness="2,0,0,0"
-                                CornerRadius="4"
-                                Cursor="Hand"
-                                ToolTip="{Binding Path}">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Margin" Value="2,1" />
-                                        <Setter Property="Padding" Value="8,6" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Data.IsCompactFileList, Source={StaticResource ContextProxy}}" Value="True">
-                                                <Setter Property="Padding" Value="8,3" />
-                                                <Setter Property="Margin" Value="2,0" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <Border.InputBindings>
-                                    <MouseBinding
-                                        Command="{Binding Context.FileSelectedCommand, ElementName=Root}"
+                Background="Transparent"
+                BorderThickness="0"
+                Focusable="False"
+                ItemsSource="{Binding Context.FilesSource, ElementName=Root}"
+                ScrollViewer.CanContentScroll="True"
+                ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                ScrollViewer.VerticalScrollBarVisibility="Auto"
+                SelectionMode="Single"
+                VirtualizingPanel.IsVirtualizing="True"
+                VirtualizingPanel.VirtualizationMode="Recycling">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Focusable" Value="False" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <ContentPresenter />
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border
+                            x:Name="ItemBorder"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            BorderThickness="2,0,0,0"
+                            CornerRadius="4"
+                            Cursor="Hand"
+                            ToolTip="{Binding Path}">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Margin" Value="2,1" />
+                                    <Setter Property="Padding" Value="8,6" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Data.IsCompactFileList, Source={StaticResource ContextProxy}}" Value="True">
+                                            <Setter Property="Padding" Value="8,3" />
+                                            <Setter Property="Margin" Value="2,0" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Border.InputBindings>
+                                <MouseBinding
+                                    Command="{Binding Context.FileSelectedCommand, ElementName=Root}"
+                                    CommandParameter="{Binding}"
+                                    MouseAction="LeftClick" />
+                            </Border.InputBindings>
+                            <Border.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem
+                                        Command="{Binding Data.PrimaryActionCommand, Source={StaticResource ContextProxy}}"
                                         CommandParameter="{Binding}"
-                                        MouseAction="LeftClick" />
-                                </Border.InputBindings>
-                                <Border.ContextMenu>
-                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                        <MenuItem
-                                            Command="{Binding Data.PrimaryActionCommand, Source={StaticResource ContextProxy}}"
-                                            CommandParameter="{Binding}"
-                                            Header="{Binding Data.PrimaryActionText, Source={StaticResource ContextProxy}}" />
-                                        <MenuItem
-                                            Command="{Binding Data.DiscardFileCommand, Source={StaticResource ContextProxy}}"
-                                            CommandParameter="{Binding}"
-                                            Header="Discard changes" />
-                                        <MenuItem Header="Ignore">
-                                            <MenuItem Command="{Binding Data.IgnoreFileCommand, Source={StaticResource ContextProxy}}" CommandParameter="{Binding}">
-                                                <MenuItem.Header>
-                                                    <TextBlock>
-                                                        <Run Text="Ignore '" /><Run Text="{Binding FileName, Mode=OneWay}" /><Run Text="'" />
-                                                    </TextBlock>
-                                                </MenuItem.Header>
-                                            </MenuItem>
-                                            <MenuItem Command="{Binding Data.IgnoreExtensionCommand, Source={StaticResource ContextProxy}}" CommandParameter="{Binding}">
-                                                <MenuItem.Header>
-                                                    <TextBlock>
-                                                        <Run Text="All files with extension '" /><Run Text="{Binding Extension, Mode=OneWay}" /><Run Text="'" />
-                                                    </TextBlock>
-                                                </MenuItem.Header>
-                                            </MenuItem>
-                                            <MenuItem
-                                                Command="{Binding Data.IgnoreDirectoryCommand, Source={StaticResource ContextProxy}}"
-                                                CommandParameter="{Binding}"
-                                                Visibility="{Binding Directory, Converter={StaticResource NullToVisibilityConverter}}">
-                                                <MenuItem.Header>
-                                                    <TextBlock>
-                                                        <Run Text="All files in '" /><Run Text="{Binding Directory, Mode=OneWay}" /><Run Text="/'" />
-                                                    </TextBlock>
-                                                </MenuItem.Header>
-                                            </MenuItem>
+                                        Header="{Binding Data.PrimaryActionText, Source={StaticResource ContextProxy}}" />
+                                    <MenuItem
+                                        Command="{Binding Data.DiscardFileCommand, Source={StaticResource ContextProxy}}"
+                                        CommandParameter="{Binding}"
+                                        Header="Discard changes" />
+                                    <MenuItem Header="Ignore">
+                                        <MenuItem Command="{Binding Data.IgnoreFileCommand, Source={StaticResource ContextProxy}}" CommandParameter="{Binding}">
+                                            <MenuItem.Header>
+                                                <TextBlock>
+                                                    <Run Text="Ignore '" /><Run Text="{Binding FileName, Mode=OneWay}" /><Run Text="'" />
+                                                </TextBlock>
+                                            </MenuItem.Header>
+                                        </MenuItem>
+                                        <MenuItem Command="{Binding Data.IgnoreExtensionCommand, Source={StaticResource ContextProxy}}" CommandParameter="{Binding}">
+                                            <MenuItem.Header>
+                                                <TextBlock>
+                                                    <Run Text="All files with extension '" /><Run Text="{Binding Extension, Mode=OneWay}" /><Run Text="'" />
+                                                </TextBlock>
+                                            </MenuItem.Header>
                                         </MenuItem>
                                         <MenuItem
-                                            Command="{Binding Data.StashFileCommand, Source={StaticResource ContextProxy}}"
+                                            Command="{Binding Data.IgnoreDirectoryCommand, Source={StaticResource ContextProxy}}"
                                             CommandParameter="{Binding}"
-                                            Header="Stash file" />
-                                        <Separator />
-                                        <MenuItem
-                                            Command="{Binding Data.OpenFileCommand, Source={StaticResource ContextProxy}}"
-                                            CommandParameter="{Binding}"
-                                            Header="Open file" />
-                                        <MenuItem
-                                            Command="{Binding Data.OpenInExplorerCommand, Source={StaticResource ContextProxy}}"
-                                            CommandParameter="{Binding}"
-                                            Header="Open in Explorer" />
-                                        <MenuItem
-                                            Command="{Binding Data.OpenInExternalDiffToolCommand, Source={StaticResource ContextProxy}}"
-                                            CommandParameter="{Binding}"
-                                            Header="Open diff in external tool" />
-                                        <MenuItem
-                                            Command="{Binding Data.CopyFilePathCommand, Source={StaticResource ContextProxy}}"
-                                            CommandParameter="{Binding}"
-                                            Header="Copy file path" />
-                                        <Separator />
-                                        <MenuItem
-                                            Command="{Binding Data.DeleteFileCommand, Source={StaticResource ContextProxy}}"
-                                            CommandParameter="{Binding}"
-                                            Foreground="#E81123"
-                                            Header="Delete file" />
-                                        <!--  Admin delete for reserved filenames (unstaged only)  -->
-                                        <Separator Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}" />
-                                        <MenuItem
-                                            Command="{Binding Data.AdminDeleteCommand, Source={StaticResource ContextProxy}}"
-                                            CommandParameter="{Binding}"
-                                            FontWeight="SemiBold"
-                                            Foreground="#E81123"
-                                            Header="Admin Delete (Reserved Name)"
-                                            Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}" />
-                                    </ContextMenu>
-                                </Border.ContextMenu>
-                                <Grid VerticalAlignment="Center">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="20" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
+                                            Visibility="{Binding Directory, Converter={StaticResource NullToVisibilityConverter}}">
+                                            <MenuItem.Header>
+                                                <TextBlock>
+                                                    <Run Text="All files in '" /><Run Text="{Binding Directory, Mode=OneWay}" /><Run Text="/'" />
+                                                </TextBlock>
+                                            </MenuItem.Header>
+                                        </MenuItem>
+                                    </MenuItem>
+                                    <MenuItem
+                                        Command="{Binding Data.StashFileCommand, Source={StaticResource ContextProxy}}"
+                                        CommandParameter="{Binding}"
+                                        Header="Stash file" />
+                                    <Separator />
+                                    <MenuItem
+                                        Command="{Binding Data.OpenFileCommand, Source={StaticResource ContextProxy}}"
+                                        CommandParameter="{Binding}"
+                                        Header="Open file" />
+                                    <MenuItem
+                                        Command="{Binding Data.OpenInExplorerCommand, Source={StaticResource ContextProxy}}"
+                                        CommandParameter="{Binding}"
+                                        Header="Open in Explorer" />
+                                    <MenuItem
+                                        Command="{Binding Data.OpenInExternalDiffToolCommand, Source={StaticResource ContextProxy}}"
+                                        CommandParameter="{Binding}"
+                                        Header="Open diff in external tool" />
+                                    <MenuItem
+                                        Command="{Binding Data.CopyFilePathCommand, Source={StaticResource ContextProxy}}"
+                                        CommandParameter="{Binding}"
+                                        Header="Copy file path" />
+                                    <Separator />
+                                    <MenuItem
+                                        Command="{Binding Data.DeleteFileCommand, Source={StaticResource ContextProxy}}"
+                                        CommandParameter="{Binding}"
+                                        Foreground="#E81123"
+                                        Header="Delete file" />
+                                    <!--  Admin delete for reserved filenames (unstaged only)  -->
+                                    <Separator Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}" />
+                                    <MenuItem
+                                        Command="{Binding Data.AdminDeleteCommand, Source={StaticResource ContextProxy}}"
+                                        CommandParameter="{Binding}"
+                                        FontWeight="SemiBold"
+                                        Foreground="#E81123"
+                                        Header="Admin Delete (Reserved Name)"
+                                        Visibility="{Binding FileName, Converter={StaticResource ReservedFileNameToVisibilityConverter}}" />
+                                </ContextMenu>
+                            </Border.ContextMenu>
+                            <Grid VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="20" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
 
-                                    <!--  Status icon  -->
+                                <!--  Status icon  -->
+                                <TextBlock
+                                    Grid.Column="0"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="13"
+                                    Style="{StaticResource FileStatusIconStyle}"
+                                    Text="{Binding StatusIcon}" />
+
+                                <!--  File name + directory  -->
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <TextBlock
-                                        Grid.Column="0"
-                                        HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
                                         FontSize="13"
-                                        Style="{StaticResource FileStatusIconStyle}"
-                                        Text="{Binding StatusIcon}" />
-
-                                    <!--  File name + directory  -->
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock
-                                            VerticalAlignment="Center"
-                                            FontSize="13"
-                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                            Text="{Binding FileName}"
-                                            TextTrimming="CharacterEllipsis" />
-                                        <TextBlock
-                                            FontSize="10"
-                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                            Text="{Binding Directory}"
-                                            TextTrimming="CharacterEllipsis">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Directory}" Value="">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Context.IsCompactFileList, ElementName=Root}" Value="True">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                    </StackPanel>
-
-                                    <!--  Primary action button  -->
-                                    <Button
-                                        x:Name="ActionButton"
-                                        Grid.Column="2"
-                                        Padding="8,2"
-                                        VerticalAlignment="Center"
-                                        Command="{Binding Context.PrimaryActionCommand, ElementName=Root}"
-                                        CommandParameter="{Binding}"
-                                        Content="{Binding Context.PrimaryActionText, ElementName=Root}"
+                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                        Text="{Binding FileName}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
                                         FontSize="10"
-                                        Visibility="Hidden" />
-                                </Grid>
-                            </Border>
-                            <DataTemplate.Triggers>
-                                <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
-                                    <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#28A745" />
-                                    <Setter TargetName="ActionButton" Property="Visibility" Value="Visible" />
-                                </Trigger>
-                            </DataTemplate.Triggers>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                        Text="{Binding Directory}"
+                                        TextTrimming="CharacterEllipsis">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Directory}" Value="">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Context.IsCompactFileList, ElementName=Root}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+
+                                <!--  Primary action button  -->
+                                <Button
+                                    x:Name="ActionButton"
+                                    Grid.Column="2"
+                                    Padding="8,2"
+                                    VerticalAlignment="Center"
+                                    Command="{Binding Context.PrimaryActionCommand, ElementName=Root}"
+                                    CommandParameter="{Binding}"
+                                    Content="{Binding Context.PrimaryActionText, ElementName=Root}"
+                                    FontSize="10"
+                                    Visibility="Hidden" />
+                            </Grid>
+                        </Border>
+                        <DataTemplate.Triggers>
+                            <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource LeafAccentHoverBrush}" />
+                                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#28A745" />
+                                <Setter TargetName="ActionButton" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
 
             <!--  Tree View  -->
             <TreeView

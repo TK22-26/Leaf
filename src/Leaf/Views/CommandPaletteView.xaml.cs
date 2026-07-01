@@ -27,6 +27,8 @@ public partial class CommandPaletteView : UserControl
             {
                 SearchBox.Focus();
                 Keyboard.Focus(SearchBox);
+                SearchBox.CaretIndex = SearchBox.Text.Length;
+                SearchBox.SelectionLength = 0;
             }, System.Windows.Threading.DispatcherPriority.Input);
         }
     }

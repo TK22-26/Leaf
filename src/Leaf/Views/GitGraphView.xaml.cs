@@ -51,42 +51,10 @@ public partial class GitGraphView : UserControl
 
     private void OnBranchCheckoutRequested(object? sender, BranchCheckoutRequestedEventArgs e)
     {
-        if (Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
-        {
-            var label = e.Label;
-            Log.Info("Checkout", $"OnBranchCheckoutRequested: label.Name={label.Name}, label.TipSha={label.TipSha ?? "NULL"}, e.TipSha={e.TipSha ?? "NULL"}");
-
-            // If this is a remote-only label and we're on the matching local branch, fast-forward
-            if (label.IsRemote && !label.IsLocal && label.RemoteName != null)
-            {
-                if (DataContext is GitGraphViewModel viewModel)
-                {
-                    var currentBranchName = viewModel.WorkingChanges?.BranchName;
-                    if (currentBranchName == label.Name)
-                    {
-                        mainViewModel.FastForwardBranchLabelAsync(label)
-                            .FireAndForget(nameof(mainViewModel.FastForwardBranchLabelAsync), isUserAction: true);
-                        return;
-                    }
-                }
-            }
-
-            // Otherwise do regular checkout
-            // Use the label's actual TipSha, not the display row's commit SHA
-            var branchName = label.IsRemote && !label.IsLocal && label.RemoteName != null
-                ? $"{label.RemoteName}/{label.Name}"
-                : label.Name;
-            var tipShaToUse = label.TipSha ?? e.TipSha ?? string.Empty;
-            Log.Info("Checkout", $"Calling CheckoutBranchAsync: branchName={branchName}, tipShaToUse={tipShaToUse}");
-            mainViewModel.CheckoutBranchAsync(new BranchInfo
-            {
-                Name = branchName,
-                IsRemote = label.IsRemote,
-                RemoteName = label.RemoteName,
-                IsCurrent = label.IsCurrent,
-                TipSha = tipShaToUse
-            }).FireAndForget(nameof(mainViewModel.CheckoutBranchAsync), isUserAction: true);
-        }
+        var branch = CreateBranchInfo(e.Label, e.TipSha);
+        Log.Info("Checkout", $"OnBranchCheckoutRequested: branch.Name={branch.Name}, TipSha={branch.TipSha}");
+        DispatchCheckoutBranchAsync(branch)
+            .FireAndForget(nameof(DispatchCheckoutBranchAsync), isUserAction: true);
     }
 
     private void OnRowExpansionChanged(object? sender, RowExpansionChangedEventArgs e)
@@ -263,39 +231,12 @@ public partial class GitGraphView : UserControl
         if (GraphCanvas != null && e.ClickCount == 2)
         {
             var label = GraphCanvas.GetBranchLabelAt(pos);
-            if (label != null && Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
+            if (label != null)
             {
                 Log.Info("Checkout", $"GraphCanvas double-click: label.Name={label.Name}, label.TipSha={label.TipSha ?? "NULL"}");
 
-                // If this is a remote-only label (local is at different commit)
-                // and we're currently on the matching local branch, fast-forward instead of checkout
-                if (label.IsRemote && !label.IsLocal && label.RemoteName != null)
-                {
-                    var currentBranchName = viewModel.WorkingChanges?.BranchName;
-                    if (currentBranchName == label.Name)
-                    {
-                        // Fast-forward current branch to this remote
-                        mainViewModel.FastForwardBranchLabelAsync(label)
-                            .FireAndForget(nameof(mainViewModel.FastForwardBranchLabelAsync), isUserAction: true);
-                        e.Handled = true;
-                        return;
-                    }
-                }
-
-                // Otherwise do regular checkout
-                // Use the label's actual TipSha, not the display row's commit SHA
-                var name = label.IsRemote && !label.IsLocal && label.RemoteName != null
-                    ? $"{label.RemoteName}/{label.Name}"
-                    : label.Name;
-                Log.Info("Checkout", $"GraphCanvas calling CheckoutBranchAsync: name={name}, TipSha={label.TipSha ?? "NULL"}");
-                mainViewModel.CheckoutBranchAsync(new BranchInfo
-                {
-                    Name = name,
-                    IsRemote = label.IsRemote,
-                    RemoteName = label.RemoteName,
-                    IsCurrent = label.IsCurrent,
-                    TipSha = label.TipSha ?? string.Empty
-                }).FireAndForget(nameof(mainViewModel.CheckoutBranchAsync), isUserAction: true);
+                DispatchCheckoutBranchAsync(CreateBranchInfo(label, label.TipSha))
+                    .FireAndForget(nameof(DispatchCheckoutBranchAsync), isUserAction: true);
                 e.Handled = true;
                 return;
             }
@@ -858,9 +799,10 @@ public partial class GitGraphView : UserControl
             var checkoutItem = new MenuItem
             {
                 Header = $"Checkout {label.Name}",
-                Command = mainViewModel.CheckoutBranchCommand,
-                CommandParameter = branchInfo
             };
+            checkoutItem.Click += (_, _) =>
+                DispatchCheckoutBranchAsync(branchInfo)
+                    .FireAndForget(nameof(DispatchCheckoutBranchAsync), isUserAction: true);
             menu.Items.Add(checkoutItem);
         }
 
@@ -1009,6 +951,36 @@ public partial class GitGraphView : UserControl
             case Branch.BranchColorPickerDialog.PickerResult.Cancelled:
                 // User dismissed — leave existing state alone.
                 break;
+        }
+    }
+
+    private static BranchInfo CreateBranchInfo(BranchLabel label, string? tipSha)
+    {
+        var branchName = label.IsRemote && !label.IsLocal && label.RemoteName != null
+            ? $"{label.RemoteName}/{label.Name}"
+            : label.Name;
+
+        return new BranchInfo
+        {
+            Name = branchName,
+            IsRemote = label.IsRemote,
+            RemoteName = label.RemoteName,
+            IsCurrent = label.IsCurrent,
+            TipSha = label.TipSha ?? tipSha ?? string.Empty
+        };
+    }
+
+    private async Task DispatchCheckoutBranchAsync(BranchInfo branch)
+    {
+        if (DataContext is GitGraphViewModel { CheckoutBranchAsync: { } checkout })
+        {
+            await checkout(branch);
+            return;
+        }
+
+        if (Window.GetWindow(this)?.DataContext is MainViewModel mainViewModel)
+        {
+            await mainViewModel.CheckoutBranchAsync(branch);
         }
     }
 

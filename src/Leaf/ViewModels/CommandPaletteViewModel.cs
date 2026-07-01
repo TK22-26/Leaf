@@ -78,6 +78,14 @@ public partial class CommandPaletteViewModel : ObservableObject, ICommandPalette
         IsOpen = true;
     }
 
+    public void OpenBranchSearch()
+    {
+        CurrentMode = PaletteMode.Repository;
+        SearchText = "#";
+        EmptyMessage = null;
+        IsOpen = true;
+    }
+
     public void Close()
     {
         IsOpen = false;
@@ -288,28 +296,92 @@ public partial class CommandPaletteViewModel : ObservableObject, ICommandPalette
     {
         var items = new List<CommandPaletteItem>();
 
-        var localCategory = repo.BranchCategories.FirstOrDefault(c => c.IsLocalCategory);
-        if (localCategory == null)
+        var localBranches = GetLocalBranches(repo);
+        var remoteBranches = GetRemoteBranches(repo);
+
+        if (localBranches.Count == 0 && remoteBranches.Count == 0)
         {
             _allItems = items;
             return;
         }
 
         // Current branch first
-        var currentBranch = localCategory.Branches.FirstOrDefault(b => b.IsCurrent);
+        var currentBranch = localBranches.FirstOrDefault(b => b.IsCurrent);
         if (currentBranch != null)
         {
             items.Add(CreateBranchItem(currentBranch));
         }
 
         // All other branches alphabetically
-        var others = localCategory.Branches
+        var others = localBranches
             .Where(b => !b.IsCurrent)
             .OrderBy(b => b.Name, StringComparer.OrdinalIgnoreCase)
             .Select(CreateBranchItem);
 
         items.AddRange(others);
+
+        // Remote branches are included after locals so pasted PR branch
+        // names can be found even before a local tracking branch exists.
+        items.AddRange(remoteBranches
+            .Where(b => !b.Name.EndsWith("/HEAD", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(b => b.RemoteName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(b => b.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(CreateBranchItem));
+
         _allItems = items;
+    }
+
+    private static List<BranchInfo> GetLocalBranches(RepositoryInfo repo)
+    {
+        if (repo.LocalBranches.Count > 0)
+            return repo.LocalBranches.ToList();
+
+        var localCategory = repo.BranchCategories.FirstOrDefault(c => c.IsLocalCategory);
+        return localCategory?.Branches.ToList() ?? [];
+    }
+
+    private static List<BranchInfo> GetRemoteBranches(RepositoryInfo repo)
+    {
+        if (repo.RemoteBranches.Count > 0)
+            return repo.RemoteBranches.ToList();
+
+        var remoteCategory = repo.BranchCategories.FirstOrDefault(c => c.IsRemoteCategory);
+        if (remoteCategory == null)
+            return [];
+
+        var branches = new List<BranchInfo>();
+        foreach (var remote in remoteCategory.RemoteGroups)
+        {
+            branches.AddRange(remote.Branches.Select(b => WithRemotePrefix(b, remote.Name)));
+            foreach (var directory in remote.DirectoryGroups)
+            {
+                branches.AddRange(directory.Branches.Select(b => WithRemotePrefix(b, remote.Name)));
+            }
+        }
+
+        return branches;
+    }
+
+    private static BranchInfo WithRemotePrefix(BranchInfo branch, string remoteName)
+    {
+        var prefix = $"{remoteName}/";
+        if (branch.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return branch;
+
+        return new BranchInfo
+        {
+            FullName = branch.FullName,
+            Name = $"{prefix}{branch.Name}",
+            GitFlowType = branch.GitFlowType,
+            IsCurrent = branch.IsCurrent,
+            IsRemote = true,
+            RemoteName = string.IsNullOrWhiteSpace(branch.RemoteName) ? remoteName : branch.RemoteName,
+            TrackingBranchName = branch.TrackingBranchName,
+            TipSha = branch.TipSha,
+            AheadBy = branch.AheadBy,
+            BehindBy = branch.BehindBy,
+            IsExpanded = branch.IsExpanded
+        };
     }
 
     private static CommandPaletteItem CreateBranchItem(BranchInfo branch)

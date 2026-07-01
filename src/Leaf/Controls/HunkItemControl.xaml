@@ -82,7 +82,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- Hunk header -->
@@ -159,7 +159,6 @@
             <ScrollViewer x:Name="LinesScrollViewer"
                           HorizontalScrollBarVisibility="Auto"
                           VerticalScrollBarVisibility="Disabled"
-                          MaxHeight="400"
                           PreviewMouseWheel="LinesScrollViewer_PreviewMouseWheel">
                 <ItemsControl ItemsSource="{Binding Lines}">
                     <ItemsControl.ItemTemplate>
