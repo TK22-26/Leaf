@@ -21,9 +21,9 @@ internal class StagingOperations : IStagingOperations
     /// </summary>
     /// <remarks>
     /// LibGit2Sharp's <c>RetrieveStatus</c> supports rename detection, which
-    /// we prefer for UX, but it can effectively hang on repos with many
-    /// renames (O(n²) matching). We race it against a timeout and fall back
-    /// to git CLI if it doesn't finish within 5 seconds.
+    /// we prefer for UX when it returns quickly, but it can become very slow
+    /// on repos with thousands of changes. We give it a short grace period
+    /// and fall back to git CLI rather than blocking repository open.
     ///
     /// Plan §2.4: the previous implementation used
     /// <c>libgitTask.Wait(TimeSpan.FromSeconds(5))</c> inside an outer
@@ -41,9 +41,9 @@ internal class StagingOperations : IStagingOperations
         // The timeout CTS is cancelled as soon as we're done with it so the
         // underlying timer is released promptly even when libgit wins the
         // race — otherwise each abandoned Task.Delay holds a timer slot
-        // until its 5 s elapse, which accumulates under high call frequency.
+        // until it elapses, which accumulates under high call frequency.
         using var timeoutCts = new CancellationTokenSource();
-        var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5), timeoutCts.Token);
+        var timeoutTask = Task.Delay(TimeSpan.FromMilliseconds(750), timeoutCts.Token);
 
         var completed = await Task.WhenAny(libgitTask, timeoutTask).ConfigureAwait(false);
         if (completed == libgitTask)
@@ -192,8 +192,10 @@ internal class StagingOperations : IStagingOperations
             DetachedHeadSha = isDetached ? headSha : null
         };
 
-        // Parse porcelain status output
-        var statusResult = GitCliHelpers.RunGitArgs(repoPath, "status", "--porcelain", "-uall");
+        // Parse porcelain status output. Disable rename detection here:
+        // large worktrees can make rename matching dominate repo-open time,
+        // and the staging UI can still operate on the delete/add entries.
+        var statusResult = GitCliHelpers.RunGitArgs(repoPath, "status", "--porcelain=v1", "-uall", "--no-renames");
         if (statusResult.ExitCode != 0)
             return workingChanges;
 

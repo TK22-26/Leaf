@@ -1,6 +1,7 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="clr-namespace:Leaf.Controls"
     xmlns:system="clr-namespace:System;assembly=System.Runtime">
     <system1:String xmlns:system1="clr-namespace:System;assembly=System.Private.CoreLib" x:Key="MenuItemChevronRightGlyph">&#xE76C;</system1:String>
     <String xmlns="clr-namespace:System;assembly=System.Private.CoreLib" x:Key="MenuItemCheckedGlyph">✓</String>
@@ -72,9 +73,10 @@
                     Grid.Column="0"
                     AllowsTransparency="True"
                     Focusable="False"
+                    CustomPopupPlacementCallback="{x:Static controls:MenuPopupPlacement.TopLevelDropDown}"
                     HorizontalOffset="-8"
                     IsOpen="{TemplateBinding MenuItem.IsSubmenuOpen}"
-                    Placement="Bottom"
+                    Placement="Custom"
                     PlacementTarget="{Binding ElementName=Border}"
                     PopupAnimation="None"
                     VerticalOffset="1">

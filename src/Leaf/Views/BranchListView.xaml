@@ -186,14 +186,34 @@
         </Button>
 
         <!--  Header  -->
-        <TextBlock
-            Grid.Row="1"
-            Margin="12,12,12,8"
-            FontSize="11"
-            FontWeight="SemiBold"
-            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-            Text="{Binding SelectedRepository.Name, FallbackValue='BRANCHES'}"
-            TextTrimming="CharacterEllipsis" />
+        <Grid Grid.Row="1" Margin="12,12,8,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                Grid.Column="0"
+                VerticalAlignment="Center"
+                FontSize="11"
+                FontWeight="SemiBold"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="{Binding SelectedRepository.Name, FallbackValue='BRANCHES'}"
+                TextTrimming="CharacterEllipsis" />
+            <Button
+                Grid.Column="1"
+                Width="28"
+                Height="28"
+                Padding="0"
+                Background="Transparent"
+                BorderThickness="0"
+                Command="{Binding OpenBranchSearchCommand}"
+                ToolTip="Search branches">
+                <ic:SymbolIcon
+                    FontSize="14"
+                    IconVariant="Regular"
+                    Symbol="Search" />
+            </Button>
+        </Grid>
 
         <!--  No repo selected message  -->
         <TextBlock

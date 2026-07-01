@@ -505,6 +505,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // every load. Resolved at invocation time so SelectedRepository
             // changes during the session are picked up.
             GetActiveRepositoryInfo = () => SelectedRepository,
+            CheckoutBranchAsync = branch => CheckoutBranchAsync(branch),
         };
         _commitDetailViewModel = new CommitDetailViewModel(gitService, clipboardService, fileSystemService, externalToolConfig, externalToolLauncher, settingsService)
             { GetSessionToken = tokenGetter };

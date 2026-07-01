@@ -2,6 +2,7 @@
 using System.Windows.Media;
 using FluentAssertions;
 using Leaf.Helpers;
+using Leaf.TextEdit.Document;
 using Leaf.TextEdit.Highlighting;
 using Xunit;
 
@@ -105,5 +106,44 @@ public class SyntaxHighlightingHelperTests
         if (definition is null) return; // if markdown isn't packaged, skip silently
         var act = () => SyntaxHighlightingHelper.ApplyDarkThemeColors(definition);
         act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void MarkdownExtension_ResolvesPlainDefinitionWithoutTypographyOverrides()
+    {
+        var definition = HighlightingManager.Instance.GetDefinitionByExtension(".md");
+        definition.Should().NotBeNull();
+        definition!.Name.Should().Be("MarkDown");
+
+        foreach (var colorName in new[] { "Heading", "Emphasis", "StrongEmphasis", "Code" })
+        {
+            var color = definition.GetNamedColor(colorName);
+            color.Should().NotBeNull();
+            AssertDoesNotChangeTypography(color!);
+        }
+
+        var document = new TextDocument(
+            "# Heading\n" +
+            "**strong** and *emphasis*\n" +
+            "`inline code`\n" +
+            "    public class Foo\n");
+        var highlighter = new DocumentHighlighter(document, definition);
+
+        for (var lineNumber = 1; lineNumber <= document.LineCount; lineNumber++)
+        {
+            var highlightedLine = highlighter.HighlightLine(lineNumber);
+            foreach (var section in highlightedLine.Sections)
+            {
+                AssertDoesNotChangeTypography(section.Color);
+            }
+        }
+    }
+
+    private static void AssertDoesNotChangeTypography(HighlightingColor color)
+    {
+        color.FontFamily.Should().BeNull();
+        color.FontSize.Should().BeNull();
+        color.FontWeight.Should().BeNull();
+        color.FontStyle.Should().BeNull();
     }
 }

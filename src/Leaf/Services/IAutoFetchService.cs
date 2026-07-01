@@ -39,6 +39,7 @@ public interface IAutoFetchService
 /// </summary>
 public class AutoFetchCompletedEventArgs : EventArgs
 {
+    public string RepositoryPath { get; init; } = string.Empty;
     public DateTime FetchTime { get; init; }
     public int AheadBy { get; init; }
     public int BehindBy { get; init; }

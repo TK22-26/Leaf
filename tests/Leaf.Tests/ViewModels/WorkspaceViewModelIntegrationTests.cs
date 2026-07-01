@@ -50,6 +50,38 @@ public class WorkspaceViewModelIntegrationTests
         return tile;
     }
 
+    [Fact]
+    public async Task CheckoutTileBranch_UsesTileRepositoryPath()
+    {
+        var (ws, git) = BuildWorkspaceWithMockGit();
+        ws.Parent = new RepositoryInfo { Path = "C:/r/parent", Name = "parent" };
+        var sub = MakeTile("C:/r/parent/sub", "sub", isParent: false, ws);
+        git.Setup(g => g.CheckoutAsync(
+                "C:/r/parent/sub",
+                "feature/sub-work",
+                true,
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        await ws.CheckoutTileBranchAsync(sub, new BranchInfo
+        {
+            Name = "feature/sub-work"
+        });
+
+        git.Verify(g => g.CheckoutAsync(
+                "C:/r/parent/sub",
+                "feature/sub-work",
+                true,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        git.Verify(g => g.CheckoutAsync(
+                "C:/r/parent",
+                It.IsAny<string>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     // ─── #1: CommitAllReviewedAsync staging order ────────────────
 
     [Fact]

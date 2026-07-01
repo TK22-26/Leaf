@@ -24,6 +24,13 @@ public partial class MainViewModel
             CommandPaletteViewModel.Open();
     }
 
+    [RelayCommand]
+    public void OpenBranchSearch()
+    {
+        if (CommandPaletteViewModel == null || SelectedRepository == null) return;
+        CommandPaletteViewModel.OpenBranchSearch();
+    }
+
     /// <summary>
     /// Toggle terminal pane visibility.
     /// </summary>

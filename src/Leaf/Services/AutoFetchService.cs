@@ -113,6 +113,7 @@ public class AutoFetchService : IAutoFetchService
 
             FetchCompleted?.Invoke(this, new AutoFetchCompletedEventArgs
             {
+                RepositoryPath = repoPath,
                 FetchTime = LastFetchTime.Value,
                 AheadBy = info.AheadBy,
                 BehindBy = info.BehindBy

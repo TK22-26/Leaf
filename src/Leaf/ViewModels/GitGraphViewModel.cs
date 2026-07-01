@@ -44,6 +44,14 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     /// </summary>
     public Func<RepositoryInfo?>? GetActiveRepositoryInfo { get; set; }
 
+    /// <summary>
+    /// Optional owner-provided branch checkout route. The main graph uses
+    /// MainViewModel's full checkout workflow; workspace submodule tiles
+    /// bind this to their own repository path so graph branch clicks do
+    /// not accidentally mutate the parent repository.
+    /// </summary>
+    public Func<BranchInfo, Task>? CheckoutBranchAsync { get; set; }
+
     private CancellationToken SessionToken => GetSessionToken?.Invoke() ?? CancellationToken.None;
 
     // The active builder that owns layout state for the currently-displayed
