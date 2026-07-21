@@ -55,9 +55,15 @@ internal class CommitHistoryOperations
                 .GroupBy(b => b.Tip?.Sha)
                 .ToDictionary(g => g.Key ?? "", g => g.Select(b => b.FriendlyName).ToList());
 
+            // Key by the PEELED target: for annotated tags, Target is the
+            // tag object itself whose SHA never matches a commit — such
+            // decorations silently vanished. PeeledTarget resolves
+            // tag→tag chains to the commit; non-commit tags (blobs/trees)
+            // can't be graph nodes and are excluded (#40).
             var tagTips = repo.Tags
-                .GroupBy(t => t.Target?.Sha)
-                .ToDictionary(g => g.Key ?? "", g => g.Select(t => t.FriendlyName).ToList());
+                .Where(t => t.PeeledTarget is Commit)
+                .GroupBy(t => t.PeeledTarget.Sha)
+                .ToDictionary(g => g.Key, g => g.Select(t => t.FriendlyName).ToList());
 
             // Build reverse map: branch name → tip SHA for BranchLabel.TipSha
             var branchNameToTipSha = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -89,10 +95,18 @@ internal class CommitHistoryOperations
             }
             else
             {
+                // Seed the walk from tag targets too: a commit whose only
+                // ref is a tag (branch deleted) must still appear in the
+                // graph, matching `git log --all --decorate` (#40).
+                var tagTipCommits = repo.Tags
+                    .Select(t => t.PeeledTarget)
+                    .OfType<Commit>();
+
                 var allBranchTipsList = repo.Branches
                     .Where(b => b.Tip != null)
                     .Select(b => b.Tip)
-                    .Distinct()
+                    .Concat(tagTipCommits)
+                    .DistinctBy(c => c.Sha)
                     .ToList();
 
                 commits = repo.Commits.QueryBy(new CommitFilter
@@ -221,9 +235,11 @@ internal class CommitHistoryOperations
             .GroupBy(b => b.Tip!.Sha)
             .ToDictionary(g => g.Key, g => g.Select(b => b.FriendlyName).ToList());
 
+        // Peeled target so annotated tags decorate the commit, not the
+        // tag object — mirrors the graph builder's tagTips map (#40).
         var tagTips = repo.Tags
-            .Where(t => t.Target != null)
-            .GroupBy(t => t.Target!.Sha)
+            .Where(t => t.PeeledTarget is Commit)
+            .GroupBy(t => t.PeeledTarget.Sha)
             .ToDictionary(g => g.Key, g => g.Select(t => t.FriendlyName).ToList());
 
         return (branchTips, tagTips);
