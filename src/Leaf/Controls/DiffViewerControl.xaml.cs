@@ -90,6 +90,37 @@ public partial class DiffViewerControl : UserControl
             case nameof(DiffViewerViewModel.Mode):
                 UpdateFromViewModel();
                 break;
+            case nameof(DiffViewerViewModel.CurrentDiffIndex):
+                ScrollToCurrentDifference();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Bring the current difference into view: scroll the inline editor
+    /// to the hunk's document line (and park the caret there so keyboard
+    /// navigation stays anchored), or bring the matching hunk card into
+    /// view in Hunks mode. Indices align because both views render the
+    /// same parsed hunk list.
+    /// </summary>
+    private void ScrollToCurrentDifference()
+    {
+        if (_viewModel?.CurrentNavigationHunk is not { } hunk)
+            return;
+
+        if (_viewModel.ShowFullDiff)
+        {
+            var lineCount = DiffEditor.Document?.LineCount ?? 0;
+            if (lineCount == 0)
+                return;
+            var line = Math.Min(hunk.InlineStartLineIndex + 1, lineCount);
+            DiffEditor.TextArea.Caret.Line = line;
+            DiffEditor.ScrollToLine(line);
+        }
+        else if (_viewModel.ShowHunkView)
+        {
+            var container = HunksList.ItemContainerGenerator.ContainerFromIndex(_viewModel.CurrentDiffIndex) as FrameworkElement;
+            container?.BringIntoView();
         }
     }
 
@@ -152,6 +183,20 @@ public partial class DiffViewerControl : UserControl
         if (e.Key == Key.Escape)
         {
             _viewModel?.CloseCommand.Execute(null);
+            e.Handled = true;
+        }
+        // F8 / Shift+F8: next/previous difference — same bindings as the
+        // merge editor's conflict navigation (#35). F8 is unclaimed by
+        // AvalonEdit so the event bubbles up from the editor.
+        else if (e.Key == Key.F8 && _viewModel?.IsDiffMode == true)
+        {
+            var command = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)
+                ? _viewModel.PreviousDifferenceCommand
+                : _viewModel.NextDifferenceCommand;
+            if (command.CanExecute(null))
+            {
+                command.Execute(null);
+            }
             e.Handled = true;
         }
     }
