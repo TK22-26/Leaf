@@ -107,7 +107,7 @@ public class BlamePeekPopoverTests
         bool dismissed = false;
         popover.DismissRequested += (_, _) => dismissed = true;
 
-        popover.RaiseEvent(MakeKeyEvent(popover, System.Windows.Input.Key.Escape));
+        RaiseKeyEvent(popover, System.Windows.Input.Key.Escape);
 
         dismissed.Should().BeTrue(because: "Escape inside the popover must fire DismissRequested");
     }
@@ -122,35 +122,35 @@ public class BlamePeekPopoverTests
         bool dismissed = false;
         popover.DismissRequested += (_, _) => dismissed = true;
 
-        popover.RaiseEvent(MakeKeyEvent(popover, System.Windows.Input.Key.Enter));
+        RaiseKeyEvent(popover, System.Windows.Input.Key.Enter);
 
         dismissed.Should().BeFalse(
             because: "only Escape dismisses; Enter activates the focused sha link via its Click handler");
     }
 
-    // Shared HwndSource so repeated MakeKeyEvent calls don't leak native
-    // window handles across test runs. One HwndSource per test assembly
-    // run is enough — KeyEventArgs only needs it for the
-    // PresentationSource contract, the handle is never shown.
-    private static readonly System.Windows.Interop.HwndSource _keyEventSource
-        = new(new System.Windows.Interop.HwndSourceParameters("leaf-merge-test-keys"));
-
-    private static System.Windows.Input.KeyEventArgs MakeKeyEvent(
-        System.Windows.IInputElement source, System.Windows.Input.Key key)
+    private static void RaiseKeyEvent(System.Windows.UIElement target, System.Windows.Input.Key key)
     {
         // A KeyEventArgs needs a real PresentationSource; in a headless
-        // STA test we haven't shown a Window. Reuse the shared hwnd so
-        // back-to-back tests don't each allocate a native window that
-        // never gets disposed.
-        return new System.Windows.Input.KeyEventArgs(
+        // STA test we haven't shown a Window. The HwndSource is created
+        // and disposed PER CALL on the current test's STA thread: an
+        // earlier shared-static source bound itself to whichever xunit
+        // STA thread touched the class first, and once that thread's
+        // dispatcher exited the dead hwnd made RaiseEvent throw
+        // NullReferenceException intermittently (order/load-dependent
+        // flake). Per-call lifetime is thread-correct and also disposes
+        // the native handle deterministically instead of leaking it.
+        using var source = new System.Windows.Interop.HwndSource(
+            new System.Windows.Interop.HwndSourceParameters("leaf-merge-test-keys"));
+        var args = new System.Windows.Input.KeyEventArgs(
             System.Windows.Input.Keyboard.PrimaryDevice,
-            _keyEventSource,
+            source,
             timestamp: 0,
             key)
         {
             RoutedEvent = System.Windows.UIElement.KeyDownEvent,
-            Source = source,
+            Source = target,
         };
+        target.RaiseEvent(args);
     }
 
     [StaFact]
