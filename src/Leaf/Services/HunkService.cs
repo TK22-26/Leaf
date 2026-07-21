@@ -176,6 +176,7 @@ public class HunkService : IHunkService
         return new DiffHunk
         {
             Index = hunkIndex,
+            InlineStartLineIndex = startIndex,
             OldStartLine = oldStart ?? 1,
             OldLineCount = oldCount,
             NewStartLine = newStart ?? 1,

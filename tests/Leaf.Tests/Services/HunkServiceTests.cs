@@ -407,4 +407,94 @@ public class HunkServiceTests
     }
 
     #endregion
+
+    #region InlineStartLineIndex (#35 diff navigation)
+
+    private static DiffLine Unchanged(int line) =>
+        new() { OldLineNumber = line, NewLineNumber = line, Type = DiffLineType.Unchanged, Text = $"line {line}" };
+
+    private static DiffLine Added(int newLine) =>
+        new() { OldLineNumber = null, NewLineNumber = newLine, Type = DiffLineType.Added, Text = $"new {newLine}" };
+
+    private static DiffLine Deleted(int oldLine) =>
+        new() { OldLineNumber = oldLine, NewLineNumber = null, Type = DiffLineType.Deleted, Text = $"old {oldLine}" };
+
+    [Fact]
+    public void ParseHunks_MidFileChange_InlineStartIsChangeMinusContext()
+    {
+        // 10 unchanged lines, one change at inline index 10, more context after.
+        var lines = new List<DiffLine>();
+        for (int i = 1; i <= 10; i++) lines.Add(Unchanged(i));
+        lines.Add(Deleted(11));
+        lines.Add(Added(11));
+        for (int i = 12; i <= 16; i++) lines.Add(Unchanged(i));
+
+        var hunks = _sut.ParseHunks(CreateDiffResult(lines), contextLines: 3);
+
+        hunks.Should().HaveCount(1);
+        // Change starts at inline index 10; 3 context lines before → 7.
+        hunks[0].InlineStartLineIndex.Should().Be(7);
+    }
+
+    [Fact]
+    public void ParseHunks_ChangeAtFileStart_InlineStartClampsToZero()
+    {
+        var lines = new List<DiffLine> { Deleted(1), Added(1) };
+        for (int i = 2; i <= 8; i++) lines.Add(Unchanged(i));
+
+        var hunks = _sut.ParseHunks(CreateDiffResult(lines), contextLines: 3);
+
+        hunks.Should().HaveCount(1);
+        hunks[0].InlineStartLineIndex.Should().Be(0);
+    }
+
+    [Fact]
+    public void ParseHunks_TwoDistantChanges_InlineStartsPointAtEachHunk()
+    {
+        var lines = new List<DiffLine>();
+        for (int i = 1; i <= 10; i++) lines.Add(Unchanged(i));
+        lines.Add(Added(11));                                  // inline index 10
+        for (int i = 12; i <= 30; i++) lines.Add(Unchanged(i)); // indices 11..29
+        lines.Add(Added(31));                                  // inline index 30
+        for (int i = 32; i <= 36; i++) lines.Add(Unchanged(i));
+
+        var hunks = _sut.ParseHunks(CreateDiffResult(lines), contextLines: 3);
+
+        hunks.Should().HaveCount(2);
+        hunks[0].InlineStartLineIndex.Should().Be(7);
+        hunks[1].InlineStartLineIndex.Should().Be(27);
+    }
+
+    [Fact]
+    public void ParseHunks_AdjacentChangesMerge_SingleInlineStart()
+    {
+        // Changes at inline indices 5 and 9 — contexts overlap → one hunk.
+        var lines = new List<DiffLine>();
+        for (int i = 1; i <= 5; i++) lines.Add(Unchanged(i));
+        lines.Add(Added(6));                                  // index 5
+        for (int i = 7; i <= 9; i++) lines.Add(Unchanged(i)); // indices 6..8
+        lines.Add(Added(10));                                 // index 9
+        for (int i = 11; i <= 15; i++) lines.Add(Unchanged(i));
+
+        var hunks = _sut.ParseHunks(CreateDiffResult(lines), contextLines: 3);
+
+        hunks.Should().HaveCount(1);
+        hunks[0].InlineStartLineIndex.Should().Be(2);
+    }
+
+    [Fact]
+    public void ParseHunks_AllAddedFile_OneHunkStartingAtZero()
+    {
+        // New-file diff: every inline line is an addition. Navigation
+        // must still get one hunk ("1 of 1") anchored at the top.
+        var lines = Enumerable.Range(1, 12).Select(Added).ToList();
+
+        var hunks = _sut.ParseHunks(CreateDiffResult(lines), contextLines: 3);
+
+        hunks.Should().HaveCount(1);
+        hunks[0].InlineStartLineIndex.Should().Be(0);
+        hunks[0].LinesAdded.Should().Be(12);
+    }
+
+    #endregion
 }
