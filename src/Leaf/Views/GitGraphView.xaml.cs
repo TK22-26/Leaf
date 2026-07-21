@@ -271,56 +271,72 @@ public partial class GitGraphView : UserControl
         if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
             return;
 
-        // If this is a stash pseudo-commit, show stash context menu instead
-        if (commit.IsStash)
+        var menu = commit.IsStash
+            ? BuildStashContextMenu(mainViewModel)
+            : BuildCommitContextMenu(commit, mainViewModel);
+        element.ContextMenu = menu;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Stash pseudo-commit menu (Pop / Delete). Shared by the
+    /// message-row ContextMenuOpening and canvas right-clicks.
+    /// </summary>
+    private static ContextMenu BuildStashContextMenu(MainViewModel mainViewModel)
+    {
+        var stashMenu = new ContextMenu();
+
+        var popItem = new MenuItem
         {
-            var stashMenu = new ContextMenu();
-
-            var popItem = new MenuItem
+            Header = "Pop Stash",
+            InputGestureText = "Apply and remove",
+            Icon = new TextBlock
             {
-                Header = "Pop Stash",
-                InputGestureText = "Apply and remove",
-                Icon = new TextBlock
-                {
-                    Text = "\uE74C",
-                    FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"),
-                    FontSize = 14
-                }
-            };
-            popItem.Click += (_, _) =>
+                Text = "\uE74C",
+                FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"),
+                FontSize = 14
+            }
+        };
+        popItem.Click += (_, _) =>
+        {
+            if (mainViewModel.PopStashCommand.CanExecute(null))
+                mainViewModel.PopStashCommand.Execute(null);
+        };
+        stashMenu.Items.Add(popItem);
+
+        stashMenu.Items.Add(new Separator());
+
+        var deleteItem = new MenuItem
+        {
+            Header = "Delete Stash",
+            InputGestureText = "Discard",
+            Icon = new TextBlock
             {
-                if (mainViewModel.PopStashCommand.CanExecute(null))
-                    mainViewModel.PopStashCommand.Execute(null);
-            };
-            stashMenu.Items.Add(popItem);
+                Text = "\uE74D",
+                FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"),
+                FontSize = 14,
+                Foreground = new SolidColorBrush(Color.FromRgb(232, 17, 35))
+            }
+        };
+        deleteItem.Click += (_, _) =>
+        {
+            if (mainViewModel.DeleteStashCommand.CanExecute(null))
+                mainViewModel.DeleteStashCommand.Execute(null);
+        };
+        stashMenu.Items.Add(deleteItem);
 
-            stashMenu.Items.Add(new Separator());
+        return stashMenu;
+    }
 
-            var deleteItem = new MenuItem
-            {
-                Header = "Delete Stash",
-                InputGestureText = "Discard",
-                Icon = new TextBlock
-                {
-                    Text = "\uE74D",
-                    FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"),
-                    FontSize = 14,
-                    Foreground = new SolidColorBrush(Color.FromRgb(232, 17, 35))
-                }
-            };
-            deleteItem.Click += (_, _) =>
-            {
-                if (mainViewModel.DeleteStashCommand.CanExecute(null))
-                    mainViewModel.DeleteStashCommand.Execute(null);
-            };
-            stashMenu.Items.Add(deleteItem);
-
-            element.ContextMenu = stashMenu;
-            stashMenu.IsOpen = true;
-            e.Handled = true;
-            return;
-        }
-
+    /// <summary>
+    /// The main commit context menu (checkout / branch / reset / revert /
+    /// cherry-pick / rebase / patch / bisect / copy / tags / merge
+    /// labels). Shared by the message-row ContextMenuOpening and canvas
+    /// right-clicks on the lane/bubble/gravatar area.
+    /// </summary>
+    private ContextMenu BuildCommitContextMenu(CommitInfo commit, MainViewModel mainViewModel)
+    {
         var menu = new ContextMenu();
 
         // Checkout commit option
@@ -508,9 +524,7 @@ public partial class GitGraphView : UserControl
             }
         }
 
-        element.ContextMenu = menu;
-        menu.IsOpen = true;
-        e.Handled = true;
+        return menu;
     }
 
     private async void CommitItem_ToolTipOpening(object sender, ToolTipEventArgs e)
@@ -747,6 +761,44 @@ public partial class GitGraphView : UserControl
         return viewModel.Commits.FirstOrDefault(c => c.Sha == sha);
     }
 
+    /// <summary>
+    /// Right-clicks on the canvas that hit neither a tag chip nor a
+    /// branch label land on a commit row's lane/bubble/gravatar area —
+    /// resolve the row exactly like <see cref="GraphCanvas_MouseLeftButtonDown"/>
+    /// does and open the same commit context menu the message rows show.
+    /// These clicks used to be silently swallowed.
+    /// </summary>
+    private void ShowCommitContextMenuForRow(Point pos, MouseButtonEventArgs e)
+    {
+        if (DataContext is not GitGraphViewModel viewModel)
+            return;
+        if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
+            return;
+
+        int row = (int)(pos.Y / RowHeight);
+        int currentRow = 0;
+
+        // The working-changes pseudo-row has no commit menu.
+        if (viewModel.HasWorkingChanges)
+        {
+            if (row == currentRow)
+                return;
+            currentRow++;
+        }
+
+        int commitIndex = row - currentRow;
+        if (commitIndex < 0 || commitIndex >= viewModel.Commits.Count)
+            return;
+
+        var commit = viewModel.Commits[commitIndex];
+        var menu = commit.IsStash
+            ? BuildStashContextMenu(mainViewModel)
+            : BuildCommitContextMenu(commit, mainViewModel);
+        menu.PlacementTarget = GraphCanvas;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
     private void GraphCanvas_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (GraphCanvas == null)
@@ -769,7 +821,13 @@ public partial class GitGraphView : UserControl
 
         var label = GraphCanvas.GetBranchLabelAt(pos);
         if (label == null)
+        {
+            // Not a tag chip, not a branch label — the click landed on the
+            // lane/bubble/gravatar area of a commit row. Open the same
+            // commit menu the message rows show instead of swallowing it.
+            ShowCommitContextMenuForRow(pos, e);
             return;
+        }
 
         if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
             return;
