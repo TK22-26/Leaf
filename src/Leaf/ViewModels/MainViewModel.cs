@@ -221,6 +221,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <param name="detail">Failure message — usually <c>ex.Message</c>.</param>
     private Task ReportOperationFailureAsync(string operation, string detail)
     {
+        // Toast-only feedback is easy to miss and leaves no trace once
+        // dismissed — always record the failure in the log too (#41).
+        Log.Error("Op", $"{operation} failed: {detail}");
         return _dialogService.ShowErrorToastAsync(
             $"{operation} failed:\n\n{detail}",
             $"{operation} failed");
