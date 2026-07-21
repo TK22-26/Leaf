@@ -26,6 +26,19 @@ public partial class ReportIssueDialog : Window
         BodyTextBox.Text = GetDefaultBody();
     }
 
+    /// <summary>
+    /// Closing via X / Alt+F4 while a submission is in flight: abort the
+    /// gh call so its continuation doesn't resume against a closed
+    /// window (spurious owner/DialogResult errors, lost prompts) and no
+    /// process lingers unobserved. Escape already routes through
+    /// <see cref="CancelButton_Click"/>.
+    /// </summary>
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        _submitCts?.Cancel();
+        base.OnClosing(e);
+    }
+
     private static string GetDefaultBody()
     {
         return $"""
@@ -299,6 +312,25 @@ public partial class ReportIssueDialog : Window
                 {
                     process.Kill(entireProcessTree: true);
                 }
+
+                // Observe the reader tasks — the kill closes the pipes so
+                // they complete promptly; leaving them unobserved lets the
+                // `using var process` dispose the streams mid-read and
+                // surface ObjectDisposedException as unobserved-task noise.
+                try
+                {
+                    await Task.WhenAll(outputTask, errorTask).WaitAsync(TimeSpan.FromSeconds(2));
+                }
+                catch (Exception drainEx) when (drainEx is OperationCanceledException
+                                             or TimeoutException
+                                             or InvalidOperationException
+                                             or System.IO.IOException
+                                             or ObjectDisposedException
+                                             or AggregateException)
+                {
+                    // Best-effort drain; the caller only needs the cancel/timeout outcome.
+                }
+
                 cancellationToken.ThrowIfCancellationRequested();
                 return (false, "", "Command timed out after 30 seconds.");
             }

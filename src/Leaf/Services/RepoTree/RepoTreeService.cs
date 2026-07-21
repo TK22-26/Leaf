@@ -324,6 +324,27 @@ public sealed class RepoTreeService : IRepoTreeService
                     continue;
                 }
 
+                // Initialized submodules sit on a detached HEAD by default;
+                // `git push` has no branch to publish there. Published HEAD
+                // → benign skip. Unpublished commits on a detached HEAD →
+                // loud failure (and ancestor skip): pushing a parent that
+                // records this gitlink would reference objects no remote has.
+                var info = await _git.GetRepositoryInfoFastAsync(node.Path, cancellationToken).ConfigureAwait(false);
+                if (info.IsDetachedHead)
+                {
+                    if (await _git.HasUnpushedCommitsAsync(node.Path, cancellationToken).ConfigureAwait(false))
+                    {
+                        Record(node, TreeOpOutcome.Failed,
+                            "detached HEAD has commits not on any remote — check out a branch in this repo and push it");
+                    }
+                    else
+                    {
+                        Record(node, TreeOpOutcome.SkippedDetachedHead,
+                            "detached HEAD (normal for submodules) — its commit is already on a remote; nothing to publish");
+                    }
+                    continue;
+                }
+
                 var remote = remotes.FirstOrDefault(r => r.Name == "origin") ?? remotes[0];
                 var credentialKey = _credentials.ResolveActiveCredentialKey(remote.Url);
                 await _git.PushAsync(node.Path, credentialKey: credentialKey, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -357,6 +378,9 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken cancellationToken = default)
         => RunParallelRemoteOpAsync(rootPath, "pulling",
             (node, remote, credentialKey, ct) => _git.PullAsync(node.Path, credentialKey, cancellationToken: ct),
+            // A detached HEAD (default submodule state) has no upstream
+            // to pull — skip instead of surfacing git's error per repo.
+            skipDetachedHead: true,
             progress, cancellationToken);
 
     public Task<TreeOpResult> FetchTreeAsync(
@@ -365,12 +389,15 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken cancellationToken = default)
         => RunParallelRemoteOpAsync(rootPath, "fetching",
             (node, remote, credentialKey, ct) => _git.FetchAsync(node.Path, remote.Name, credentialKey, cancellationToken: ct),
+            // Fetch is HEAD-agnostic — detached repos fetch fine.
+            skipDetachedHead: false,
             progress, cancellationToken);
 
     private async Task<TreeOpResult> RunParallelRemoteOpAsync(
         string rootPath,
         string phase,
         Func<RepoNode, RemoteInfo, string?, CancellationToken, Task> operation,
+        bool skipDetachedHead,
         IProgress<TreeOpProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -394,6 +421,17 @@ public sealed class RepoTreeService : IRepoTreeService
                 {
                     slots[index] = new TreeOpEntry(node.RelativePath, TreeOpOutcome.SkippedNoRemote, "no remote configured", null);
                     return;
+                }
+
+                if (skipDetachedHead)
+                {
+                    var info = await _git.GetRepositoryInfoFastAsync(node.Path, cancellationToken).ConfigureAwait(false);
+                    if (info.IsDetachedHead)
+                    {
+                        slots[index] = new TreeOpEntry(node.RelativePath, TreeOpOutcome.SkippedDetachedHead,
+                            "detached HEAD — no upstream to pull; update it from its parent instead", null);
+                        return;
+                    }
                 }
 
                 var remote = remotes.FirstOrDefault(r => r.Name == "origin") ?? remotes[0];

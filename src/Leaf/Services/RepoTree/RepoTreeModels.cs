@@ -35,6 +35,16 @@ public enum TreeOpOutcome
     SkippedUninitialized,
 
     /// <summary>
+    /// The repo is on a detached HEAD (the default state of an
+    /// initialized submodule) with nothing unpublished — push has no
+    /// branch to publish and pull has no upstream. Not a failure.
+    /// A detached HEAD with UNPUBLISHED commits is reported as
+    /// <see cref="Failed"/> instead: publishing an ancestor would record
+    /// gitlinks to objects no remote has.
+    /// </summary>
+    SkippedDetachedHead,
+
+    /// <summary>
     /// A descendant repo failed, so running the operation here would
     /// record or publish pointers the run could not produce (e.g.
     /// pushing a parent whose submodule push failed would dangle its

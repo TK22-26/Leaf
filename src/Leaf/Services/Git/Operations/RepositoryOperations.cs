@@ -236,6 +236,24 @@ internal class RepositoryOperations
     }
 
     /// <summary>
+    /// True when HEAD's commit is not contained in any remote-tracking
+    /// ref (<c>git rev-list -n 1 HEAD --not --remotes</c>) — i.e.
+    /// publishing a parent that records this repo's HEAD as a gitlink
+    /// would reference objects no remote has. Unlike tracking-branch
+    /// comparisons this also answers correctly for detached HEADs
+    /// (the default state of an initialized submodule).
+    /// </summary>
+    public async Task<bool> HasUnpushedCommitsAsync(string repoPath, CancellationToken cancellationToken = default)
+    {
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath, ["rev-list", "-n", "1", "HEAD", "--not", "--remotes"], cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!result.Success)
+            throw new InvalidOperationException(
+                $"Failed to check unpushed commits for '{repoPath}': {result.StandardError.Trim()}");
+        return !string.IsNullOrWhiteSpace(result.StandardOutput);
+    }
+
+    /// <summary>
     /// Resolve the superproject working tree that contains
     /// <paramref name="repoPath"/> as a submodule
     /// (<c>git rev-parse --show-superproject-working-tree</c>).

@@ -89,6 +89,7 @@ internal static class GitCliHelpers
             startInfo.ArgumentList.Add(arg);
 
         startInfo.EnvironmentVariables["LC_ALL"] = "C";
+        startInfo.EnvironmentVariables["GIT_TERMINAL_PROMPT"] = "0";
 
         using var process = Process.Start(startInfo);
         if (process == null)

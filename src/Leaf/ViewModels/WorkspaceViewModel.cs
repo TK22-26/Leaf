@@ -77,6 +77,17 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _reviewCts;
 
     /// <summary>
+    /// Cancels whole-tree bulk operations (Commit/Push/Pull/Fetch all)
+    /// and the on-entry background fetch when the grid is torn down.
+    /// Replaced on every <see cref="LoadAsyncCore"/>; cancelled in
+    /// <see cref="DisposeTiles"/> (grid exit, repo switch, reload).
+    /// The parent tile has no DI scope, so its Token is always
+    /// <see cref="CancellationToken.None"/> — this CTS is the real
+    /// teardown signal for tree-wide work.
+    /// </summary>
+    private CancellationTokenSource? _workspaceCts;
+
+    /// <summary>
     /// Current view mode. <see cref="WorkspaceMode.Single"/> hides the
     /// grid and shows the existing single-repo body; <see cref="WorkspaceMode.Grid"/>
     /// shows the tiled grid and hides the Branches panel + right detail
@@ -154,6 +165,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         Parent = parent;
         DisposeTiles();
+        _workspaceCts = new CancellationTokenSource();
 
         // Parent tile first — always position 0, always top-left.
         var parentName = string.IsNullOrEmpty(parent.Name)
@@ -277,8 +289,13 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 // not have landed yet.
                 if (IsSubmoduleUninitialized(tile.RepositoryPath)) return;
 
-                await _autoFetchService.FetchAsync(tile.RepositoryPath, tile.Token);
-                await LoadTileAsync(tile);
+                await _autoFetchService.FetchAsync(tile.RepositoryPath, WorkspaceToken);
+
+                // The throttled runner resumes on pool threads
+                // (ConfigureAwait(false)); LoadTileAsync mutates
+                // UI-bound collections (repo auto-registration, graph
+                // state) and must run on the dispatcher.
+                await await _dispatcher.InvokeAsync(() => LoadTileAsync(tile));
             }
             catch (OperationCanceledException)
             {
@@ -843,10 +860,46 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         {
             if (Parent is null) return;
 
+            // Pre-generate AI messages for the dirty submodule tiles in
+            // parallel (the historical one-click behavior) — the tree
+            // commit itself is sequential, and serial AI generation on a
+            // many-submodule monorepo multiplies its wall clock. The
+            // parent is deliberately NOT pre-generated: its message must
+            // reflect the pointer bumps staged after the children commit,
+            // so it generates in order inside the provider.
+            BulkOperationStatus = "Generating commit messages…";
+            var pregenerated = new System.Collections.Concurrent.ConcurrentDictionary<string, (string Message, string? Description)>(StringComparer.OrdinalIgnoreCase);
+            await RunTilesThrottledAsync(Tiles.Where(t => !t.IsParent).ToList(), async tile =>
+            {
+                try
+                {
+                    var changes = await _gitService.GetWorkingChangesAsync(tile.RepositoryPath, WorkspaceToken);
+                    if (!changes.HasChanges) return;
+                    if (changes.HasUnstagedChanges)
+                        await _gitService.StageAllAsync(tile.RepositoryPath, WorkspaceToken);
+
+                    var diff = await _gitService.GetStagedSummaryAsync(tile.RepositoryPath, cancellationToken: WorkspaceToken);
+                    var (msg, desc, err) = await _aiCommitService.GenerateCommitMessageAsync(diff, tile.RepositoryPath, WorkspaceToken);
+                    if (string.IsNullOrEmpty(err) && !string.IsNullOrWhiteSpace(msg))
+                        pregenerated[Path.GetFullPath(tile.RepositoryPath)] = (msg!, desc);
+                    // Failures fall through to the in-order provider below,
+                    // which retries once and fails loudly if it can't.
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    Log.Warn("Workspace", $"AI pre-generation failed for {tile.Name}: {ex.Message}");
+                }
+            });
+            WorkspaceToken.ThrowIfCancellationRequested();
+
             var options = new TreeCommitOptions
             {
                 MessageProvider = async (node, ct) =>
                 {
+                    if (pregenerated.TryGetValue(Path.GetFullPath(node.Path), out var cached))
+                        return cached;
+
                     var diff = await _gitService.GetStagedSummaryAsync(node.Path, cancellationToken: ct);
                     var (msg, desc, err) = await _aiCommitService.GenerateCommitMessageAsync(diff, node.Path, ct);
                     if (!string.IsNullOrEmpty(err) || string.IsNullOrWhiteSpace(msg))
@@ -1197,12 +1250,14 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Cancellation for tree-wide bulk operations: the parent tile's
-    /// token, which trips when the grid is torn down (mode switch or
-    /// repo change), so in-flight tree ops unwind with the tiles.
+    /// Cancellation for tree-wide bulk operations. Trips when the grid
+    /// is torn down (mode switch, repo change, reload) via
+    /// <see cref="_workspaceCts"/>. NOT the parent tile's token — the
+    /// parent tile is created without a DI scope, so its Token is
+    /// always <see cref="CancellationToken.None"/>.
     /// </summary>
     private CancellationToken WorkspaceToken =>
-        Tiles.FirstOrDefault(t => t.IsParent)?.Token ?? CancellationToken.None;
+        _workspaceCts?.Token ?? CancellationToken.None;
 
     /// <summary>
     /// Display name for a tree node in the bulk progress strip: the
@@ -1296,6 +1351,12 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         try
         {
             await body();
+        }
+        catch (OperationCanceledException)
+        {
+            // Deliberate teardown (grid exit / repo switch cancelled
+            // WorkspaceToken) — not a failure, no error toast.
+            Log.Info("Workspace", "Bulk op cancelled by workspace teardown.");
         }
         catch (Exception ex)
         {
@@ -1541,6 +1602,10 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
 
     private void DisposeTiles()
     {
+        // Unwind tree-wide bulk operations and the on-entry fetch before
+        // the tiles they report progress into disappear.
+        _workspaceCts?.Cancel();
+
         // Clearing the ObservableCollection fires a Reset to WPF which
         // can walk back through the still-bound tile views as they
         // detach — if we disposed first (nulling the tile's Graph),
