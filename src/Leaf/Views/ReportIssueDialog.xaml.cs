@@ -13,6 +13,13 @@ public partial class ReportIssueDialog : Window
     private const string GitHubOwner = "TK22-26";
     private const string GitHubRepo = "Leaf";
 
+    /// <summary>
+    /// Cancels an in-flight `gh issue create`. Non-null exactly while a
+    /// submission is running; the Cancel button cancels the submission
+    /// instead of closing the dialog during that window.
+    /// </summary>
+    private System.Threading.CancellationTokenSource? _submitCts;
+
     public ReportIssueDialog()
     {
         InitializeComponent();
@@ -63,16 +70,12 @@ public partial class ReportIssueDialog : Window
             return;
         }
 
-        // Disable inputs while submitting
-        TitleTextBox.IsEnabled = false;
-        BodyTextBox.IsEnabled = false;
-        SubmitButton.IsEnabled = false;
+        SetSubmitting(true);
 
-        ShowStatus("Creating issue...", isError: false, isProgress: true);
-
+        _submitCts = new System.Threading.CancellationTokenSource();
         try
         {
-            var (success, output, error) = await CreateGitHubIssueAsync(title, body);
+            var (success, output, error) = await CreateGitHubIssueAsync(title, body, _submitCts.Token);
 
             if (success)
             {
@@ -82,12 +85,16 @@ public partial class ReportIssueDialog : Window
                 var issueUrl = ExtractIssueUrl(output);
                 if (!string.IsNullOrEmpty(issueUrl))
                 {
-                    var result = FluentMessageBox.Show(
-                        this,
+                    // Suppressible: "I will NEVER want to view it in
+                    // GitHub" is a remembered No; a remembered Yes
+                    // auto-opens the browser (#36).
+                    var result = FluentMessageBox.ShowSuppressible(
                         $"Issue created successfully!\n\nWould you like to open it in your browser?\n\n{issueUrl}",
                         "Issue Created",
+                        suppressionKey: "reportIssue.openInBrowser",
                         MessageBoxButton.YesNo,
-                        FluentMessageBoxIcon.Information);
+                        FluentMessageBoxIcon.Information,
+                        owner: this);
 
                     if (result == MessageBoxResult.Yes)
                     {
@@ -100,29 +107,55 @@ public partial class ReportIssueDialog : Window
             else
             {
                 ShowStatus($"Failed to create issue: {error}", isError: true);
-
-                // Re-enable inputs on failure
-                TitleTextBox.IsEnabled = true;
-                BodyTextBox.IsEnabled = true;
-                SubmitButton.IsEnabled = true;
+                SetSubmitting(false);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            ShowStatus("Submission cancelled.", isError: true);
+            SetSubmitting(false);
         }
         catch (Exception ex)
         {
             ShowStatus($"Error: {ex.Message}", isError: true);
-
-            // Re-enable inputs on error
-            TitleTextBox.IsEnabled = true;
-            BodyTextBox.IsEnabled = true;
-            SubmitButton.IsEnabled = true;
+            SetSubmitting(false);
 
             // Also log — ShowStatus is a UI-only indicator.
             AsyncErrorHandler.Handle(ex, nameof(SubmitButton_Click), isUserAction: false);
+        }
+        finally
+        {
+            _submitCts?.Dispose();
+            _submitCts = null;
+        }
+    }
+
+    /// <summary>
+    /// Toggle the submitting visuals: inputs disabled, Submit reads
+    /// "Creating…", and the status strip shows the spinning sync icon.
+    /// </summary>
+    private void SetSubmitting(bool submitting)
+    {
+        TitleTextBox.IsEnabled = !submitting;
+        BodyTextBox.IsEnabled = !submitting;
+        SubmitButton.IsEnabled = !submitting && !string.IsNullOrWhiteSpace(TitleTextBox.Text);
+        SubmitButtonText.Text = submitting ? "Creating…" : "Submit Issue";
+        if (submitting)
+        {
+            ShowStatus("Creating issue...", isError: false, isProgress: true);
         }
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
+        // While a submission is in flight, Cancel aborts the gh call and
+        // returns to the editable form instead of closing the window
+        // with an orphaned process behind it.
+        if (_submitCts is { } cts)
+        {
+            cts.Cancel();
+            return;
+        }
         DialogResult = false;
     }
 
@@ -130,6 +163,25 @@ public partial class ReportIssueDialog : Window
     {
         StatusBorder.Visibility = Visibility.Visible;
         StatusText.Text = message;
+
+        // Spin the sync icon while in progress; clear the transform on
+        // any terminal state so success/error icons render upright.
+        if (isProgress)
+        {
+            var rotate = new RotateTransform();
+            StatusIcon.RenderTransformOrigin = new Point(0.5, 0.5);
+            StatusIcon.RenderTransform = rotate;
+            rotate.BeginAnimation(
+                RotateTransform.AngleProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, 360, TimeSpan.FromSeconds(1.2))
+                {
+                    RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever,
+                });
+        }
+        else
+        {
+            StatusIcon.RenderTransform = null;
+        }
 
         if (isProgress)
         {
@@ -154,19 +206,32 @@ public partial class ReportIssueDialog : Window
         }
     }
 
-    private static async Task<(bool Success, string Output, string Error)> CreateGitHubIssueAsync(string title, string body)
+    private static async Task<(bool Success, string Output, string Error)> CreateGitHubIssueAsync(
+        string title, string body, System.Threading.CancellationToken cancellationToken)
     {
         try
         {
             var psi = new ProcessStartInfo
             {
                 FileName = "gh",
-                Arguments = $"issue create --repo {GitHubOwner}/{GitHubRepo} --title \"{EscapeArg(title)}\" --body \"{EscapeArg(body)}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                // Same rule as every git spawn: never let a child inherit
+                // this process's stdin; close the pipe right after start.
+                RedirectStandardInput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            // ArgumentList — no hand-rolled escaping; titles/bodies with
+            // quotes, backslashes, or newlines pass through verbatim.
+            psi.ArgumentList.Add("issue");
+            psi.ArgumentList.Add("create");
+            psi.ArgumentList.Add("--repo");
+            psi.ArgumentList.Add($"{GitHubOwner}/{GitHubRepo}");
+            psi.ArgumentList.Add("--title");
+            psi.ArgumentList.Add(title);
+            psi.ArgumentList.Add("--body");
+            psi.ArgumentList.Add(body);
 
             using var process = Process.Start(psi);
             if (process == null)
@@ -174,17 +239,27 @@ public partial class ReportIssueDialog : Window
                 return (false, "", "Failed to start gh process. Is GitHub CLI installed?");
             }
 
+            process.StandardInput.Close();
+
             var outputTask = process.StandardOutput.ReadToEndAsync();
             var errorTask = process.StandardError.ReadToEndAsync();
 
-            // Wait with timeout (30 seconds)
-            var completed = await Task.WhenAny(
-                process.WaitForExitAsync(),
-                Task.Delay(TimeSpan.FromSeconds(30)));
-
-            if (!process.HasExited)
+            // Wait for exit, bounded by the 30s timeout and the user's
+            // Cancel button. Either trigger kills the process; only the
+            // user's token surfaces as OperationCanceledException.
+            using var timeoutCts = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+            try
             {
-                process.Kill();
+                await process.WaitForExitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                cancellationToken.ThrowIfCancellationRequested();
                 return (false, "", "Command timed out after 30 seconds.");
             }
 
@@ -209,16 +284,14 @@ public partial class ReportIssueDialog : Window
         {
             return (false, "", "GitHub CLI (gh) not found. Please install it from https://cli.github.com/");
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             return (false, "", ex.Message);
         }
-    }
-
-    private static string EscapeArg(string arg)
-    {
-        // Escape quotes and backslashes for command line
-        return arg.Replace("\\", "\\\\").Replace("\"", "\\\"");
     }
 
     private static string? ExtractIssueUrl(string output)
