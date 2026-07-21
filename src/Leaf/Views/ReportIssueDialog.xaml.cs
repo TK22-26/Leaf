@@ -138,11 +138,51 @@ public partial class ReportIssueDialog : Window
     {
         TitleTextBox.IsEnabled = !submitting;
         BodyTextBox.IsEnabled = !submitting;
+        OpenInBrowserButton.IsEnabled = !submitting;
         SubmitButton.IsEnabled = !submitting && !string.IsNullOrWhiteSpace(TitleTextBox.Text);
         SubmitButtonText.Text = submitting ? "Creating…" : "Submit Issue";
         if (submitting)
         {
             ShowStatus("Creating issue...", isError: false, isProgress: true);
+        }
+    }
+
+    /// <summary>
+    /// Maximum length for the pre-filled new-issue URL. Browsers and
+    /// GitHub's server reject very long URLs; past this we fail loudly
+    /// and ask the user to shorten the description rather than silently
+    /// truncating what they wrote.
+    /// </summary>
+    private const int MaxIssueUrlLength = 8000;
+
+    /// <summary>
+    /// Open GitHub's new-issue form pre-filled with the current title
+    /// and body. The web form supports drag-and-drop image attachments,
+    /// which no CLI/API path offers (#34).
+    /// </summary>
+    private void OpenInBrowserButton_Click(object sender, RoutedEventArgs e)
+    {
+        var title = TitleTextBox.Text.Trim();
+        var body = BodyTextBox.Text.Trim();
+
+        var url = $"https://github.com/{GitHubOwner}/{GitHubRepo}/issues/new" +
+                  $"?title={Uri.EscapeDataString(title)}&body={Uri.EscapeDataString(body)}";
+        if (url.Length > MaxIssueUrlLength)
+        {
+            ShowStatus(
+                $"The issue text is too long to pre-fill a browser form ({url.Length:N0} of {MaxIssueUrlLength:N0} characters). " +
+                "Shorten the description, or submit in-app and add screenshots as a comment afterwards.",
+                isError: true);
+            return;
+        }
+
+        if (OpenUrl(url))
+        {
+            DialogResult = true;
+        }
+        else
+        {
+            ShowStatus("Could not open the browser — no handler for https URLs?", isError: true);
         }
     }
 
@@ -311,7 +351,7 @@ public partial class ReportIssueDialog : Window
         return null;
     }
 
-    private static void OpenUrl(string url)
+    private static bool OpenUrl(string url)
     {
         try
         {
@@ -320,6 +360,7 @@ public partial class ReportIssueDialog : Window
                 FileName = url,
                 UseShellExecute = true
             });
+            return true;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception
                                 or System.IO.FileNotFoundException
@@ -327,6 +368,7 @@ public partial class ReportIssueDialog : Window
         {
             // No registered handler for URL scheme or shell execution blocked.
             Log.Info("ReportIssue", $"OpenUrl('{url}') failed: {ex.GetType().Name}: {ex.Message}");
+            return false;
         }
     }
 }
