@@ -31,7 +31,8 @@ public interface IAutoFetchService
     /// Perform a fetch immediately.
     /// </summary>
     /// <param name="repoPath">Repository path to fetch.</param>
-    Task FetchAsync(string repoPath);
+    /// <param name="cancellationToken">Cancels in-flight remote calls (kills the git process).</param>
+    Task FetchAsync(string repoPath, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
