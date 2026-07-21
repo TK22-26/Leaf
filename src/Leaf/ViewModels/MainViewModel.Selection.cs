@@ -115,7 +115,10 @@ public partial class MainViewModel
             DeleteTagCommand = DeleteTagCommand,
             NavigateToCommit = sha =>
             {
-                GitGraphViewModel?.SelectCommitBySha(sha);
+                // Pages in more history when the tagged commit isn't
+                // loaded yet; fire-and-forget keeps the click responsive.
+                GitGraphViewModel?.SelectCommitByShaAsync(sha)
+                    .FireAndForget(nameof(GitGraphViewModel.SelectCommitByShaAsync), isUserAction: true);
                 // Switching to commit view means tag is no longer selected
                 // for the detail pane — clear so the next selection cycle
                 // can re-show.

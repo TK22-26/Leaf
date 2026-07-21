@@ -72,9 +72,18 @@ public partial class BranchListView : UserControl
         if (!viewModel.IsGraphMode)
             viewModel.ClosePullRequestViewCommand.Execute(null);
 
-        // Navigate to branch tip in git graph
+        // Navigate to branch tip in git graph. Async: the tip may be
+        // beyond the loaded commit page and paging in more history takes
+        // git round-trips — fire-and-forget so the click stays responsive.
         if (!string.IsNullOrEmpty(branch.TipSha))
-            viewModel.GitGraphViewModel?.SelectCommitBySha(branch.TipSha);
+        {
+            var graph = viewModel.GitGraphViewModel;
+            if (graph != null)
+            {
+                graph.SelectCommitByShaAsync(branch.TipSha)
+                    .FireAndForget(nameof(graph.SelectCommitByShaAsync), isUserAction: true);
+            }
+        }
 
         e.Handled = true;
     }
@@ -105,10 +114,13 @@ public partial class BranchListView : UserControl
         if (DataContext is not MainViewModel viewModel || viewModel.SelectedRepository == null)
             return;
 
-        // Double-click to scroll to the tagged commit in the graph
+        // Double-click to scroll to the tagged commit in the graph,
+        // paging in more history when the target isn't loaded yet.
         if (e.ClickCount == 2)
         {
-            viewModel.GitGraphViewModel?.SelectCommitBySha(tag.TargetSha);
+            var graph = viewModel.GitGraphViewModel;
+            graph?.SelectCommitByShaAsync(tag.TargetSha)
+                .FireAndForget(nameof(graph.SelectCommitByShaAsync), isUserAction: true);
             e.Handled = true;
             return;
         }

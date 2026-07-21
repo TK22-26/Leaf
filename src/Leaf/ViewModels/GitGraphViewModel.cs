@@ -1141,24 +1141,81 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Select a commit by its SHA hash.
     /// If the commit is filtered out, clears filters to make it visible.
+    /// Only searches commits that are already paged in — prefer
+    /// <see cref="SelectCommitByShaAsync"/> from user-facing navigation,
+    /// which loads more history until the commit is found.
     /// </summary>
-    public void SelectCommitBySha(string sha)
+    public void SelectCommitBySha(string sha) => TrySelectLoadedCommitBySha(sha);
+
+    /// <summary>
+    /// Select a commit by SHA, paging in more history until the commit
+    /// is found or history is exhausted. Clicking a branch whose tip is
+    /// beyond the loaded page used to be silently ignored — this is the
+    /// navigation entry point that makes those clicks land.
+    /// </summary>
+    public async Task SelectCommitByShaAsync(string sha)
     {
         if (string.IsNullOrEmpty(sha))
             return;
+
+        if (TrySelectLoadedCommitBySha(sha))
+            return;
+
+        // Keep paging until the target commit is loaded. A scroll-triggered
+        // page may already be in flight (IsLoadingMore); wait for it rather
+        // than racing it — LoadMoreCommitsAsync cancels overlapping builds.
+        var stalls = 0;
+        while (_hasMoreCommits && !IsCommitLoaded(sha))
+        {
+            var before = _allCommits.Count;
+            if (IsLoadingMore)
+            {
+                await Task.Delay(50);
+            }
+            else
+            {
+                await LoadMoreCommitsAsync();
+            }
+
+            // Fail-safe: a cancelled/failed page load makes no progress;
+            // three consecutive no-growth iterations means we're spinning,
+            // not paging — bail instead of looping forever.
+            stalls = _allCommits.Count > before ? 0 : stalls + 1;
+            if (stalls >= 3)
+            {
+                Log.Warn("Graph", $"SelectCommitByShaAsync({sha[..Math.Min(7, sha.Length)]}) stalled while paging; giving up.");
+                break;
+            }
+        }
+
+        TrySelectLoadedCommitBySha(sha);
+    }
+
+    /// <summary>
+    /// True when the commit is present in the paged-in history (exact or
+    /// prefix match, matching the selection lookups below).
+    /// </summary>
+    private bool IsCommitLoaded(string sha) =>
+        _loadedCommitShas.Contains(sha) ||
+        _allCommits.Any(c => c.Sha.StartsWith(sha));
+
+    private bool TrySelectLoadedCommitBySha(string sha)
+    {
+        if (string.IsNullOrEmpty(sha))
+            return false;
 
         // First try to find in current visible commits
         var commit = Commits.FirstOrDefault(c => c.Sha == sha || c.Sha.StartsWith(sha));
         if (commit != null)
         {
             SelectCommit(commit);
-            return;
+            return true;
         }
 
         // Not in visible commits - check if it exists in all commits
         var allCommit = _allCommits.FirstOrDefault(c => c.Sha == sha || c.Sha.StartsWith(sha));
         if (allCommit == null)
-            return;
+            return false;
 
         // Commit exists but is filtered out - clear filters to make it visible
         _hiddenBranchNames.Clear();
@@ -1170,7 +1227,9 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
         if (commit != null)
         {
             SelectCommit(commit);
+            return true;
         }
+        return false;
     }
 
     public bool TryGetMergeTooltip(string sha, out MergeCommitTooltipViewModel? tooltip)

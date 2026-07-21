@@ -472,7 +472,7 @@ public partial class MainViewModel
                     : localBranch?.TipSha ?? string.Empty;
                 if (!string.IsNullOrWhiteSpace(selectSha))
                 {
-                    GitGraphViewModel.SelectCommitBySha(selectSha);
+                    await GitGraphViewModel.SelectCommitByShaAsync(selectSha);
                 }
             }
 
