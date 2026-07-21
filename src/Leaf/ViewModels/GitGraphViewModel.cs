@@ -1353,6 +1353,40 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Drop a deleted branch's labels from the loaded graph in place and
+    /// republish the nodes (the <see cref="OnBranchColorsChanged"/>
+    /// pattern) — no BuildGraph, no scroll or selection reset. Only
+    /// correct when reachability is unchanged, which <c>git branch -d</c>
+    /// guarantees (it refuses unmerged branches); callers handle remote,
+    /// current-branch, and force deletes with a full refresh.
+    /// </summary>
+    public void RemoveBranchFromGraph(string branchName)
+    {
+        if (string.IsNullOrWhiteSpace(branchName)) return;
+
+        foreach (var commit in _allCommits)
+        {
+            commit.BranchNames.Remove(branchName);
+            commit.BranchLabels.RemoveAll(l => string.Equals(l.Name, branchName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var current = Nodes;
+        foreach (var node in current)
+        {
+            node.BranchNames.Remove(branchName);
+            node.BranchLabels.RemoveAll(l => string.Equals(l.Name, branchName, StringComparison.OrdinalIgnoreCase));
+        }
+        // Republish so the canvas rebuilds its label hit/lookup caches.
+        Nodes = new ObservableCollection<GitTreeNode>(current);
+
+        // Keep filter bookkeeping consistent so a later filter pass
+        // doesn't resurrect the deleted branch as a visible tip.
+        _branchTips.TryRemove(branchName, out _);
+        _hiddenBranchNames.Remove(branchName);
+        _soloBranchNames.Remove(branchName);
+    }
+
+    /// <summary>
     /// Pull the latest palette id out of <see cref="AppSettings"/> and
     /// republish if it changed. Called by MainViewModel after the Settings
     /// dialog closes.

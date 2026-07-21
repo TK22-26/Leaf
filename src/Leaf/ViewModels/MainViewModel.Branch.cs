@@ -209,7 +209,7 @@ public partial class MainViewModel
             }
 
             NotifySuccess(Models.NotificationCategory.BranchAdmin, "Branch deleted", $"Deleted branch {branch.Name}.");
-            await RefreshAsync();
+            await RefreshAfterBranchDeleteAsync(branch, wasForced: false);
         }
         catch (Exception ex)
         {
@@ -219,7 +219,7 @@ public partial class MainViewModel
                 {
                     await _gitService.DeleteBranchAsync(SelectedRepository.Path, branch.Name, force: true, cancellationToken: CurrentRepositoryToken);
                     NotifySuccess(Models.NotificationCategory.BranchAdmin, "Branch force deleted", $"Force deleted branch {branch.Name}.");
-                    await RefreshAsync();
+                    await RefreshAfterBranchDeleteAsync(branch, wasForced: true);
                     return;
                 }
                 catch (Exception forceEx)
@@ -236,6 +236,34 @@ public partial class MainViewModel
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Post-delete invalidation. A non-force local delete of a
+    /// non-current branch is git-guaranteed to leave reachability
+    /// unchanged (<c>git branch -d</c> refuses unmerged branches), so
+    /// the graph only needs its labels dropped in place — no BuildGraph,
+    /// no scroll reset — while sidebar branch data reloads through the
+    /// standard loader. Remote deletes (may orphan commits from the
+    /// walk), current-branch deletes (HEAD moved via checkout), force
+    /// deletes, and active hide/solo filters (visibility cones can
+    /// genuinely change) all take the full refresh path.
+    /// </summary>
+    private async Task RefreshAfterBranchDeleteAsync(BranchInfo branch, bool wasForced)
+    {
+        var repo = SelectedRepository;
+        var graph = GitGraphViewModel;
+        var filtersActive = repo is not null &&
+            (repo.HiddenBranchNames.Count > 0 || repo.SoloBranchNames.Count > 0);
+
+        if (repo is null || graph is null || branch.IsRemote || branch.IsCurrent || wasForced || filtersActive)
+        {
+            await RefreshAsync();
+            return;
+        }
+
+        graph.RemoveBranchFromGraph(branch.Name);
+        await LoadBranchesForRepoAsync(repo, forceReload: true, skipFilterApplication: true);
     }
 
     [RelayCommand]
