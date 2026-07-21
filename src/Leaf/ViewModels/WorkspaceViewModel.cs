@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Leaf.Models;
 using Leaf.Services;
+using Leaf.Services.RepoTree;
 using Leaf.Utils;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -36,6 +37,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IGitService _gitService;
+    private readonly IRepoTreeService _repoTreeService;
     private readonly SettingsService _settingsService;
     private readonly IRepositoryManagementService _repositoryService;
     private readonly IBranchColorPaletteRegistry _paletteRegistry;
@@ -93,6 +95,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     public WorkspaceViewModel(
         IServiceScopeFactory scopeFactory,
         IGitService gitService,
+        IRepoTreeService repoTreeService,
         SettingsService settingsService,
         IRepositoryManagementService repositoryService,
         IBranchColorPaletteRegistry paletteRegistry,
@@ -105,6 +108,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
+        _repoTreeService = repoTreeService ?? throw new ArgumentNullException(nameof(repoTreeService));
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _repositoryService = repositoryService ?? throw new ArgumentNullException(nameof(repositoryService));
         _paletteRegistry = paletteRegistry ?? throw new ArgumentNullException(nameof(paletteRegistry));
@@ -652,42 +656,10 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     /// / linked worktrees (.git is a file pointing to the real gitdir).
     /// </summary>
     internal static bool HasMergeInProgress(string repoPath)
-    {
-        if (string.IsNullOrEmpty(repoPath)) return false;
-        var dotGit = Path.Combine(repoPath, ".git");
-        if (Directory.Exists(dotGit))
-        {
-            return File.Exists(Path.Combine(dotGit, "MERGE_HEAD"));
-        }
-        if (File.Exists(dotGit))
-        {
-            try
-            {
-                // .git file format: "gitdir: <relative-or-absolute path>"
-                var line = File.ReadAllText(dotGit).Trim();
-                const string prefix = "gitdir:";
-                if (!line.StartsWith(prefix, StringComparison.Ordinal)) return false;
-                var target = line.Substring(prefix.Length).Trim();
-                if (!Path.IsPathRooted(target))
-                    target = Path.GetFullPath(Path.Combine(repoPath, target));
-                return File.Exists(Path.Combine(target, "MERGE_HEAD"));
-            }
-            catch
-            {
-                return false;
-            }
-        }
-        return false;
-    }
+        => RepoTreeService.HasMergeInProgress(repoPath);
 
     internal static bool IsSubmoduleUninitialized(string path)
-    {
-        if (string.IsNullOrEmpty(path)) return false;
-        if (!Directory.Exists(path)) return true;
-        var dotGit = Path.Combine(path, ".git");
-        // .git can be a directory (standalone) or a file (linked / submodule pointing into parent's modules store).
-        return !Directory.Exists(dotGit) && !File.Exists(dotGit);
-    }
+        => RepoTreeService.IsSubmoduleUninitialized(path);
 
     /// <summary>
     /// Run <c>git submodule update --init -- &lt;relativePath&gt;</c>
@@ -821,32 +793,40 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Existing one-shot commit path (used by the skip-review setting).
-    /// Parallel AI + commit in dep order; no compose state.
+    /// Ordering (submodules first, parent last) and gitlink pointer
+    /// staging live in <see cref="IRepoTreeService.CommitTreeAsync"/>,
+    /// shared with the MCP server; this wrapper supplies the AI message
+    /// provider and translates outcomes into toasts.
     /// </summary>
     private Task CommitAllImmediateAsync()
     {
         return RunBulkAsync("Committing all repos…", async () =>
         {
-            var submodules = Tiles.Where(t => !t.IsParent).ToList();
-            var parent = Tiles.FirstOrDefault(t => t.IsParent);
+            if (Parent is null) return;
 
-            if (submodules.Count > 0)
+            var options = new TreeCommitOptions
             {
-                BulkOperationStatus = $"Committing {submodules.Count} submodule(s) in parallel…";
-                await RunTilesThrottledAsync(submodules, CommitTileAsync);
-            }
+                MessageProvider = async (node, ct) =>
+                {
+                    var diff = await _gitService.GetStagedSummaryAsync(node.Path, cancellationToken: ct);
+                    var (msg, desc, err) = await _aiCommitService.GenerateCommitMessageAsync(diff, node.Path, ct);
+                    if (!string.IsNullOrEmpty(err) || string.IsNullOrWhiteSpace(msg))
+                    {
+                        throw new InvalidOperationException(
+                            $"AI commit message generation failed: {(string.IsNullOrEmpty(err) ? "empty message" : err)}");
+                    }
+                    return (msg!, desc);
+                },
+            };
 
-            if (parent != null)
-            {
-                BulkOperationStatus = $"Committing {parent.Name}…";
-                await CommitTileAsync(parent);
-            }
+            var result = await _repoTreeService.CommitTreeAsync(
+                Parent.Path,
+                options,
+                new Progress<TreeOpProgress>(p => BulkOperationStatus = $"Committing {TileDisplayName(p.Node)}…"),
+                WorkspaceToken);
 
-            BulkOperationStatus = "Refreshing tiles…";
-            foreach (var tile in Tiles)
-            {
-                await LoadTileAsync(tile);
-            }
+            await RefreshAllTilesAsync();
+            ReportTreeOpResult("Commit", result, Models.NotificationCategory.MergeAndRebase);
         });
     }
 
@@ -1008,11 +988,13 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             // single-tile commit comment below cites).
             if (tile.IsParent && Parent is not null)
             {
-                foreach (var sub in Tiles.Where(t => !t.IsParent))
+                var subRelPaths = Tiles.Where(t => !t.IsParent)
+                    .Select(sub => ToRelativePath(Parent.Path, sub.RepositoryPath))
+                    .Where(rel => !string.IsNullOrEmpty(rel))
+                    .ToList();
+                if (subRelPaths.Count > 0)
                 {
-                    var rel = ToRelativePath(Parent.Path, sub.RepositoryPath);
-                    if (string.IsNullOrEmpty(rel)) continue;
-                    await _gitService.StageFileAsync(tile.RepositoryPath, rel, tile.Token);
+                    await _repoTreeService.StageSubmodulePointersAsync(tile.RepositoryPath, subRelPaths, tile.Token);
                 }
             }
 
@@ -1116,46 +1098,25 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Push every repo. Submodules first, parent last. If any
-    /// submodule push fails, the parent push is skipped — its
-    /// submodule pointers would dangle on the remote otherwise.
+    /// Push every repo. Submodules first, parent last; if any submodule
+    /// push fails the parent push is skipped — its submodule pointers
+    /// would dangle on the remote otherwise. Ordering and skip logic
+    /// live in <see cref="IRepoTreeService.PushTreeAsync"/>, shared
+    /// with the MCP server. Note the tree service covers the real tree
+    /// (nested submodules included), not just the visible tiles.
     /// </summary>
     [RelayCommand]
     public async Task PushAllAsync()
     {
         await RunBulkAsync("Pushing all repos…", async () =>
         {
-            var subFailures = 0;
-            foreach (var tile in Tiles.Where(t => !t.IsParent))
-            {
-                BulkOperationStatus = $"Pushing {tile.Name}…";
-                try
-                {
-                    await PushTileAsync(tile);
-                }
-                catch
-                {
-                    subFailures++;
-                }
-            }
-
-            var parent = Tiles.FirstOrDefault(t => t.IsParent);
-            if (parent != null)
-            {
-                if (subFailures > 0)
-                {
-                    _notificationService.Show(
-                        "Parent push skipped",
-                        $"{subFailures} submodule push(es) failed — pushing the parent would dangle its submodule references.",
-                        NotificationType.Warning,
-                        Models.NotificationCategory.SyncOperations);
-                }
-                else
-                {
-                    BulkOperationStatus = $"Pushing {parent.Name}…";
-                    await PushTileAsync(parent);
-                }
-            }
+            if (Parent is null) return;
+            var result = await _repoTreeService.PushTreeAsync(
+                Parent.Path,
+                new Progress<TreeOpProgress>(p => BulkOperationStatus = $"Pushing {TileDisplayName(p.Node)}…"),
+                WorkspaceToken);
+            await RefreshAllTilesAsync();
+            ReportTreeOpResult("Push", result, Models.NotificationCategory.SyncOperations);
         });
     }
 
@@ -1170,8 +1131,13 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         await RunBulkAsync("Pulling all repos…", async () =>
         {
-            BulkOperationStatus = $"Pulling {Tiles.Count} repo(s)…";
-            await RunTilesThrottledAsync(Tiles, PullTileAsync);
+            if (Parent is null) return;
+            var result = await _repoTreeService.PullTreeAsync(
+                Parent.Path,
+                new Progress<TreeOpProgress>(p => BulkOperationStatus = $"Pulling {TileDisplayName(p.Node)}…"),
+                WorkspaceToken);
+            await RefreshAllTilesAsync();
+            ReportTreeOpResult("Pull", result, Models.NotificationCategory.SyncOperations);
         });
     }
 
@@ -1181,40 +1147,102 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         await RunBulkAsync("Fetching all repos…", async () =>
         {
-            BulkOperationStatus = $"Fetching {Tiles.Count} repo(s)…";
-            await RunTilesThrottledAsync(Tiles, FetchTileAsync);
+            if (Parent is null) return;
+            var result = await _repoTreeService.FetchTreeAsync(
+                Parent.Path,
+                new Progress<TreeOpProgress>(p => BulkOperationStatus = $"Fetching {TileDisplayName(p.Node)}…"),
+                WorkspaceToken);
+            await RefreshAllTilesAsync();
+            ReportTreeOpResult("Fetch", result, Models.NotificationCategory.SyncOperations);
         });
+    }
+
+    /// <summary>
+    /// Cancellation for tree-wide bulk operations: the parent tile's
+    /// token, which trips when the grid is torn down (mode switch or
+    /// repo change), so in-flight tree ops unwind with the tiles.
+    /// </summary>
+    private CancellationToken WorkspaceToken =>
+        Tiles.FirstOrDefault(t => t.IsParent)?.Token ?? CancellationToken.None;
+
+    /// <summary>
+    /// Display name for a tree node in the bulk progress strip: the
+    /// matching tile's name when one exists, otherwise the node's
+    /// root-relative path (nested submodules have no tile).
+    /// </summary>
+    private string TileDisplayName(RepoNode node)
+    {
+        var tile = Tiles.FirstOrDefault(t =>
+            string.Equals(Path.GetFullPath(t.RepositoryPath), node.Path, StringComparison.OrdinalIgnoreCase));
+        if (tile is not null) return tile.Name;
+        return node.RelativePath == "." ? (Parent?.Name ?? ".") : node.RelativePath;
+    }
+
+    /// <summary>Reload every tile after a tree-wide operation.</summary>
+    private async Task RefreshAllTilesAsync()
+    {
+        BulkOperationStatus = "Refreshing tiles…";
+        await RunTilesThrottledAsync(Tiles.ToList(), LoadTileAsync);
+    }
+
+    /// <summary>
+    /// Translate a <see cref="TreeOpResult"/> into the workspace's toast
+    /// vocabulary: one success summary when everything landed, and one
+    /// toast per failure / child-failed skip / no-remote skip otherwise.
+    /// Clean skips stay silent — "nothing to do" is not news.
+    /// </summary>
+    private void ReportTreeOpResult(string operation, TreeOpResult result, Models.NotificationCategory category)
+    {
+        foreach (var entry in result.Entries)
+        {
+            var name = entry.RelativePath == "." ? (Parent?.Name ?? ".") : entry.RelativePath;
+            switch (entry.Outcome)
+            {
+                case TreeOpOutcome.Failed:
+                    _notificationService.Show($"{operation} failed", $"{name}: {entry.Detail}", NotificationType.Error);
+                    break;
+                case TreeOpOutcome.SkippedChildFailed:
+                    _notificationService.Show(
+                        $"{operation} skipped for {name}",
+                        entry.Detail ?? "a submodule below this repo failed.",
+                        NotificationType.Warning, category);
+                    break;
+                case TreeOpOutcome.SkippedNoRemote:
+                    _notificationService.Show(
+                        $"{operation} skipped",
+                        $"{name} has no remote configured.",
+                        NotificationType.Information, category);
+                    break;
+            }
+        }
+
+        if (result.AllSucceeded)
+        {
+            var acted = result.Entries.Count(e => e.Outcome == TreeOpOutcome.Succeeded);
+            var summary = acted == 0
+                ? "Nothing to do — all repos were up to date."
+                : $"{acted} repo(s) processed.";
+            _notificationService.Show($"{operation} complete", summary, NotificationType.Success, category);
+        }
     }
 
     /// <summary>
     /// Cap on concurrent per-tile git operations during bulk commands.
-    /// Each tile op spins up a process (git CLI) or a LibGit2Sharp call;
-    /// without a cap, a 20-submodule monorepo would fork 20 gits at
-    /// once and hammer disk + creds. Four is a pragmatic default —
-    /// matches typical fetch/clone parallelism in other tools.
+    /// Shared with the tree service so tile fan-out and tree fan-out
+    /// exert the same process pressure.
     /// </summary>
-    private const int MaxParallelTileOps = 4;
+    private const int MaxParallelTileOps = RepoTreeService.MaxParallelOps;
 
     /// <summary>
     /// Run <paramref name="op"/> over every tile in <paramref name="tiles"/>
-    /// with a parallelism cap. Preserves the "fire all in parallel"
-    /// shape of the caller while preventing the unbounded process
-    /// fan-out that <c>Task.WhenAll(Select(op))</c> would produce.
+    /// with a parallelism cap. Thin wrapper over the shared throttled
+    /// runner in <see cref="RepoTreeService"/>.
     /// </summary>
-    internal static async Task RunTilesThrottledAsync(
+    internal static Task RunTilesThrottledAsync(
         IEnumerable<SubmoduleTileViewModel> tiles,
         Func<SubmoduleTileViewModel, Task> op,
         int maxParallel = MaxParallelTileOps)
-    {
-        using var gate = new SemaphoreSlim(maxParallel, maxParallel);
-        var tasks = tiles.Select(async tile =>
-        {
-            await gate.WaitAsync().ConfigureAwait(false);
-            try { await op(tile).ConfigureAwait(false); }
-            finally { gate.Release(); }
-        });
-        await Task.WhenAll(tasks).ConfigureAwait(false);
-    }
+        => RepoTreeService.RunThrottledAsync(tiles, op, maxParallel);
 
     /// <summary>
     /// Shared bulk-op wrapper: flips the IsBulkOperationActive flag so

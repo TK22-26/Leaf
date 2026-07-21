@@ -216,6 +216,44 @@ internal class RepositoryOperations
     }
 
     /// <summary>
+    /// Resolve the top-level working-tree directory for any path inside a
+    /// git working tree (<c>git rev-parse --show-toplevel</c>). Throws when
+    /// the path is not inside a working tree.
+    /// </summary>
+    public async Task<string> GetRepositoryRootAsync(string anyPath, CancellationToken cancellationToken = default)
+    {
+        var result = await _context.CommandRunner.RunAsync(
+            anyPath, ["rev-parse", "--show-toplevel"], cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!result.Success)
+            throw new InvalidOperationException(
+                $"'{anyPath}' is not inside a git working tree: {result.StandardError.Trim()}");
+
+        var toplevel = result.StandardOutput.Trim();
+        if (string.IsNullOrEmpty(toplevel))
+            throw new InvalidOperationException(
+                $"'{anyPath}' has no working tree (bare repository or inside .git).");
+        return Path.GetFullPath(toplevel);
+    }
+
+    /// <summary>
+    /// Resolve the superproject working tree that contains
+    /// <paramref name="repoPath"/> as a submodule
+    /// (<c>git rev-parse --show-superproject-working-tree</c>).
+    /// Returns null when the repo is not a submodule of anything.
+    /// </summary>
+    public async Task<string?> GetSuperprojectWorkingTreeAsync(string repoPath, CancellationToken cancellationToken = default)
+    {
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath, ["rev-parse", "--show-superproject-working-tree"], cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!result.Success)
+            throw new InvalidOperationException(
+                $"Failed to resolve superproject for '{repoPath}': {result.StandardError.Trim()}");
+
+        var superproject = result.StandardOutput.Trim();
+        return string.IsNullOrEmpty(superproject) ? null : Path.GetFullPath(superproject);
+    }
+
+    /// <summary>
     /// Walk the standard <c>.git</c> sentinel files / directories to figure
     /// out which long-running git operation (if any) is paused on this
     /// repo. Shared by <see cref="GetRepositoryInfoAsync"/> and

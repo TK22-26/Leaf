@@ -79,6 +79,12 @@ public class GitService : IGitService
     public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath, CancellationToken cancellationToken = default)
         => _repositoryOps.GetRepositoryInfoFastAsync(repoPath, cancellationToken);
 
+    public Task<string> GetRepositoryRootAsync(string anyPath, CancellationToken cancellationToken = default)
+        => _repositoryOps.GetRepositoryRootAsync(anyPath, cancellationToken);
+
+    public Task<string?> GetSuperprojectWorkingTreeAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _repositoryOps.GetSuperprojectWorkingTreeAsync(repoPath, cancellationToken);
+
     #endregion
 
     #region Commit History Operations
