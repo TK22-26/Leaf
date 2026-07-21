@@ -38,6 +38,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IGitService _gitService;
     private readonly IRepoTreeService _repoTreeService;
+    private readonly IAutoFetchService _autoFetchService;
     private readonly SettingsService _settingsService;
     private readonly IRepositoryManagementService _repositoryService;
     private readonly IBranchColorPaletteRegistry _paletteRegistry;
@@ -96,6 +97,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         IServiceScopeFactory scopeFactory,
         IGitService gitService,
         IRepoTreeService repoTreeService,
+        IAutoFetchService autoFetchService,
         SettingsService settingsService,
         IRepositoryManagementService repositoryService,
         IBranchColorPaletteRegistry paletteRegistry,
@@ -109,6 +111,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
         _repoTreeService = repoTreeService ?? throw new ArgumentNullException(nameof(repoTreeService));
+        _autoFetchService = autoFetchService ?? throw new ArgumentNullException(nameof(autoFetchService));
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _repositoryService = repositoryService ?? throw new ArgumentNullException(nameof(repositoryService));
         _paletteRegistry = paletteRegistry ?? throw new ArgumentNullException(nameof(paletteRegistry));
@@ -249,7 +252,43 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             // closing grid mode tears them down cleanly.
             _ = LoadTileAsync(tile);
         }
+
+        // Background-fetch every submodule tile on entry so the grid
+        // reflects remote state without a manual "Fetch all" — the same
+        // treatment a normal repo gets on selection (#38). Quiet by
+        // design: successes refresh the tile, failures go to the log.
+        _ = FetchTilesOnEntryAsync(Tiles.Where(t => !t.IsParent).ToList());
     }
+
+    /// <summary>
+    /// Quiet on-entry fetch for submodule tiles. Reuses the auto-fetch
+    /// pipeline (all remotes, DNS reachability guard, offline no-op)
+    /// rather than the toast-driven <see cref="FetchTileAsync"/> command,
+    /// throttled like every other bulk tile operation. The parent is
+    /// excluded — repo selection already fetched it.
+    /// </summary>
+    private Task FetchTilesOnEntryAsync(IReadOnlyList<SubmoduleTileViewModel> tiles) =>
+        RunTilesThrottledAsync(tiles, async tile =>
+        {
+            try
+            {
+                // Probe the path directly instead of tile.IsUninitialized —
+                // the flag is set asynchronously by LoadTileAsync and may
+                // not have landed yet.
+                if (IsSubmoduleUninitialized(tile.RepositoryPath)) return;
+
+                await _autoFetchService.FetchAsync(tile.RepositoryPath, tile.Token);
+                await LoadTileAsync(tile);
+            }
+            catch (OperationCanceledException)
+            {
+                // Grid exited / repo switched mid-fetch — expected teardown.
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Workspace", $"Entry fetch failed for {tile.RepositoryPath}", ex);
+            }
+        });
 
     private async Task LoadTileAsync(SubmoduleTileViewModel tile)
     {
