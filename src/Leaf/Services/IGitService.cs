@@ -122,6 +122,20 @@ public interface IGitService
     Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Resolve the top-level working-tree directory for any path inside a
+    /// git working tree (<c>git rev-parse --show-toplevel</c>). Throws when
+    /// the path is not inside a working tree.
+    /// </summary>
+    Task<string> GetRepositoryRootAsync(string anyPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolve the superproject working tree that contains
+    /// <paramref name="repoPath"/> as a submodule. Returns null when the
+    /// repo is not a submodule of anything.
+    /// </summary>
+    Task<string?> GetSuperprojectWorkingTreeAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Clone a remote repository.
     /// </summary>
     /// <param name="credentialKey">Optional credential storage key (e.g. "GitHub:microsoft") for GIT_ASKPASS auth.</param>
