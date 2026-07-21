@@ -672,12 +672,7 @@
 
                     <!-- Buttons -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button Content="Cancel"
-                                Padding="20,10"
-                                IsCancel="True"
-                                Click="Cancel_Click"/>
                         <Button x:Name="CloneButton"
-                                Margin="12,0,0,0"
                                 Padding="24,10"
                                 IsDefault="True"
                                 Click="Clone_Click"
@@ -688,6 +683,11 @@
                                 <TextBlock Text="Clone"/>
                             </StackPanel>
                         </Button>
+                        <Button Content="Cancel"
+                                Margin="12,0,0,0"
+                                Padding="20,10"
+                                IsCancel="True"
+                                Click="Cancel_Click"/>
                     </StackPanel>
                 </Grid>
             </Border>

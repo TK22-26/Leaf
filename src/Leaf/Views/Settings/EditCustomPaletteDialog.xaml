@@ -109,14 +109,14 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="1"
+            <Button Grid.Column="2"
                     Content="Cancel"
                     Width="80"
-                    Margin="0,0,8,0"
                     Click="CancelButton_Click"/>
-            <Button Grid.Column="2"
+            <Button Grid.Column="1"
                     Content="Save"
                     Width="80"
+                    Margin="0,0,8,0"
                     IsDefault="True"
                     Click="SaveButton_Click"/>
         </Grid>

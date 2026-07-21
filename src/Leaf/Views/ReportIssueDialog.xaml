@@ -98,15 +98,15 @@
                            VerticalAlignment="Center"/>
             </StackPanel>
 
-            <Button Grid.Column="2"
+            <Button Grid.Column="3"
                     Content="Cancel"
                     Padding="16,8"
-                    Margin="0,0,8,0"
                     IsCancel="True"
                     Click="CancelButton_Click"/>
             <Button x:Name="SubmitButton"
-                    Grid.Column="3"
+                    Grid.Column="2"
                     Padding="16,8"
+                    Margin="0,0,8,0"
                     IsEnabled="False"
                     Click="SubmitButton_Click"
                     Background="{DynamicResource AccentFillColorDefaultBrush}"
