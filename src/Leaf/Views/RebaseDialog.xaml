@@ -136,17 +136,17 @@
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     Margin="0,16,0,0">
-            <Button Content="Cancel"
-                    Padding="16,8"
-                    IsCancel="True"
-                    Click="Cancel_Click"/>
             <Button x:Name="RebaseButton"
                     Content="{Binding RebaseButtonText}"
                     Padding="16,8"
-                    Margin="8,0,0,0"
                     IsDefault="True"
                     IsEnabled="{Binding CanRebase}"
                     Click="Rebase_Click"/>
+            <Button Content="Cancel"
+                    Padding="16,8"
+                    Margin="8,0,0,0"
+                    IsCancel="True"
+                    Click="Cancel_Click"/>
         </StackPanel>
     </Grid>
 </Window>

@@ -119,17 +119,12 @@
                 Background="#26000000"
                 BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
                 BorderThickness="0,1,0,0">
+            <!-- Windows button order (#37): affirmative/default renders
+                 BEFORE the dismissive within the right-aligned group —
+                 [Yes][No], [OK][Cancel], [Yes][No][Cancel]. -->
             <StackPanel Orientation="Horizontal"
                         HorizontalAlignment="Right"
                         Margin="0,10,12,10">
-                <Button x:Name="NoButton"
-                        Content="No"
-                        Padding="24,8"
-                        MinWidth="120"
-                        Margin="16,0,0,0"
-                        Visibility="{Binding ShowNo, Converter={StaticResource BoolToVisibilityConverter}}"
-                        Click="No_Click"
-                        AutomationProperties.AutomationId="FluentMessageBox.No"/>
                 <Button x:Name="YesButton"
                         Content="Yes"
                         Padding="24,8"
@@ -139,6 +134,14 @@
                         Visibility="{Binding ShowYes, Converter={StaticResource BoolToVisibilityConverter}}"
                         Click="Yes_Click"
                         AutomationProperties.AutomationId="FluentMessageBox.Yes"/>
+                <Button x:Name="NoButton"
+                        Content="No"
+                        Padding="24,8"
+                        MinWidth="120"
+                        Margin="16,0,0,0"
+                        Visibility="{Binding ShowNo, Converter={StaticResource BoolToVisibilityConverter}}"
+                        Click="No_Click"
+                        AutomationProperties.AutomationId="FluentMessageBox.No"/>
                 <Button x:Name="OkButton"
                         Content="OK"
                         Padding="24,8"

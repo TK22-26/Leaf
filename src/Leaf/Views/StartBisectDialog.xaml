@@ -112,12 +112,7 @@
                 BorderThickness="0,1,0,0"
                 Padding="24,16">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Cancel"
-                        Padding="20,10"
-                        IsCancel="True"
-                        Click="Cancel_Click" />
                 <Button x:Name="StartButton"
-                        Margin="12,0,0,0"
                         Padding="24,10"
                         Click="Start_Click"
                         IsEnabled="False"
@@ -127,6 +122,11 @@
                         <TextBlock Text="Start Bisect" />
                     </StackPanel>
                 </Button>
+                <Button Content="Cancel"
+                        Margin="12,0,0,0"
+                        Padding="20,10"
+                        IsCancel="True"
+                        Click="Cancel_Click" />
             </StackPanel>
         </Border>
     </Grid>
