@@ -455,7 +455,21 @@ public partial class GitGraphCanvas
 
     public BranchLabel? GetBranchLabelAt(Point position)
     {
-        if (Nodes == null || position.X > LabelAreaWidth)
+        if (Nodes == null)
+            return null;
+
+        // Expanded rows draw their chips as an overlay with REGISTERED
+        // rects — resolve against those actual drawn areas (they can
+        // extend past LabelAreaWidth, so this runs before the X guard).
+        if (_hitTestService.GetExpandedItemAt(position) is { } expandedHit
+            && expandedHit.NodeIndex >= 0 && expandedHit.NodeIndex < Nodes.Count)
+        {
+            var expandedLabels = Nodes[expandedHit.NodeIndex].BranchLabels;
+            if (expandedHit.BranchIndex >= 0 && expandedHit.BranchIndex < expandedLabels.Count)
+                return expandedLabels[expandedHit.BranchIndex];
+        }
+
+        if (position.X > LabelAreaWidth)
             return null;
 
         int row = (int)(position.Y / RowHeight);
@@ -467,6 +481,11 @@ public partial class GitGraphCanvas
 
         var node = Nodes[nodeIndex];
         if (node.BranchLabels.Count == 0)
+            return null;
+
+        // Nothing is drawn inline for an expanded row (DrawBranchLabels
+        // skips it; the overlay above is the only visible chip surface).
+        if (_stateService.IsNodeExpanded(node.RowIndex))
             return null;
 
         double y = GetYForRow(node.RowIndex + rowOffset);
@@ -576,15 +595,13 @@ public partial class GitGraphCanvas
 
             drawnCount++;
 
-            // If overflow suffix was needed here, this is the last label
+            // LOCKSTEP with DrawBranchLabels: whenever more labels remain,
+            // the drawn chip carries the "+N" suffix and the draw loop
+            // BREAKS — chips 2..N are never rendered, so they must never
+            // hit-test either. (The old "would the next label fit"
+            // continuation resolved clicks to invisible branches.)
             if (remainingAfterThis > 0)
-            {
-                // Check if next label would actually fit (same logic as rendering)
-                double nextLabelX = labelX + totalWidth + 4;
-                double nextAvailable = LabelAreaWidth - 8 - nextLabelX;
-                if (nextAvailable <= minRequiredWidth)
-                    break;
-            }
+                break;
 
             labelX += totalWidth + 4;
         }

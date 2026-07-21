@@ -1364,19 +1364,43 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(branchName)) return;
 
+        // Discard any in-flight background build: it enumerates the same
+        // CommitInfo instances this method rewrites, and if it swapped its
+        // results in after us it would resurrect the deleted labels.
+        _ = BeginGraphBuild();
+
+        // Lists are REPLACED (copy-on-write), never mutated in place — a
+        // background build that already started reading keeps a
+        // consistent (merely stale) snapshot instead of crashing on
+        // concurrent modification; its results are discarded above.
+        static List<BranchLabel> WithoutLabel(List<BranchLabel> labels, string name) =>
+            labels.Where(l => !string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)).ToList();
+
         foreach (var commit in _allCommits)
         {
-            commit.BranchNames.Remove(branchName);
-            commit.BranchLabels.RemoveAll(l => string.Equals(l.Name, branchName, StringComparison.OrdinalIgnoreCase));
+            if (commit.BranchNames.Contains(branchName))
+                commit.BranchNames = commit.BranchNames.Where(n => n != branchName).ToList();
+            if (commit.BranchLabels.Any(l => string.Equals(l.Name, branchName, StringComparison.OrdinalIgnoreCase)))
+                commit.BranchLabels = WithoutLabel(commit.BranchLabels, branchName);
         }
 
         var current = Nodes;
         foreach (var node in current)
         {
-            node.BranchNames.Remove(branchName);
-            node.BranchLabels.RemoveAll(l => string.Equals(l.Name, branchName, StringComparison.OrdinalIgnoreCase));
+            if (node.BranchNames.Contains(branchName))
+                node.BranchNames = node.BranchNames.Where(n => n != branchName).ToList();
+            if (node.BranchLabels.Any(l => string.Equals(l.Name, branchName, StringComparison.OrdinalIgnoreCase)))
+                node.BranchLabels = WithoutLabel(node.BranchLabels, branchName);
+
+            // Ghost tags render PrimaryBranch — repoint it at a surviving
+            // branch so a just-deleted name can't linger on screen.
+            if (string.Equals(node.PrimaryBranch, branchName, StringComparison.OrdinalIgnoreCase))
+                node.PrimaryBranch = node.BranchNames.FirstOrDefault();
         }
-        // Republish so the canvas rebuilds its label hit/lookup caches.
+
+        // Re-resolve node colours for nodes whose primary branch changed,
+        // then republish so the canvas rebuilds its label/hit caches.
+        _graphBuilder?.RecolorNodes(current);
         Nodes = new ObservableCollection<GitTreeNode>(current);
 
         // Keep filter bookkeeping consistent so a later filter pass
