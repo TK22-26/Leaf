@@ -1052,6 +1052,19 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
                     visibleTips.Add(tipSha);
                 }
             }
+
+            // Tags are refs independent of branches: hiding a branch must
+            // not delete a tagged commit (and its history) from the graph
+            // (#40). Solo mode is intentionally excluded — solo means
+            // "show only this branch's cone", so unrelated tag islands
+            // would contradict it.
+            foreach (var commit in _allCommits)
+            {
+                if (commit.TagNames.Count > 0)
+                {
+                    visibleTips.Add(commit.Sha);
+                }
+            }
         }
 
         if (visibleTips.Count == 0)
