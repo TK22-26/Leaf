@@ -44,7 +44,14 @@ public class GitCommandRunner : IGitCommandRunner
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            RedirectStandardInput = input != null,
+            // ALWAYS redirect stdin, even with no input to write — the pipe
+            // is closed right after start. Inheriting the parent's stdin is
+            // never what a background git wants: under the GUI it's a dead
+            // handle, and under a stdio host (Leaf.Mcp) it's the JSON-RPC
+            // channel itself, where inheriting it both lets a stray
+            // stdin-reading git steal protocol bytes and deadlocks git's
+            // msys startup against the host's concurrent pipe reader.
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true,
             StandardOutputEncoding = GitOutputEncoding,
@@ -125,8 +132,10 @@ public class GitCommandRunner : IGitCommandRunner
         if (input != null)
         {
             await process.StandardInput.WriteAsync(input);
-            process.StandardInput.Close();
         }
+        // Closed unconditionally: with no input this hands git an already-
+        // EOF'd stdin instead of the parent's handle (see startInfo note).
+        process.StandardInput.Close();
 
         // Wait for exit with cancellation
         try

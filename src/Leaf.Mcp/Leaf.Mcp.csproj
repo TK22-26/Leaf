@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Required so the ProjectReference to the WPF Leaf assembly resolves
+         (same pattern as Leaf.Tests). The MCP host never touches UI types,
+         so no WPF code is ever loaded at runtime. -->
+    <UseWPF>true</UseWPF>
+    <!-- UseWPF flips Exe to WinExe by default; keep the console subsystem
+         so stdin/stdout remain a real JSON-RPC channel. -->
+    <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Version is overridden by CI/CD pipeline with date-based version, same as Leaf. -->
+    <Version>1.0.0.0</Version>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Leaf\Leaf.csproj" />
+    <!-- Build-only reference: Leaf.AskPass.exe must sit next to Leaf.Mcp.exe
+         so authenticated push/fetch resolve GIT_ASKPASS via
+         AppContext.BaseDirectory — same pattern as Leaf.csproj. Leaf's own
+         copy target only fills Leaf's output folder, so this project
+         replicates it below. -->
+    <ProjectReference Include="..\Leaf.AskPass\Leaf.AskPass.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="CopyLeafAskPassToMcpOutput" AfterTargets="Build;Publish" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_LeafAskPassOutputs Include="$(MSBuildThisFileDirectory)..\Leaf.AskPass\bin\$(Configuration)\$(TargetFramework)\Leaf.AskPass*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LeafAskPassOutputs)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('%(Identity)')" />
+    <Copy SourceFiles="@(_LeafAskPassOutputs)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' And Exists('%(Identity)')" />
+  </Target>
+
+</Project>

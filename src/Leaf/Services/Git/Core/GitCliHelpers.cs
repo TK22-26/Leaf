@@ -34,6 +34,11 @@ internal static class GitCliHelpers
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // ALWAYS redirect stdin and close it right after start (mirrors
+            // GitCommandRunner). Letting git inherit the parent's stdin
+            // deadlocks git-for-Windows startup when the parent is a stdio
+            // host (Leaf.Mcp) whose stdin is the live JSON-RPC pipe.
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
@@ -42,12 +47,15 @@ internal static class GitCliHelpers
             startInfo.ArgumentList.Add(arg);
 
         startInfo.EnvironmentVariables["LC_ALL"] = "C";
+        startInfo.EnvironmentVariables["GIT_TERMINAL_PROMPT"] = "0";
 
         using var process = Process.Start(startInfo);
         if (process == null)
         {
             return new GitResult(-1, "", "Failed to start git process");
         }
+
+        process.StandardInput.Close();
 
         // Read stderr on a separate thread to avoid deadlock when pipe buffers fill.
         // (ReadToEnd on stdout blocks until the process closes its stdout handle, but the
@@ -309,15 +317,20 @@ internal static class GitCliHelpers
             WorkingDirectory = repoPath,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // Same rule as RunGitArgs: never let git inherit the parent's stdin.
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
         startInfo.ArgumentList.Add("show");
         startInfo.ArgumentList.Add($":{stage}:{filePath}");
         startInfo.EnvironmentVariables["LC_ALL"] = "C";
+        startInfo.EnvironmentVariables["GIT_TERMINAL_PROMPT"] = "0";
 
         using var process = Process.Start(startInfo);
         if (process == null) return null;
+
+        process.StandardInput.Close();
 
         // Read stderr on a pool thread so a chatty git error doesn't deadlock us.
         var stderrTask = Task.Run(() => process.StandardError.ReadToEnd());
