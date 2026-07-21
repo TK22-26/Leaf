@@ -121,12 +121,8 @@
                 </StackPanel>
             </Button>
 
-            <Button Grid.Column="3"
-                    Content="Cancel"
-                    Padding="16,8"
-                    VerticalAlignment="Bottom"
-                    IsCancel="True"
-                    Click="CancelButton_Click"/>
+            <!-- Declaration order matches visual order (Submit left of
+                 Cancel) so keyboard Tab traversal follows the layout. -->
             <Button x:Name="SubmitButton"
                     Grid.Column="2"
                     Padding="16,8"
@@ -141,6 +137,12 @@
                     <TextBlock x:Name="SubmitButtonText" Text="Submit Issue"/>
                 </StackPanel>
             </Button>
+            <Button Grid.Column="3"
+                    Content="Cancel"
+                    Padding="16,8"
+                    VerticalAlignment="Bottom"
+                    IsCancel="True"
+                    Click="CancelButton_Click"/>
         </Grid>
     </Grid>
 </Window>

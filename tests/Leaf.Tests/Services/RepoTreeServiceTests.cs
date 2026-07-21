@@ -278,6 +278,20 @@ public class RepoTreeServiceTests
         _git.Setup(g => g.PushAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<IProgress<string>?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask)
             .Callback<string, string?, string?, IProgress<string>?, CancellationToken>((p, _, _, _, _) => _callLog.Add($"push:{p}"));
+        SetupBranchState();
+    }
+
+    /// <summary>All repos on a branch (not detached) unless a test overrides a path.</summary>
+    private void SetupBranchState(params string[] detachedPaths)
+    {
+        _git.Setup(g => g.GetRepositoryInfoFastAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string path, CancellationToken _) => new RepositoryInfo
+            {
+                Path = path,
+                IsDetachedHead = detachedPaths.Any(d => string.Equals(d, path, StringComparison.OrdinalIgnoreCase)),
+            });
+        _git.Setup(g => g.HasUnpushedCommitsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
     }
 
     private static RemoteInfo Origin() => new() { Name = "origin", Url = "https://example.test/repo.git" };
@@ -323,6 +337,7 @@ public class RepoTreeServiceTests
         SetupSubmodules(Sub("A"));
         SetupRemotes(Sub("A"), Origin());
         SetupRemotes(Root, Origin());
+        SetupBranchState();
         _git.Setup(g => g.PushAsync(Sub("A"), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<IProgress<string>?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("rejected"));
 
@@ -348,6 +363,69 @@ public class RepoTreeServiceTests
         result.Entries[0].Outcome.Should().Be(TreeOpOutcome.SkippedUninitialized);
         result.Entries[1].Outcome.Should().Be(TreeOpOutcome.Succeeded);
         _git.Verify(g => g.PushAsync(Sub("B"), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<IProgress<string>?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PushTreeAsync_DetachedSubmodulePublishedHead_SkipsQuietly_ParentStillPushes()
+    {
+        SetupValidRepo();
+        SetupSubmodules(Root, MakeSubmodule("A"));
+        SetupSubmodules(Sub("A"));
+        SetupRemotes(Sub("A"), Origin());
+        SetupRemotes(Root, Origin());
+        SetupPush();
+        // Submodule sits on the default detached HEAD; its commit is on the remote.
+        SetupBranchState(Sub("A"));
+
+        var result = await CreateService().PushTreeAsync(Root);
+
+        result.AllSucceeded.Should().BeTrue("a detached submodule with nothing unpublished is the normal state, not a failure");
+        result.Entries[0].Outcome.Should().Be(TreeOpOutcome.SkippedDetachedHead);
+        result.Entries[1].Outcome.Should().Be(TreeOpOutcome.Succeeded);
+        _git.Verify(g => g.PushAsync(Sub("A"), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<IProgress<string>?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _git.Verify(g => g.PushAsync(Root, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<IProgress<string>?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task PushTreeAsync_DetachedSubmoduleWithUnpushedCommits_FailsLoud_ParentSkipped()
+    {
+        SetupValidRepo();
+        SetupSubmodules(Root, MakeSubmodule("A"));
+        SetupSubmodules(Sub("A"));
+        SetupRemotes(Sub("A"), Origin());
+        SetupRemotes(Root, Origin());
+        SetupPush();
+        SetupBranchState(Sub("A"));
+        _git.Setup(g => g.HasUnpushedCommitsAsync(Sub("A"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await CreateService().PushTreeAsync(Root);
+
+        result.AllSucceeded.Should().BeFalse("pushing the parent would record a gitlink to objects no remote has");
+        result.Entries[0].Outcome.Should().Be(TreeOpOutcome.Failed);
+        result.Entries[0].Detail.Should().Contain("detached HEAD");
+        result.Entries[1].Outcome.Should().Be(TreeOpOutcome.SkippedChildFailed);
+        _git.Verify(g => g.PushAsync(Root, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<IProgress<string>?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PullTreeAsync_DetachedSubmodule_SkippedWithoutFailing()
+    {
+        SetupValidRepo();
+        SetupSubmodules(Root, MakeSubmodule("A"));
+        SetupSubmodules(Sub("A"));
+        SetupRemotes(Sub("A"), Origin());
+        SetupRemotes(Root, Origin());
+        SetupBranchState(Sub("A"));
+        _git.Setup(g => g.PullAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<IProgress<string>?>(), It.IsAny<bool?>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await CreateService().PullTreeAsync(Root);
+
+        result.AllSucceeded.Should().BeTrue();
+        result.Entries.Single(e => e.RelativePath == "A").Outcome.Should().Be(TreeOpOutcome.SkippedDetachedHead);
+        result.Entries.Single(e => e.RelativePath == ".").Outcome.Should().Be(TreeOpOutcome.Succeeded);
+        _git.Verify(g => g.PullAsync(Sub("A"), It.IsAny<string?>(), It.IsAny<IProgress<string>?>(), It.IsAny<bool?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ─── Fetch / Pull ───────────────────────────────────────────────────

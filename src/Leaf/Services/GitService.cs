@@ -85,6 +85,9 @@ public class GitService : IGitService
     public Task<string?> GetSuperprojectWorkingTreeAsync(string repoPath, CancellationToken cancellationToken = default)
         => _repositoryOps.GetSuperprojectWorkingTreeAsync(repoPath, cancellationToken);
 
+    public Task<bool> HasUnpushedCommitsAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _repositoryOps.HasUnpushedCommitsAsync(repoPath, cancellationToken);
+
     #endregion
 
     #region Commit History Operations

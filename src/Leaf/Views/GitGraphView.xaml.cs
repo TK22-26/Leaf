@@ -272,7 +272,7 @@ public partial class GitGraphView : UserControl
             return;
 
         var menu = commit.IsStash
-            ? BuildStashContextMenu(mainViewModel)
+            ? BuildStashContextMenu(commit, mainViewModel)
             : BuildCommitContextMenu(commit, mainViewModel);
         element.ContextMenu = menu;
         menu.IsOpen = true;
@@ -283,7 +283,7 @@ public partial class GitGraphView : UserControl
     /// Stash pseudo-commit menu (Pop / Delete). Shared by the
     /// message-row ContextMenuOpening and canvas right-clicks.
     /// </summary>
-    private static ContextMenu BuildStashContextMenu(MainViewModel mainViewModel)
+    private static ContextMenu BuildStashContextMenu(CommitInfo stashCommit, MainViewModel mainViewModel)
     {
         var stashMenu = new ContextMenu();
 
@@ -300,6 +300,10 @@ public partial class GitGraphView : UserControl
         };
         popItem.Click += (_, _) =>
         {
+            // Pop/DeleteStashCommand act on the graph's SELECTED stash —
+            // select the right-clicked one first, or the menu would act
+            // on whichever stash happened to be selected (or no-op).
+            mainViewModel.GitGraphViewModel?.SelectCommit(stashCommit);
             if (mainViewModel.PopStashCommand.CanExecute(null))
                 mainViewModel.PopStashCommand.Execute(null);
         };
@@ -321,6 +325,7 @@ public partial class GitGraphView : UserControl
         };
         deleteItem.Click += (_, _) =>
         {
+            mainViewModel.GitGraphViewModel?.SelectCommit(stashCommit);
             if (mainViewModel.DeleteStashCommand.CanExecute(null))
                 mainViewModel.DeleteStashCommand.Execute(null);
         };
@@ -792,7 +797,7 @@ public partial class GitGraphView : UserControl
 
         var commit = viewModel.Commits[commitIndex];
         var menu = commit.IsStash
-            ? BuildStashContextMenu(mainViewModel)
+            ? BuildStashContextMenu(commit, mainViewModel)
             : BuildCommitContextMenu(commit, mainViewModel);
         menu.PlacementTarget = GraphCanvas;
         menu.IsOpen = true;

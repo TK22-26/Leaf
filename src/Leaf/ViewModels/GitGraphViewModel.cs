@@ -722,91 +722,12 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
 
         try
         {
-            var moreCommits = await _gitService.GetCommitHistoryAsync(
-                RepositoryPath,
-                BatchSize,
-                skip: _loadedCommitCount, cancellationToken: SessionToken);
-
-            // Check if we've reached the end
-            if (moreCommits.Count < BatchSize)
-            {
-                _hasMoreCommits = false;
-            }
-
-            if (moreCommits.Count == 0)
+            if (!await FetchNextHistoryPageAsync())
             {
                 return;
             }
 
-            // Dedupe by SHA - filter out already-loaded commits
-            var newCommits = moreCommits
-                .Where(c => !_loadedCommitShas.Contains(c.Sha))
-                .ToList();
-
-            // Append to collections (fast, no graph yet)
-            foreach (var commit in newCommits)
-            {
-                _allCommits.Add(commit);
-                _loadedCommitShas.Add(commit.Sha);
-            }
-
-            _loadedCommitCount += moreCommits.Count;
-
-            // Clean up ancestor-fallback labels whose real tip commits are now loaded.
-            // When the initial batch placed labels on ancestor commits (because tips were
-            // outside the loaded range), and a later batch now includes the real tip commit,
-            // remove the stale fallback labels to prevent duplicates.
-            foreach (var commit in _allCommits)
-            {
-                commit.BranchLabels.RemoveAll(l =>
-                    l.IsAncestorFallback &&
-                    !string.IsNullOrEmpty(l.TipSha) &&
-                    _loadedCommitShas.Contains(l.TipSha));
-            }
-
-            // Capture state for background work
-            var visibleCommits = GetVisibleCommits();
-            var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
-            var currentBranch = _currentBranchName;
-
-            // Build graph on background thread with a fresh GraphBuilder
-            // bound to the currently-active resolver (pagination never
-            // changes colour context — only LoadRepositoryAsync does).
-            // Isolated builder instance means MaxLane mutation cannot race
-            // the UI-thread builder. Resolver itself stays the same: pagination
-            // appending more rows of the same repo's history must keep the
-            // exact same colour authority.
-            IBranchColorResolver paginationResolver =
-                (IBranchColorResolver?)_branchColorService ?? NullBranchColorResolver.Instance;
-            var tempBuilder = new GraphBuilder(paginationResolver);
-            var (nodes, maxLane) = await Task.Run(() =>
-            {
-                ct.ThrowIfCancellationRequested();
-                var graphNodes = tempBuilder.BuildGraph(commitsWithStashes, currentBranch);
-                return (graphNodes, tempBuilder.MaxLane);
-            }, ct);
-
-            ct.ThrowIfCancellationRequested();
-
-            // Atomic swap of builder + resolver + nodes keeps rendering
-            // consistent even though the context itself did not change.
-            _graphBuilder = tempBuilder;
-            ColorResolver = paginationResolver;
-            Nodes = new ObservableCollection<GitTreeNode>(nodes);
-            Commits = new ObservableCollection<CommitInfo>(commitsWithStashes);
-            MaxLane = maxLane;
-
-            // Recalculate height (stashes are included in Commits)
-            int rowCount = Commits.Count + (HasWorkingChanges ? 1 : 0);
-            TotalHeight = rowCount * RowHeight;
-
-            // Handle selection (use SHA comparison - new list has new instances)
-            if (SelectedCommit != null && !Commits.Any(c => c.Sha == SelectedCommit.Sha))
-            {
-                SelectedCommit.IsSelected = false;
-                SelectedCommit = null;
-                SelectedSha = null;
-            }
+            await RebuildGraphFromLoadedAsync(ct);
         }
         catch (OperationCanceledException)
         {
@@ -815,6 +736,130 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
         finally
         {
             IsLoadingMore = false;
+        }
+    }
+
+    /// <summary>
+    /// Fetch the next history page and append it to the loaded-commit
+    /// state — deliberately WITHOUT rebuilding the graph, so callers
+    /// that page repeatedly (SelectCommitByShaAsync hunting a SHA) pay
+    /// the O(branches × commits) build once at the end instead of per
+    /// page. Returns true when new commits were appended.
+    /// </summary>
+    private async Task<bool> FetchNextHistoryPageAsync()
+    {
+        var repoPath = RepositoryPath;
+        if (string.IsNullOrEmpty(repoPath))
+        {
+            return false;
+        }
+
+        var moreCommits = await _gitService.GetCommitHistoryAsync(
+            repoPath,
+            BatchSize,
+            skip: _loadedCommitCount, cancellationToken: SessionToken);
+
+        // Check if we've reached the end
+        if (moreCommits.Count < BatchSize)
+        {
+            _hasMoreCommits = false;
+        }
+
+        if (moreCommits.Count == 0)
+        {
+            return false;
+        }
+
+        // Dedupe by SHA - filter out already-loaded commits
+        var newCommits = moreCommits
+            .Where(c => !_loadedCommitShas.Contains(c.Sha))
+            .ToList();
+
+        // Append to collections (fast, no graph yet)
+        foreach (var commit in newCommits)
+        {
+            _allCommits.Add(commit);
+            _loadedCommitShas.Add(commit.Sha);
+        }
+
+        _loadedCommitCount += moreCommits.Count;
+
+        // Clean up ancestor-fallback labels whose real tip commits are now
+        // loaded. Copy-on-write replacement (never in-place RemoveAll) so a
+        // superseded background build that is still enumerating these lists
+        // sees a consistent snapshot.
+        foreach (var commit in _allCommits)
+        {
+            if (commit.BranchLabels.Any(IsStaleFallbackLabel))
+            {
+                commit.BranchLabels = commit.BranchLabels.Where(l => !IsStaleFallbackLabel(l)).ToList();
+            }
+        }
+
+        return newCommits.Count > 0;
+
+        bool IsStaleFallbackLabel(BranchLabel l) =>
+            l.IsAncestorFallback &&
+            !string.IsNullOrEmpty(l.TipSha) &&
+            _loadedCommitShas.Contains(l.TipSha);
+    }
+
+    /// <summary>
+    /// Rebuild nodes/commits from the already-loaded history (the swap
+    /// half of a pagination load).
+    /// </summary>
+    private async Task RebuildGraphFromLoadedAsync(CancellationToken ct)
+    {
+        // Capture state for background work
+        var visibleCommits = GetVisibleCommits();
+        var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
+        var currentBranch = _currentBranchName;
+
+        // Build graph on background thread with a fresh GraphBuilder
+        // bound to the currently-active resolver (pagination never
+        // changes colour context — only LoadRepositoryAsync does).
+        // Isolated builder instance means MaxLane mutation cannot race
+        // the UI-thread builder. Resolver itself stays the same: pagination
+        // appending more rows of the same repo's history must keep the
+        // exact same colour authority.
+        IBranchColorResolver paginationResolver =
+            (IBranchColorResolver?)_branchColorService ?? NullBranchColorResolver.Instance;
+        var tempBuilder = new GraphBuilder(paginationResolver);
+        var (nodes, maxLane) = await Task.Run(() =>
+        {
+            ct.ThrowIfCancellationRequested();
+            var graphNodes = tempBuilder.BuildGraph(commitsWithStashes, currentBranch);
+            return (graphNodes, tempBuilder.MaxLane);
+        }, ct);
+
+        ct.ThrowIfCancellationRequested();
+
+        // Atomic swap of builder + resolver + nodes keeps rendering
+        // consistent even though the context itself did not change.
+        _graphBuilder = tempBuilder;
+        ColorResolver = paginationResolver;
+        Nodes = new ObservableCollection<GitTreeNode>(nodes);
+        Commits = new ObservableCollection<CommitInfo>(commitsWithStashes);
+        MaxLane = maxLane;
+
+        // Recalculate height (stashes are included in Commits)
+        int rowCount = Commits.Count + (HasWorkingChanges ? 1 : 0);
+        TotalHeight = rowCount * RowHeight;
+
+        // Handle selection (use SHA comparison - new list has new instances)
+        if (SelectedCommit != null && !Commits.Any(c => c.Sha == SelectedCommit.Sha))
+        {
+            SelectedCommit.IsSelected = false;
+            SelectedCommit = null;
+            SelectedSha = null;
+        }
+
+        // Keep search dim/highlight state consistent with the newly
+        // published rows — paging during an active search used to leave
+        // paged-in commits without match state.
+        if (IsSearchActive)
+        {
+            ApplySearchFilter(SearchText);
         }
     }
 
@@ -1027,6 +1072,36 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             return _allCommits;
         }
 
+        var commitsBySha = _allCommits.ToDictionary(c => c.Sha, StringComparer.OrdinalIgnoreCase);
+
+        static HashSet<string> WalkReachable(IEnumerable<string> tips, Dictionary<string, CommitInfo> bySha)
+        {
+            var reachable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var stack = new Stack<string>(tips);
+            while (stack.Count > 0)
+            {
+                var sha = stack.Pop();
+                if (!reachable.Add(sha))
+                {
+                    continue;
+                }
+
+                if (!bySha.TryGetValue(sha, out var commit))
+                {
+                    continue;
+                }
+
+                foreach (var parent in commit.ParentShas)
+                {
+                    if (!string.IsNullOrWhiteSpace(parent) && bySha.ContainsKey(parent))
+                    {
+                        stack.Push(parent);
+                    }
+                }
+            }
+            return reachable;
+        }
+
         var visibleTips = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (_soloBranchNames.Count > 0)
         {
@@ -1053,14 +1128,20 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
                 }
             }
 
-            // Tags are refs independent of branches: hiding a branch must
-            // not delete a tagged commit (and its history) from the graph
-            // (#40). Solo mode is intentionally excluded — solo means
-            // "show only this branch's cone", so unrelated tag islands
-            // would contradict it.
+            // #40: keep TAG-ONLY commits visible — commits no branch tip
+            // reaches at all (their branch was deleted; a tag is their
+            // last ref). ONLY those: seeding every tagged commit here
+            // would resurrect a hidden branch's entire history through
+            // its release tags, defeating the hide feature. Commits
+            // reachable from any branch tip (hidden or not) follow the
+            // branch filters. Solo mode is excluded entirely — solo
+            // means "show only this branch's cone".
+            var branchReachable = WalkReachable(
+                _branchTips.Values.Where(s => !string.IsNullOrWhiteSpace(s)),
+                commitsBySha);
             foreach (var commit in _allCommits)
             {
-                if (commit.TagNames.Count > 0)
+                if (commit.TagNames.Count > 0 && !branchReachable.Contains(commit.Sha))
                 {
                     visibleTips.Add(commit.Sha);
                 }
@@ -1072,33 +1153,8 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             return hasFilters ? [] : _allCommits;
         }
 
-        var commitsBySha = _allCommits.ToDictionary(c => c.Sha, StringComparer.OrdinalIgnoreCase);
-        var reachable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var stack = new Stack<string>(visibleTips);
-
-        while (stack.Count > 0)
-        {
-            var sha = stack.Pop();
-            if (!reachable.Add(sha))
-            {
-                continue;
-            }
-
-            if (!commitsBySha.TryGetValue(sha, out var commit))
-            {
-                continue;
-            }
-
-            foreach (var parent in commit.ParentShas)
-            {
-                if (!string.IsNullOrWhiteSpace(parent) && commitsBySha.ContainsKey(parent))
-                {
-                    stack.Push(parent);
-                }
-            }
-        }
-
-        return _allCommits.Where(c => reachable.Contains(c.Sha)).ToList();
+        var visible = WalkReachable(visibleTips, commitsBySha);
+        return _allCommits.Where(c => visible.Contains(c.Sha)).ToList();
     }
 
     /// <summary>
@@ -1148,10 +1204,19 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     public void SelectCommitBySha(string sha) => TrySelectLoadedCommitBySha(sha);
 
     /// <summary>
+    /// Monotonic version for SHA-hunting navigation: a newer call (rapid
+    /// second click) supersedes any loop still paging for an older one.
+    /// </summary>
+    private int _shaNavigationVersion;
+
+    /// <summary>
     /// Select a commit by SHA, paging in more history until the commit
     /// is found or history is exhausted. Clicking a branch whose tip is
     /// beyond the loaded page used to be silently ignored — this is the
-    /// navigation entry point that makes those clicks land.
+    /// navigation entry point that makes those clicks land. Pages are
+    /// FETCHED without per-page graph rebuilds; one rebuild runs at the
+    /// end, so hunting a deep SHA costs one O(branches × commits) build
+    /// instead of one per page.
     /// </summary>
     public async Task SelectCommitByShaAsync(string sha)
     {
@@ -1161,20 +1226,41 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
         if (TrySelectLoadedCommitBySha(sha))
             return;
 
-        // Keep paging until the target commit is loaded. A scroll-triggered
-        // page may already be in flight (IsLoadingMore); wait for it rather
-        // than racing it — LoadMoreCommitsAsync cancels overlapping builds.
+        // Guards: a newer navigation supersedes this one, and a repo
+        // switch must not leave the loop paging the NEW repo's history
+        // hunting the OLD repo's sha (the VM instance is reused).
+        var navVersion = ++_shaNavigationVersion;
+        var repoAtStart = RepositoryPath;
+        bool Superseded() =>
+            navVersion != _shaNavigationVersion ||
+            !string.Equals(RepositoryPath, repoAtStart, StringComparison.OrdinalIgnoreCase);
+
+        var pagesFetched = false;
         var stalls = 0;
-        while (_hasMoreCommits && !IsCommitLoaded(sha))
+        while (_hasMoreCommits && !IsCommitLoaded(sha) && !Superseded())
         {
             var before = _allCommits.Count;
             if (IsLoadingMore)
             {
+                // A scroll-triggered load is in flight; let it land
+                // rather than racing its shared pagination state.
                 await Task.Delay(50);
             }
             else
             {
-                await LoadMoreCommitsAsync();
+                IsLoadingMore = true;
+                try
+                {
+                    pagesFetched |= await FetchNextHistoryPageAsync();
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                finally
+                {
+                    IsLoadingMore = false;
+                }
             }
 
             // Fail-safe: a cancelled/failed page load makes no progress;
@@ -1185,6 +1271,24 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             {
                 Log.Warn("Graph", $"SelectCommitByShaAsync({sha[..Math.Min(7, sha.Length)]}) stalled while paging; giving up.");
                 break;
+            }
+        }
+
+        if (Superseded())
+            return;
+
+        // Publish whatever was paged in (found or exhausted) with a
+        // single rebuild, then select.
+        if (pagesFetched)
+        {
+            var ct = BeginGraphBuild();
+            try
+            {
+                await RebuildGraphFromLoadedAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
             }
         }
 
@@ -1373,23 +1477,27 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
         // background build that already started reading keeps a
         // consistent (merely stale) snapshot instead of crashing on
         // concurrent modification; its results are discarded above.
+        // Same OrdinalIgnoreCase everywhere — a casing mismatch between
+        // the name list and the label list would leave a stale chip.
+        static bool NameMatches(string candidate, string name) =>
+            string.Equals(candidate, name, StringComparison.OrdinalIgnoreCase);
         static List<BranchLabel> WithoutLabel(List<BranchLabel> labels, string name) =>
-            labels.Where(l => !string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)).ToList();
+            labels.Where(l => !NameMatches(l.Name, name)).ToList();
 
         foreach (var commit in _allCommits)
         {
-            if (commit.BranchNames.Contains(branchName))
-                commit.BranchNames = commit.BranchNames.Where(n => n != branchName).ToList();
-            if (commit.BranchLabels.Any(l => string.Equals(l.Name, branchName, StringComparison.OrdinalIgnoreCase)))
+            if (commit.BranchNames.Any(n => NameMatches(n, branchName)))
+                commit.BranchNames = commit.BranchNames.Where(n => !NameMatches(n, branchName)).ToList();
+            if (commit.BranchLabels.Any(l => NameMatches(l.Name, branchName)))
                 commit.BranchLabels = WithoutLabel(commit.BranchLabels, branchName);
         }
 
         var current = Nodes;
         foreach (var node in current)
         {
-            if (node.BranchNames.Contains(branchName))
-                node.BranchNames = node.BranchNames.Where(n => n != branchName).ToList();
-            if (node.BranchLabels.Any(l => string.Equals(l.Name, branchName, StringComparison.OrdinalIgnoreCase)))
+            if (node.BranchNames.Any(n => NameMatches(n, branchName)))
+                node.BranchNames = node.BranchNames.Where(n => !NameMatches(n, branchName)).ToList();
+            if (node.BranchLabels.Any(l => NameMatches(l.Name, branchName)))
                 node.BranchLabels = WithoutLabel(node.BranchLabels, branchName);
 
             // Ghost tags render PrimaryBranch — repoint it at a surviving

@@ -136,6 +136,13 @@ public interface IGitService
     Task<string?> GetSuperprojectWorkingTreeAsync(string repoPath, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// True when HEAD's commit is not contained in any remote-tracking
+    /// ref — correct for detached HEADs, unlike tracking-branch
+    /// comparisons such as <see cref="IsHeadPushedAsync"/>.
+    /// </summary>
+    Task<bool> HasUnpushedCommitsAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Clone a remote repository.
     /// </summary>
     /// <param name="credentialKey">Optional credential storage key (e.g. "GitHub:microsoft") for GIT_ASKPASS auth.</param>
