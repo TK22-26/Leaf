@@ -59,14 +59,27 @@ public class RemoteBranchGroup
     public bool IsDefault { get; set; }
 
     /// <summary>
+    /// True when this group is NOT a configured remote — a
+    /// <c>refs/remotes/&lt;name&gt;/*</c> hierarchy with no matching
+    /// <c>[remote]</c> in the config. These are local debris left by
+    /// ad-hoc <c>git fetch &lt;url&gt; …:refs/remotes/&lt;name&gt;/*</c>
+    /// commands; they back nothing on any server and are untouched by
+    /// fetch/prune. Shown as their own node (never merged into origin)
+    /// so they can't masquerade as a real remote's branches.
+    /// </summary>
+    public bool IsOrphaned { get; set; }
+
+    /// <summary>
     /// Display name for the service type.
     /// </summary>
-    public string ServiceDisplayName => RemoteType switch
-    {
-        RemoteType.GitHub => "GitHub",
-        RemoteType.AzureDevOps => "Azure DevOps",
-        _ => "Git"
-    };
+    public string ServiceDisplayName => IsOrphaned
+        ? "Local-only (not a configured remote)"
+        : RemoteType switch
+        {
+            RemoteType.GitHub => "GitHub",
+            RemoteType.AzureDevOps => "Azure DevOps",
+            _ => "Git"
+        };
 
     /// <summary>
     /// Remote groups are never "current" - this silences binding warnings in TreeView.

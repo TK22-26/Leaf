@@ -13,6 +13,7 @@
 
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
         <converters:NullToVisibilityInverseConverter x:Key="NullToVisibilityInverseConverter" />
         <converters:BranchCategoryItemsConverter x:Key="BranchCategoryItemsConverter" />
@@ -548,33 +549,51 @@
                     <Border Background="Transparent" Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
                         <Border.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Command="{Binding PlacementTarget.Tag.FetchRemoteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding Name}">
+                                <!-- Configured-remote actions: hidden for orphaned
+                                     (local-only) namespaces, which have no remote to
+                                     fetch/edit/set-default/copy-URL. -->
+                                <MenuItem Command="{Binding PlacementTarget.Tag.FetchRemoteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding Name}"
+                                          Visibility="{Binding IsOrphaned, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                     <MenuItem.Header>
                                         <TextBlock>
                                             <Run Text="Fetch " /><Run Text="{Binding Name, Mode=OneWay}" />
                                         </TextBlock>
                                     </MenuItem.Header>
                                 </MenuItem>
-                                <Separator />
+                                <Separator Visibility="{Binding IsOrphaned, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
                                 <MenuItem
                                     Command="{Binding PlacementTarget.Tag.EditRemoteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                     CommandParameter="{Binding}"
+                                    Visibility="{Binding IsOrphaned, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                     Header="Edit Remote..." />
                                 <MenuItem
                                     Command="{Binding PlacementTarget.Tag.RemoveRemoteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                     CommandParameter="{Binding Name}"
                                     Foreground="#DC2626"
+                                    Visibility="{Binding IsOrphaned, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                     Header="Remove Remote" />
-                                <Separator />
                                 <MenuItem
                                     Command="{Binding PlacementTarget.Tag.SetDefaultRemoteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                     CommandParameter="{Binding Name}"
+                                    Visibility="{Binding IsOrphaned, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                     Header="Set as Default" />
-                                <Separator />
+                                <Separator Visibility="{Binding IsOrphaned, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
                                 <MenuItem
                                     Command="{Binding PlacementTarget.Tag.CopyRemoteUrlCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                     CommandParameter="{Binding Url}"
+                                    Visibility="{Binding IsOrphaned, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                     Header="Copy URL" />
+
+                                <!-- Orphaned (local-only) namespace: the only useful
+                                     action is clearing the stale refs, which fetch/prune
+                                     can't reach. -->
+                                <MenuItem
+                                    Command="{Binding PlacementTarget.Tag.RemoveOrphanedRemoteRefsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                    CommandParameter="{Binding Name}"
+                                    Foreground="#DC2626"
+                                    Visibility="{Binding IsOrphaned, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    Header="Remove local-only refs" />
                             </ContextMenu>
                         </Border.ContextMenu>
                         <Grid>
