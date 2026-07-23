@@ -338,6 +338,14 @@ public partial class ReportIssueDialog : Window
             var output = await outputTask;
             var error = await errorTask;
 
+            // The window may have been closed (X / Alt+F4) while gh was
+            // finishing — OnClosing cancels the token. Bail as cancelled
+            // rather than running the success path (open-in-browser prompt
+            // with owner=this, DialogResult=true) against a closed window,
+            // which would throw and be misreported as a failure even
+            // though the issue was created.
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (process.ExitCode != 0)
             {
                 // Check for common errors

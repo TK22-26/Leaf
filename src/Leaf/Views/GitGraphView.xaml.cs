@@ -271,6 +271,19 @@ public partial class GitGraphView : UserControl
         if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
             return;
 
+        // Every command this menu binds (Checkout / Reset / Cherry-pick /
+        // Revert / stash Pop-Delete / …) routes through MainViewModel to
+        // SelectedRepository. In a submodule workspace tile this view
+        // hosts the TILE's own graph VM, so the menu would silently act
+        // on the PARENT repo — e.g. pop the parent's stash at the clicked
+        // index. Suppress it there rather than mis-target; tiles need
+        // their own repo-scoped command surface before this can be shown.
+        if (!IsMainRepositoryGraph(mainViewModel))
+        {
+            e.Handled = true;
+            return;
+        }
+
         var menu = commit.IsStash
             ? BuildStashContextMenu(commit, mainViewModel)
             : BuildCommitContextMenu(commit, mainViewModel);
@@ -278,6 +291,18 @@ public partial class GitGraphView : UserControl
         menu.IsOpen = true;
         e.Handled = true;
     }
+
+    /// <summary>
+    /// True when this GitGraphView shows the MAIN repository's graph —
+    /// the single-repo view, or the workspace PARENT tile, which both
+    /// bind <see cref="MainViewModel.GitGraphViewModel"/>. Submodule
+    /// tiles host their own <see cref="GitGraphViewModel"/>; the commit /
+    /// stash context-menu commands all target
+    /// <c>SelectedRepository</c>, so they are only correct for the main
+    /// graph.
+    /// </summary>
+    private bool IsMainRepositoryGraph(MainViewModel mainViewModel) =>
+        ReferenceEquals(DataContext, mainViewModel.GitGraphViewModel);
 
     /// <summary>
     /// Stash pseudo-commit menu (Pop / Delete). Shared by the
@@ -778,6 +803,11 @@ public partial class GitGraphView : UserControl
         if (DataContext is not GitGraphViewModel viewModel)
             return;
         if (Window.GetWindow(this)?.DataContext is not MainViewModel mainViewModel)
+            return;
+
+        // See CommitItem_ContextMenuOpening: the menu's commands target
+        // the main repo, so suppress it on submodule-tile graphs.
+        if (!IsMainRepositoryGraph(mainViewModel))
             return;
 
         int row = (int)(pos.Y / RowHeight);

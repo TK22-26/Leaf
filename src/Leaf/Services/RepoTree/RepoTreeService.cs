@@ -320,27 +320,34 @@ public sealed class RepoTreeService : IRepoTreeService
                 var remotes = await _git.GetRemotesAsync(node.Path, cancellationToken).ConfigureAwait(false);
                 if (remotes.Count == 0)
                 {
+                    // No remote to push to. NOTE: if such a repo carries
+                    // local-only commits, a parent that records its gitlink
+                    // publishes a reference a fresh clone can't fetch. We
+                    // treat this as a benign skip rather than hard-failing
+                    // every remote-less submodule (a legitimate local-only
+                    // helper submodule would otherwise block the whole tree
+                    // push forever); the caller sees SkippedNoRemote.
                     Record(node, TreeOpOutcome.SkippedNoRemote, "no remote configured");
                     continue;
                 }
 
                 // Initialized submodules sit on a detached HEAD by default;
-                // `git push` has no branch to publish there. Published HEAD
-                // → benign skip. Unpublished commits on a detached HEAD →
-                // loud failure (and ancestor skip): pushing a parent that
-                // records this gitlink would reference objects no remote has.
-                var info = await _git.GetRepositoryInfoFastAsync(node.Path, cancellationToken).ConfigureAwait(false);
-                if (info.IsDetachedHead)
+                // `git push` has no branch to publish there. HEAD already
+                // reachable from a remote ref or tag → benign skip.
+                // Otherwise → loud failure (and ancestor skip): pushing a
+                // parent that records this gitlink would reference objects
+                // no clone could obtain.
+                if (await _git.IsHeadDetachedAsync(node.Path, cancellationToken).ConfigureAwait(false))
                 {
                     if (await _git.HasUnpushedCommitsAsync(node.Path, cancellationToken).ConfigureAwait(false))
                     {
                         Record(node, TreeOpOutcome.Failed,
-                            "detached HEAD has commits not on any remote — check out a branch in this repo and push it");
+                            "detached HEAD at a commit that is on no remote branch or tag — push it from a branch, or pin the submodule to a published tag");
                     }
                     else
                     {
                         Record(node, TreeOpOutcome.SkippedDetachedHead,
-                            "detached HEAD (normal for submodules) — its commit is already on a remote; nothing to publish");
+                            "detached HEAD (normal for a pinned submodule) — its commit is already published; nothing to push");
                     }
                     continue;
                 }
@@ -425,8 +432,7 @@ public sealed class RepoTreeService : IRepoTreeService
 
                 if (skipDetachedHead)
                 {
-                    var info = await _git.GetRepositoryInfoFastAsync(node.Path, cancellationToken).ConfigureAwait(false);
-                    if (info.IsDetachedHead)
+                    if (await _git.IsHeadDetachedAsync(node.Path, cancellationToken).ConfigureAwait(false))
                     {
                         slots[index] = new TreeOpEntry(node.RelativePath, TreeOpOutcome.SkippedDetachedHead,
                             "detached HEAD — no upstream to pull; update it from its parent instead", null);

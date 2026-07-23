@@ -136,9 +136,17 @@ public interface IGitService
     Task<string?> GetSuperprojectWorkingTreeAsync(string repoPath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// True when HEAD's commit is not contained in any remote-tracking
-    /// ref — correct for detached HEADs, unlike tracking-branch
-    /// comparisons such as <see cref="IsHeadPushedAsync"/>.
+    /// True when this repo's HEAD is a detached HEAD (the default state
+    /// of an initialized submodule). Cheap — a single symbolic-ref probe,
+    /// not a working-tree status scan.
+    /// </summary>
+    Task<bool> IsHeadDetachedAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when HEAD's commit is reachable from no remote-tracking ref
+    /// and no tag — i.e. a clone could not obtain it. Correct for
+    /// detached HEADs, unlike tracking-branch comparisons such as
+    /// <see cref="IsHeadPushedAsync"/>.
     /// </summary>
     Task<bool> HasUnpushedCommitsAsync(string repoPath, CancellationToken cancellationToken = default);
 

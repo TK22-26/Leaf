@@ -110,7 +110,7 @@ public partial class WorkspaceViewModel
 
     internal async Task RunMergeLoopAsync(string target, MergeType mergeType, string? resumeFromTilePath)
     {
-        await RunBulkAsync($"Merging workspace into {target}…", async () =>
+        await RunBulkAsync($"Merging workspace into {target}…", async (rootPath, token) =>
         {
             var tiles = WriteOrder().ToList();
             var startIndex = 0;
@@ -123,6 +123,7 @@ public partial class WorkspaceViewModel
 
             for (var i = startIndex; i < tiles.Count; i++)
             {
+                token.ThrowIfCancellationRequested();
                 var tile = tiles[i];
                 BulkOperationStatus = $"Merging {tile.Name} into {target}…";
                 MergeResult result;

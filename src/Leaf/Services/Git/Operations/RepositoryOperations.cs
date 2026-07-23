@@ -236,17 +236,37 @@ internal class RepositoryOperations
     }
 
     /// <summary>
-    /// True when HEAD's commit is not contained in any remote-tracking
-    /// ref (<c>git rev-list -n 1 HEAD --not --remotes</c>) — i.e.
-    /// publishing a parent that records this repo's HEAD as a gitlink
-    /// would reference objects no remote has. Unlike tracking-branch
-    /// comparisons this also answers correctly for detached HEADs
-    /// (the default state of an initialized submodule).
+    /// True when this repo's HEAD is a detached HEAD — the default state
+    /// of an initialized submodule (<c>git submodule update</c> checks
+    /// out the recorded commit, not a branch). Cheap: a single
+    /// <c>git symbolic-ref -q HEAD</c> whose non-zero exit means detached,
+    /// avoiding the full working-tree status scan of
+    /// <see cref="GetRepositoryInfoFastAsync"/>.
+    /// </summary>
+    public async Task<bool> IsHeadDetachedAsync(string repoPath, CancellationToken cancellationToken = default)
+    {
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath, ["symbolic-ref", "-q", "HEAD"], cancellationToken: cancellationToken).ConfigureAwait(false);
+        // Exit 0 + a ref → on a branch; non-zero → detached HEAD.
+        return !result.Success || string.IsNullOrWhiteSpace(result.StandardOutput);
+    }
+
+    /// <summary>
+    /// True when HEAD's commit is reachable from NO remote-tracking ref
+    /// and NO tag (<c>git rev-list -n 1 HEAD --not --remotes --tags</c>) —
+    /// i.e. a fresh clone of a parent that recorded this repo's HEAD as a
+    /// gitlink could not obtain the object (a clone fetches remote
+    /// branches and, by default, tags). Answers correctly for detached
+    /// HEADs, unlike tracking-branch comparisons such as
+    /// <see cref="IsHeadPushedAsync"/>. <c>--tags</c> is what makes a
+    /// submodule pinned to a published release tag (a normal workflow,
+    /// detached at a tagged commit that sits on no branch) read as
+    /// published rather than a false "unpushed".
     /// </summary>
     public async Task<bool> HasUnpushedCommitsAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         var result = await _context.CommandRunner.RunAsync(
-            repoPath, ["rev-list", "-n", "1", "HEAD", "--not", "--remotes"], cancellationToken: cancellationToken).ConfigureAwait(false);
+            repoPath, ["rev-list", "-n", "1", "HEAD", "--not", "--remotes", "--tags"], cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!result.Success)
             throw new InvalidOperationException(
                 $"Failed to check unpushed commits for '{repoPath}': {result.StandardError.Trim()}");
