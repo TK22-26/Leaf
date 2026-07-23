@@ -73,51 +73,7 @@ public partial class MainViewModel
 
             var defaultRemoteName = await defaultRemoteTask.ConfigureAwait(false) ?? "origin";
 
-            // Group remote branches by remote name
-            var branchesByRemote = remoteBranches
-                .GroupBy(b => b.RemoteName ?? "origin")
-                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
-
-            // Create remote groups for ALL remotes (including those without branches yet).
-            // Each remote's branches are organised into directory subfolders (issue #29)
-            // — e.g. "origin/feature/foo" lives under origin → feature → foo, matching
-            // how LOCAL and GITFLOW already render.
-            var remoteGroups = remotes
-                .Select(remote =>
-                {
-                    var remoteBranchList = branchesByRemote.GetValueOrDefault(remote.Name, []);
-
-                    // Strip the "<remoteName>/" prefix so the directory grouping
-                    // sees the remote-relative path ("feature/foo", not
-                    // "origin/feature/foo"). Materialise to a list because
-                    // BuildDirectoryGrouping enumerates twice (group then sort).
-                    var prefix = $"{remote.Name}/";
-                    var projectedBranches = remoteBranchList.Select(b => new BranchInfo
-                    {
-                        Name = b.Name.StartsWith(prefix) ? b.Name[prefix.Length..] : b.Name,
-                        FullName = b.FullName,
-                        IsCurrent = b.IsCurrent,
-                        IsRemote = b.IsRemote,
-                        RemoteName = b.RemoteName,
-                        TrackingBranchName = b.TrackingBranchName,
-                        TipSha = b.TipSha,
-                        AheadBy = b.AheadBy,
-                        BehindBy = b.BehindBy
-                    }).ToList();
-
-                    var group = new RemoteBranchGroup
-                    {
-                        Name = remote.Name,
-                        Url = remote.Url,
-                        RemoteType = RemoteBranchGroup.GetRemoteTypeFromUrl(remote.Url),
-                        IsDefault = remote.Name.Equals(defaultRemoteName, StringComparison.OrdinalIgnoreCase),
-                        IsExpanded = true
-                    };
-                    PopulateWithDirectoryGroups(group, projectedBranches);
-                    return group;
-                })
-                .OrderBy(g => g.Name)
-                .ToList();
+            var remoteGroups = BuildRemoteGroups(remoteBranches, remotes, defaultRemoteName);
 
             // GITFLOW category (if initialized - always show when GitFlow is active)
             var gitFlowConfig = await gitFlowConfigTask.ConfigureAwait(false);
@@ -488,5 +444,113 @@ public partial class MainViewModel
         var (dirs, ungrouped) = BuildDirectoryGrouping(branches);
         foreach (var dir in dirs) group.DirectoryGroups.Add(dir);
         foreach (var branch in ungrouped) group.Branches.Add(branch);
+    }
+
+    /// <summary>
+    /// Build the sidebar's REMOTE groups. Each remote-tracking branch is
+    /// attributed to the remote named in its canonical ref
+    /// (<c>refs/remotes/&lt;remote&gt;/…</c>), matched against configured
+    /// remotes. Configured remotes each get a group (even with no
+    /// branches); refs whose namespace is NOT a configured remote —
+    /// orphaned <c>refs/remotes/&lt;x&gt;/*</c> debris from ad-hoc fetches
+    /// — get their OWN group flagged <see cref="RemoteBranchGroup.IsOrphaned"/>,
+    /// rather than being dumped under origin (the old
+    /// <c>RemoteName ?? "origin"</c> behaviour made them masquerade as
+    /// origin branches that fetch/prune could never clear).
+    /// </summary>
+    internal static List<RemoteBranchGroup> BuildRemoteGroups(
+        IReadOnlyList<BranchInfo> remoteBranches,
+        IReadOnlyList<RemoteInfo> remotes,
+        string defaultRemoteName)
+    {
+        var configuredNames = remotes.Select(r => r.Name).ToList();
+
+        var branchesByRemote = remoteBranches
+            .GroupBy(b => ResolveRemoteNamespace(b, configuredNames))
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        // Namespaces present in the tracking refs that have no configured
+        // remote behind them — the orphaned debris.
+        var orphanedNames = branchesByRemote.Keys
+            .Where(k => !configuredNames.Contains(k, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase);
+
+        var specs = remotes
+            .Select(r => (r.Name, r.Url, Orphaned: false))
+            .Concat(orphanedNames.Select(n => (Name: n, Url: string.Empty, Orphaned: true)));
+
+        RemoteBranchGroup MakeGroup((string Name, string Url, bool Orphaned) spec)
+        {
+            var list = branchesByRemote.GetValueOrDefault(spec.Name, []);
+
+            // Strip the "<name>/" prefix so directory grouping sees the
+            // remote-relative path ("feature/foo", not "origin/feature/foo").
+            var prefix = $"{spec.Name}/";
+            var projected = list.Select(b => new BranchInfo
+            {
+                Name = b.Name.StartsWith(prefix, StringComparison.Ordinal) ? b.Name[prefix.Length..] : b.Name,
+                FullName = b.FullName,
+                IsCurrent = b.IsCurrent,
+                IsRemote = b.IsRemote,
+                RemoteName = b.RemoteName,
+                TrackingBranchName = b.TrackingBranchName,
+                TipSha = b.TipSha,
+                AheadBy = b.AheadBy,
+                BehindBy = b.BehindBy
+            }).ToList();
+
+            var group = new RemoteBranchGroup
+            {
+                Name = spec.Name,
+                Url = spec.Url,
+                RemoteType = RemoteBranchGroup.GetRemoteTypeFromUrl(spec.Url),
+                IsDefault = !spec.Orphaned && spec.Name.Equals(defaultRemoteName, StringComparison.OrdinalIgnoreCase),
+                IsOrphaned = spec.Orphaned,
+                IsExpanded = true
+            };
+            PopulateWithDirectoryGroups(group, projected);
+            return group;
+        }
+
+        // Configured remotes first (alpha), orphaned namespaces last.
+        return specs
+            .Select(MakeGroup)
+            .OrderBy(g => g.IsOrphaned ? 1 : 0)
+            .ThenBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Resolve which remote a remote-tracking branch belongs to from its
+    /// canonical ref name (<c>refs/remotes/&lt;remote&gt;/&lt;branch&gt;</c>).
+    /// Matches the longest configured remote name on a segment boundary
+    /// (so a remote whose name contains "/" still resolves), else falls
+    /// back to the first path segment — which for orphaned refs is their
+    /// own namespace, deliberately NOT "origin". Never trusts
+    /// LibGit2Sharp's <c>RemoteName</c>, which returns null for a ref with
+    /// no configured remote and previously collapsed to "origin".
+    /// </summary>
+    internal static string ResolveRemoteNamespace(BranchInfo branch, IReadOnlyCollection<string> configuredNames)
+    {
+        const string prefix = "refs/remotes/";
+        var canonical = branch.FullName;
+        if (!string.IsNullOrEmpty(canonical) && canonical.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            var rest = canonical[prefix.Length..]; // "<remote>/<branch...>"
+            var match = configuredNames
+                .Where(n => rest.StartsWith(n + "/", StringComparison.Ordinal))
+                .OrderByDescending(n => n.Length)
+                .FirstOrDefault();
+            if (match != null) return match;
+
+            var slash = rest.IndexOf('/');
+            if (slash > 0) return rest[..slash];
+        }
+
+        // Fallbacks for a non-canonical FullName: libgit2's value, then
+        // the friendly-name's first segment.
+        if (!string.IsNullOrWhiteSpace(branch.RemoteName)) return branch.RemoteName;
+        var s = branch.Name.IndexOf('/');
+        return s > 0 ? branch.Name[..s] : branch.Name;
     }
 }

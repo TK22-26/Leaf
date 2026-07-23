@@ -66,6 +66,7 @@ public class FakeGitService : IGitService
     public Task<List<RemoteInfo>> GetRemotesAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new List<RemoteInfo>());
     public Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task RemoveRemoteAsync(string repoPath, string remoteName, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public virtual Task<int> DeleteRemoteTrackingNamespaceAsync(string repoPath, string namespaceName, CancellationToken cancellationToken = default) => Task.FromResult(0);
     public Task RenameRemoteAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public virtual Task SetConfigAsync(string repoPath, string key, string value, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default) => Task.CompletedTask;

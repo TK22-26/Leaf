@@ -80,6 +80,14 @@ public interface IGitService
     Task RemoveRemoteAsync(string repoPath, string remoteName, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Delete every remote-tracking ref under
+    /// <c>refs/remotes/&lt;namespace&gt;/*</c> — the only way to clear
+    /// orphaned tracking-ref debris that no configured remote's refspec
+    /// covers (so fetch/prune never reaps it). Returns refs deleted.
+    /// </summary>
+    Task<int> DeleteRemoteTrackingNamespaceAsync(string repoPath, string namespaceName, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Rename a remote.
     /// </summary>
     Task RenameRemoteAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default);

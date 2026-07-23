@@ -263,6 +263,9 @@ public class GitService : IGitService
     public Task RemoveRemoteAsync(string repoPath, string remoteName, CancellationToken cancellationToken = default)
         => _remoteSyncOps.RemoveRemoteAsync(repoPath, remoteName, cancellationToken);
 
+    public Task<int> DeleteRemoteTrackingNamespaceAsync(string repoPath, string namespaceName, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.DeleteRemoteTrackingNamespaceAsync(repoPath, namespaceName, cancellationToken);
+
     public Task RenameRemoteAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default)
         => _remoteSyncOps.RenameRemoteAsync(repoPath, oldName, newName, cancellationToken);
 

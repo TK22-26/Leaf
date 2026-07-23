@@ -150,6 +150,47 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Clear an orphaned remote-tracking namespace
+    /// (<c>refs/remotes/&lt;name&gt;/*</c> with no configured remote —
+    /// debris from ad-hoc fetches). This is what actually removes them:
+    /// they sit outside every remote's refspec, so fetch/prune can't.
+    /// </summary>
+    [RelayCommand]
+    public async Task RemoveOrphanedRemoteRefsAsync(string namespaceName)
+    {
+        if (SelectedRepository == null || string.IsNullOrEmpty(namespaceName)) return;
+
+        var confirmed = await _dialogService.ShowConfirmationAsync(
+            $"Remove the local-only ref namespace '{namespaceName}'?\n\n" +
+            "These remote-tracking refs aren't backed by any configured remote " +
+            "(leftover from ad-hoc fetches) and can't be cleared by Fetch/Prune. " +
+            "This deletes the local refs only — nothing on any server is touched.",
+            "Remove local-only refs");
+        if (!confirmed) return;
+
+        try
+        {
+            await BeginBusyAsync($"Removing local-only refs '{namespaceName}'...");
+            var count = await _gitService.DeleteRemoteTrackingNamespaceAsync(
+                SelectedRepository.Path, namespaceName, cancellationToken: CurrentRepositoryToken);
+
+            SelectedRepository.BranchesLoaded = false;
+            await LoadBranchesForRepoAsync(SelectedRepository, forceReload: true);
+
+            NotifySuccess(Models.NotificationCategory.RemoteConfig, "Local-only refs removed",
+                $"Deleted {count} ref(s) under '{namespaceName}'.");
+        }
+        catch (Exception ex)
+        {
+            await ReportOperationFailureAsync("Remove local-only refs", ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
     /// Set a remote as the default for push operations.
     /// </summary>
     [RelayCommand]
