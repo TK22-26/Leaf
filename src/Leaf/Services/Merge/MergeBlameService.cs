@@ -68,7 +68,7 @@ public sealed class MergeBlameService : IMergeBlameService
                 return cached.Lines.TryGetValue(oneBasedLineNumber, out var hit) ? hit : null;
             }
 
-            var blame = await _git.GetFileBlameAsync(repoPath, filePath, cancellationToken)
+            var blame = await _git.GetFileBlameAsync(repoPath, filePath, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
             var byLine = new Dictionary<int, FileBlameLine>(blame.Count);
             foreach (var line in blame)

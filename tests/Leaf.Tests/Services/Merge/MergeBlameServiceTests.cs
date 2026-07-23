@@ -185,7 +185,7 @@ public class MergeBlameServiceTests
         public override Task<CommitInfo?> GetHeadCommitAsync(string repoPath, CancellationToken cancellationToken = default)
             => Task.FromResult<CommitInfo?>(new CommitInfo { Sha = HeadSha });
 
-        public override Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        public override Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, string? rev = null, CancellationToken cancellationToken = default)
         {
             BlameCallCount++;
             return Task.FromResult(new List<FileBlameLine>(Blame));
@@ -204,7 +204,7 @@ public class MergeBlameServiceTests
             _delayMs = delayMs;
         }
 
-        public override async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+        public override async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, string? rev = null, CancellationToken cancellationToken = default)
         {
             // Increment-and-track before the await so simultaneous entries
             // bump the peak even if the caller races to the Delay. Interlocked
@@ -214,7 +214,7 @@ public class MergeBlameServiceTests
             try
             {
                 await Task.Delay(_delayMs, cancellationToken).ConfigureAwait(false);
-                return await base.GetFileBlameAsync(repoPath, filePath, cancellationToken).ConfigureAwait(false);
+                return await base.GetFileBlameAsync(repoPath, filePath, rev, cancellationToken).ConfigureAwait(false);
             }
             finally
             {

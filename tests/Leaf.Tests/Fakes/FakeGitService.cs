@@ -153,8 +153,8 @@ public class FakeGitService : IGitService
     public Task AbortAmAsync(string repoPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<MergeResult> SquashMergeAsync(string repoPath, string branchName, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
     public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null, CancellationToken cancellationToken = default) => Task.FromResult(new List<CommitInfo>());
-    public virtual Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default) => Task.FromResult(new List<FileBlameLine>());
-    public Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200, CancellationToken cancellationToken = default) => Task.FromResult(new List<CommitInfo>());
+    public virtual Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, string? rev = null, CancellationToken cancellationToken = default) => Task.FromResult(new List<FileBlameLine>());
+    public Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, string? rev = null, int maxCount = 200, CancellationToken cancellationToken = default) => Task.FromResult(new List<CommitInfo>());
 
     // Worktree operations
     public Task<List<WorktreeInfo>> GetWorktreesAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new List<WorktreeInfo>());

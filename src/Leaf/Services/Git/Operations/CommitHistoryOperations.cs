@@ -510,10 +510,17 @@ internal class CommitHistoryOperations
     /// <summary>
     /// Get blame information for a file.
     /// </summary>
-    public async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+    public async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, string? rev = null, CancellationToken cancellationToken = default)
     {
+        // When a rev is supplied (blame invoked from a historical commit's
+        // diff), blame the file AS OF that commit — the path may not exist
+        // in HEAD at all. Without it, blame defaults to HEAD and fails
+        // ("no such path in HEAD") for files removed/renamed since.
+        var args = string.IsNullOrEmpty(rev)
+            ? new[] { "blame", "--line-porcelain", "--", filePath }
+            : ["blame", "--line-porcelain", rev, "--", filePath];
         var result = await _context.CommandRunner.RunAsync(
-            repoPath, ["blame", "--line-porcelain", "--", filePath], cancellationToken: cancellationToken);
+            repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
             throw new InvalidOperationException(result.StandardError);
@@ -582,12 +589,19 @@ internal class CommitHistoryOperations
     /// <summary>
     /// Get history for a file.
     /// </summary>
-    public async Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200, CancellationToken cancellationToken = default)
+    public async Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, string? rev = null, int maxCount = 200, CancellationToken cancellationToken = default)
     {
+        // From a commit diff, walk history starting AT that commit (the
+        // path may be gone from HEAD). `git log <rev> -- <path>` — rev
+        // sits before the pathspec separator.
+        var args = new List<string> { "log", "--follow", "--date=iso", $"--max-count={maxCount}",
+            "--pretty=format:%H%x1f%an%x1f%ad%x1f%s" };
+        if (!string.IsNullOrEmpty(rev))
+            args.Add(rev);
+        args.Add("--");
+        args.Add(filePath);
         var result = await _context.CommandRunner.RunAsync(
-            repoPath,
-            ["log", "--follow", "--date=iso", $"--max-count={maxCount}",
-             "--pretty=format:%H%x1f%an%x1f%ad%x1f%s", "--", filePath], cancellationToken: cancellationToken);
+            repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
             throw new InvalidOperationException(result.StandardError);
