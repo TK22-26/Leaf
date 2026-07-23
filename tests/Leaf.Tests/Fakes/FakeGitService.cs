@@ -75,6 +75,7 @@ public class FakeGitService : IGitService
     public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new RepositoryInfo());
     public virtual Task<string> GetRepositoryRootAsync(string anyPath, CancellationToken cancellationToken = default) => Task.FromResult(anyPath);
     public virtual Task<string?> GetSuperprojectWorkingTreeAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+    public virtual Task<bool> IsHeadDetachedAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(false);
     public virtual Task<bool> HasUnpushedCommitsAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(false);
     public Task<string> CloneAsync(string url, string localPath, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult("");
     public Task FetchAsync(string repoPath, string remoteName = "origin", string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => Task.CompletedTask;

@@ -284,12 +284,9 @@ public class RepoTreeServiceTests
     /// <summary>All repos on a branch (not detached) unless a test overrides a path.</summary>
     private void SetupBranchState(params string[] detachedPaths)
     {
-        _git.Setup(g => g.GetRepositoryInfoFastAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string path, CancellationToken _) => new RepositoryInfo
-            {
-                Path = path,
-                IsDetachedHead = detachedPaths.Any(d => string.Equals(d, path, StringComparison.OrdinalIgnoreCase)),
-            });
+        _git.Setup(g => g.IsHeadDetachedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string path, CancellationToken _) =>
+                detachedPaths.Any(d => string.Equals(d, path, StringComparison.OrdinalIgnoreCase)));
         _git.Setup(g => g.HasUnpushedCommitsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
     }

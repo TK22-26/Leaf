@@ -733,6 +733,15 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
         {
             // Cancelled - another load started, ignore
         }
+        catch (Exception ex)
+        {
+            // A non-cancellation fault (e.g. the repo was deleted/locked
+            // mid-session and LibGit2Sharp threw) would otherwise escape
+            // this AsyncRelayCommand's async-void execution and crash the
+            // app — there is no dispatcher/AppDomain backstop. Swallow it
+            // to the log; the next scroll/refresh retries.
+            Log.Error("Graph", "LoadMoreCommits failed", ex);
+        }
         finally
         {
             IsLoadingMore = false;
@@ -810,9 +819,17 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
     /// </summary>
     private async Task RebuildGraphFromLoadedAsync(CancellationToken ct)
     {
-        // Capture state for background work
-        var visibleCommits = GetVisibleCommits();
-        var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
+        // Capture state for background work. GetVisibleCommits returns
+        // the live _allCommits BY REFERENCE in the no-filter case, and
+        // MergeStashPseudoCommits passes it through when there are no
+        // stashes — so commitsWithStashes can alias the mutable field.
+        // Materialize a private snapshot before handing it to the
+        // background BuildGraph: SelectCommitByShaAsync runs this rebuild
+        // with IsLoadingMore cleared, so a concurrent scroll-triggered
+        // FetchNextHistoryPageAsync can _allCommits.Add() on the UI thread
+        // while BuildGraph enumerates — a "Collection was modified" fault
+        // otherwise.
+        var commitsWithStashes = MergeStashPseudoCommits(GetVisibleCommits()).ToList();
         var currentBranch = _currentBranchName;
 
         // Build graph on background thread with a fresh GraphBuilder
@@ -880,8 +897,14 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
         // If selecting a stash pseudo-commit, also set SelectedStash
         if (commit?.IsStash == true)
         {
-            // Find the matching StashInfo
-            var matchingStash = Stashes.FirstOrDefault(s => s.Index == commit.StashIndex);
+            // Resolve by SHA first, index only as fallback. Stash indices
+            // shift when a stash is pushed/dropped externally; a context
+            // menu held open across a file-watcher refresh could otherwise
+            // resolve the captured index to a DIFFERENT stash and
+            // pop/delete the wrong one.
+            var matchingStash =
+                (!string.IsNullOrEmpty(commit.Sha) ? Stashes.FirstOrDefault(s => s.Sha == commit.Sha) : null)
+                ?? Stashes.FirstOrDefault(s => s.Index == commit.StashIndex);
             if (SelectedStash != null)
                 SelectedStash.IsSelected = false;
             SelectedStash = matchingStash;
@@ -1130,12 +1153,18 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
 
             // #40: keep TAG-ONLY commits visible — commits no branch tip
             // reaches at all (their branch was deleted; a tag is their
-            // last ref). ONLY those: seeding every tagged commit here
-            // would resurrect a hidden branch's entire history through
-            // its release tags, defeating the hide feature. Commits
-            // reachable from any branch tip (hidden or not) follow the
-            // branch filters. Solo mode is excluded entirely — solo
-            // means "show only this branch's cone".
+            // last ref). ONLY those tagged commits are seeded: seeding
+            // every tagged commit would resurrect a hidden branch's whole
+            // history through its release tags, defeating the hide
+            // feature. A tagged commit already reachable from some branch
+            // tip is left to the branch filters. NOTE: a tag island IS
+            // walked to its roots below, so its ancestry that happens to
+            // be shared with a hidden branch (below their fork point)
+            // does become visible — the tagged commit can't render as a
+            // floating node with no parents. This is far less leakage
+            // than seeding every tag, and is intentional. Solo mode is
+            // excluded entirely — solo means "show only this branch's
+            // cone".
             var branchReachable = WalkReachable(
                 _branchTips.Values.Where(s => !string.IsNullOrWhiteSpace(s)),
                 commitsBySha);
@@ -1236,49 +1265,72 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             !string.Equals(RepositoryPath, repoAtStart, StringComparison.OrdinalIgnoreCase);
 
         var pagesFetched = false;
-        var stalls = 0;
-        while (_hasMoreCommits && !IsCommitLoaded(sha) && !Superseded())
+        var stalls = 0;   // consecutive no-growth FETCHES (not waits)
+        var waits = 0;    // consecutive waits on a concurrent scroll load
+        try
         {
-            var before = _allCommits.Count;
-            if (IsLoadingMore)
+            while (_hasMoreCommits && !IsCommitLoaded(sha) && !Superseded())
             {
-                // A scroll-triggered load is in flight; let it land
-                // rather than racing its shared pagination state.
-                await Task.Delay(50);
-            }
-            else
-            {
+                if (IsLoadingMore)
+                {
+                    // A scroll-triggered load is in flight — that's real
+                    // progress, not a stall, so it must NOT count toward the
+                    // give-up cap (a slow >150ms concurrent page used to make
+                    // the nav abandon a valid click). Wait for it to land;
+                    // bound the wait so a hung concurrent load can't spin us
+                    // forever.
+                    await Task.Delay(50);
+                    if (++waits > 200)   // ~10s ceiling
+                    {
+                        Log.Warn("Graph", $"SelectCommitByShaAsync({Short(sha)}) waited out a stuck concurrent load; giving up.");
+                        break;
+                    }
+                    continue;
+                }
+
+                waits = 0;
+                var before = _allCommits.Count;
                 IsLoadingMore = true;
                 try
                 {
                     pagesFetched |= await FetchNextHistoryPageAsync();
                 }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
                 finally
                 {
                     IsLoadingMore = false;
                 }
-            }
 
-            // Fail-safe: a cancelled/failed page load makes no progress;
-            // three consecutive no-growth iterations means we're spinning,
-            // not paging — bail instead of looping forever.
-            stalls = _allCommits.Count > before ? 0 : stalls + 1;
-            if (stalls >= 3)
-            {
-                Log.Warn("Graph", $"SelectCommitByShaAsync({sha[..Math.Min(7, sha.Length)]}) stalled while paging; giving up.");
-                break;
+                // Fail-safe: a failed fetch that appends nothing means we're
+                // spinning — bail after three consecutive no-growth fetches.
+                stalls = _allCommits.Count > before ? 0 : stalls + 1;
+                if (stalls >= 3)
+                {
+                    Log.Warn("Graph", $"SelectCommitByShaAsync({Short(sha)}) stalled while paging; giving up.");
+                    break;
+                }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Session/build cancellation during a fetch — fall through and
+            // still try to select from whatever landed.
+        }
+        catch (Exception ex)
+        {
+            // Fired fire-and-forget from UI clicks; don't let a fault escape
+            // into the void and crash. Fall through to a best-effort select.
+            Log.Error("Graph", $"SelectCommitByShaAsync({Short(sha)}) paging failed", ex);
         }
 
         if (Superseded())
             return;
 
-        // Publish whatever was paged in (found or exhausted) with a
-        // single rebuild, then select.
+        // Publish whatever was paged in (found or exhausted) with a single
+        // rebuild, then select. If the rebuild is superseded/cancelled by a
+        // concurrent build, still attempt selection: TrySelectLoadedCommitBySha
+        // rebuilds synchronously from _allCommits when needed, so a cancelled
+        // async rebuild must NOT skip the select (that left deep clicks
+        // silently unselected).
         if (pagesFetched)
         {
             var ct = BeginGraphBuild();
@@ -1288,12 +1340,21 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             }
             catch (OperationCanceledException)
             {
-                return;
+                // superseded by another build — selection below still runs
             }
         }
 
-        TrySelectLoadedCommitBySha(sha);
+        if (!Superseded())
+            TrySelectLoadedCommitBySha(sha);
+        // NOTE (minor, deferred): when the target is BOTH deep and filtered
+        // out, the rebuild above (filter-respecting, target absent) is
+        // followed by TrySelectLoadedCommitBySha's filter-clear synchronous
+        // rebuild — one redundant build in that narrow case. Correctness is
+        // unaffected; collapsing it cleanly needs an async filter-clear
+        // rebuild path and is left as a follow-up.
     }
+
+    private static string Short(string sha) => sha[..Math.Min(7, sha.Length)];
 
     /// <summary>
     /// True when the commit is present in the paged-in history (exact or

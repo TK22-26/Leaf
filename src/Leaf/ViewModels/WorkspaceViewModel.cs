@@ -165,6 +165,13 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     {
         Parent = parent;
         DisposeTiles();
+        // DisposeTiles cancelled the previous CTS; deliberately do NOT
+        // Dispose() it. A bulk op captured its token and may still be
+        // unwinding — git ops Register cancellation on that captured
+        // token, and Register on a disposed CTS throws
+        // ObjectDisposedException. A plain CTS (no timer/WaitHandle) has
+        // no finalizer, so the abandoned instance is ordinary GC garbage;
+        // the "leak" is negligible and disposing it is the unsafe move.
         _workspaceCts = new CancellationTokenSource();
 
         // Parent tile first — always position 0, always top-left.
@@ -279,8 +286,13 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     /// throttled like every other bulk tile operation. The parent is
     /// excluded — repo selection already fetched it.
     /// </summary>
-    private Task FetchTilesOnEntryAsync(IReadOnlyList<SubmoduleTileViewModel> tiles) =>
-        RunTilesThrottledAsync(tiles, async tile =>
+    private Task FetchTilesOnEntryAsync(IReadOnlyList<SubmoduleTileViewModel> tiles)
+    {
+        // Capture the teardown token once — a grid exit / repo switch
+        // cancels it, so a stale entry fetch can't touch the successor
+        // grid.
+        var token = WorkspaceToken;
+        return RunTilesThrottledAsync(tiles, async tile =>
         {
             try
             {
@@ -289,13 +301,11 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 // not have landed yet.
                 if (IsSubmoduleUninitialized(tile.RepositoryPath)) return;
 
-                await _autoFetchService.FetchAsync(tile.RepositoryPath, WorkspaceToken);
-
-                // The throttled runner resumes on pool threads
-                // (ConfigureAwait(false)); LoadTileAsync mutates
-                // UI-bound collections (repo auto-registration, graph
-                // state) and must run on the dispatcher.
-                await await _dispatcher.InvokeAsync(() => LoadTileAsync(tile));
+                await _autoFetchService.FetchAsync(tile.RepositoryPath, token);
+                // LoadTileAsync self-marshals to the UI thread (the
+                // throttled runner may resume this continuation on a pool
+                // thread past the parallelism cap).
+                await LoadTileAsync(tile);
             }
             catch (OperationCanceledException)
             {
@@ -306,8 +316,27 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 Log.Error("Workspace", $"Entry fetch failed for {tile.RepositoryPath}", ex);
             }
         });
+    }
 
-    private async Task LoadTileAsync(SubmoduleTileViewModel tile)
+    /// <summary>
+    /// Load a tile's repo info + graph. Guarantees its body runs on the
+    /// UI thread: the writes it performs (tile observable properties,
+    /// <c>AddRepository</c> into a sidebar-bound ObservableCollection,
+    /// <c>Graph.LoadRepositoryAsync</c>) are UI-affine, but the throttled
+    /// bulk runners (entry fetch, refresh-all) resume continuations on
+    /// pool threads past the parallelism cap. Marshaling the WHOLE method
+    /// keeps its <c>ConfigureAwait(true)</c> continuations — and Graph's
+    /// own internal awaits — on the UI context (an earlier revision that
+    /// marshaled only individual writes broke the Graph flow).
+    /// </summary>
+    private Task LoadTileAsync(SubmoduleTileViewModel tile)
+    {
+        if (_dispatcher.CheckAccess())
+            return LoadTileCoreAsync(tile);
+        return _dispatcher.InvokeAsync(() => LoadTileCoreAsync(tile)).Unwrap();
+    }
+
+    private async Task LoadTileCoreAsync(SubmoduleTileViewModel tile)
     {
         try
         {
@@ -856,30 +885,44 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     /// </summary>
     private Task CommitAllImmediateAsync()
     {
-        return RunBulkAsync("Committing all repos…", async () =>
+        return RunBulkAsync("Committing all repos…", async (rootPath, token) =>
         {
-            if (Parent is null) return;
+            // Snapshot the submodule tiles synchronously (before the first
+            // await) so a grid teardown+re-entry can't redirect the loop
+            // onto a different grid's tiles.
+            var submoduleTiles = Tiles.Where(t => !t.IsParent).ToList();
 
             // Pre-generate AI messages for the dirty submodule tiles in
             // parallel (the historical one-click behavior) — the tree
             // commit itself is sequential, and serial AI generation on a
-            // many-submodule monorepo multiplies its wall clock. The
-            // parent is deliberately NOT pre-generated: its message must
-            // reflect the pointer bumps staged after the children commit,
-            // so it generates in order inside the provider.
+            // many-submodule monorepo multiplies its wall clock. Messages
+            // are pre-generated WITHOUT staging: staging is left to
+            // CommitTreeAsync so a cancelled/skipped node's index is never
+            // mutated (an earlier revision pre-staged here, which turned a
+            // cancelled commit-all into a fully-staged-no-commit index —
+            // widening a user's deliberate partial staging). The parent is
+            // deliberately NOT pre-generated: its message must reflect the
+            // pointer bumps staged after the children commit, so it
+            // generates in order inside the provider. Nested-submodule
+            // tiles are also skipped for pre-gen for the same reason —
+            // their staged diff at pre-gen time predates their own
+            // children's pointer bumps.
             BulkOperationStatus = "Generating commit messages…";
             var pregenerated = new System.Collections.Concurrent.ConcurrentDictionary<string, (string Message, string? Description)>(StringComparer.OrdinalIgnoreCase);
-            await RunTilesThrottledAsync(Tiles.Where(t => !t.IsParent).ToList(), async tile =>
+            var nestedParents = await GetTilesWithNestedSubmodulesAsync(submoduleTiles, token);
+            await RunTilesThrottledAsync(submoduleTiles, async tile =>
             {
                 try
                 {
-                    var changes = await _gitService.GetWorkingChangesAsync(tile.RepositoryPath, WorkspaceToken);
+                    if (nestedParents.Contains(Path.GetFullPath(tile.RepositoryPath))) return;
+                    var changes = await _gitService.GetWorkingChangesAsync(tile.RepositoryPath, token);
                     if (!changes.HasChanges) return;
-                    if (changes.HasUnstagedChanges)
-                        await _gitService.StageAllAsync(tile.RepositoryPath, WorkspaceToken);
 
-                    var diff = await _gitService.GetStagedSummaryAsync(tile.RepositoryPath, cancellationToken: WorkspaceToken);
-                    var (msg, desc, err) = await _aiCommitService.GenerateCommitMessageAsync(diff, tile.RepositoryPath, WorkspaceToken);
+                    // Summarize the staged+unstaged diff without touching the
+                    // index (GetWorkingChangesPatchAsync covers the whole
+                    // working tree); CommitTreeAsync stages at commit time.
+                    var diff = await _gitService.GetWorkingChangesPatchAsync(tile.RepositoryPath, token);
+                    var (msg, desc, err) = await _aiCommitService.GenerateCommitMessageAsync(diff, tile.RepositoryPath, token);
                     if (string.IsNullOrEmpty(err) && !string.IsNullOrWhiteSpace(msg))
                         pregenerated[Path.GetFullPath(tile.RepositoryPath)] = (msg!, desc);
                     // Failures fall through to the in-order provider below,
@@ -891,7 +934,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                     Log.Warn("Workspace", $"AI pre-generation failed for {tile.Name}: {ex.Message}");
                 }
             });
-            WorkspaceToken.ThrowIfCancellationRequested();
+            token.ThrowIfCancellationRequested();
 
             var options = new TreeCommitOptions
             {
@@ -912,14 +955,44 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             };
 
             var result = await _repoTreeService.CommitTreeAsync(
-                Parent.Path,
+                rootPath,
                 options,
                 new Progress<TreeOpProgress>(p => BulkOperationStatus = $"Committing {TileDisplayName(p.Node)}…"),
-                WorkspaceToken);
+                token);
 
-            await RefreshAllTilesAsync();
+            await RefreshAllTilesAsync(token);
             ReportTreeOpResult("Commit", result, Models.NotificationCategory.MergeAndRebase);
         });
+    }
+
+    /// <summary>
+    /// Set of tile paths (full-path) that themselves contain initialized
+    /// submodules. Their commit message must reflect their own children's
+    /// pointer bumps, which don't exist until CommitTreeAsync stages them
+    /// mid-run — so they can't be safely pre-generated and are generated
+    /// in order by the provider instead.
+    /// </summary>
+    private async Task<HashSet<string>> GetTilesWithNestedSubmodulesAsync(
+        IReadOnlyList<SubmoduleTileViewModel> tiles, CancellationToken token)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tile in tiles)
+        {
+            try
+            {
+                var subs = await _gitService.GetSubmodulesAsync(tile.RepositoryPath, token);
+                if (subs.Any(s => s.IsInitialized))
+                    result.Add(Path.GetFullPath(tile.RepositoryPath));
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                // Unknown → treat as nested (pre-gen skip) to stay safe.
+                Log.Info("Workspace", $"Nested-submodule probe failed for {tile.Name}: {ex.Message}");
+                result.Add(Path.GetFullPath(tile.RepositoryPath));
+            }
+        }
+        return result;
     }
 
     /// <summary>
@@ -1200,14 +1273,13 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public async Task PushAllAsync()
     {
-        await RunBulkAsync("Pushing all repos…", async () =>
+        await RunBulkAsync("Pushing all repos…", async (rootPath, token) =>
         {
-            if (Parent is null) return;
             var result = await _repoTreeService.PushTreeAsync(
-                Parent.Path,
+                rootPath,
                 new Progress<TreeOpProgress>(p => BulkOperationStatus = $"Pushing {TileDisplayName(p.Node)}…"),
-                WorkspaceToken);
-            await RefreshAllTilesAsync();
+                token);
+            await RefreshAllTilesAsync(token);
             ReportTreeOpResult("Push", result, Models.NotificationCategory.SyncOperations);
         });
     }
@@ -1221,14 +1293,13 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public async Task PullAllAsync()
     {
-        await RunBulkAsync("Pulling all repos…", async () =>
+        await RunBulkAsync("Pulling all repos…", async (rootPath, token) =>
         {
-            if (Parent is null) return;
             var result = await _repoTreeService.PullTreeAsync(
-                Parent.Path,
+                rootPath,
                 new Progress<TreeOpProgress>(p => BulkOperationStatus = $"Pulling {TileDisplayName(p.Node)}…"),
-                WorkspaceToken);
-            await RefreshAllTilesAsync();
+                token);
+            await RefreshAllTilesAsync(token);
             ReportTreeOpResult("Pull", result, Models.NotificationCategory.SyncOperations);
         });
     }
@@ -1237,14 +1308,13 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public async Task FetchAllAsync()
     {
-        await RunBulkAsync("Fetching all repos…", async () =>
+        await RunBulkAsync("Fetching all repos…", async (rootPath, token) =>
         {
-            if (Parent is null) return;
             var result = await _repoTreeService.FetchTreeAsync(
-                Parent.Path,
+                rootPath,
                 new Progress<TreeOpProgress>(p => BulkOperationStatus = $"Fetching {TileDisplayName(p.Node)}…"),
-                WorkspaceToken);
-            await RefreshAllTilesAsync();
+                token);
+            await RefreshAllTilesAsync(token);
             ReportTreeOpResult("Fetch", result, Models.NotificationCategory.SyncOperations);
         });
     }
@@ -1273,9 +1343,12 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Reload every tile after a tree-wide operation.</summary>
-    private async Task RefreshAllTilesAsync()
+    private async Task RefreshAllTilesAsync(CancellationToken token)
     {
+        if (token.IsCancellationRequested) return;
         BulkOperationStatus = "Refreshing tiles…";
+        // Snapshot so a concurrent teardown+re-entry can't swap the set
+        // under us; LoadTileAsync self-marshals to the UI thread.
         await RunTilesThrottledAsync(Tiles.ToList(), LoadTileAsync);
     }
 
@@ -1307,15 +1380,32 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                         $"{name} has no remote configured.",
                         NotificationType.Information, category);
                     break;
+                    // SkippedDetachedHead / SkippedClean stay silent per
+                    // entry — the normal state of pinned submodules and
+                    // clean repos; surfacing one toast each would be noise.
+                    // The all-skip summary below explains it instead.
             }
         }
 
         if (result.AllSucceeded)
         {
             var acted = result.Entries.Count(e => e.Outcome == TreeOpOutcome.Succeeded);
-            var summary = acted == 0
-                ? "Nothing to do — all repos were up to date."
-                : $"{acted} repo(s) processed.";
+            string summary;
+            if (acted > 0)
+            {
+                summary = $"{acted} repo(s) processed.";
+            }
+            else if (result.Entries.Any(e => e.Outcome == TreeOpOutcome.SkippedDetachedHead))
+            {
+                // Don't claim "up to date" — the repos were skipped because
+                // they're on detached HEADs (the pinned-submodule norm),
+                // which for pull can also mean genuinely behind.
+                summary = "Nothing to do — repos are on detached HEADs (normal for pinned submodules).";
+            }
+            else
+            {
+                summary = "Nothing to do — all repos were up to date.";
+            }
             _notificationService.Show($"{operation} complete", summary, NotificationType.Success, category);
         }
     }
@@ -1343,14 +1433,29 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     /// the progress strip shows, sets a status string, and clears both
     /// on completion (success or failure).
     /// </summary>
-    private async Task RunBulkAsync(string initialStatus, Func<Task> body)
+    /// <remarks>
+    /// The body receives the tree ROOT PATH and the teardown TOKEN
+    /// captured ONCE, here, before it runs. It must use those captured
+    /// values — never re-read <see cref="Parent"/> or
+    /// <see cref="WorkspaceToken"/> across its awaits. Grid teardown
+    /// followed by re-entry replaces both with a fresh grid's values;
+    /// a bulk op that re-read them could resurrect under the new grid's
+    /// (uncancelled) token and commit/push the WRONG repository. With the
+    /// snapshot, a torn-down op keeps observing its own now-cancelled
+    /// token and its own repo, so it aborts instead of acting on the
+    /// successor grid.
+    /// </remarks>
+    private async Task RunBulkAsync(string initialStatus, Func<string, CancellationToken, Task> body)
     {
         if (IsBulkOperationActive) return;
+        if (Parent is null) return;
+        var rootPath = Parent.Path;
+        var token = WorkspaceToken;
         IsBulkOperationActive = true;
         BulkOperationStatus = initialStatus;
         try
         {
-            await body();
+            await body(rootPath, token);
         }
         catch (OperationCanceledException)
         {
@@ -1394,7 +1499,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         var createIfMissing = dialogVm.CreateIfMissing;
         var stashChanges = dialogVm.StashChanges;
 
-        await RunBulkAsync($"Switching workspace to {branchName}…", async () =>
+        await RunBulkAsync($"Switching workspace to {branchName}…", async (rootPath, token) =>
         {
             var switched = new List<string>();
             var created = new List<string>();
@@ -1402,8 +1507,10 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             var skipped = new List<string>();
             var failed = new List<(string Name, string Error)>();
 
-            foreach (var tile in Tiles)
+            // Snapshot so teardown+re-entry can't redirect the loop.
+            foreach (var tile in Tiles.ToList())
             {
+                token.ThrowIfCancellationRequested();
                 BulkOperationStatus = $"Checking {tile.Name}…";
 
                 try
