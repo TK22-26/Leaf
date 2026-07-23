@@ -220,16 +220,20 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         // Restore any persisted paused-merge state so Continue/Cancel
         // merge buttons reappear in the action bar after an app restart.
         // Done before tile creation so the gating commands see correct
-        // state if anything reacts during initial bind.
+        // state if anything reacts during initial bind. The assignment is
+        // TOTAL — PausedMerge is set to null when this parent has no valid
+        // saved pause, never left holding the previous repo's state. This
+        // in-memory assignment does not touch .git/config (persistence is
+        // done only by Set/ClearPausedMergeAsync), so config stays the
+        // source of truth.
+        PausedMergeState? restoredPause = null;
         var savedPause = await _workspaceConfig.GetPausedMergeAsync(parent.Path, cancellationToken).ConfigureAwait(true);
-        if (savedPause is { } sp)
+        if (savedPause is { } sp && Enum.TryParse<MergeType>(sp.MergeType, out var parsedType))
         {
             var absolute = Path.GetFullPath(Path.Combine(parent.Path, sp.PausedAtRelativePath));
-            if (Enum.TryParse<MergeType>(sp.MergeType, out var parsedType))
-            {
-                PausedMerge = new PausedMergeState(sp.Target, parsedType, absolute);
-            }
+            restoredPause = new PausedMergeState(sp.Target, parsedType, absolute);
         }
+        PausedMerge = restoredPause;
 
         var parentRoot = Path.GetFullPath(parent.Path);
         foreach (var sm in ordered)
@@ -1007,7 +1011,12 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         // Identify the dirty tiles up front. Clean tiles stay in
         // Normal mode and aren't part of review.
         var dirtyTiles = new List<SubmoduleTileViewModel>();
-        foreach (var tile in Tiles)
+        // Snapshot before iterating: this loop awaits inside the body and does
+        // NOT go through RunBulkAsync, so the repo-switch / grid-toggle commands
+        // stay enabled during the await. A switch runs DisposeTiles -> Tiles.Clear()
+        // on the UI thread mid-await, which would fault the live enumerator with
+        // "Collection was modified". Matches the sibling bulk loops.
+        foreach (var tile in Tiles.ToList())
         {
             try
             {
@@ -1736,5 +1745,12 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
             IsReviewing = false;
             OnPropertyChanged(nameof(IsAnySubmoduleComposing));
         }
+
+        // Clear the previous repo's in-memory paused-merge so its
+        // Continue/Cancel buttons can't leak onto the next repo's action
+        // bar during the switch (before LoadAsyncCore re-reads the new
+        // repo's config). In-memory only — the persisted .git/config entry
+        // is untouched and is re-read on the next load.
+        PausedMerge = null;
     }
 }

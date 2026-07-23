@@ -242,6 +242,13 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
     /// </summary>
     public void LoadDiff(FileDiffResult result)
     {
+        // Cancel any in-flight Blame/History load before repopulating state,
+        // mirroring Close/ShowDiff/ShowHunks. Without this, a slower blame
+        // load started against a previous file can resolve after this call
+        // and write its stale BlameLines/BlameContent (and flip IsLoading
+        // false prematurely) over the newly loaded diff.
+        CancelActiveLoad();
+
         DiffResult = result;
         FileName = result.FileName;
         FilePath = result.FilePath;
@@ -294,6 +301,10 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Clear()
     {
+        // Same stale-write guard as LoadDiff: cancel any in-flight
+        // Blame/History load so it can't repopulate state after the clear.
+        CancelActiveLoad();
+
         DiffResult = null;
         FileName = string.Empty;
         FilePath = string.Empty;

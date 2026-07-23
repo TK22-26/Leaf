@@ -94,58 +94,69 @@ public partial class App : Application
         // it, and keep the UI alive for recoverable ones.
         WireGlobalExceptionHandlers();
 
-        _provider = new ServiceCollection()
-            .AddLeafServices()
-            .BuildServiceProvider(new ServiceProviderOptions
-            {
-                ValidateOnBuild = true,
-                ValidateScopes = true
-            });
-
-        // One-time composition-level wiring. Both concerns (async error
-        // sink + credential migration) want the canonical instances from
-        // the container, not ad-hoc copies.
-        var settingsService = _provider.GetRequiredService<SettingsService>();
-        var credentialService = _provider.GetRequiredService<CredentialService>();
-        var notificationService = _provider.GetRequiredService<INotificationService>();
-
-        AsyncErrorHandler.Init(
-            notificationService,
-            () => settingsService.LoadSettings().ShowBackgroundOperationErrors);
-
-        settingsService.MigrateCredentialsIfNeeded(credentialService);
-
-        // V8: keep the merge-editor palette in lockstep with the OS theme.
-        // Must run before the first merge editor window renders so its
-        // bindings resolve against the correct palette on first paint.
-        // The settings-driven custom palette path (post-V8 closeout) is
-        // passed in so an override, when present, is layered atop the
-        // Dark/Light base on first paint too.
-        var startupSettings = settingsService.LoadSettings();
-        MergeThemeSwitcher.Initialize(startupSettings.CustomMergePalettePath);
-
-        // Post-V8 motion closeout: push the persisted ReduceMotion preference
-        // into the static gate on MergeMotionHelpers so the first merge
-        // editor interaction already honours it. A future settings UI can
-        // assign to MergeMotionHelpers.ReduceMotion for runtime toggles.
-        Leaf.Controls.Merge.MergeMotionHelpers.ReduceMotion =
-            startupSettings.ReduceMotion;
-
-        // Check for command-line arguments
-        if (e.Args.Length > 0)
-        {
-            var handled = await HandleCommandLineArgsAsync(e.Args);
-            if (handled)
-            {
-                Shutdown();
-                return;
-            }
-        }
-
+        // Everything from the container build onward is inside the startup
+        // try/catch. OnStartup is `async void`, so a synchronous throw before
+        // the first await (e.g. BuildServiceProvider DI validation, or
+        // MigrateCredentialsIfNeeded hitting a Win32 Credential Manager
+        // failure) is posted to the dispatcher; the WireGlobalExceptionHandlers
+        // backstop would swallow it with Handled=true while ShutdownMode is
+        // still OnExplicitShutdown and no window exists — a hung, invisible
+        // process. Covering the whole region means a pre-window fault fails
+        // loudly instead: logged, nonzero exit code for automation, clean
+        // Shutdown. The --auto-commit CLI path lives inside here too, so a
+        // fault before its arg handling can no longer hang the caller.
         StartupSplashHost? splashHost = null;
 
         try
         {
+            _provider = new ServiceCollection()
+                .AddLeafServices()
+                .BuildServiceProvider(new ServiceProviderOptions
+                {
+                    ValidateOnBuild = true,
+                    ValidateScopes = true
+                });
+
+            // One-time composition-level wiring. Both concerns (async error
+            // sink + credential migration) want the canonical instances from
+            // the container, not ad-hoc copies.
+            var settingsService = _provider.GetRequiredService<SettingsService>();
+            var credentialService = _provider.GetRequiredService<CredentialService>();
+            var notificationService = _provider.GetRequiredService<INotificationService>();
+
+            AsyncErrorHandler.Init(
+                notificationService,
+                () => settingsService.LoadSettings().ShowBackgroundOperationErrors);
+
+            settingsService.MigrateCredentialsIfNeeded(credentialService);
+
+            // V8: keep the merge-editor palette in lockstep with the OS theme.
+            // Must run before the first merge editor window renders so its
+            // bindings resolve against the correct palette on first paint.
+            // The settings-driven custom palette path (post-V8 closeout) is
+            // passed in so an override, when present, is layered atop the
+            // Dark/Light base on first paint too.
+            var startupSettings = settingsService.LoadSettings();
+            MergeThemeSwitcher.Initialize(startupSettings.CustomMergePalettePath);
+
+            // Post-V8 motion closeout: push the persisted ReduceMotion preference
+            // into the static gate on MergeMotionHelpers so the first merge
+            // editor interaction already honours it. A future settings UI can
+            // assign to MergeMotionHelpers.ReduceMotion for runtime toggles.
+            Leaf.Controls.Merge.MergeMotionHelpers.ReduceMotion =
+                startupSettings.ReduceMotion;
+
+            // Check for command-line arguments
+            if (e.Args.Length > 0)
+            {
+                var handled = await HandleCommandLineArgsAsync(e.Args);
+                if (handled)
+                {
+                    Shutdown();
+                    return;
+                }
+            }
+
             splashHost = new StartupSplashHost();
             await splashHost.ShowAsync();
 
@@ -165,9 +176,21 @@ public partial class App : Application
         {
             Log.Error("App", $"Startup failed: {ex.Message}", ex);
 
+            // Fail loudly for automation: a startup fault must surface a
+            // nonzero exit code, never a silent 0 from Shutdown().
+            if (Environment.ExitCode == 0)
+                Environment.ExitCode = 1;
+
             if (splashHost != null)
             {
-                await splashHost.CloseAsync();
+                try
+                {
+                    await splashHost.CloseAsync();
+                }
+                catch (Exception closeEx)
+                {
+                    Log.Error("App", "Failed to close splash after startup failure", closeEx);
+                }
             }
 
             Shutdown();

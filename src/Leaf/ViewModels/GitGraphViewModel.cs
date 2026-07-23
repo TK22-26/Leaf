@@ -452,9 +452,19 @@ public partial class GitGraphViewModel : ObservableObject, IDisposable
             _hasMoreCommits = commits.Count == InitialBatchSize;
             IsLoadingMore = false;
 
-            // Build graph on background thread (heavy computation)
+            // Build graph on background thread (heavy computation).
+            // Materialize a private snapshot with .ToList() before the
+            // background build, exactly as RebuildGraphFromLoadedAsync does:
+            // GetVisibleCommits returns the live _allCommits BY REFERENCE in
+            // the no-filter case and MergeStashPseudoCommits passes it through
+            // when there are no stashes, so commitsWithStashes would otherwise
+            // alias the mutable field. A same-repo refresh keeps the old graph
+            // interactive, so a concurrent scroll (LoadMoreCommitsAsync) or
+            // deep branch-tip click (SelectCommitByShaAsync) can _allCommits.Add()
+            // on the UI thread while BuildGraph enumerates — a "Collection was
+            // modified" fault that would raise the white error overlay.
             var visibleCommits = GetVisibleCommits();
-            var commitsWithStashes = MergeStashPseudoCommits(visibleCommits);
+            var commitsWithStashes = MergeStashPseudoCommits(visibleCommits).ToList();
             var currentBranch = _currentBranchName;
 
             // Cancel any in-flight build; if a second LoadRepositoryAsync
