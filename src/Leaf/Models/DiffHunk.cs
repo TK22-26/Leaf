@@ -11,6 +11,16 @@ public class DiffHunk
     public int Index { get; set; }
 
     /// <summary>
+    /// Zero-based index into the parsed file's inline Lines list where
+    /// this hunk starts. The inline AvalonEdit document is built 1:1
+    /// from those lines, so document line = InlineStartLineIndex + 1 —
+    /// the exact scroll target for next/previous-difference navigation
+    /// (#35). Unlike <see cref="OldStartLine"/>/<see cref="NewStartLine"/>
+    /// (file line numbers), this indexes the combined inline view.
+    /// </summary>
+    public int InlineStartLineIndex { get; set; }
+
+    /// <summary>
     /// Starting line number in the old file.
     /// </summary>
     public int OldStartLine { get; set; }

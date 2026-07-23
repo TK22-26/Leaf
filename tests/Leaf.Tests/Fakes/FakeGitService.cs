@@ -66,6 +66,7 @@ public class FakeGitService : IGitService
     public Task<List<RemoteInfo>> GetRemotesAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new List<RemoteInfo>());
     public Task AddRemoteAsync(string repoPath, string remoteName, string url, string? pushUrl = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task RemoveRemoteAsync(string repoPath, string remoteName, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public virtual Task<int> DeleteRemoteTrackingNamespaceAsync(string repoPath, string namespaceName, CancellationToken cancellationToken = default) => Task.FromResult(0);
     public Task RenameRemoteAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task SetRemoteUrlAsync(string repoPath, string remoteName, string url, bool isPushUrl = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public virtual Task SetConfigAsync(string repoPath, string key, string value, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -73,6 +74,10 @@ public class FakeGitService : IGitService
     public virtual Task UnsetConfigAsync(string repoPath, string key, GitConfigScope scope = GitConfigScope.Local, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<RepositoryInfo> GetRepositoryInfoAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new RepositoryInfo());
     public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new RepositoryInfo());
+    public virtual Task<string> GetRepositoryRootAsync(string anyPath, CancellationToken cancellationToken = default) => Task.FromResult(anyPath);
+    public virtual Task<string?> GetSuperprojectWorkingTreeAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+    public virtual Task<bool> IsHeadDetachedAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(false);
+    public virtual Task<bool> HasUnpushedCommitsAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(false);
     public Task<string> CloneAsync(string url, string localPath, string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult("");
     public Task FetchAsync(string repoPath, string remoteName = "origin", string? credentialKey = null, IProgress<string>? progress = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task PullAsync(string repoPath, string? credentialKey = null, IProgress<string>? progress = null, bool? rebase = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -149,8 +154,8 @@ public class FakeGitService : IGitService
     public Task AbortAmAsync(string repoPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<MergeResult> SquashMergeAsync(string repoPath, string branchName, CancellationToken cancellationToken = default) => Task.FromResult(new MergeResult());
     public Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null, CancellationToken cancellationToken = default) => Task.FromResult(new List<CommitInfo>());
-    public virtual Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default) => Task.FromResult(new List<FileBlameLine>());
-    public Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200, CancellationToken cancellationToken = default) => Task.FromResult(new List<CommitInfo>());
+    public virtual Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, string? rev = null, CancellationToken cancellationToken = default) => Task.FromResult(new List<FileBlameLine>());
+    public Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, string? rev = null, int maxCount = 200, CancellationToken cancellationToken = default) => Task.FromResult(new List<CommitInfo>());
 
     // Worktree operations
     public Task<List<WorktreeInfo>> GetWorktreesAsync(string repoPath, CancellationToken cancellationToken = default) => Task.FromResult(new List<WorktreeInfo>());

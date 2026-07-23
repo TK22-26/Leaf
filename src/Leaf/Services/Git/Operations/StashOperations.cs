@@ -19,16 +19,27 @@ internal class StashOperations
     }
 
     /// <summary>
-    /// Stash changes.
+    /// Default stash message, kept identical to the historical
+    /// LibGit2Sharp value so <c>GetStashesAsync</c>'s message parsing
+    /// ("On &lt;branch&gt;: Stash from Leaf") stays stable.
     /// </summary>
-    public Task StashAsync(string repoPath, string? message = null, CancellationToken cancellationToken = default)
+    internal const string DefaultStashMessage = "Stash from Leaf";
+
+    /// <summary>
+    /// Stash changes via the git CLI. LibGit2Sharp's <c>Stashes.Add</c>
+    /// cannot snapshot a gitlink that is new relative to HEAD (throws
+    /// "cannot create blob from ... it is a directory" on a repo with a
+    /// newly-staged submodule), while <c>git stash push</c> handles that
+    /// state fine — see issue #41.
+    /// </summary>
+    public async Task StashAsync(string repoPath, string? message = null, CancellationToken cancellationToken = default)
     {
-        return Task.Run(() =>
-        {
-            using var repo = new Repository(repoPath);
-            var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
-            repo.Stashes.Add(signature, message ?? "Stash from Leaf");
-        }, cancellationToken);
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath,
+            ["stash", "push", "-m", message ?? DefaultStashMessage],
+            cancellationToken: cancellationToken);
+        if (!result.Success)
+            throw new InvalidOperationException($"Failed to stash: {result.StandardError.Trim()}");
     }
 
     /// <summary>
@@ -43,7 +54,9 @@ internal class StashOperations
             args.Add(message);
         }
 
-        await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
+        var result = await _context.CommandRunner.RunAsync(repoPath, args, cancellationToken: cancellationToken);
+        if (!result.Success)
+            throw new InvalidOperationException($"Failed to stash staged changes: {result.StandardError.Trim()}");
     }
 
     /// <summary>

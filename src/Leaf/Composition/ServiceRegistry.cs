@@ -25,12 +25,40 @@ public static class ServiceRegistry
     /// </summary>
     public static IServiceCollection AddLeafServices(this IServiceCollection services)
     {
+        AddLeafHeadlessGitServices(services);
         AddInfrastructureServices(services);
         AddGitServices(services);
         AddUiServices(services);
         AddAiServices(services);
         AddRepositoryScopedServices(services);
         AddViewModels(services);
+
+        return services;
+    }
+
+    /// <summary>
+    /// The UI-free core: settings, credentials, the git CLI runner and
+    /// facade, repo-list persistence, workspace config, and the repo-tree
+    /// service. This is the complete set a headless host (Leaf.Mcp) needs
+    /// — nothing here touches WPF. <see cref="AddLeafServices"/> layers
+    /// the UI world on top; registrations live in exactly one of the two
+    /// methods, never both.
+    /// </summary>
+    public static IServiceCollection AddLeafHeadlessGitServices(this IServiceCollection services)
+    {
+        services.AddSingleton<SettingsService>();
+
+        // CredentialService is concrete-only for some callers (legacy
+        // migration, CredentialHelper); ICredentialService forwards to the
+        // same singleton for the services that take the interface.
+        services.AddSingleton<CredentialService>();
+        services.AddSingleton<ICredentialService>(sp => sp.GetRequiredService<CredentialService>());
+
+        services.AddSingleton<IGitCommandRunner, GitCommandRunner>();
+        services.AddSingleton<IGitService, GitService>();
+        services.AddSingleton<IRepositoryManagementService, RepositoryManagementService>();
+        services.AddSingleton<IWorkspaceConfigService, WorkspaceConfigService>();
+        services.AddSingleton<Leaf.Services.RepoTree.IRepoTreeService, Leaf.Services.RepoTree.RepoTreeService>();
 
         return services;
     }
@@ -45,11 +73,8 @@ public static class ServiceRegistry
     // registered just once as AddSingleton<I, T>.
     private static void AddInfrastructureServices(IServiceCollection services)
     {
-        services.AddSingleton<SettingsService>();
-
-        services.AddSingleton<CredentialService>();
-        services.AddSingleton<ICredentialService>(sp => sp.GetRequiredService<CredentialService>());
-
+        // SettingsService / CredentialService moved to
+        // AddLeafHeadlessGitServices — the headless core registers them.
         services.AddSingleton<FileWatcherService>();
 
         services.AddSingleton<IClipboardService, ClipboardService>();
@@ -67,9 +92,8 @@ public static class ServiceRegistry
 
     private static void AddGitServices(IServiceCollection services)
     {
-        services.AddSingleton<IGitCommandRunner, GitCommandRunner>();
-        services.AddSingleton<IGitService, GitService>();
-        services.AddSingleton<IRepositoryManagementService, RepositoryManagementService>();
+        // IGitCommandRunner / IGitService / IRepositoryManagementService /
+        // IWorkspaceConfigService moved to AddLeafHeadlessGitServices.
         services.AddSingleton<IGitFlowService, GitFlowService>();
         services.AddSingleton<IAutoFetchService, AutoFetchService>();
         services.AddSingleton<IDiffService, DiffService>();
@@ -84,7 +108,6 @@ public static class ServiceRegistry
         services.AddSingleton<IExternalToolLauncherService, ExternalToolLauncherService>();
         services.AddSingleton<IInteractiveRebaseService, InteractiveRebaseService>();
         services.AddSingleton<IRebaseService, RebaseService>();
-        services.AddSingleton<IWorkspaceConfigService, WorkspaceConfigService>();
         services.AddSingleton<IPatchService, PatchService>();
         services.AddSingleton<IBisectService, BisectService>();
         services.AddSingleton<Leaf.Services.Shortcuts.IShortcutService, Leaf.Services.Shortcuts.ShortcutService>();

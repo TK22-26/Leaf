@@ -189,17 +189,19 @@
                     ToolTip="Remove the override and let the palette decide this branch's colour"
                     Padding="12,4"
                     Click="UseAutoButton_Click"/>
+            <!-- Declaration order matches visual order (OK left of
+                 Cancel) so keyboard Tab traversal follows the layout. -->
             <Button Grid.Column="2"
-                    Content="Cancel"
-                    Width="80"
-                    Margin="0,0,8,0"
-                    Click="CancelButton_Click"/>
-            <Button Grid.Column="3"
                     x:Name="OkButton"
                     Content="OK"
                     Width="80"
+                    Margin="0,0,8,0"
                     IsDefault="True"
                     Click="OkButton_Click"/>
+            <Button Grid.Column="3"
+                    Content="Cancel"
+                    Width="80"
+                    Click="CancelButton_Click"/>
         </Grid>
     </Grid>
 </Window>

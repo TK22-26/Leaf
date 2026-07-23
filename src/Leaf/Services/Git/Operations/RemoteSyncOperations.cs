@@ -81,6 +81,51 @@ internal class RemoteSyncOperations
     }
 
     /// <summary>
+    /// Delete every remote-tracking ref under
+    /// <c>refs/remotes/&lt;namespace&gt;/*</c>. For orphaned namespaces —
+    /// debris from ad-hoc <c>git fetch &lt;url&gt; …:refs/remotes/x/*</c>
+    /// with no configured remote — this is the ONLY way to clear them:
+    /// they sit outside every remote's fetch refspec, so
+    /// <c>git fetch --prune</c> / <c>git remote prune</c> never touch them.
+    /// Returns the number of refs deleted.
+    /// </summary>
+    public async Task<int> DeleteRemoteTrackingNamespaceAsync(string repoPath, string namespaceName, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(namespaceName))
+            throw new ArgumentException("Namespace must be provided.", nameof(namespaceName));
+
+        var prefix = $"refs/remotes/{namespaceName}/";
+        var list = await _context.CommandRunner.RunAsync(
+            repoPath, ["for-each-ref", "--format=%(refname)", prefix], cancellationToken: cancellationToken);
+        if (!list.Success)
+        {
+            throw new InvalidOperationException(string.IsNullOrEmpty(list.StandardError)
+                ? $"Failed to enumerate refs under {prefix}"
+                : list.StandardError);
+        }
+
+        var refs = list.StandardOutput
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(r => r.Trim())
+            .Where(r => r.StartsWith(prefix, StringComparison.Ordinal))
+            .ToList();
+        if (refs.Count == 0)
+            return 0;
+
+        // Delete atomically via update-ref --stdin (one process, all-or-nothing).
+        var stdin = string.Concat(refs.Select(r => $"delete {r}\n"));
+        var del = await _context.CommandRunner.RunAsync(
+            repoPath, ["update-ref", "--stdin"], input: stdin, cancellationToken: cancellationToken);
+        if (!del.Success)
+        {
+            throw new InvalidOperationException(string.IsNullOrEmpty(del.StandardError)
+                ? $"Failed to delete refs under {prefix}"
+                : del.StandardError);
+        }
+        return refs.Count;
+    }
+
+    /// <summary>
     /// Rename a remote.
     /// </summary>
     public async Task RenameRemoteAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default)

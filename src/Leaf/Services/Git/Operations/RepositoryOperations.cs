@@ -216,6 +216,82 @@ internal class RepositoryOperations
     }
 
     /// <summary>
+    /// Resolve the top-level working-tree directory for any path inside a
+    /// git working tree (<c>git rev-parse --show-toplevel</c>). Throws when
+    /// the path is not inside a working tree.
+    /// </summary>
+    public async Task<string> GetRepositoryRootAsync(string anyPath, CancellationToken cancellationToken = default)
+    {
+        var result = await _context.CommandRunner.RunAsync(
+            anyPath, ["rev-parse", "--show-toplevel"], cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!result.Success)
+            throw new InvalidOperationException(
+                $"'{anyPath}' is not inside a git working tree: {result.StandardError.Trim()}");
+
+        var toplevel = result.StandardOutput.Trim();
+        if (string.IsNullOrEmpty(toplevel))
+            throw new InvalidOperationException(
+                $"'{anyPath}' has no working tree (bare repository or inside .git).");
+        return Path.GetFullPath(toplevel);
+    }
+
+    /// <summary>
+    /// True when this repo's HEAD is a detached HEAD — the default state
+    /// of an initialized submodule (<c>git submodule update</c> checks
+    /// out the recorded commit, not a branch). Cheap: a single
+    /// <c>git symbolic-ref -q HEAD</c> whose non-zero exit means detached,
+    /// avoiding the full working-tree status scan of
+    /// <see cref="GetRepositoryInfoFastAsync"/>.
+    /// </summary>
+    public async Task<bool> IsHeadDetachedAsync(string repoPath, CancellationToken cancellationToken = default)
+    {
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath, ["symbolic-ref", "-q", "HEAD"], cancellationToken: cancellationToken).ConfigureAwait(false);
+        // Exit 0 + a ref → on a branch; non-zero → detached HEAD.
+        return !result.Success || string.IsNullOrWhiteSpace(result.StandardOutput);
+    }
+
+    /// <summary>
+    /// True when HEAD's commit is reachable from NO remote-tracking ref
+    /// and NO tag (<c>git rev-list -n 1 HEAD --not --remotes --tags</c>) —
+    /// i.e. a fresh clone of a parent that recorded this repo's HEAD as a
+    /// gitlink could not obtain the object (a clone fetches remote
+    /// branches and, by default, tags). Answers correctly for detached
+    /// HEADs, unlike tracking-branch comparisons such as
+    /// <see cref="IsHeadPushedAsync"/>. <c>--tags</c> is what makes a
+    /// submodule pinned to a published release tag (a normal workflow,
+    /// detached at a tagged commit that sits on no branch) read as
+    /// published rather than a false "unpushed".
+    /// </summary>
+    public async Task<bool> HasUnpushedCommitsAsync(string repoPath, CancellationToken cancellationToken = default)
+    {
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath, ["rev-list", "-n", "1", "HEAD", "--not", "--remotes", "--tags"], cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!result.Success)
+            throw new InvalidOperationException(
+                $"Failed to check unpushed commits for '{repoPath}': {result.StandardError.Trim()}");
+        return !string.IsNullOrWhiteSpace(result.StandardOutput);
+    }
+
+    /// <summary>
+    /// Resolve the superproject working tree that contains
+    /// <paramref name="repoPath"/> as a submodule
+    /// (<c>git rev-parse --show-superproject-working-tree</c>).
+    /// Returns null when the repo is not a submodule of anything.
+    /// </summary>
+    public async Task<string?> GetSuperprojectWorkingTreeAsync(string repoPath, CancellationToken cancellationToken = default)
+    {
+        var result = await _context.CommandRunner.RunAsync(
+            repoPath, ["rev-parse", "--show-superproject-working-tree"], cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!result.Success)
+            throw new InvalidOperationException(
+                $"Failed to resolve superproject for '{repoPath}': {result.StandardError.Trim()}");
+
+        var superproject = result.StandardOutput.Trim();
+        return string.IsNullOrEmpty(superproject) ? null : Path.GetFullPath(superproject);
+    }
+
+    /// <summary>
     /// Walk the standard <c>.git</c> sentinel files / directories to figure
     /// out which long-running git operation (if any) is paused on this
     /// repo. Shared by <see cref="GetRepositoryInfoAsync"/> and

@@ -80,6 +80,14 @@ public interface IGitService
     Task RemoveRemoteAsync(string repoPath, string remoteName, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Delete every remote-tracking ref under
+    /// <c>refs/remotes/&lt;namespace&gt;/*</c> — the only way to clear
+    /// orphaned tracking-ref debris that no configured remote's refspec
+    /// covers (so fetch/prune never reaps it). Returns refs deleted.
+    /// </summary>
+    Task<int> DeleteRemoteTrackingNamespaceAsync(string repoPath, string namespaceName, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Rename a remote.
     /// </summary>
     Task RenameRemoteAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default);
@@ -120,6 +128,35 @@ public interface IGitService
     /// Prefer this over <see cref="GetRepositoryInfoAsync"/> for performance-critical paths.
     /// </summary>
     Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolve the top-level working-tree directory for any path inside a
+    /// git working tree (<c>git rev-parse --show-toplevel</c>). Throws when
+    /// the path is not inside a working tree.
+    /// </summary>
+    Task<string> GetRepositoryRootAsync(string anyPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolve the superproject working tree that contains
+    /// <paramref name="repoPath"/> as a submodule. Returns null when the
+    /// repo is not a submodule of anything.
+    /// </summary>
+    Task<string?> GetSuperprojectWorkingTreeAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when this repo's HEAD is a detached HEAD (the default state
+    /// of an initialized submodule). Cheap — a single symbolic-ref probe,
+    /// not a working-tree status scan.
+    /// </summary>
+    Task<bool> IsHeadDetachedAsync(string repoPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when HEAD's commit is reachable from no remote-tracking ref
+    /// and no tag — i.e. a clone could not obtain it. Correct for
+    /// detached HEADs, unlike tracking-branch comparisons such as
+    /// <see cref="IsHeadPushedAsync"/>.
+    /// </summary>
+    Task<bool> HasUnpushedCommitsAsync(string repoPath, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Clone a remote repository.
@@ -578,14 +615,18 @@ public interface IGitService
     Task<List<CommitInfo>> GetCommitsBetweenAsync(string repoPath, string fromRef, string? toRef = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Get blame information for a file.
+    /// Get blame information for a file. When <paramref name="rev"/> is
+    /// supplied, blames the file as of that commit (a file viewed from a
+    /// historical commit's diff may not exist in HEAD); otherwise blames
+    /// the working-tree / HEAD version.
     /// </summary>
-    Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default);
+    Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, string? rev = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Get history for a file.
+    /// Get history for a file. When <paramref name="rev"/> is supplied,
+    /// walks history starting at that commit rather than HEAD.
     /// </summary>
-    Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200, CancellationToken cancellationToken = default);
+    Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, string? rev = null, int maxCount = 200, CancellationToken cancellationToken = default);
 
     #endregion
 

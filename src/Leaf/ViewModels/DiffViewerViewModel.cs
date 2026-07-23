@@ -65,6 +65,14 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(CanShowFileInsights))]
     private string _repositoryPath = string.Empty;
 
+    /// <summary>
+    /// When the diff is a historical commit's file, the SHA of that
+    /// commit. Blame / History scope to it (the path may not exist in
+    /// HEAD). Null for working-copy / staged diffs, where blame targets
+    /// the working tree / HEAD as before.
+    /// </summary>
+    public string? SourceCommitSha { get; set; }
+
     [ObservableProperty]
     private string _inlineContent = string.Empty;
 
@@ -115,6 +123,7 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(ShowFullDiff))]
     [NotifyPropertyChangedFor(nameof(ShowHunkView))]
     [NotifyPropertyChangedFor(nameof(CanShowHunks))]
+    [NotifyPropertyChangedFor(nameof(HasDiffNavigation))]
     private ViewerMode _mode = ViewerMode.Diff;
 
     [ObservableProperty]
@@ -132,6 +141,70 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
     public bool IsDiffMode => Mode == ViewerMode.Diff;
     public bool IsBlameMode => Mode == ViewerMode.Blame;
     public bool IsHistoryMode => Mode == ViewerMode.History;
+
+    // ─── Next/previous difference navigation (#35) ──────────────────────
+    //
+    // Mirrors the merge editor's conflict navigation: an index with
+    // modulo wrap-around ("seen all" = the counter cycling back to
+    // "1 of N"), driven by header buttons and F8 / Shift+F8. Parsed for
+    // every non-binary diff — unlike the revert-capable Hunks view
+    // collection, which stays gated on CanShowHunks — so add-only and
+    // delete-only files navigate too.
+
+    /// <summary>
+    /// All change hunks of the current diff, in inline-document order.
+    /// Same parse (and order) as <see cref="Hunks"/>, so Diff-mode and
+    /// Hunks-mode navigation indices align 1:1.
+    /// </summary>
+    private IReadOnlyList<DiffHunk> _navigationHunks = [];
+
+    /// <summary>
+    /// Index of the current difference; -1 = not navigated yet. The
+    /// first Next lands on 0, the first Previous wraps to the last.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DiffPositionText))]
+    [NotifyPropertyChangedFor(nameof(CurrentNavigationHunk))]
+    private int _currentDiffIndex = -1;
+
+    /// <summary>Total number of differences (hunks) in the current diff.</summary>
+    public int DiffChangeCount => _navigationHunks.Count;
+
+    /// <summary>Navigation UI is shown only in diff mode with at least one change.</summary>
+    public bool HasDiffNavigation => IsDiffMode && !IsBinary && _navigationHunks.Count > 0;
+
+    /// <summary>"N of M" once navigating; "M differences" before the first jump.</summary>
+    public string DiffPositionText => CurrentDiffIndex < 0
+        ? $"{DiffChangeCount} difference{(DiffChangeCount == 1 ? "" : "s")}"
+        : $"{CurrentDiffIndex + 1} of {DiffChangeCount}";
+
+    /// <summary>The hunk the view should scroll to; null before the first jump.</summary>
+    public DiffHunk? CurrentNavigationHunk =>
+        CurrentDiffIndex >= 0 && CurrentDiffIndex < _navigationHunks.Count
+            ? _navigationHunks[CurrentDiffIndex]
+            : null;
+
+    [RelayCommand(CanExecute = nameof(CanNavigateDiff))]
+    private void NextDifference()
+        => CurrentDiffIndex = (CurrentDiffIndex + 1) % _navigationHunks.Count;
+
+    [RelayCommand(CanExecute = nameof(CanNavigateDiff))]
+    private void PreviousDifference()
+        => CurrentDiffIndex = (Math.Max(CurrentDiffIndex, 0) - 1 + _navigationHunks.Count) % _navigationHunks.Count;
+
+    private bool CanNavigateDiff() => _navigationHunks.Count > 0;
+
+    private void ResetDiffNavigation(IReadOnlyList<DiffHunk> navigationHunks)
+    {
+        _navigationHunks = navigationHunks;
+        CurrentDiffIndex = -1;
+        OnPropertyChanged(nameof(DiffChangeCount));
+        OnPropertyChanged(nameof(HasDiffNavigation));
+        OnPropertyChanged(nameof(DiffPositionText));
+        OnPropertyChanged(nameof(CurrentNavigationHunk));
+        NextDifferenceCommand.NotifyCanExecuteChanged();
+        PreviousDifferenceCommand.NotifyCanExecuteChanged();
+    }
 
     /// <summary>
     /// True if hunk mode can be enabled (file has both old and new content - not a new or deleted file).
@@ -169,6 +242,13 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
     /// </summary>
     public void LoadDiff(FileDiffResult result)
     {
+        // Cancel any in-flight Blame/History load before repopulating state,
+        // mirroring Close/ShowDiff/ShowHunks. Without this, a slower blame
+        // load started against a previous file can resolve after this call
+        // and write its stale BlameLines/BlameContent (and flip IsLoading
+        // false prematurely) over the newly loaded diff.
+        CancelActiveLoad();
+
         DiffResult = result;
         FileName = result.FileName;
         FilePath = result.FilePath;
@@ -179,15 +259,26 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
         LinesDeleted = result.LinesDeletedCount;
         Mode = ViewerMode.Diff;
         IsHunkMode = false;
+        // Default to working-tree/HEAD blame; ShowFileDiffAsync sets a
+        // commit SHA afterward when the diff is a historical commit's file.
+        SourceCommitSha = null;
         BlameLines = [];
         BlameChunks = [];
         BlameContent = string.Empty;
         HistoryCommits = [];
 
-        // Parse hunks for the diff
+        // Parse hunks once for every non-binary diff — navigation works
+        // for add-only/delete-only files too. The revert-capable Hunks
+        // view collection keeps its stricter both-sides-present gate
+        // (reverting needs old AND new content); both come from the same
+        // parse so navigation indices align with hunk cards 1:1.
+        var parsedHunks = !result.IsBinary && result.Lines.Count > 0
+            ? _hunkService.ParseHunks(result)
+            : [];
+        ResetDiffNavigation(parsedHunks);
+
         if (!result.IsBinary && !string.IsNullOrEmpty(result.OldContent) && !string.IsNullOrEmpty(result.NewContent))
         {
-            var parsedHunks = _hunkService.ParseHunks(result);
             Hunks = new ObservableCollection<DiffHunk>(parsedHunks);
         }
         else
@@ -210,6 +301,10 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Clear()
     {
+        // Same stale-write guard as LoadDiff: cancel any in-flight
+        // Blame/History load so it can't repopulate state after the clear.
+        CancelActiveLoad();
+
         DiffResult = null;
         FileName = string.Empty;
         FilePath = string.Empty;
@@ -227,6 +322,8 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
         Hunks = [];
         IsHunkMode = false;
         Mode = ViewerMode.Diff;
+        SourceCommitSha = null;
+        ResetDiffNavigation([]);
     }
 
     [RelayCommand]
@@ -301,7 +398,7 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
             var sw = Stopwatch.StartNew();
             Log.Info("DiffViewer", $"Blame start #{loadId} path={FilePath}");
 
-            var lines = await _gitService.GetFileBlameAsync(RepositoryPath, FilePath, cancellationToken: SessionToken);
+            var lines = await _gitService.GetFileBlameAsync(RepositoryPath, FilePath, rev: SourceCommitSha, cancellationToken: SessionToken);
             if (token.IsCancellationRequested)
             {
                 Log.Info("DiffViewer", $"Blame canceled #{loadId}");
@@ -314,6 +411,26 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
 
             sw.Stop();
             Log.Perf("DiffViewer", $"Blame done #{loadId} lines={lines.Count}", sw.ElapsedMilliseconds);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer load / repo switch — expected.
+        }
+        catch (Exception ex)
+        {
+            // git blame fails loudly for legitimate reasons — the file
+            // isn't in HEAD (untracked / newly added), lives only in a
+            // historical commit, or the diff's path doesn't resolve at
+            // HEAD. Surface it in the pane instead of letting the fault
+            // escape this async command; there is no dispatcher backstop
+            // upstream and an unhandled fault here terminated the app.
+            Log.Warn("DiffViewer", $"Blame failed for {FilePath}: {ex.Message}");
+            if (IsActiveToken(token))
+            {
+                BlameLines = [];
+                BlameChunks = [];
+                BlameContent = $"Blame unavailable for this file.\n\n{ex.Message.Trim()}";
+            }
         }
         finally
         {
@@ -340,7 +457,7 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
             var sw = Stopwatch.StartNew();
             Log.Info("DiffViewer", $"History start #{loadId} path={FilePath}");
 
-            var commits = await _gitService.GetFileHistoryAsync(RepositoryPath, FilePath, cancellationToken: SessionToken);
+            var commits = await _gitService.GetFileHistoryAsync(RepositoryPath, FilePath, rev: SourceCommitSha, cancellationToken: SessionToken);
             if (token.IsCancellationRequested)
             {
                 Log.Info("DiffViewer", $"History canceled #{loadId}");
@@ -350,6 +467,20 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
 
             sw.Stop();
             Log.Perf("DiffViewer", $"History done #{loadId} commits={commits.Count}", sw.ElapsedMilliseconds);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer load / repo switch — expected.
+        }
+        catch (Exception ex)
+        {
+            // Same rationale as ShowBlameAsync: a git failure must not
+            // escape this async command and crash the app.
+            Log.Warn("DiffViewer", $"History failed for {FilePath}: {ex.Message}");
+            if (IsActiveToken(token))
+            {
+                HistoryCommits = [];
+            }
         }
         finally
         {

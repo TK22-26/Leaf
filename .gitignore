@@ -89,3 +89,4 @@ src/Leaf/Leaf_za3qkqqy_wpftmp.csproj
 
 # Playwright MCP temporary artifacts (browser snapshots / screenshots)
 .playwright-mcp/
+TestResults/

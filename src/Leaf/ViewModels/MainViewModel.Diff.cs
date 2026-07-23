@@ -15,7 +15,8 @@ public partial class MainViewModel
     /// </summary>
     public Task ShowFileDiffAsync(Models.FileChangeInfo file, string commitSha) =>
         ShowTwoPaneDiffAsync(file.FileName, file.Path, repoPath =>
-            _gitService.GetFileDiffAsync(repoPath, commitSha, file.Path, cancellationToken: CurrentRepositoryToken));
+            _gitService.GetFileDiffAsync(repoPath, commitSha, file.Path, cancellationToken: CurrentRepositoryToken),
+            sourceCommitSha: commitSha);
 
     /// <summary>
     /// Close the diff viewer.
@@ -269,7 +270,8 @@ public partial class MainViewModel
     private async Task ShowTwoPaneDiffAsync(
         string fileName,
         string filePath,
-        Func<string, Task<(string oldContent, string newContent)>> loadContent)
+        Func<string, Task<(string oldContent, string newContent)>> loadContent,
+        string? sourceCommitSha = null)
     {
         if (SelectedRepository == null || DiffViewerViewModel == null)
             return;
@@ -283,6 +285,10 @@ public partial class MainViewModel
             var result = _diffService.ComputeDiff(oldContent, newContent, fileName, filePath);
             DiffViewerViewModel.RepositoryPath = SelectedRepository.Path;
             DiffViewerViewModel.LoadDiff(result);
+            // Set AFTER LoadDiff — it resets SourceCommitSha to null. For a
+            // commit file this scopes Blame/History to that commit; for
+            // working-copy/staged diffs sourceCommitSha is null (HEAD).
+            DiffViewerViewModel.SourceCommitSha = sourceCommitSha;
         }
         catch (Exception ex)
         {

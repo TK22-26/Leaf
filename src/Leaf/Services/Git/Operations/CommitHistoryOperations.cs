@@ -55,9 +55,15 @@ internal class CommitHistoryOperations
                 .GroupBy(b => b.Tip?.Sha)
                 .ToDictionary(g => g.Key ?? "", g => g.Select(b => b.FriendlyName).ToList());
 
+            // Key by the PEELED target: for annotated tags, Target is the
+            // tag object itself whose SHA never matches a commit — such
+            // decorations silently vanished. PeeledTarget resolves
+            // tag→tag chains to the commit; non-commit tags (blobs/trees)
+            // can't be graph nodes and are excluded (#40).
             var tagTips = repo.Tags
-                .GroupBy(t => t.Target?.Sha)
-                .ToDictionary(g => g.Key ?? "", g => g.Select(t => t.FriendlyName).ToList());
+                .Where(t => t.PeeledTarget is Commit)
+                .GroupBy(t => t.PeeledTarget.Sha)
+                .ToDictionary(g => g.Key, g => g.Select(t => t.FriendlyName).ToList());
 
             // Build reverse map: branch name → tip SHA for BranchLabel.TipSha
             var branchNameToTipSha = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -89,10 +95,18 @@ internal class CommitHistoryOperations
             }
             else
             {
+                // Seed the walk from tag targets too: a commit whose only
+                // ref is a tag (branch deleted) must still appear in the
+                // graph, matching `git log --all --decorate` (#40).
+                var tagTipCommits = repo.Tags
+                    .Select(t => t.PeeledTarget)
+                    .OfType<Commit>();
+
                 var allBranchTipsList = repo.Branches
                     .Where(b => b.Tip != null)
                     .Select(b => b.Tip)
-                    .Distinct()
+                    .Concat(tagTipCommits)
+                    .DistinctBy(c => c.Sha)
                     .ToList();
 
                 commits = repo.Commits.QueryBy(new CommitFilter
@@ -221,9 +235,11 @@ internal class CommitHistoryOperations
             .GroupBy(b => b.Tip!.Sha)
             .ToDictionary(g => g.Key, g => g.Select(b => b.FriendlyName).ToList());
 
+        // Peeled target so annotated tags decorate the commit, not the
+        // tag object — mirrors the graph builder's tagTips map (#40).
         var tagTips = repo.Tags
-            .Where(t => t.Target != null)
-            .GroupBy(t => t.Target!.Sha)
+            .Where(t => t.PeeledTarget is Commit)
+            .GroupBy(t => t.PeeledTarget.Sha)
             .ToDictionary(g => g.Key, g => g.Select(t => t.FriendlyName).ToList());
 
         return (branchTips, tagTips);
@@ -494,10 +510,17 @@ internal class CommitHistoryOperations
     /// <summary>
     /// Get blame information for a file.
     /// </summary>
-    public async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
+    public async Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, string? rev = null, CancellationToken cancellationToken = default)
     {
+        // When a rev is supplied (blame invoked from a historical commit's
+        // diff), blame the file AS OF that commit — the path may not exist
+        // in HEAD at all. Without it, blame defaults to HEAD and fails
+        // ("no such path in HEAD") for files removed/renamed since.
+        var args = string.IsNullOrEmpty(rev)
+            ? new[] { "blame", "--line-porcelain", "--", filePath }
+            : ["blame", "--line-porcelain", rev, "--", filePath];
         var result = await _context.CommandRunner.RunAsync(
-            repoPath, ["blame", "--line-porcelain", "--", filePath], cancellationToken: cancellationToken);
+            repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
             throw new InvalidOperationException(result.StandardError);
@@ -566,12 +589,19 @@ internal class CommitHistoryOperations
     /// <summary>
     /// Get history for a file.
     /// </summary>
-    public async Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200, CancellationToken cancellationToken = default)
+    public async Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, string? rev = null, int maxCount = 200, CancellationToken cancellationToken = default)
     {
+        // From a commit diff, walk history starting AT that commit (the
+        // path may be gone from HEAD). `git log <rev> -- <path>` — rev
+        // sits before the pathspec separator.
+        var args = new List<string> { "log", "--follow", "--date=iso", $"--max-count={maxCount}",
+            "--pretty=format:%H%x1f%an%x1f%ad%x1f%s" };
+        if (!string.IsNullOrEmpty(rev))
+            args.Add(rev);
+        args.Add("--");
+        args.Add(filePath);
         var result = await _context.CommandRunner.RunAsync(
-            repoPath,
-            ["log", "--follow", "--date=iso", $"--max-count={maxCount}",
-             "--pretty=format:%H%x1f%an%x1f%ad%x1f%s", "--", filePath], cancellationToken: cancellationToken);
+            repoPath, args, cancellationToken: cancellationToken);
 
         if (!result.Success)
             throw new InvalidOperationException(result.StandardError);

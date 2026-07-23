@@ -136,12 +136,7 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="Cancel"
-                            Padding="20,10"
-                            IsCancel="True"
-                            Click="Cancel_Click"/>
                     <Button x:Name="PushButton"
-                            Margin="12,0,0,0"
                             Padding="24,10"
                             Click="Push_Click"
                             IsEnabled="False"
@@ -152,6 +147,11 @@
                             <TextBlock Text="Push"/>
                         </StackPanel>
                     </Button>
+                    <Button Content="Cancel"
+                            Margin="12,0,0,0"
+                            Padding="20,10"
+                            IsCancel="True"
+                            Click="Cancel_Click"/>
                 </StackPanel>
             </Grid>
         </Border>

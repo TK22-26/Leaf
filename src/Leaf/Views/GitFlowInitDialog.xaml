@@ -741,17 +741,17 @@
                             Visibility="Collapsed"/>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button Content="Cancel"
-                                Padding="20,10"
-                                IsCancel="True"
-                                Click="Cancel_Click"/>
                         <Button x:Name="NextButton"
                                 Content="Next"
-                                Margin="12,0,0,0"
                                 Padding="24,10"
                                 Click="Next_Click"
                                 Background="{DynamicResource AccentFillColorDefaultBrush}"
                                 Foreground="White"/>
+                        <Button Content="Cancel"
+                                Margin="12,0,0,0"
+                                Padding="20,10"
+                                IsCancel="True"
+                                Click="Cancel_Click"/>
                     </StackPanel>
                 </Grid>
             </Border>

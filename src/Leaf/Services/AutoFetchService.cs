@@ -53,7 +53,7 @@ public class AutoFetchService : IAutoFetchService
         Log.Info("AutoFetch", "Timer stopped");
     }
 
-    public async Task FetchAsync(string repoPath)
+    public async Task FetchAsync(string repoPath, CancellationToken cancellationToken = default)
     {
         var sw = Log.StartTimer();
         try
@@ -65,7 +65,7 @@ public class AutoFetchService : IAutoFetchService
             }
 
             // Fetch from all remotes
-            var remotes = await _gitService.GetRemotesAsync(repoPath);
+            var remotes = await _gitService.GetRemotesAsync(repoPath, cancellationToken);
 
             foreach (var remote in remotes)
             {
@@ -76,7 +76,11 @@ public class AutoFetchService : IAutoFetchService
                     {
                         try
                         {
-                            await Dns.GetHostAddressesAsync(host);
+                            await Dns.GetHostAddressesAsync(host, cancellationToken);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
                         }
                         catch (Exception ex) when (ex is System.Net.Sockets.SocketException
                                                 or ArgumentException
@@ -95,7 +99,11 @@ public class AutoFetchService : IAutoFetchService
 
                 try
                 {
-                    await _gitService.FetchAsync(repoPath, remote.Name, credentialKey: credentialKey);
+                    await _gitService.FetchAsync(repoPath, remote.Name, credentialKey: credentialKey, cancellationToken: cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -107,7 +115,7 @@ public class AutoFetchService : IAutoFetchService
             LastFetchTime = DateTime.Now;
 
             // Get updated ahead/behind counts
-            var info = await _gitService.GetRepositoryInfoFastAsync(repoPath);
+            var info = await _gitService.GetRepositoryInfoFastAsync(repoPath, cancellationToken);
 
             Log.Perf("AutoFetch", "Fetch cycle complete", sw.ElapsedMilliseconds);
 
@@ -118,6 +126,12 @@ public class AutoFetchService : IAutoFetchService
                 AheadBy = info.AheadBy,
                 BehindBy = info.BehindBy
             });
+        }
+        catch (OperationCanceledException)
+        {
+            // Caller-initiated teardown (grid exit, repo switch) — not a
+            // failed cycle, so don't log it as an error.
+            throw;
         }
         catch (Exception ex)
         {

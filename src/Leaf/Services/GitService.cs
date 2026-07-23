@@ -79,6 +79,18 @@ public class GitService : IGitService
     public Task<RepositoryInfo> GetRepositoryInfoFastAsync(string repoPath, CancellationToken cancellationToken = default)
         => _repositoryOps.GetRepositoryInfoFastAsync(repoPath, cancellationToken);
 
+    public Task<string> GetRepositoryRootAsync(string anyPath, CancellationToken cancellationToken = default)
+        => _repositoryOps.GetRepositoryRootAsync(anyPath, cancellationToken);
+
+    public Task<string?> GetSuperprojectWorkingTreeAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _repositoryOps.GetSuperprojectWorkingTreeAsync(repoPath, cancellationToken);
+
+    public Task<bool> IsHeadDetachedAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _repositoryOps.IsHeadDetachedAsync(repoPath, cancellationToken);
+
+    public Task<bool> HasUnpushedCommitsAsync(string repoPath, CancellationToken cancellationToken = default)
+        => _repositoryOps.HasUnpushedCommitsAsync(repoPath, cancellationToken);
+
     #endregion
 
     #region Commit History Operations
@@ -154,11 +166,11 @@ public class GitService : IGitService
     public Task<List<CommitInfo>> SearchCommitsAsync(string repoPath, string searchText, int maxResults = 100, CancellationToken cancellationToken = default)
         => _commitHistoryOps.SearchCommitsAsync(repoPath, searchText, maxResults, cancellationToken);
 
-    public Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
-        => _commitHistoryOps.GetFileBlameAsync(repoPath, filePath, cancellationToken);
+    public Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, string? rev = null, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetFileBlameAsync(repoPath, filePath, rev, cancellationToken);
 
-    public Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200, CancellationToken cancellationToken = default)
-        => _commitHistoryOps.GetFileHistoryAsync(repoPath, filePath, maxCount, cancellationToken);
+    public Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, string? rev = null, int maxCount = 200, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetFileHistoryAsync(repoPath, filePath, rev, maxCount, cancellationToken);
 
     #endregion
 
@@ -250,6 +262,9 @@ public class GitService : IGitService
 
     public Task RemoveRemoteAsync(string repoPath, string remoteName, CancellationToken cancellationToken = default)
         => _remoteSyncOps.RemoveRemoteAsync(repoPath, remoteName, cancellationToken);
+
+    public Task<int> DeleteRemoteTrackingNamespaceAsync(string repoPath, string namespaceName, CancellationToken cancellationToken = default)
+        => _remoteSyncOps.DeleteRemoteTrackingNamespaceAsync(repoPath, namespaceName, cancellationToken);
 
     public Task RenameRemoteAsync(string repoPath, string oldName, string newName, CancellationToken cancellationToken = default)
         => _remoteSyncOps.RenameRemoteAsync(repoPath, oldName, newName, cancellationToken);
