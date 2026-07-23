@@ -839,12 +839,13 @@
                                     IconVariant="Regular"
                                     Symbol="Branch" />
 
-                                <!--  Branch name  -->
+                                <!--  Branch name (leaf only — the folder prefix is shown by the parent group)  -->
                                 <TextBlock
                                     VerticalAlignment="Center"
                                     FontSize="11"
                                     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                    Text="{Binding Name}" />
+                                    Text="{Binding DisplayName}"
+                                    ToolTip="{Binding Name}" />
                             </StackPanel>
 
                             <StackPanel

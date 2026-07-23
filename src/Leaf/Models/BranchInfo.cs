@@ -31,6 +31,24 @@ public partial class BranchInfo : ObservableObject
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
+    /// Name as shown in the sidebar tree. The tree renders the first path
+    /// segment of <see cref="Name"/> as a folder (see
+    /// <c>MainViewModel.BuildDirectoryGrouping</c>), so a branch placed under
+    /// a folder must not repeat that folder's name — e.g. "task/CULV-10" shown
+    /// under the "task" folder displays as "CULV-10". Branches with no folder
+    /// (no "/" past position 0) display unchanged. Purely presentational:
+    /// checkout, copy, and every command still bind <see cref="Name"/>.
+    /// </summary>
+    public string DisplayName
+    {
+        get
+        {
+            var slashIndex = Name.IndexOf('/');
+            return slashIndex > 0 ? Name[(slashIndex + 1)..] : Name;
+        }
+    }
+
+    /// <summary>
     /// GitFlow branch type classification (set when loading branches if GitFlow is enabled).
     /// </summary>
     public GitFlowBranchType GitFlowType { get; set; } = GitFlowBranchType.None;
