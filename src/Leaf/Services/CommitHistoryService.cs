@@ -91,13 +91,13 @@ public class CommitHistoryService : ICommitHistoryService
         int maxCount = 200)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        return await _gitService.GetFileHistoryAsync(session.RepositoryPath, filePath, maxCount);
+        return await _gitService.GetFileHistoryAsync(session.RepositoryPath, filePath, maxCount: maxCount, cancellationToken: session.CancellationToken);
     }
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<FileBlameLine>> GetFileBlameAsync(IRepositorySession session, string filePath)
     {
         session.CancellationToken.ThrowIfCancellationRequested();
-        return await _gitService.GetFileBlameAsync(session.RepositoryPath, filePath);
+        return await _gitService.GetFileBlameAsync(session.RepositoryPath, filePath, cancellationToken: session.CancellationToken);
     }
 }

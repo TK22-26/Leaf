@@ -166,11 +166,11 @@ public class GitService : IGitService
     public Task<List<CommitInfo>> SearchCommitsAsync(string repoPath, string searchText, int maxResults = 100, CancellationToken cancellationToken = default)
         => _commitHistoryOps.SearchCommitsAsync(repoPath, searchText, maxResults, cancellationToken);
 
-    public Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, CancellationToken cancellationToken = default)
-        => _commitHistoryOps.GetFileBlameAsync(repoPath, filePath, cancellationToken);
+    public Task<List<FileBlameLine>> GetFileBlameAsync(string repoPath, string filePath, string? rev = null, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetFileBlameAsync(repoPath, filePath, rev, cancellationToken);
 
-    public Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, int maxCount = 200, CancellationToken cancellationToken = default)
-        => _commitHistoryOps.GetFileHistoryAsync(repoPath, filePath, maxCount, cancellationToken);
+    public Task<List<CommitInfo>> GetFileHistoryAsync(string repoPath, string filePath, string? rev = null, int maxCount = 200, CancellationToken cancellationToken = default)
+        => _commitHistoryOps.GetFileHistoryAsync(repoPath, filePath, rev, maxCount, cancellationToken);
 
     #endregion
 

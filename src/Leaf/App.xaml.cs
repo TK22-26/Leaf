@@ -26,6 +26,44 @@ public partial class App : Application
 
     private static ServiceProvider? _provider;
 
+    /// <summary>
+    /// Wire the process-wide unhandled-exception sinks. Dispatcher faults
+    /// (the common case — a command handler that threw) are logged,
+    /// surfaced via the toast sink, and swallowed so a single stray fault
+    /// doesn't tear down the whole session. AppDomain / unobserved-task
+    /// faults are logged for the post-mortem (those can't be recovered).
+    /// </summary>
+    private void WireGlobalExceptionHandlers()
+    {
+        DispatcherUnhandledException += (_, args) =>
+        {
+            Log.Error("App", "Unhandled dispatcher exception", args.Exception);
+            try
+            {
+                AsyncErrorHandler.Handle(args.Exception, "UI operation", isUserAction: true);
+            }
+            catch
+            {
+                // The toast sink isn't initialized until the container is
+                // built; the log line above is the guaranteed record.
+            }
+            // Keep the app alive. Truly fatal conditions (OutOfMemory,
+            // StackOverflow, ExecutionEngine) are not delivered here, so
+            // marking handled only ever rescues recoverable faults.
+            args.Handled = true;
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            Log.Error("App", $"Unhandled AppDomain exception (terminating={args.IsTerminating})",
+                args.ExceptionObject as Exception);
+
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            Log.Error("App", "Unobserved task exception", args.Exception);
+            args.SetObserved();
+        };
+    }
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -47,6 +85,14 @@ public partial class App : Application
         var logLevelSettings = new SettingsService().LoadSettings();
         var logLevel = Enum.TryParse<LogLevel>(logLevelSettings.LogLevel, true, out var parsed) ? parsed : LogLevel.Normal;
         Log.Init(logLevel);
+
+        // Global exception backstop, wired before anything else can throw.
+        // A faulted async-void command (e.g. an AsyncRelayCommand whose
+        // handler let a git failure escape) rethrows on the dispatcher;
+        // with no handler the process silently terminates — a Blame on a
+        // file not in HEAD did exactly that. Log every such fault, surface
+        // it, and keep the UI alive for recoverable ones.
+        WireGlobalExceptionHandlers();
 
         _provider = new ServiceCollection()
             .AddLeafServices()

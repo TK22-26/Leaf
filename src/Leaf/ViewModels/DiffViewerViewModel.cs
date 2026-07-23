@@ -65,6 +65,14 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(CanShowFileInsights))]
     private string _repositoryPath = string.Empty;
 
+    /// <summary>
+    /// When the diff is a historical commit's file, the SHA of that
+    /// commit. Blame / History scope to it (the path may not exist in
+    /// HEAD). Null for working-copy / staged diffs, where blame targets
+    /// the working tree / HEAD as before.
+    /// </summary>
+    public string? SourceCommitSha { get; set; }
+
     [ObservableProperty]
     private string _inlineContent = string.Empty;
 
@@ -244,6 +252,9 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
         LinesDeleted = result.LinesDeletedCount;
         Mode = ViewerMode.Diff;
         IsHunkMode = false;
+        // Default to working-tree/HEAD blame; ShowFileDiffAsync sets a
+        // commit SHA afterward when the diff is a historical commit's file.
+        SourceCommitSha = null;
         BlameLines = [];
         BlameChunks = [];
         BlameContent = string.Empty;
@@ -300,6 +311,7 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
         Hunks = [];
         IsHunkMode = false;
         Mode = ViewerMode.Diff;
+        SourceCommitSha = null;
         ResetDiffNavigation([]);
     }
 
@@ -375,7 +387,7 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
             var sw = Stopwatch.StartNew();
             Log.Info("DiffViewer", $"Blame start #{loadId} path={FilePath}");
 
-            var lines = await _gitService.GetFileBlameAsync(RepositoryPath, FilePath, cancellationToken: SessionToken);
+            var lines = await _gitService.GetFileBlameAsync(RepositoryPath, FilePath, rev: SourceCommitSha, cancellationToken: SessionToken);
             if (token.IsCancellationRequested)
             {
                 Log.Info("DiffViewer", $"Blame canceled #{loadId}");
@@ -388,6 +400,26 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
 
             sw.Stop();
             Log.Perf("DiffViewer", $"Blame done #{loadId} lines={lines.Count}", sw.ElapsedMilliseconds);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer load / repo switch — expected.
+        }
+        catch (Exception ex)
+        {
+            // git blame fails loudly for legitimate reasons — the file
+            // isn't in HEAD (untracked / newly added), lives only in a
+            // historical commit, or the diff's path doesn't resolve at
+            // HEAD. Surface it in the pane instead of letting the fault
+            // escape this async command; there is no dispatcher backstop
+            // upstream and an unhandled fault here terminated the app.
+            Log.Warn("DiffViewer", $"Blame failed for {FilePath}: {ex.Message}");
+            if (IsActiveToken(token))
+            {
+                BlameLines = [];
+                BlameChunks = [];
+                BlameContent = $"Blame unavailable for this file.\n\n{ex.Message.Trim()}";
+            }
         }
         finally
         {
@@ -414,7 +446,7 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
             var sw = Stopwatch.StartNew();
             Log.Info("DiffViewer", $"History start #{loadId} path={FilePath}");
 
-            var commits = await _gitService.GetFileHistoryAsync(RepositoryPath, FilePath, cancellationToken: SessionToken);
+            var commits = await _gitService.GetFileHistoryAsync(RepositoryPath, FilePath, rev: SourceCommitSha, cancellationToken: SessionToken);
             if (token.IsCancellationRequested)
             {
                 Log.Info("DiffViewer", $"History canceled #{loadId}");
@@ -424,6 +456,20 @@ public partial class DiffViewerViewModel : ObservableObject, IDisposable
 
             sw.Stop();
             Log.Perf("DiffViewer", $"History done #{loadId} commits={commits.Count}", sw.ElapsedMilliseconds);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer load / repo switch — expected.
+        }
+        catch (Exception ex)
+        {
+            // Same rationale as ShowBlameAsync: a git failure must not
+            // escape this async command and crash the app.
+            Log.Warn("DiffViewer", $"History failed for {FilePath}: {ex.Message}");
+            if (IsActiveToken(token))
+            {
+                HistoryCommits = [];
+            }
         }
         finally
         {
