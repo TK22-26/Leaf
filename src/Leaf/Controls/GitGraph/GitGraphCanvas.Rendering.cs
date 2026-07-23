@@ -163,42 +163,60 @@ public partial class GitGraphCanvas
         // Calculate visible node range for render culling
         var (minNodeIndex, maxNodeIndex) = GetVisibleNodeRange(nodes, rowOffset);
 
+        // Deepest lane we commit to showing. A lane beyond it is fully
+        // collapsed — nothing that touches it is drawn: not its bubbles,
+        // trails, connection lines, pass-through lanes, stubs, or labels.
+        // Culling everything (rather than clipping) matters because the width
+        // reserves a trailing gap, so a lane one past the boundary would still
+        // fall inside the arranged width; a half-drawn connection into it would
+        // leave a line running to an invisible bubble. In auto-fit mode this is
+        // always the widest on-screen lane, so nothing is ever culled there.
+        int effectiveMaxColumn = GetEffectiveMaxColumn();
+
         // Resolve viewport bounds for pass-through lane drawing
         var scrollViewer = FindParentScrollViewer();
         double viewportTop = scrollViewer?.VerticalOffset ?? 0;
         double viewportBottom = viewportTop + GetEffectiveViewportHeight(scrollViewer);
 
         // Pass 0: Draw pass-through lane lines for connections beyond the culling range
-        DrawPassThroughLanes(dc, rowOffset, minNodeIndex, viewportTop, viewportBottom);
-        DrawCulledParentStubs(dc, nodes, rowOffset, viewportTop, viewportBottom);
+        DrawPassThroughLanes(dc, rowOffset, minNodeIndex, viewportTop, viewportBottom, effectiveMaxColumn);
+        DrawCulledParentStubs(dc, nodes, rowOffset, viewportTop, viewportBottom, effectiveMaxColumn);
 
         var nodesBySha = _cacheService.GetNodesBySha(nodes);
 
-        // First pass: Draw gradient trails (behind everything)
+        // First pass: Draw gradient trails (behind everything). Drawn for every
+        // row — including collapsed-lane rows, which get a colour bar clamped to
+        // the last visible lane instead of an empty gap.
         for (int i = minNodeIndex; i <= maxNodeIndex; i++)
         {
             var node = nodes[i];
-            DrawTrail(dc, node, rowOffset);
+            DrawTrail(dc, node, rowOffset, effectiveMaxColumn);
         }
 
-        // Second pass: Draw connection lines (behind nodes)
+        // Second pass: Draw connection lines (behind nodes). Not culled by
+        // column — a connection crossing into a collapsed lane draws a short
+        // horizontal indicator to the wall (handled inside DrawConnections).
         for (int i = minNodeIndex; i <= maxNodeIndex; i++)
         {
             var node = nodes[i];
-            DrawConnections(dc, node, nodesBySha, rowOffset);
+            DrawConnections(dc, node, nodesBySha, rowOffset, effectiveMaxColumn);
         }
 
         // Third pass: Draw nodes (on top of lines)
         for (int i = minNodeIndex; i <= maxNodeIndex; i++)
         {
             var node = nodes[i];
+            if (node.ColumnIndex > effectiveMaxColumn) continue;
             DrawNode(dc, node, rowOffset);
         }
 
-        // Fourth pass: Draw branch labels (leftmost, on top of everything)
+        // Fourth pass: Draw branch labels (leftmost, on top of everything).
+        // Skipped for collapsed lanes so a label's connector line doesn't
+        // reach toward a bubble that was culled.
         for (int i = minNodeIndex; i <= maxNodeIndex; i++)
         {
             var node = nodes[i];
+            if (node.ColumnIndex > effectiveMaxColumn) continue;
             double branchLabelRight = 0;
             if (node.BranchLabels.Count > 0)
             {
@@ -216,9 +234,12 @@ public partial class GitGraphCanvas
         var selectedNode = SelectedSha != null ? nodesBySha.GetValueOrDefault(SelectedSha) : null;
         var hoveredNode = HoveredSha != null ? nodesBySha.GetValueOrDefault(HoveredSha) : null;
 
-        // Draw selected ghost tag first (so hovered draws on top if same row)
+        // Draw selected ghost tag first (so hovered draws on top if same row).
+        // Skip when the commit sits in a clipped lane — the chip would point
+        // at a bubble that isn't drawn.
         if (selectedNode != null && selectedNode.BranchLabels.Count == 0 && selectedNode.TagNames.Count == 0 &&
-            selectedNode.RowIndex >= minNodeIndex && selectedNode.RowIndex <= maxNodeIndex)
+            selectedNode.RowIndex >= minNodeIndex && selectedNode.RowIndex <= maxNodeIndex &&
+            selectedNode.ColumnIndex <= effectiveMaxColumn)
         {
             DrawGhostTag(dc, selectedNode, rowOffset);
         }
@@ -226,6 +247,7 @@ public partial class GitGraphCanvas
         // Draw hovered ghost tag (even if same as selected, it will just overlap)
         if (hoveredNode != null && hoveredNode.BranchLabels.Count == 0 && hoveredNode.TagNames.Count == 0 &&
             hoveredNode.RowIndex >= minNodeIndex && hoveredNode.RowIndex <= maxNodeIndex &&
+            hoveredNode.ColumnIndex <= effectiveMaxColumn &&
             hoveredNode.Sha != SelectedSha)
         {
             DrawGhostTag(dc, hoveredNode, rowOffset);
@@ -277,19 +299,25 @@ public partial class GitGraphCanvas
         var accentBrush = new SolidColorBrush(branchColor);
         accentBrush.Freeze();
 
-        // Create clipped trail geometry (rectangle with circle cut out)
-        var trailRect = new Rect(x, y - trailHeight / 2, ActualWidth - x - 2, trailHeight);
-        var trailGeometry = new RectangleGeometry(trailRect);
-        var circleGeometry = new EllipseGeometry(new Point(x, y), avatarRadius, avatarRadius);
-        var clippedTrail = new CombinedGeometry(GeometryCombineMode.Exclude, trailGeometry, circleGeometry);
-        clippedTrail.Freeze();
+        // Create clipped trail geometry (rectangle with circle cut out).
+        // Guarded against a WIP lane pinned at/past the arranged right edge,
+        // which would make the rect width negative (Rect throws on that).
+        double wipTrailWidth = ActualWidth - x - 2;
+        if (wipTrailWidth > 0)
+        {
+            var trailRect = new Rect(x, y - trailHeight / 2, wipTrailWidth, trailHeight);
+            var trailGeometry = new RectangleGeometry(trailRect);
+            var circleGeometry = new EllipseGeometry(new Point(x, y), avatarRadius, avatarRadius);
+            var clippedTrail = new CombinedGeometry(GeometryCombineMode.Exclude, trailGeometry, circleGeometry);
+            clippedTrail.Freeze();
 
-        // Draw clipped trail
-        dc.DrawGeometry(trailBrush, null, clippedTrail);
+            // Draw clipped trail
+            dc.DrawGeometry(trailBrush, null, clippedTrail);
 
-        // Draw accent at edge
-        var accentRect = new Rect(ActualWidth - 2, y - trailHeight / 2, 2, trailHeight);
-        dc.DrawRectangle(accentBrush, null, accentRect);
+            // Draw accent at edge
+            var accentRect = new Rect(ActualWidth - 2, y - trailHeight / 2, 2, trailHeight);
+            dc.DrawRectangle(accentBrush, null, accentRect);
+        }
 
         // Draw dashed circle outline
         var dashedPen = new Pen(accentBrush, 2.5)
@@ -300,10 +328,17 @@ public partial class GitGraphCanvas
         dc.DrawEllipse(Brushes.Transparent, dashedPen, new Point(x, y), avatarRadius, avatarRadius);
     }
 
-    private void DrawTrail(DrawingContext dc, GitTreeNode node, int rowOffset = 0)
+    private void DrawTrail(DrawingContext dc, GitTreeNode node, int rowOffset, int effectiveMaxColumn)
     {
         double x = GetXForColumn(node.ColumnIndex);
         double y = GetYForRow(node.RowIndex + rowOffset);
+
+        // A commit whose lane is collapsed has no on-screen bubble, but the row
+        // still gets its colour bar (accent + faint trail) so it doesn't read
+        // as an empty gap. Start the band at the last visible lane and skip the
+        // bubble cut-out, since the bubble lives off to the right.
+        bool collapsed = node.ColumnIndex > effectiveMaxColumn;
+        double trailStartX = collapsed ? GetXForColumn(effectiveMaxColumn) : x;
 
         // Get the node's color
         var baseBrush = node.NodeColor as SolidColorBrush ?? Brushes.Gray;
@@ -311,9 +346,13 @@ public partial class GitGraphCanvas
 
         // Trail dimensions - match commit bubble height (diameter = 2 * NodeRadius * 1.875) + 4px for border
         double trailHeight = NodeRadius * 3.75 + 4;
-        double trailStartX = x;
         double trailEndX = ActualWidth;
         double accentWidth = 2;
+
+        // Safety net against a zero/negative-width rect (Rect throws on that) —
+        // e.g. an off-screen node in the render over-scan sitting past the edge.
+        if (trailEndX - trailStartX - accentWidth <= 0)
+            return;
 
         // Determine if this row is highlighted (selected, hovered, or search match)
         bool isHighlighted = node.Sha == SelectedSha || node.Sha == HoveredSha || (IsSearchActive && node.IsSearchMatch);
@@ -328,34 +367,40 @@ public partial class GitGraphCanvas
         var accentBrush = new SolidColorBrush(baseColor);
         accentBrush.Freeze();
 
-        // Create clipped trail geometry (rectangle with node shape cut out)
+        // Trail rectangle (from bubble / last-visible-lane to the accent edge)
         var trailRect = new Rect(
             trailStartX,
             y - trailHeight / 2,
             trailEndX - trailStartX - accentWidth,
             trailHeight);
-        var trailGeometry = new RectangleGeometry(trailRect);
 
-        Geometry nodeGeometry;
-        if (node.IsStash)
+        if (collapsed)
         {
-            // Stash nodes use a rounded rectangle
-            double boxSize = NodeRadius * 1.875;
-            var boxRect = new Rect(x - boxSize, y - boxSize, boxSize * 2, boxSize * 2);
-            nodeGeometry = new RectangleGeometry(boxRect, 3, 3);
+            // No bubble to cut out — draw the band straight.
+            dc.DrawRectangle(trailBrush, null, trailRect);
         }
         else
         {
-            // Node radius depends on commit type (merge = smaller dot, regular = avatar circle)
-            double avatarRadius = node.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
-            nodeGeometry = new EllipseGeometry(new Point(x, y), avatarRadius, avatarRadius);
+            // Cut the node shape out so the bubble sits cleanly on the trail.
+            var trailGeometry = new RectangleGeometry(trailRect);
+
+            Geometry nodeGeometry;
+            if (node.IsStash)
+            {
+                double boxSize = NodeRadius * 1.875;
+                var boxRect = new Rect(x - boxSize, y - boxSize, boxSize * 2, boxSize * 2);
+                nodeGeometry = new RectangleGeometry(boxRect, 3, 3);
+            }
+            else
+            {
+                double avatarRadius = node.IsMerge ? NodeRadius * 0.875 : NodeRadius * 1.875;
+                nodeGeometry = new EllipseGeometry(new Point(x, y), avatarRadius, avatarRadius);
+            }
+
+            var clippedTrail = new CombinedGeometry(GeometryCombineMode.Exclude, trailGeometry, nodeGeometry);
+            clippedTrail.Freeze();
+            dc.DrawGeometry(trailBrush, null, clippedTrail);
         }
-
-        var clippedTrail = new CombinedGeometry(GeometryCombineMode.Exclude, trailGeometry, nodeGeometry);
-        clippedTrail.Freeze();
-
-        // Draw clipped trail
-        dc.DrawGeometry(trailBrush, null, clippedTrail);
 
         // Draw the accent rectangle at the end (100% opacity)
         var accentRect = new Rect(
@@ -472,7 +517,21 @@ public partial class GitGraphCanvas
         dc.DrawText(glyphText, new Point(bx - glyphText.Width / 2, by - glyphText.Height / 2));
     }
 
-    private void DrawConnections(DrawingContext dc, GitTreeNode node, IReadOnlyDictionary<string, GitTreeNode> nodesBySha, int rowOffset = 0)
+    /// <summary>
+    /// Draw the "continues off to the right" indicator for a connection whose
+    /// far end is in a collapsed lane: a horizontal line from the on-screen
+    /// bubble out to the right wall. The canvas <see cref="UIElement.Clip"/>
+    /// trims it exactly at the message seam, so it reads as a lane running off
+    /// the right edge. The on-screen bubble is painted on top afterwards, so
+    /// starting at its centre is fine.
+    /// </summary>
+    private void DrawCollapsedLaneIndicator(DrawingContext dc, Brush brush, double fromX, double y)
+    {
+        var pen = _cacheService.GetConnectionPen(brush);
+        dc.DrawLine(pen, new Point(fromX, y), new Point(ActualWidth, y));
+    }
+
+    private void DrawConnections(DrawingContext dc, GitTreeNode node, IReadOnlyDictionary<string, GitTreeNode> nodesBySha, int rowOffset = 0, int effectiveMaxColumn = int.MaxValue)
     {
         double nodeX = GetXForColumn(node.ColumnIndex);
         double nodeY = GetYForRow(node.RowIndex + rowOffset);
@@ -500,6 +559,26 @@ public partial class GitGraphCanvas
             // First parent (i=0): commit-to-commit style (down then horizontal)
             // Second+ parent (i>0): merge style (horizontal then down)
             bool isMergeConnection = i > 0;
+
+            // A connection crossing into a collapsed lane can't be drawn in
+            // full — its far end has no on-screen bubble. Draw a short
+            // horizontal line from the on-screen end out to the right wall,
+            // signalling "this continues in a lane collapsed off to the right."
+            bool nodeCollapsed = node.ColumnIndex > effectiveMaxColumn;
+            bool parentCollapsed = parentNode.ColumnIndex > effectiveMaxColumn;
+            if (nodeCollapsed || parentCollapsed)
+            {
+                if (nodeCollapsed && parentCollapsed)
+                    continue; // both off to the right — nothing to anchor on screen
+
+                var stubBrush = isMergeConnection
+                    ? (parentNode.NodeColor ?? Brushes.Gray)
+                    : (node.NodeColor ?? Brushes.Gray);
+                double anchorX = parentCollapsed ? nodeX : parentX;
+                double anchorY = parentCollapsed ? nodeY : parentY;
+                DrawCollapsedLaneIndicator(dc, stubBrush, anchorX, anchorY);
+                continue;
+            }
 
             // Rail color:
             // - Commit connections travel down in child's lane, so use child's color
@@ -561,7 +640,8 @@ public partial class GitGraphCanvas
         IReadOnlyList<GitTreeNode> nodes,
         int rowOffset,
         double viewportTop,
-        double viewportBottom)
+        double viewportBottom,
+        int effectiveMaxColumn)
     {
         if (_culledParentStubs.Count == 0)
             return;
@@ -575,6 +655,10 @@ public partial class GitGraphCanvas
         foreach (var stub in _culledParentStubs)
         {
             if (stub.Row < 0 || stub.Row >= nodes.Count)
+                continue;
+
+            // Stub lives in a collapsed lane — nothing to draw there.
+            if (stub.Column > effectiveMaxColumn)
                 continue;
 
             double topY = GetYForRow(stub.Row + rowOffset);
@@ -614,7 +698,7 @@ public partial class GitGraphCanvas
     }
 
     private void DrawPassThroughLanes(DrawingContext dc, int rowOffset, int minNodeIndex,
-        double viewportTop, double viewportBottom)
+        double viewportTop, double viewportBottom, int effectiveMaxColumn)
     {
         if (_laneSegments.Count == 0)
             return;
@@ -639,6 +723,11 @@ public partial class GitGraphCanvas
         for (int i = 0; i < cutoff; i++)
         {
             var seg = _laneSegments[i];
+
+            // Segment reaches into a collapsed lane — drop it whole rather
+            // than clip a diagonal into empty space.
+            if (seg.ChildColumn > effectiveMaxColumn || seg.ParentColumn > effectiveMaxColumn)
+                continue;
 
             double segTopY = GetYForRow(seg.ChildRow + rowOffset);
             double segBottomY = GetYForRow(seg.ParentRow + rowOffset);

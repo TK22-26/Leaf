@@ -68,6 +68,18 @@ public partial class GitGraphCanvas
         // Re-render visible range when scrolling to keep culling accurate.
         if (Math.Abs(e.ViewportHeightChange) > 0.5)
             BeginViewportTracking(2);
+
+        // Auto-fit sizes the lane area to the widest lane on screen, so a
+        // vertical scroll (or viewport resize) can change the required width.
+        // Re-measure to track it — WPF skips re-layout when the width is
+        // unchanged, so a scroll within a same-width band costs nothing. A
+        // user-pinned lock owns the width, so skip it there.
+        if (AutoFitLanes && LockedMaxColumn < 0
+            && (Math.Abs(e.VerticalChange) > 0.5 || Math.Abs(e.ViewportHeightChange) > 0.5))
+        {
+            InvalidateMeasure();
+        }
+
         InvalidateVisual();
     }
 
