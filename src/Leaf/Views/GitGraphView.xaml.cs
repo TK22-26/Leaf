@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -1096,6 +1097,42 @@ public partial class GitGraphView : UserControl
             FluentMessageBoxIcon.Warning);
         if (result == MessageBoxResult.Yes)
             service.ClearAllOverrides();
+    }
+
+    private void GraphSplitter_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (GraphCanvas == null)
+            return;
+
+        double laneWidth = GraphCanvas.LaneWidth;
+        if (laneWidth <= 0)
+            return;
+
+        // Drive the lock from the cursor's ABSOLUTE position relative to the
+        // canvas's left edge — not accumulated HorizontalChange. The graph
+        // column resizes as we set LockedMaxColumn, which moves the thumb; a
+        // delta-based scheme feeds that movement back in and oscillates around
+        // a lane boundary, making a bubble sitting on it flicker/break. The
+        // canvas's left edge never moves, so its local X is a stable mapping
+        // from cursor position to lane boundary.
+        double x = Mouse.GetPosition(GraphCanvas).X;
+
+        // Invert the width formula from MeasureOverride
+        //   width = LabelAreaWidth + (col + 2) * laneWidth
+        // and round to the nearest lane so the boundary snaps to whole lanes.
+        int col = (int)Math.Round((x - GraphCanvas.LabelAreaWidth) / laneWidth) - 2;
+        int globalMax = Math.Max(0, GraphCanvas.MaxLane);
+        GraphCanvas.LockedMaxColumn = Math.Clamp(col, 0, globalMax);
+    }
+
+    private void GraphSplitter_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (GraphCanvas == null)
+            return;
+
+        // Release the pin — width goes back to auto-fitting the on-screen lanes.
+        GraphCanvas.LockedMaxColumn = -1;
+        e.Handled = true;
     }
 
     private void MainScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)

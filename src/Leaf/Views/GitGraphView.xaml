@@ -101,6 +101,8 @@
                 <Grid.ColumnDefinitions>
                     <!-- Graph canvas column (auto width based on lanes) -->
                     <ColumnDefinition Width="Auto"/>
+                    <!-- Splitter handle (drag to pin the lane width) -->
+                    <ColumnDefinition Width="Auto"/>
                     <!-- Commit list column (fills remaining space) -->
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
@@ -118,6 +120,7 @@
                                           CurrentBranchName="{Binding WorkingChanges.BranchName}"
                                           ColorResolver="{Binding ColorResolver}"
                                           TagsByName="{Binding TagsByName}"
+                                          AutoFitLanes="True"
                                           RowHeight="{StaticResource RowHeight}"
                                           Height="{Binding TotalHeight}"
                                           MinWidth="80"
@@ -128,8 +131,44 @@
                                           MouseLeave="GraphCanvas_MouseLeave"
                                           ToolTip=""/>
 
+                <!-- Lane-width splitter. Drag to pin the graph width (snaps to
+                     whole lanes); double-click to release back to auto-fit.
+                     Sits at the seam where the coloured trails meet the commit
+                     messages. Full-height so it can be grabbed at any row. -->
+                <Thumb Grid.Column="1"
+                       x:Name="GraphSplitter"
+                       Width="7"
+                       VerticalAlignment="Stretch"
+                       Cursor="SizeWE"
+                       DragDelta="GraphSplitter_DragDelta"
+                       MouseDoubleClick="GraphSplitter_MouseDoubleClick"
+                       ToolTip="Drag to set the graph width · double-click for auto-fit">
+                    <Thumb.Template>
+                        <ControlTemplate TargetType="Thumb">
+                            <Border Background="Transparent">
+                                <Rectangle x:Name="Grip"
+                                           Width="2"
+                                           RadiusX="1" RadiusY="1"
+                                           HorizontalAlignment="Center"
+                                           Fill="{DynamicResource TextFillColorTertiaryBrush}"
+                                           Opacity="0"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Grip" Property="Opacity" Value="0.85"/>
+                                    <Setter TargetName="Grip" Property="Fill" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                </Trigger>
+                                <Trigger Property="IsDragging" Value="True">
+                                    <Setter TargetName="Grip" Property="Opacity" Value="1"/>
+                                    <Setter TargetName="Grip" Property="Fill" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Thumb.Template>
+                </Thumb>
+
                 <!-- Commit List with Working Changes row -->
-                <StackPanel Grid.Column="1" Height="{Binding TotalHeight}">
+                <StackPanel Grid.Column="2" Height="{Binding TotalHeight}">
                     <!-- Working Changes Row (shown when HasWorkingChanges is true) -->
                     <Border x:Name="WorkingChangesRow"
                             Height="{StaticResource RowHeight}"
@@ -273,7 +312,7 @@
                 </StackPanel>
 
                 <!-- Loading More indicator -->
-                <Border Grid.Column="1"
+                <Border Grid.Column="2"
                         Height="28"
                         VerticalAlignment="Bottom"
                         Margin="0,0,0,-28"

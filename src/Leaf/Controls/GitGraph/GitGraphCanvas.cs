@@ -168,6 +168,38 @@ public partial class GitGraphCanvas : FrameworkElement
             typeof(GitGraphCanvas),
             new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    /// <summary>
+    /// When true, the canvas sizes its lane area to the widest lane that is
+    /// actually on screen rather than to <see cref="MaxLane"/> (the deepest
+    /// lane anywhere in the loaded graph). Off by default so the merge-commit
+    /// tooltip preview — which has no scroll viewport — keeps showing every
+    /// lane. The main graph turns it on.
+    /// </summary>
+    public static readonly DependencyProperty AutoFitLanesProperty =
+        DependencyProperty.Register(
+            nameof(AutoFitLanes),
+            typeof(bool),
+            typeof(GitGraphCanvas),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
+
+    /// <summary>
+    /// User-pinned lane width, expressed as the maximum lane (column) index to
+    /// reserve room for. <c>-1</c> means "not pinned" — the width follows
+    /// <see cref="AutoFitLanes"/> (or <see cref="MaxLane"/> when auto-fit is
+    /// off). When ≥ 0, the lane area is locked to this many lanes regardless
+    /// of scroll position and lanes beyond it are clipped at the message seam.
+    /// Set by the graph↔message splitter drag; cleared (back to -1) on a
+    /// double-click of the splitter. Clamped to the graph's real
+    /// <see cref="MaxLane"/> at use so a lock carried over from a busier repo
+    /// never over-reserves on a simpler one.
+    /// </summary>
+    public static readonly DependencyProperty LockedMaxColumnProperty =
+        DependencyProperty.Register(
+            nameof(LockedMaxColumn),
+            typeof(int),
+            typeof(GitGraphCanvas),
+            new FrameworkPropertyMetadata(-1, FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
+
 
     private static void OnNodesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -345,6 +377,20 @@ public partial class GitGraphCanvas : FrameworkElement
         set => SetValue(TagsByNameProperty, value);
     }
 
+    /// <summary>Size the lane area to the widest lane on screen (see <see cref="AutoFitLanesProperty"/>).</summary>
+    public bool AutoFitLanes
+    {
+        get => (bool)GetValue(AutoFitLanesProperty);
+        set => SetValue(AutoFitLanesProperty, value);
+    }
+
+    /// <summary>User-pinned max lane index; -1 = not pinned (see <see cref="LockedMaxColumnProperty"/>).</summary>
+    public int LockedMaxColumn
+    {
+        get => (int)GetValue(LockedMaxColumnProperty);
+        set => SetValue(LockedMaxColumnProperty, value);
+    }
+
     /// <summary>
     /// Resolves a branch colour via the active <see cref="ColorResolver"/>,
     /// falling back to gray when no resolver is set yet. Used by all render
@@ -433,10 +479,13 @@ public partial class GitGraphCanvas : FrameworkElement
             return new Size(0, 0);
         }
 
-        // Width: label area + (MaxLane + 2) lanes * LaneWidth
+        // Width: label area + (effectiveMaxColumn + 2) lanes * LaneWidth.
+        // effectiveMaxColumn is MaxLane (deepest lane anywhere) by default,
+        // but shrinks to the widest lane actually on screen when AutoFitLanes
+        // is on, or to a user-pinned value when the splitter is locked.
         // Height: node count * RowHeight (+ 1 for working changes if present)
         // Stash nodes are included in nodes.Count
-        double width = LabelAreaWidth + (MaxLane + 2) * LaneWidth;
+        double width = LabelAreaWidth + (GetEffectiveMaxColumn() + 2) * LaneWidth;
         int rowCount = nodes.Count;
         if (HasWorkingChanges)
         {
@@ -447,6 +496,42 @@ public partial class GitGraphCanvas : FrameworkElement
         double height = rowCount * RowHeight;
 
         return new Size(width, height);
+    }
+
+    #endregion
+
+    #region Arrange Override
+
+    // Vertical slack above/below the arranged height that the lane clip
+    // leaves untrimmed, so expanded branch/tag dropdowns (which overshoot the
+    // bottom row) still render in full. Bounded — an extreme reach was found
+    // to break rendering when the canvas is hosted in a layered popup (the
+    // merge-commit tooltip), leaving the mini-graph area transparent.
+    private const double LaneClipVerticalSlack = 4_000d;
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var size = base.ArrangeOverride(finalSize);
+
+        // Single-axis clip: trim anything past our arranged WIDTH — lanes
+        // beyond the auto-fit / locked boundary (bubbles, trails, pass-
+        // through lanes, label connector lines) — at the commit-message seam
+        // so nothing bleeds across it. Only applied when culling is actually
+        // active (a lane is collapsed); otherwise there's nothing to trim and
+        // we leave Clip null so the canvas renders exactly as it did before
+        // auto-fit existed. This matters for the merge-commit tooltip, whose
+        // mini-graph never culls — clipping it (especially with an extreme
+        // vertical reach) turned its area transparent inside the popup.
+        bool culling = GetEffectiveMaxColumn() < Math.Max(0, MaxLane);
+        Clip = culling
+            ? new RectangleGeometry(new Rect(
+                0,
+                -LaneClipVerticalSlack,
+                finalSize.Width,
+                finalSize.Height + LaneClipVerticalSlack * 2))
+            : null;
+
+        return size;
     }
 
     #endregion
@@ -519,6 +604,112 @@ public partial class GitGraphCanvas : FrameworkElement
             viewportHeight,
             RowHeight,
             rowOffset);
+    }
+
+    /// <summary>
+    /// The maximum lane (column) index the canvas commits to showing. Drives
+    /// both the measured width and the per-lane render culling so the two
+    /// stay in lock-step. Priority: a user-pinned lock, then auto-fit to the
+    /// widest on-screen lane, then <see cref="MaxLane"/> (the deepest lane
+    /// anywhere in the loaded graph). Locks and auto-fit are both clamped to
+    /// the real graph width so we never reserve room for lanes that don't
+    /// exist.
+    /// </summary>
+    internal int GetEffectiveMaxColumn()
+    {
+        int global = Math.Max(0, MaxLane);
+
+        int locked = LockedMaxColumn;
+        if (locked >= 0)
+            return Math.Min(locked, global);
+
+        if (!AutoFitLanes)
+            return global;
+
+        int visible = ComputeVisibleMaxColumn();
+        return visible < 0 ? global : Math.Min(visible, global);
+    }
+
+    /// <summary>
+    /// Widest lane (column) index drawn within the tight, currently-visible
+    /// row band — commit bubbles plus any pass-through lane line or culled-
+    /// parent stub that merely crosses the viewport without a bubble on
+    /// screen. Returns -1 when there is nothing to measure or no scroll
+    /// context (e.g. the tooltip preview), signalling callers to fall back
+    /// to the global <see cref="MaxLane"/>.
+    /// </summary>
+    private int ComputeVisibleMaxColumn()
+    {
+        var nodes = Nodes;
+        if (nodes == null || nodes.Count == 0)
+            return -1;
+
+        var scrollViewer = FindParentScrollViewer();
+        if (scrollViewer == null)
+            return -1;
+
+        double viewportHeight = GetEffectiveViewportHeight(scrollViewer);
+        double top = scrollViewer.VerticalOffset;
+        double bottom = top + viewportHeight;
+        int rowOffset = HasWorkingChanges ? 1 : 0;
+
+        // Tight visible node-index range — no merge-lookback padding here;
+        // we want only what the eye can actually see.
+        int firstRow = Math.Max(0, (int)Math.Floor(top / RowHeight) - rowOffset);
+        int lastRow = Math.Min(nodes.Count - 1, (int)Math.Ceiling(bottom / RowHeight) - rowOffset);
+        if (lastRow < firstRow)
+            return -1;
+
+        int maxCol = 0;
+
+        // Visible commit bubbles.
+        for (int i = firstRow; i <= lastRow; i++)
+        {
+            int c = nodes[i].ColumnIndex;
+            if (c > maxCol) maxCol = c;
+        }
+
+        // Pass-through lane segments crossing the visible band. Segments are
+        // sorted by ChildRow ascending, so binary-search the last one that
+        // starts at/above lastRow, then filter out those that end above the
+        // band.
+        if (_laneSegments.Count > 0)
+        {
+            int lo = 0, hi = _laneSegments.Count - 1, cutoff = 0;
+            while (lo <= hi)
+            {
+                int mid = lo + (hi - lo) / 2;
+                if (_laneSegments[mid].ChildRow <= lastRow)
+                {
+                    cutoff = mid + 1;
+                    lo = mid + 1;
+                }
+                else
+                {
+                    hi = mid - 1;
+                }
+            }
+
+            for (int i = 0; i < cutoff; i++)
+            {
+                var seg = _laneSegments[i];
+                if (seg.ParentRow < firstRow)
+                    continue;
+                if (seg.ChildColumn > maxCol) maxCol = seg.ChildColumn;
+                if (seg.ParentColumn > maxCol) maxCol = seg.ParentColumn;
+            }
+        }
+
+        // Culled-parent stubs run from their row downward off the bottom of
+        // the loaded content, so any stub starting at/above the last visible
+        // row occupies its lane across the viewport.
+        foreach (var stub in _culledParentStubs)
+        {
+            if (stub.Row <= lastRow && stub.Column > maxCol)
+                maxCol = stub.Column;
+        }
+
+        return maxCol;
     }
 
     #endregion
