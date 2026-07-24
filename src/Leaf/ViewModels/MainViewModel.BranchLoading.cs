@@ -54,7 +54,14 @@ public partial class MainViewModel
             var gitFlowConfigTask = TimedTask("GetGitFlowConfigAsync", _gitFlowService.GetConfigAsync(repo.Path));
             var worktreesTask = TimedTask("GetWorktreesAsync", _gitService.GetWorktreesAsync(repo.Path, cancellationToken: CurrentRepositoryToken));
             var tagsTask = TimedTask("GetTagsAsync", _gitService.GetTagsAsync(repo.Path, cancellationToken: CurrentRepositoryToken));
-            var submodulesTask = TimedTask("GetSubmodulesAsync", _gitService.GetSubmodulesAsync(repo.Path, cancellationToken: CurrentRepositoryToken));
+            // Submodule state is a sidebar enrichment. Wrap enumeration so a
+            // repo problem confined to submodules (e.g. an orphaned gitlink
+            // that aborts `git submodule status`, or a broken nested
+            // checkout) degrades only the SUBMODULES section instead of
+            // blanking the entire branch list. See LoadSubmodulesBestEffortAsync.
+            var submodulesTask = LoadSubmodulesBestEffortAsync(
+                TimedTask("GetSubmodulesAsync", _gitService.GetSubmodulesAsync(repo.Path, cancellationToken: CurrentRepositoryToken)),
+                repo);
             var pullRequestsTask = TimedTask("LoadPullRequestsForRepoAsync", LoadPullRequestsForRepoAsync(repo, forceReload));
 
             await Task.WhenAll(branchesTask, remotesTask, defaultRemoteTask, gitFlowConfigTask, worktreesTask, tagsTask, submodulesTask, pullRequestsTask)
@@ -268,6 +275,37 @@ public partial class MainViewModel
         var result = await task;
         Log.Perf("LoadBranches", name, sw.ElapsedMilliseconds);
         return result;
+    }
+
+    /// <summary>
+    /// Await submodule enumeration without letting its failure abort the
+    /// branch load. Submodule state is a sidebar enrichment; a repo problem
+    /// confined to submodules must never blank the branch list. On failure
+    /// we log a warning (privacy: message + repo name only, no code/paths
+    /// beyond git's own text) and degrade the SUBMODULES section to empty —
+    /// the rest of the sidebar loads normally. Cancellation is re-thrown so
+    /// a repo switch still tears the load down uniformly. Mirrors the
+    /// existing per-submodule dirtiness-probe handling in
+    /// <see cref="Leaf.Services.Git.Operations.SubmoduleOperations"/>.
+    /// </summary>
+    private static async Task<List<SubmoduleInfo>> LoadSubmodulesBestEffortAsync(
+        Task<List<SubmoduleInfo>> submodulesTask, RepositoryInfo repo)
+    {
+        try
+        {
+            return await submodulesTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("LoadBranches",
+                $"Submodule enumeration failed for {repo.Name}; loading branches without the " +
+                $"SUBMODULES section. {ex.Message}");
+            return [];
+        }
     }
 
     private static string GetRemoteBranchShortName(string branchName, string remoteName)

@@ -15,6 +15,69 @@ namespace Leaf.Tests.Services.Git;
 /// </summary>
 public class SubmoduleOperationsTests
 {
+    // ---- ParseIndexGitlinks (orphaned-gitlink fallback primitive) --------
+
+    [Fact]
+    public void ParseIndexGitlinks_Empty_ReturnsEmpty()
+    {
+        SubmoduleOperations.ParseIndexGitlinks("").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ParseIndexGitlinks_PicksGitlinksSkipsRegularFiles()
+    {
+        // `git ls-files --stage` mixes blobs (100644), executables (100755)
+        // and gitlinks (160000). Only the gitlinks are submodule pointers.
+        var output = string.Join('\n',
+            "100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0\treadme.txt",
+            "160000 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0\tlibs/foo",
+            "100755 cccccccccccccccccccccccccccccccccccccccc 0\tbuild.sh",
+            "160000 dddddddddddddddddddddddddddddddddddddddd 0\t.claude/worktrees/agent-ac88db97");
+
+        var map = SubmoduleOperations.ParseIndexGitlinks(output);
+
+        map.Should().HaveCount(2);
+        map["libs/foo"].Should().Be("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+        map[".claude/worktrees/agent-ac88db97"].Should().Be("dddddddddddddddddddddddddddddddddddddddd");
+        map.Should().NotContainKey("readme.txt");
+        map.Should().NotContainKey("build.sh");
+    }
+
+    [Fact]
+    public void ParseIndexGitlinks_NormalizesBackslashesToForwardSlashes()
+    {
+        var output = "160000 1111111111111111111111111111111111111111 0\tvendor\\bar";
+
+        var map = SubmoduleOperations.ParseIndexGitlinks(output);
+
+        map.Should().ContainKey("vendor/bar");
+    }
+
+    [Fact]
+    public void ParseIndexGitlinks_ConflictedGitlink_FirstStageWins()
+    {
+        // A conflicted gitlink surfaces as multiple stage entries; the
+        // sidebar only needs one coarse recorded SHA and this only runs on
+        // the already-degraded path, so first-seen is sufficient.
+        var output = string.Join('\n',
+            "160000 2222222222222222222222222222222222222222 1\tlibs/foo",
+            "160000 3333333333333333333333333333333333333333 2\tlibs/foo",
+            "160000 4444444444444444444444444444444444444444 3\tlibs/foo");
+
+        var map = SubmoduleOperations.ParseIndexGitlinks(output);
+
+        map.Should().ContainSingle();
+        map["libs/foo"].Should().Be("2222222222222222222222222222222222222222");
+    }
+
+    [Fact]
+    public void ParseIndexGitlinks_RejectsPathTraversal()
+    {
+        var output = "160000 5555555555555555555555555555555555555555 0\t../escape";
+
+        SubmoduleOperations.ParseIndexGitlinks(output).Should().BeEmpty();
+    }
+
     // ---- ParseSubmoduleStatusOutput --------------------------------------
 
     [Fact]
