@@ -63,27 +63,42 @@ internal class SubmoduleOperations
         var cachedResult = await cachedStatusTask;
         var configResult = await configTask;
 
-        if (!statusResult.Success)
-        {
-            throw new InvalidOperationException(
-                string.IsNullOrEmpty(statusResult.StandardError)
-                    ? "Failed to list submodules"
-                    : statusResult.StandardError);
-        }
-
         // A missing .gitmodules was already handled above, so config
         // failure here is unusual — but not fatal: we can still report
-        // the entries from `submodule status` with empty URLs rather
-        // than throw and surface an error toast to the user.
+        // the entries with empty URLs rather than throw and surface an
+        // error toast to the user.
         var moduleConfig = configResult.Success
             ? ParseGitmodulesConfig(configResult.StandardOutput)
             : new Dictionary<string, ModuleConfigEntry>(StringComparer.Ordinal);
 
-        var recordedByPath = cachedResult.Success
-            ? ParseRecordedShaByPath(cachedResult.StandardOutput)
-            : new Dictionary<string, string>(StringComparer.Ordinal);
+        List<SubmoduleInfo> submodules;
+        if (statusResult.Success)
+        {
+            var recordedByPath = cachedResult.Success
+                ? ParseRecordedShaByPath(cachedResult.StandardOutput)
+                : new Dictionary<string, string>(StringComparer.Ordinal);
 
-        var submodules = ParseSubmoduleStatusOutput(statusResult.StandardOutput, moduleConfig, recordedByPath);
+            submodules = ParseSubmoduleStatusOutput(statusResult.StandardOutput, moduleConfig, recordedByPath);
+        }
+        else
+        {
+            // `git submodule status` aborts wholesale when the index holds
+            // a gitlink that .gitmodules doesn't map — an "orphaned
+            // gitlink", e.g. a nested worktree or repo accidentally
+            // `git add`ed (Claude Code agent worktrees under `.claude/` are
+            // a common source). A single such entry anywhere in the tree
+            // makes the porcelain unusable for EVERY submodule and, before
+            // this fallback, blanked the entire branch sidebar. We
+            // reconstruct the same facts from primitives that don't
+            // validate the whole gitlink set: `.gitmodules` (registration)
+            // + `git ls-files --stage` (recorded SHAs) + a per-submodule
+            // HEAD read. This is not a degraded guess — it's git's own
+            // recorded data by another route; only the `describe` string is
+            // lost. If the reconstruction itself can't run, the failure is
+            // genuine (broken git, permissions) and we throw.
+            submodules = await BuildSubmodulesFromIndexAsync(
+                repoPath, moduleConfig, statusResult.StandardError, cancellationToken);
+        }
 
         // Working-tree dirtiness fan-out: per-submodule `git status
         // --porcelain` to detect uncommitted edits / untracked files.
@@ -116,6 +131,169 @@ internal class SubmoduleOperations
         }
 
         return submodules;
+    }
+
+    /// <summary>
+    /// Reconstruct the submodule list without <c>git submodule status</c>,
+    /// which aborts entirely when the index contains an orphaned gitlink (a
+    /// mode-160000 entry with no matching <c>.gitmodules</c> mapping —
+    /// commonly a nested worktree or repo that was accidentally staged).
+    /// Uses only primitives that tolerate orphans:
+    /// <list type="bullet">
+    ///   <item><c>.gitmodules</c> config (already parsed) → the
+    ///     authoritative set of REGISTERED submodules; orphaned gitlinks are
+    ///     deliberately excluded because they are not submodules.</item>
+    ///   <item><c>git ls-files --stage</c> → recorded SHA per gitlink
+    ///     path.</item>
+    ///   <item>a per-submodule <c>git rev-parse HEAD</c> inside the working
+    ///     tree → working SHA + init state, from which status is derived.</item>
+    /// </list>
+    /// Orphaned gitlinks are logged with their paths so the user can clean
+    /// them up (<c>git rm --cached &lt;path&gt;</c> + a <c>.gitignore</c>
+    /// rule), but they never block the sidebar. Throws only when
+    /// <c>ls-files</c> also fails — that's a genuine repo/git breakage, not
+    /// an orphaned gitlink, and must fail loudly.
+    /// </summary>
+    private async Task<List<SubmoduleInfo>> BuildSubmodulesFromIndexAsync(
+        string repoPath,
+        IReadOnlyDictionary<string, ModuleConfigEntry> moduleConfig,
+        string statusError,
+        CancellationToken cancellationToken)
+    {
+        var lsFiles = await _context.CommandRunner.RunAsync(
+            repoPath,
+            ["ls-files", "--stage"],
+            cancellationToken: cancellationToken);
+
+        if (!lsFiles.Success)
+        {
+            // Both `submodule status` and `ls-files` failed — this is not an
+            // orphaned-gitlink situation but a genuinely broken repo/git.
+            // Surface the richer `submodule status` error (fail loud).
+            throw new InvalidOperationException(
+                string.IsNullOrEmpty(statusError)
+                    ? "Failed to list submodules"
+                    : statusError);
+        }
+
+        var recordedByPath = ParseIndexGitlinks(lsFiles.StandardOutput);
+
+        // Split index gitlinks into registered (present in .gitmodules) vs
+        // orphaned (not). byPath keys on the CONFIGURED path — a submodule
+        // can have a name distinct from its path.
+        var byPath = new Dictionary<string, ModuleConfigEntry>(StringComparer.Ordinal);
+        foreach (var entry in moduleConfig.Values)
+        {
+            byPath[entry.Path] = entry;
+        }
+
+        var orphaned = recordedByPath.Keys
+            .Where(p => !byPath.ContainsKey(p))
+            .OrderBy(p => p, StringComparer.Ordinal)
+            .ToList();
+        if (orphaned.Count > 0)
+        {
+            // Actionable diagnostic (privacy: repo-relative paths only, no
+            // file content) — this is the true cause of the status failure.
+            Log.Warn("Submodule",
+                $"'git submodule status' aborted because {orphaned.Count} orphaned gitlink(s) in the " +
+                $"index have no .gitmodules mapping: {string.Join(", ", orphaned)}. Listing registered " +
+                "submodules from the index instead. Clean up each with `git rm --cached <path>` and add " +
+                "the path to .gitignore.");
+        }
+        else
+        {
+            // Status failed but no orphaned gitlink explains it — keep a
+            // breadcrumb so an unexpected failure mode is still diagnosable.
+            Log.Warn("Submodule",
+                $"'git submodule status' failed ({(string.IsNullOrWhiteSpace(statusError) ? "no stderr" : statusError.Trim())}); " +
+                "reconstructed the submodule list from the index.");
+        }
+
+        // Reconstruct each REGISTERED submodule that has an index gitlink.
+        // A .gitmodules entry with no committed gitlink is not a real
+        // registration from git's POV, so — like `submodule status` — we
+        // skip it rather than fabricate a recorded SHA.
+        var registered = byPath.Values
+            .Where(e => recordedByPath.ContainsKey(e.Path))
+            .OrderBy(e => e.Path, StringComparer.Ordinal)
+            .ToList();
+
+        var built = await Task.WhenAll(registered.Select(async cfg =>
+        {
+            var path = cfg.Path;
+            var recordedSha = recordedByPath[path];
+            var fullPath = Path.GetFullPath(Path.Combine(repoPath, path));
+
+            // Initialized == the working tree exists with a git dir/file.
+            var initialized = Directory.Exists(fullPath) &&
+                (File.Exists(Path.Combine(fullPath, ".git")) ||
+                 Directory.Exists(Path.Combine(fullPath, ".git")));
+
+            string? workingSha = null;
+            SubmoduleStatus status;
+            if (!initialized)
+            {
+                status = SubmoduleStatus.Uninitialized;
+            }
+            else
+            {
+                workingSha = await GetSubmoduleHeadShaAsync(fullPath, cancellationToken);
+                if (workingSha is null)
+                {
+                    // Initialized but HEAD unreadable (detached/corrupt) —
+                    // flag as needing attention rather than falsely claiming
+                    // up-to-date (engineering-software policy: never
+                    // substitute a clean signal for missing data).
+                    Log.Warn("Submodule",
+                        $"Could not read HEAD of submodule '{path}'; reporting it as out-of-sync.");
+                    status = SubmoduleStatus.OutOfSync;
+                }
+                else
+                {
+                    status = string.Equals(workingSha, recordedSha, StringComparison.OrdinalIgnoreCase)
+                        ? SubmoduleStatus.UpToDate
+                        : SubmoduleStatus.OutOfSync;
+                }
+            }
+
+            return new SubmoduleInfo
+            {
+                Name = cfg.Name,
+                Path = path,
+                Url = cfg.Url,
+                Branch = cfg.Branch,
+                RecordedSha = recordedSha,
+                WorkingSha = workingSha,
+                Describe = null, // unavailable without `git submodule status`
+                Status = status,
+            };
+        }));
+
+        return [.. built];
+    }
+
+    /// <summary>
+    /// Read the working HEAD commit of an initialized submodule via
+    /// <c>git rev-parse HEAD</c> inside its own directory. Returns null when
+    /// the command fails (detached with no commit, empty, or corrupt) so the
+    /// caller can flag the entry rather than fabricate a SHA. Running in the
+    /// submodule's own working dir never triggers the parent's gitlink
+    /// validation, so it is safe even when the parent's
+    /// <c>git submodule status</c> aborts.
+    /// </summary>
+    private async Task<string?> GetSubmoduleHeadShaAsync(string submoduleFullPath, CancellationToken cancellationToken)
+    {
+        var result = await _context.CommandRunner.RunAsync(
+            submoduleFullPath,
+            ["rev-parse", "HEAD"],
+            cancellationToken: cancellationToken);
+
+        if (!result.Success)
+            return null;
+
+        var sha = result.StandardOutput.Trim();
+        return string.IsNullOrEmpty(sha) ? null : sha;
     }
 
     /// <summary>
@@ -158,6 +336,52 @@ internal class SubmoduleOperations
         }
 
         return !string.IsNullOrWhiteSpace(result.StandardOutput);
+    }
+
+    /// <summary>
+    /// Extract path → recorded-SHA for every gitlink (mode <c>160000</c>) in
+    /// <c>git ls-files --stage</c> output. Each line is
+    /// <c>&lt;mode&gt; &lt;sha&gt; &lt;stage&gt;\t&lt;path&gt;</c>; non-gitlink
+    /// modes are skipped. Unlike <c>git submodule status</c>, this never
+    /// aborts on an orphaned gitlink, so it's the safe primitive for
+    /// reconstructing the submodule list. For a conflicted gitlink (multiple
+    /// stages) the first-seen stage wins — good enough for the sidebar's
+    /// coarse status, and this only runs on the already-degraded path.
+    /// </summary>
+    internal static Dictionary<string, string> ParseIndexGitlinks(string output)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(output))
+            return map;
+
+        foreach (var rawLine in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = rawLine.TrimEnd('\r');
+            if (!line.StartsWith("160000 ", StringComparison.Ordinal))
+                continue;
+
+            var tab = line.IndexOf('\t');
+            if (tab <= 0) continue;
+
+            // meta = [mode, sha, stage]; path follows the tab.
+            var meta = line[..tab].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (meta.Length < 2) continue;
+
+            var sha = meta[1];
+            var path = line[(tab + 1)..].Replace('\\', '/');
+
+            // Same safety checkpoint the config/status parsers apply — a
+            // hostile or malformed index entry must not reach a filesystem
+            // join (see IsSafeRelativeComponent remarks).
+            if (!IsSafeRelativeComponent(path))
+            {
+                Log.Warn("Submodule", $"Rejecting unsafe gitlink path '{path}' from ls-files output");
+                continue;
+            }
+
+            map.TryAdd(path, sha);
+        }
+        return map;
     }
 
     /// <summary>
